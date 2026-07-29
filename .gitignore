@@ -1,0 +1,21 @@
+# deps / build
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# env — never commit secrets; commit .env.example instead
+.env
+.env.*
+!.env.example
+
+# local AI / orchestration machinery — private, never published
+.claude/
+.ai/
+
+# vercel
+.vercel/
+
+# OS
+.DS_Store
