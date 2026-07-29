@@ -19,3 +19,8 @@ out/
 
 # OS
 .DS_Store
+
+# orchestrator working artifacts — local only (durable ones get promoted to ../internal)
+tasks/
+docs/prds/
+docs/adds/
