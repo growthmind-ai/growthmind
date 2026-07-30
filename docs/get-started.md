@@ -27,18 +27,18 @@ each confirmation must land while the user is still looking at the step that
 produced it, and the finding push is bound by the 5–20 s budget
 ([`mvp.md` §3](mvp.md#3-the-gating-spike--run-before-anything-is-built)).
 
-| Beat | tc    | What happens                                                              | What it proves                                        |
-| ---- | ----- | ------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 1    | 00:00 | Repo connected, read-only                                                 | Context, not surveillance                             |
-| 2    | 01:04 | PostHog linked — the project they already run                             | The event counter ticks, so the connection is real    |
-| 3    | 02:11 | Slack connected                                                           | The test message lands before they switch back        |
-| 4    | 03:24 | Coding agent shakes hands over MCP                                        | `list_open_fixes → 0 open` — empty, but valid         |
-| 5    | 04:55 | They break their own product — a save that fails. No ticket filed         | Step five is the demo of the product                  |
-| 6    | 05:03 | The screen they are standing on starts counting                           | The armed step-five row visibly watches (+3 s, +8 s)  |
-| 7    | 05:07 | **Twelve seconds.** What happened, to whom, with proof — while still there | The glue moment                                       |
-| 8    | 05:31 | The same finding arrives in Slack                                         | Steady state — the screen never asks them back        |
-| 9    | 05:58 | They break it again. Nothing posts twice                                  | The signature ledger remembers                        |
-| 10   | 06:14 | "Get it fixed" is a spec their agent can read                             | Hypothesis: they're glued                             |
+| Beat | tc    | What happens                                                               | What it proves                                       |
+| ---- | ----- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 1    | 00:00 | Repo connected, read-only                                                  | Context, not surveillance                            |
+| 2    | 01:04 | PostHog linked — the project they already run                              | The event counter ticks, so the connection is real   |
+| 3    | 02:11 | Slack connected                                                            | The test message lands before they switch back       |
+| 4    | 03:24 | Coding agent shakes hands over MCP                                         | `list_open_fixes → 0 open` — empty, but valid        |
+| 5    | 04:55 | They break their own product — a save that fails. No ticket filed          | Step five is the demo of the product                 |
+| 6    | 05:03 | The screen they are standing on starts counting                            | The armed step-five row visibly watches (+3 s, +8 s) |
+| 7    | 05:07 | **Twelve seconds.** What happened, to whom, with proof — while still there | The glue moment                                      |
+| 8    | 05:31 | The same finding arrives in Slack                                          | Steady state — the screen never asks them back       |
+| 9    | 05:58 | They break it again. Nothing posts twice                                   | The signature ledger remembers                       |
+| 10   | 06:14 | "Get it fixed" is a spec their agent can read                              | Hypothesis: they're glued                            |
 
 The five setup steps and their confirmations are specified in
 [`mvp.md` §2](mvp.md#2-onboarding-flow); this table adds the pacing and the
