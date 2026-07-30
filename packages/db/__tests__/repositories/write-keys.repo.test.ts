@@ -20,7 +20,10 @@ import { eq } from "drizzle-orm";
 
 import { WRITE_KEY_PREFIX, type WriteKeyKind } from "@growthmind/shared";
 
-import { createWriteKeysRepo, resolveWriteKeyForIngest } from "../../src/repositories/write-keys.repo";
+import {
+  createWriteKeysRepo,
+  resolveWriteKeyForIngest,
+} from "../../src/repositories/write-keys.repo";
 import type { ScopedDb } from "../../src/repositories/types";
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -112,14 +115,20 @@ describe("write-keys repository", () => {
       userName: "Mint Owner",
       email: "mint-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "Mint Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Mint Project",
+    });
     const repo = createWriteKeysRepo(db, org.ctx);
 
     const minted = await repo.mint({ projectId: project.id, kind: "standard" });
 
     expect(minted.raw.startsWith(WRITE_KEY_PREFIX)).toBe(true);
 
-    const [row] = await db.select().from(schema.writeKeys).where(eq(schema.writeKeys.id, minted.key.id));
+    const [row] = await db
+      .select()
+      .from(schema.writeKeys)
+      .where(eq(schema.writeKeys.id, minted.key.id));
     if (!row) {
       throw new Error("expected mint to persist a write_keys row");
     }
@@ -139,7 +148,10 @@ describe("write-keys repository", () => {
       userName: "Stamp Owner",
       email: "stamp-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "Stamp Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Stamp Project",
+    });
     const repo = createWriteKeysRepo(db, org.ctx);
 
     const minted = await repo.mint({ projectId: project.id, kind: "standard" });
@@ -162,7 +174,10 @@ describe("write-keys repository", () => {
       userName: "Foreign Project Owner B",
       email: "foreign-project-owner-b@example.com",
     });
-    const projectA = await seedProject(db, { organizationId: orgA.organizationId, name: "Org A Project" });
+    const projectA = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "Org A Project",
+    });
     const repoB = createWriteKeysRepo(db, orgB.ctx);
 
     let caught: unknown;
@@ -179,7 +194,10 @@ describe("write-keys repository", () => {
     // actually verifies project ownership before minting.
     expect((caught as Error).message).toMatch(/organization|project|not found|belong/i);
 
-    const rows = await db.select().from(schema.writeKeys).where(eq(schema.writeKeys.projectId, projectA.id));
+    const rows = await db
+      .select()
+      .from(schema.writeKeys)
+      .where(eq(schema.writeKeys.projectId, projectA.id));
     expect(rows).toHaveLength(0);
   });
 
@@ -189,7 +207,10 @@ describe("write-keys repository", () => {
       userName: "Resolve Owner",
       email: "resolve-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "Resolve Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Resolve Project",
+    });
     const raw = makeRawKeyMaterial();
     await seedWriteKey(db, {
       organizationId: org.organizationId,
@@ -213,7 +234,10 @@ describe("write-keys repository", () => {
       userName: "Revoked Key Owner",
       email: "revoked-key-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "Revoked Key Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Revoked Key Project",
+    });
     const raw = makeRawKeyMaterial();
     await seedWriteKey(db, {
       organizationId: org.organizationId,
@@ -241,7 +265,10 @@ describe("write-keys repository", () => {
       userName: "Multi Key Owner",
       email: "multi-key-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "Multi Key Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Multi Key Project",
+    });
     const rawA = makeRawKeyMaterial();
     const rawB = makeRawKeyMaterial();
     await seedWriteKey(db, {
@@ -275,7 +302,10 @@ describe("write-keys repository", () => {
       userName: "Revoke Owner B",
       email: "revoke-owner-b@example.com",
     });
-    const project = await seedProject(db, { organizationId: orgA.organizationId, name: "Revoke Project" });
+    const project = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "Revoke Project",
+    });
     const raw = makeRawKeyMaterial();
     const seeded = await seedWriteKey(db, {
       organizationId: orgA.organizationId,
@@ -288,7 +318,10 @@ describe("write-keys repository", () => {
     const result = await repoB.revoke(seeded.id);
     expect(result).toBeNull();
 
-    const [freshRow] = await db.select().from(schema.writeKeys).where(eq(schema.writeKeys.id, seeded.id));
+    const [freshRow] = await db
+      .select()
+      .from(schema.writeKeys)
+      .where(eq(schema.writeKeys.id, seeded.id));
     if (!freshRow) {
       throw new Error("expected the foreign org's revoke attempt to leave the row in place");
     }
@@ -303,7 +336,10 @@ describe("write-keys repository", () => {
       userName: "DTO Owner",
       email: "dto-owner@example.com",
     });
-    const project = await seedProject(db, { organizationId: org.organizationId, name: "DTO Project" });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "DTO Project",
+    });
     const raw = makeRawKeyMaterial();
     await seedWriteKey(db, {
       organizationId: org.organizationId,

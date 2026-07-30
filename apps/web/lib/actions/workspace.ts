@@ -52,7 +52,10 @@ export async function renameWorkspace(name: string): Promise<RenameWorkspaceResu
     const organization = await createOrganizationsRepo(getDb(), tenantContext).rename(parsed.data);
     return { ok: true, name: organization.name };
   } catch (error) {
-    console.error("renameWorkspace: rename failed", { error, organizationId: tenantContext.organizationId });
+    console.error("renameWorkspace: rename failed", {
+      error,
+      organizationId: tenantContext.organizationId,
+    });
     return { ok: false, error: SAVE_FAILURE_MESSAGE };
   }
 }

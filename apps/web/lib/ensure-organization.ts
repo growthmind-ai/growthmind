@@ -95,7 +95,10 @@ export async function ensureOrganization(
     return { organizationId };
   } catch (error) {
     if (!isUniqueViolation(error)) {
-      console.error("ensureOrganization: failed to create organization", { userId: user.id, error });
+      console.error("ensureOrganization: failed to create organization", {
+        userId: user.id,
+        error,
+      });
       throw error;
     }
 
@@ -126,11 +129,14 @@ export async function ensureOrganization(
     // construction (slug = `ws-<their user id>`).
     const orphaned = await findOrganizationBySlug(db, slug);
     if (orphaned) {
-      console.error("ensureOrganization: org exists for slug but membership is missing — restoring membership", {
-        userId: user.id,
-        slug,
-        organizationId: orphaned.id,
-      });
+      console.error(
+        "ensureOrganization: org exists for slug but membership is missing — restoring membership",
+        {
+          userId: user.id,
+          slug,
+          organizationId: orphaned.id,
+        },
+      );
 
       await db.insert(schema.member).values({
         id: `member-${randomUUID()}`,
@@ -146,11 +152,14 @@ export async function ensureOrganization(
     const notFoundError = new Error(
       `ensureOrganization: unique-slug conflict for user "${user.id}" but neither membership nor slug-owning organization found`,
     );
-    console.error("ensureOrganization: conflict re-read found neither membership nor organization", {
-      userId: user.id,
-      slug,
-      error: notFoundError,
-    });
+    console.error(
+      "ensureOrganization: conflict re-read found neither membership nor organization",
+      {
+        userId: user.id,
+        slug,
+        error: notFoundError,
+      },
+    );
     throw notFoundError;
   }
 }

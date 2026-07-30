@@ -81,7 +81,9 @@ export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeys
       const [ownedProject] = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, ctx.organizationId)))
+        .where(
+          and(eq(projects.id, input.projectId), eq(projects.organizationId, ctx.organizationId)),
+        )
         .limit(1);
 
       if (!ownedProject) {
@@ -115,7 +117,9 @@ export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeys
       const rows = await db
         .select()
         .from(writeKeys)
-        .where(and(eq(writeKeys.organizationId, ctx.organizationId), eq(writeKeys.projectId, projectId)));
+        .where(
+          and(eq(writeKeys.organizationId, ctx.organizationId), eq(writeKeys.projectId, projectId)),
+        );
 
       return rows.map(toMetadata);
     },

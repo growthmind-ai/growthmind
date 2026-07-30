@@ -21,7 +21,10 @@ describe("parseServerEnv", () => {
   // app signs every session cookie with a secret published in a public repo.
   test("production rejects the .env.example BETTER_AUTH_SECRET literal", () => {
     expect(() =>
-      parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars!" }),
+      parseServerEnv({
+        ...PROD_COMPLETE,
+        BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars!",
+      }),
     ).toThrow(/still set to the public example value/);
   });
 

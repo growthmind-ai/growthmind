@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { WRITE_KEY_PREFIX, hashWriteKeyMaterial, isWriteKeyFormat } from "../../src/write-keys/material";
+import {
+  WRITE_KEY_PREFIX,
+  hashWriteKeyMaterial,
+  isWriteKeyFormat,
+} from "../../src/write-keys/material";
 
 describe("hashWriteKeyMaterial", () => {
   test("hashWriteKeyMaterial is a deterministic sha256 hex of the material", () => {

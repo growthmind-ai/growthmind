@@ -69,8 +69,8 @@ export default async function HomePage() {
                 →
               </Text>
               <Text>
-                Next: connect your site so Growthmind can watch real sessions — that&apos;s the
-                next release step.
+                Next: connect your site so Growthmind can watch real sessions — that&apos;s the next
+                release step.
               </Text>
             </Group>
 
@@ -78,7 +78,9 @@ export default async function HomePage() {
               <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
                 ·
               </Text>
-              <Text c="dimmed">Then: findings arrive in your Slack, with the evidence attached.</Text>
+              <Text c="dimmed">
+                Then: findings arrive in your Slack, with the evidence attached.
+              </Text>
             </Group>
           </Stack>
         </Stack>

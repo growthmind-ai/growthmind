@@ -31,7 +31,9 @@ const TEST_BASE_URL = "http://localhost:3000";
  */
 export interface TestAuthHooks {
   onUserCreate?: (user: { id: string; email: string; name: string }) => void | Promise<void>;
-  onSessionCreateBefore?: (session: { userId: string }) =>
+  onSessionCreateBefore?: (session: {
+    userId: string;
+  }) =>
     | { activeOrganizationId: string | null }
     | undefined
     | Promise<{ activeOrganizationId: string | null } | undefined>;

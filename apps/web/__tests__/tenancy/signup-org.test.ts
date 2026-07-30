@@ -252,7 +252,9 @@ describe("duplicate-email signup fails with an error the form maps to the row-3 
     // UI row-3 string the form maps this to: "That email is already in use
     // — sign in instead?"
     expect(duplicateError).toBeInstanceOf(Error);
-    expect((duplicateError as BetterAuthApiError).body?.code).toBe("USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL");
+    expect((duplicateError as BetterAuthApiError).body?.code).toBe(
+      "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+    );
   });
 });
 
@@ -339,7 +341,9 @@ describe("double-submitted signup yields one user, one organization, one members
     expect(fulfilled).toHaveLength(1);
     const survivor = fulfilled[0]!.value;
 
-    const usersWithEmail = (await handle.db.select().from(schema.user)).filter((row) => row.email === email);
+    const usersWithEmail = (await handle.db.select().from(schema.user)).filter(
+      (row) => row.email === email,
+    );
     expect(usersWithEmail).toHaveLength(1);
 
     // One organization, one membership — the D-C completion the real

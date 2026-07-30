@@ -1,4 +1,8 @@
-import { tenantResolutionInputSchema, type TenantContext, type TenantResolutionInput } from "./context";
+import {
+  tenantResolutionInputSchema,
+  type TenantContext,
+  type TenantResolutionInput,
+} from "./context";
 import { resolveActiveOrganization } from "./resolve-active-organization";
 
 /**

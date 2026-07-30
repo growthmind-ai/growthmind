@@ -32,7 +32,9 @@ export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): Organ
         .where(eq(organization.id, ctx.organizationId));
 
       if (!row) {
-        throw new Error("createOrganizationsRepo.get: no organization row for constructing context");
+        throw new Error(
+          "createOrganizationsRepo.get: no organization row for constructing context",
+        );
       }
 
       return row;
@@ -46,7 +48,9 @@ export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): Organ
         .returning();
 
       if (!row) {
-        throw new Error("createOrganizationsRepo.rename: no organization row for constructing context");
+        throw new Error(
+          "createOrganizationsRepo.rename: no organization row for constructing context",
+        );
       }
 
       return row;

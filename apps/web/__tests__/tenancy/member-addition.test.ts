@@ -20,7 +20,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { ensureOrganization } from "@/lib/ensure-organization";
 
-import { addTestMember, createTestAuth, readMembershipsForUser, signUpTestUser } from "./helpers/auth-fixture";
+import {
+  addTestMember,
+  createTestAuth,
+  readMembershipsForUser,
+  signUpTestUser,
+} from "./helpers/auth-fixture";
 
 const PASSWORD = "correct-horse-battery";
 
@@ -43,14 +48,22 @@ describe("a second user added through Better Auth machinery becomes a member of 
     });
 
     const ownerEmail = `member-add-owner-${randomUUID()}@example.com`;
-    const owner = await signUpTestUser(auth, { name: "Owner User", email: ownerEmail, password: PASSWORD });
+    const owner = await signUpTestUser(auth, {
+      name: "Owner User",
+      email: ownerEmail,
+      password: PASSWORD,
+    });
 
     const ownerMemberships = await readMembershipsForUser(handle.db, owner.id);
     expect(ownerMemberships).toHaveLength(1);
     const organizationId = ownerMemberships[0]!.organizationId;
 
     const teammateEmail = `member-add-teammate-${randomUUID()}@example.com`;
-    const teammate = await signUpTestUser(auth, { name: "Teammate User", email: teammateEmail, password: PASSWORD });
+    const teammate = await signUpTestUser(auth, {
+      name: "Teammate User",
+      email: teammateEmail,
+      password: PASSWORD,
+    });
 
     // The real product path (D-E) — never a raw `member`-row insert.
     const addedMember = await addTestMember(auth, {
@@ -63,7 +76,9 @@ describe("a second user added through Better Auth machinery becomes a member of 
 
     const teammateMemberships = await readMembershipsForUser(handle.db, teammate.id);
     expect(
-      teammateMemberships.some((row) => row.organizationId === organizationId && row.role === "member"),
+      teammateMemberships.some(
+        (row) => row.organizationId === organizationId && row.role === "member",
+      ),
     ).toBe(true);
   });
 });
@@ -87,14 +102,22 @@ describe("adding the same member twice yields exactly one membership", () => {
     });
 
     const ownerEmail = `member-dup-owner-${randomUUID()}@example.com`;
-    const owner = await signUpTestUser(auth, { name: "Owner User", email: ownerEmail, password: PASSWORD });
+    const owner = await signUpTestUser(auth, {
+      name: "Owner User",
+      email: ownerEmail,
+      password: PASSWORD,
+    });
 
     const ownerMemberships = await readMembershipsForUser(handle.db, owner.id);
     expect(ownerMemberships).toHaveLength(1);
     const organizationId = ownerMemberships[0]!.organizationId;
 
     const teammateEmail = `member-dup-teammate-${randomUUID()}@example.com`;
-    const teammate = await signUpTestUser(auth, { name: "Teammate User", email: teammateEmail, password: PASSWORD });
+    const teammate = await signUpTestUser(auth, {
+      name: "Teammate User",
+      email: teammateEmail,
+      password: PASSWORD,
+    });
 
     await addTestMember(auth, { organizationId, userId: teammate.id, role: "member" });
 
@@ -125,7 +148,9 @@ describe("adding the same member twice yields exactly one membership", () => {
     );
 
     const teammateMemberships = await readMembershipsForUser(handle.db, teammate.id);
-    const matchingOrgMemberships = teammateMemberships.filter((row) => row.organizationId === organizationId);
+    const matchingOrgMemberships = teammateMemberships.filter(
+      (row) => row.organizationId === organizationId,
+    );
     expect(matchingOrgMemberships).toHaveLength(1);
   });
 });
