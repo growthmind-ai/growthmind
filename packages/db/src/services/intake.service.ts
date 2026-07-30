@@ -1,0 +1,156 @@
+// The SINGLE write path for `sessions` and `events` (O-003 D-9, FR-14).
+//
+// Everything the classifier consumes is stamped on the session row here, so a
+// stored stamp is reproducible from persisted data alone with zero vendor
+// access — the exact property the future `exclusions.backfill` depends on.
+//
+// Persists on BOTH pull outcomes. The walk is newest-first, so a mid-walk
+// failure has already retrieved the newest events; those are written and the
+// watermark is NOT advanced (FR-22). Partial progress survives by contract,
+// not by hope.
+import type {
+  Origin,
+  SessionSourcePullResult,
+  SourceEvent,
+  SourceSession,
+  TenantContext,
+} from "@growthmind/shared";
+import {
+  CURRENT_EXCLUSION_RULE_SET,
+  EXCLUSION_RULE_SET_VERSION,
+  SESSION_GROUPING_VERSION,
+  classifyExclusion,
+} from "@growthmind/shared";
+
+import { createEventsRepo, type EventInsertRow } from "../repositories/events.repo";
+import { createSessionsRepo, type SessionUpsertRow } from "../repositories/sessions.repo";
+import type { ScopedDb } from "../repositories/types";
+
+/** The connection fields the intake needs. Nothing credential-bearing. */
+export interface IntakeConnection {
+  id: string;
+  projectId: string;
+  /** What the classifier will see, and what gets stamped on each session as
+   * `internal_domain_at_stamp` — the provenance of the stamp, not the
+   * project's current domain. */
+  inferredInternalDomain: string | null;
+}
+
+export interface IntakeCounts {
+  eventsReceived: number;
+  eventsPersisted: number;
+  sessionsTouched: number;
+  eventsDroppedMalformed: number;
+}
+
+/** This sprint's only writer stamps `real`; `synthetic` arrives with
+ * simulation. The shared `originSchema` union is reused, never redefined. */
+const INTAKE_ORIGIN: Origin = "real";
+
+/**
+ * Splits the discriminated pull result into the one shape the write path
+ * cares about. A failed pull is NOT an empty pull: the walk is newest-first,
+ * so its partials are the NEWEST events and throwing them away would make
+ * FR-22's "partial progress survives" a hope rather than a guarantee.
+ */
+function collectedFrom(result: SessionSourcePullResult): {
+  sessions: readonly SourceSession[];
+  events: readonly SourceEvent[];
+} {
+  return result.ok
+    ? { sessions: result.sessions, events: result.events }
+    : { sessions: result.partialSessions, events: result.partialEvents };
+}
+
+/**
+ * Assembles session rows, runs `classifyExclusion` against
+ * `CURRENT_EXCLUSION_RULE_SET`, upserts sessions, then inserts events keyed to
+ * them.
+ *
+ * Sessions before events, deliberately: `events.session_id` is a foreign key,
+ * so the session row must exist first, and the session upsert is idempotent
+ * so a retry re-establishes the linkage rather than orphaning it.
+ */
+export async function persistPullResult(
+  db: ScopedDb,
+  ctx: TenantContext,
+  input: { connection: IntakeConnection; result: SessionSourcePullResult },
+): Promise<IntakeCounts> {
+  const { connection, result } = input;
+  const collected = collectedFrom(result);
+
+  const sessionRows: SessionUpsertRow[] = collected.sessions.map((session) => ({
+    projectId: connection.projectId,
+    connectionId: connection.id,
+    sessionKey: session.sessionKey,
+    identityKey: session.identityKey,
+    identityEmailDomain: session.identityEmailDomain,
+    identityResolution: session.identityResolution,
+    userAgent: session.userAgent,
+    entryUrlPath: session.entryUrlPath,
+    startedAt: session.startedAt,
+    lastEventAt: session.lastEventAt,
+    origin: INTAKE_ORIGIN,
+    // FR-14 (v). The classifier reads ONLY the four facts below, and all four
+    // are written onto the row in the same statement — `internal_domain_at_stamp`
+    // records what the classifier SAW, not what the project's domain happens
+    // to be later. That is what makes re-running the classifier over persisted
+    // rows reproduce every stamp exactly, with zero vendor access.
+    exclusionReason: classifyExclusion(
+      {
+        identityEmailDomain: session.identityEmailDomain,
+        identityResolution: session.identityResolution,
+        internalDomain: connection.inferredInternalDomain,
+        userAgent: session.userAgent,
+      },
+      CURRENT_EXCLUSION_RULE_SET,
+    ),
+    internalDomainAtStamp: connection.inferredInternalDomain,
+    // Both versions travel WITH the stamp (D12). When a v2 rule set lands,
+    // `EXCLUSION_RULE_SETS.get(1)` still reproduces this row's stamp exactly,
+    // so a rule change is a migratable event rather than a silent fork.
+    exclusionRuleSetVersion: EXCLUSION_RULE_SET_VERSION,
+    groupingVersion: SESSION_GROUPING_VERSION,
+  }));
+
+  const persistedSessions = await createSessionsRepo(db, ctx).upsertMany(sessionRows);
+
+  // The repository returns exactly the rows the write touched — a row this
+  // context does not own is filtered out before the statement and never comes
+  // back. Keying events off THIS map rather than off the pull result is what
+  // makes a foreign-project pull produce zero orphan events instead of a
+  // foreign-key error.
+  const sessionIdByKey = new Map(persistedSessions.map((row) => [row.sessionKey, row.id]));
+
+  const eventRows: EventInsertRow[] = [];
+  for (const event of collected.events) {
+    const sessionId = sessionIdByKey.get(event.sessionKey);
+    if (sessionId === undefined) {
+      continue;
+    }
+
+    eventRows.push({
+      projectId: connection.projectId,
+      connectionId: connection.id,
+      sessionId,
+      sourceEventId: event.sourceEventId,
+      name: event.name,
+      occurredAt: event.occurredAt,
+      urlPath: event.urlPath,
+    });
+  }
+
+  const eventsPersisted = await createEventsRepo(db, ctx).insertManyIgnoringDuplicates(eventRows);
+
+  return {
+    // What the boundary handed us, not what we managed to store — the two
+    // differ by the overlap window's re-requested duplicates, and reporting
+    // the stored figure as "received" would hide the drop count below.
+    eventsReceived: result.eventsReceived,
+    eventsPersisted,
+    sessionsTouched: persistedSessions.length,
+    // Skipped AND COUNTED (D-13). A malformed item the parser could not read
+    // is reported as its own number so it never reads as a quiet product.
+    eventsDroppedMalformed: result.droppedMalformed,
+  };
+}

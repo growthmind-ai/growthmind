@@ -34,6 +34,12 @@
         "no-await-in-loop": "off",
         "no-unmodified-loop-condition": "off"
       }
+    },
+    {
+      "files": ["packages/adapters/**", "**/__tests__/**"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
     }
   ],
   "ignorePatterns": [

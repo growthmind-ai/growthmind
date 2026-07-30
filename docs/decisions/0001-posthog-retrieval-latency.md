@@ -188,3 +188,73 @@ _Completed 2026-07-30. Retained for the re-runs §3 and §5 recommend._
    the "ships first" sentence in §4.
 6. Change the status line at the top from **BLOCKED-ON-CREDENTIALS** to **Decided**,
    with the run date.
+
+---
+
+## Addendum (2026-07-30): the O-003 live-API probe corrects §6's rate-limit conclusion
+
+During sprint O-003 (`session-source-posthog-adapter`) a live-API shape probe ran
+directly against the same PostHog project to pin the API contracts the adapter is
+built on (endpoint shapes, pagination, error envelopes). One of its findings is a
+material correction to this document's §6, recorded here per this doc's convention
+of gaining dated addenda rather than being rewritten. **The original decision text
+and Status above are unchanged** — nothing here alters which `SessionSource` ships
+first (§4).
+
+**The rate-limit conclusion in §6 was misattributed to the wrong endpoint.** §6
+reports 2,162 HTTP 429 responses across the M-0 run's 60 trials and treats rate
+limiting as a property of the polled endpoints in general. The O-003 probe measured
+each endpoint independently and found:
+
+- **600 requests at 30-way concurrency to the events list API → zero 429s.**
+- **600 requests to the HogQL query API → zero 429s.**
+- Only `session_recordings` throttled, at roughly 100 requests per 60 seconds.
+- Rate-limit buckets are **per-endpoint**, not per-project — throttling one
+  endpoint does not throttle the others.
+
+The M-0 run's recording leg polled 20 trials × 120 s ≈ 2,400 ticks, all of which
+timed out (§5) — against `session_recordings`, the one endpoint now known to
+throttle at that volume. The 2,162 429s reported in §6 are almost certainly that
+leg, not the events leg the adapter actually polls.
+
+**Two consequences follow, both worth stating plainly:**
+
+- The events list API — the adapter's hot path — is far more permissive than §6
+  assumed. The poll interval does not need to be sized around a rate limit that was
+  never measured on the hot path.
+- More importantly, **the event legs' p90 of ~24 s (§2) should now be read as a
+  real measurement, not a throttle-inflated conservative ceiling.** §2's caveat and
+  §6 discounted the reported latencies on the grounds that PostHog was actively
+  throttling the poller during the run. That discount does not apply to the events
+  leg — it was never the leg being throttled. This _strengthens_ §3's conclusion
+  that the 5–20 s onboarding promise is not achievable via the pull adapter: the
+  number is not going to improve with a politer poller. This sharpens the open
+  product question named in §3 rather than settling it — the copy and the O-010
+  acceptance bar remain owned elsewhere.
+
+**`Retry-After` is now pinned.** On a 429, `Retry-After` is present and is always
+**bare delta-seconds** (e.g. `59`), never an HTTP-date. It is the only rate-limit
+header — there is no `X-RateLimit-Limit` / `-Remaining` / `-Reset`. The error body
+is a stable typed envelope: `{"type":"throttled_error","code":"throttled","detail":…,"attr":null}`.
+
+**Newly pinned facts bearing on §6's "poll the events list API" decision** (kept
+brief here; each is load-bearing for the adapter's design, not just informational):
+
+- Pagination walks **backwards in time**: `next` is an absolute URL carrying
+  `before=<the page's last item timestamp>`, and that boundary is **exclusive**.
+  Ordering is strictly newest-first across page boundaries. `next` is literal
+  `null` on the final page — "fewer rows than the page limit" is not itself a
+  signal that pagination is done.
+- `after` and `before` are **both exclusive** of the boundary instant. A malformed
+  time value returns **HTTP 200 with an empty result set** rather than a 4xx — an
+  empty page can never be trusted as "caught up" unless the request's own
+  parameters were validated first.
+- The event `timestamp` is **client-declared event time**, not ingestion time —
+  there is **no ingestion-time field** anywhere on the item, so ingestion lag is
+  unobservable through this endpoint and completeness cannot be claimed from it.
+- The event `id` is a stable, unique, server-assigned identifier, confirmed
+  byte-identical across repeated retrievals — sound as an idempotency key.
+- `person` is **null on every events-list item** — the events API never joins the
+  person object. An email is reachable only via a separate
+  `GET /persons?distinct_id=` call, or from `$set`-bearing properties on
+  identify-shaped events.

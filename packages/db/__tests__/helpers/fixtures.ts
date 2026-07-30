@@ -177,3 +177,97 @@ export async function seedOrgWithOwner(
 
   return { organizationId: org.id, organizationName: org.name, userId: user.id, ctx };
 }
+
+export interface SeededProject {
+  id: string;
+  name: string;
+}
+
+/**
+ * Inserts a `projects` row directly (O-003). Every table this sprint adds is
+ * foreign-keyed to `projects`, so almost every new repository test needs one
+ * of these before it can insert anything at all.
+ *
+ * Takes the organization id explicitly rather than a `TenantContext`, because
+ * the cross-tenant fixtures need to seed a project into org B that org A's
+ * context must NOT be able to see — a context-only seeder could not express
+ * that shape.
+ */
+export async function seedProject(
+  db: ScopedDb,
+  params: { organizationId: string; name: string },
+): Promise<SeededProject> {
+  const [row] = await db
+    .insert(schema.projects)
+    .values({
+      id: randomUUID(),
+      organizationId: params.organizationId,
+      name: params.name,
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("seedProject: insert returned no row");
+  }
+
+  return { id: row.id, name: row.name };
+}
+
+export interface SeededConnection {
+  id: string;
+  projectId: string;
+}
+
+/**
+ * Inserts a `project_connections` row directly, bypassing the connection
+ * service (which validates against a source and encrypts). Tests that need a
+ * connection to hang sessions, events, or poll runs off want the row, not the
+ * flow.
+ *
+ * `credentialCiphertext` defaults to an obviously-fake envelope-shaped
+ * literal. It is NOT real key material and cannot decrypt — this repository
+ * is public, and no fixture in it will ever carry a usable secret.
+ */
+export async function seedConnection(
+  db: ScopedDb,
+  params: {
+    organizationId: string;
+    projectId: string;
+    host?: string;
+    sourceProjectId?: string;
+    isActive?: boolean;
+    health?: "validating" | "healthy" | "failing" | "disconnected";
+    watermarkAt?: Date | null;
+    nextPollAt?: Date;
+    pollIntervalSeconds?: number;
+    connectedAt?: Date;
+    inferredInternalDomain?: string | null;
+  },
+): Promise<SeededConnection> {
+  const [row] = await db
+    .insert(schema.projectConnections)
+    .values({
+      id: randomUUID(),
+      organizationId: params.organizationId,
+      projectId: params.projectId,
+      sourceKind: "posthog",
+      host: params.host ?? "https://eu.posthog.example.invalid",
+      sourceProjectId: params.sourceProjectId ?? "00000",
+      credentialCiphertext: "v1.00000000.aaaa.bbbb.cccc",
+      credentialKeyId: "00000000",
+      isActive: params.isActive ?? true,
+      health: params.health ?? "healthy",
+      watermarkAt: params.watermarkAt ?? null,
+      nextPollAt: params.nextPollAt ?? new Date(),
+      pollIntervalSeconds: params.pollIntervalSeconds ?? 60,
+      connectedAt: params.connectedAt ?? new Date(),
+      inferredInternalDomain: params.inferredInternalDomain ?? null,
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("seedConnection: insert returned no row");
+  }
+
+  return { id: row.id, projectId: row.projectId };
+}

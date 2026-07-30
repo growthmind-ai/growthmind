@@ -30,3 +30,58 @@ export {
 // to ./tenancy, where its only consumer lives.
 export { findMembershipsByUserId, findUserNameById } from "./tenancy/queries";
 export { ensureOrganization } from "./tenancy/ensure-organization";
+
+// --- O-003 -----------------------------------------------------------------
+// NOTE: src/system/* is deliberately absent from this barrel. It is reachable
+// only through the "./system" subpath, and a committed test asserts that none
+// of its three functions is exported here.
+export {
+  createProjectConnectionsRepo,
+  toConnectionSummary,
+  type ProjectConnectionsRepo,
+  type ProjectConnectionRow,
+  type InsertActiveConnectionInput,
+  type RecordHealthInput,
+  type AdvanceWatermarkInput,
+  type SetInferredInternalDomainInput,
+} from "./repositories/project-connections.repo";
+export {
+  createSessionsRepo,
+  type SessionsRepo,
+  type SessionRecord,
+  type SessionUpsertRow,
+} from "./repositories/sessions.repo";
+export {
+  createEventsRepo,
+  type EventsRepo,
+  type EventRecord,
+  type EventInsertRow,
+} from "./repositories/events.repo";
+export {
+  createPollRunsRepo,
+  type PollRunsRepo,
+  type PollRunRecord,
+  type StartPollRunInput,
+  type PollRunCounts,
+  type PollRunTerminal,
+  type PollRunAggregate,
+} from "./repositories/poll-runs.repo";
+
+export {
+  createConnectionsService,
+  type ConnectionsService,
+  type ConnectionsServiceDeps,
+  type ConnectInput,
+  type AttachableSource,
+  type CreateSourceFn,
+  type SourceConnectionConfig,
+} from "./services/connections.service";
+export {
+  persistPullResult,
+  type IntakeConnection,
+  type IntakeCounts,
+} from "./services/intake.service";
+export {
+  createEventsCounterService,
+  type EventsCounterService,
+} from "./services/events-counter.service";
