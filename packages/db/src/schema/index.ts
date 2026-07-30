@@ -5,3 +5,5 @@
 // (`bunx @better-auth/cli generate`) — regenerate it when the auth config
 // changes rather than editing it by hand.
 export * from "./auth";
+export * from "./projects";
+export * from "./write-keys";
