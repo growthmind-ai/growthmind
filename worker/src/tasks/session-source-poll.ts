@@ -176,6 +176,11 @@ export async function runSessionSourcePoll(
    * abandoning a walk halfway would waste the pages already fetched. */
   const overBudget = (): boolean => deps.now().getTime() - startedAtMs >= MAX_RUN_DURATION_MS;
 
+  /** Would the budget be spent `ms` from now? Threaded into the adapter so a
+   * 429 backoff cannot sleep past this run's claim (D4/D6). */
+  const overBudgetAfter = (ms: number): boolean =>
+    deps.now().getTime() + ms - startedAtMs >= MAX_RUN_DURATION_MS;
+
   for (const connection of claimed) {
     if (overBudget()) {
       // Not a failure. The claim already moved these rows' cursors, so the
@@ -186,7 +191,7 @@ export async function runSessionSourcePoll(
 
     let outcome: ConnectionOutcome;
     try {
-      outcome = await pollConnection(deps, connection, overBudget);
+      outcome = await pollConnection(deps, connection, overBudget, overBudgetAfter);
     } catch (error) {
       // BELT AND BRACES. Every path inside `pollConnection` already finishes
       // its own run row; this exists so a fault in the paths AROUND a run (a
@@ -229,6 +234,7 @@ async function pollConnection(
   deps: SessionSourcePollDeps,
   connection: PollableConnection,
   overBudget: () => boolean,
+  overBudgetAfter: (ms: number) => boolean,
 ): Promise<ConnectionOutcome> {
   const ctx = systemTenantContextFor(connection);
   const pollRuns = createPollRunsRepo(deps.db, ctx);
@@ -256,13 +262,21 @@ async function pollConnection(
       connections,
       connection,
       code: credential.code,
+      // `exactOptionalPropertyTypes` distinguishes "absent" from "present
+      // and undefined" — spread only when there IS an override, so an
+      // absent override does not become an explicit `message: undefined`.
+      ...(credential.message !== undefined ? { message: credential.message } : {}),
     });
     outcome.runsRecorded += 1;
     outcome.failed = true;
     return outcome;
   }
 
-  const source = createSourceFor(connection, credential.personalApiKey, deps);
+  const source = createSourceFor(connection, credential.personalApiKey, deps, (ms) =>
+    // Would this backoff outlast the run's own budget? If so the adapter gives
+    // up as `rate_limited` rather than sleeping past its claim.
+    overBudgetAfter(ms),
+  );
   const plan = resolvePollPlan({
     connectedAt: connection.connectedAt,
     now: deps.now(),
@@ -424,12 +438,23 @@ async function runOnePass(input: {
     // The last thing we know about this attachment is that a fetch WORKED, so
     // that is what the customer is told — from a persisted fact, never from a
     // transient signal (D4).
-    await connections.recordHealth(connection.id, {
-      health: "healthy",
-      reasonCode: null,
-      reasonMessage: null,
-      checkedAt: finishedAt,
-    });
+    //
+    // D8: isolated from the run above deliberately. Inside the outer try, a
+    // throw here reached the catch and rewrote an ALREADY-COMPLETED run as a
+    // zeroed failure — events persisted, watermark advanced, audit row saying
+    // otherwise. A stale health badge is the strictly better failure.
+    try {
+      await connections.recordHealth(connection.id, {
+        health: "healthy",
+        reasonCode: null,
+        reasonMessage: null,
+        checkedAt: finishedAt,
+      });
+    } catch (error) {
+      deps.logger.error(
+        `session source poll: connection ${connection.id} polled successfully but its health badge could not be updated — ${describeError(error)}`,
+      );
+    }
 
     return {
       ok: true,
@@ -492,10 +517,23 @@ async function applyCursors(
     }
   }
 
-  if (!result.contiguous && result.resumeBefore !== null) {
-    // CR-1 FIX: `setBackfillCursor` touches `backfill_before` alone, so this
-    // persists the resume cursor whether or not a watermark exists yet —
-    // including the never-polled case this branch used to silently drop.
+  if (!result.contiguous) {
+    // CR-3 FIX: persist whatever the walk computed EVEN WHEN `resumeBefore`
+    // is `null`. A `null` here is not "nothing to record" — per the
+    // adapter's CR-11 contract, it is "this specific walk never got a page
+    // to fetch", which happens when an EARLIER walk in the same pull (the
+    // backward resume) already exhausted the old backlog using the whole
+    // shared page budget, leaving none for the forward pass. Before this
+    // fix, that exact combination (`contiguous: false`, `resumeBefore:
+    // null`) fell through to the fallback below WITHOUT writing anything —
+    // so the connection stayed pinned on the stale `backfill_before` from
+    // the previous run, reproduced the identical page sequence forever, and
+    // never advanced: a livelock, not merely a slow catch-up. Writing
+    // `null` here clears that stale cursor, so the NEXT tick's resume pass
+    // starts fresh with the full page budget instead of repeating this
+    // exact call forever — `setBackfillCursor` touches `backfill_before`
+    // alone, so this is safe whether or not a watermark exists yet
+    // (including the never-polled case).
     const held = await connections.setBackfillCursor(connectionId, result.resumeBefore);
     if (held) {
       return {
@@ -511,7 +549,20 @@ async function applyCursors(
 
 /** Finishes a run `failed` and records the connection's health from the same
  * fact. The sentence is OURS, keyed by code — the vendor's own `detail` text
- * cannot reach a customer through a channel that never carries vendor text. */
+ * cannot reach a customer through a channel that never carries vendor text.
+ *
+ * CR-14: `message` is an OPTIONAL override of the code-keyed default. It
+ * exists for exactly one caller today — `openCredential`'s decrypt-failure
+ * branch, where the code-keyed `misconfigured` sentence ("Set
+ * GROWTHMIND_ENCRYPTION_KEY…, restart") is the CONNECT-TIME, install-has-no-
+ * key story. Reusing it for an ALREADY-CONNECTED row whose stored secret
+ * this installation can no longer decrypt (a rotated key, an AAD mismatch)
+ * tells the customer to restart a server that is running fine, and leaks an
+ * env var name and a shell command into customer-facing copy. `messages.ts`
+ * is out of scope for this fix (every customer-facing string is supposed to
+ * live there — D-13), so the corrected sentence is local to its one call
+ * site here rather than duplicated into the shared table; migrating it
+ * there is a follow-up. */
 async function finishFailed(
   deps: SessionSourcePollDeps,
   input: {
@@ -521,10 +572,11 @@ async function finishFailed(
     runId: string;
     code: SourceFailureCode;
     counts: PollRunCounts;
+    message?: string;
   },
 ): Promise<void> {
   const finishedAt = deps.now();
-  const message = CONNECT_REFUSAL_MESSAGES[input.code];
+  const message = input.message ?? CONNECT_REFUSAL_MESSAGES[input.code];
 
   try {
     await input.pollRuns.finish(input.runId, {
@@ -559,6 +611,7 @@ async function recordUnattemptedFailure(
     connections: ConnectionsRepo;
     connection: PollableConnection;
     code: SourceFailureCode;
+    message?: string;
   },
 ): Promise<void> {
   const run = await input.pollRuns.start({
@@ -572,7 +625,19 @@ async function recordUnattemptedFailure(
 
 type OpenedCredential =
   | { readonly ok: true; readonly personalApiKey: string }
-  | { readonly ok: false; readonly code: SourceFailureCode };
+  | { readonly ok: false; readonly code: SourceFailureCode; readonly message?: string };
+
+/** CR-14. The `misconfigured` code is correct here — the customer's project
+ * is not attached to a working credential either way — but the default
+ * message (`CONNECT_REFUSAL_MESSAGES.misconfigured`) tells a customer whose
+ * connection USED to work to set an env var and restart the server, which is
+ * both wrong (the server is fine; this installation's key material simply no
+ * longer opens THIS row's stored secret) and a leak of an env var name and a
+ * shell command into copy the customer sees. Named separately from the
+ * connect-time gate's message so the two stay distinguishable even though
+ * they share a code. */
+const STORED_CREDENTIAL_UNREADABLE_MESSAGE =
+  "We could not unlock the analytics key saved for this project. This can happen when the security key this installation uses has changed since it was connected. Reconnect this project with your analytics key to fix it.";
 
 /**
  * The credential path, in the one order that fails closed at every step: the
@@ -607,7 +672,10 @@ async function openCredential(
     credentialAad(connection.organizationId, connection.projectId),
   );
   if (!opened.ok) {
-    return { ok: false, code: "misconfigured" };
+    // CR-14: THIS branch, specifically, is a decrypt failure on an already-
+    // connected row — never the connect-time "no working key at all" story
+    // the default message tells. See `STORED_CREDENTIAL_UNREADABLE_MESSAGE`.
+    return { ok: false, code: "misconfigured", message: STORED_CREDENTIAL_UNREADABLE_MESSAGE };
   }
 
   return { ok: true, personalApiKey: opened.value };
@@ -623,6 +691,13 @@ function createSourceFor(
   connection: PollableConnection,
   personalApiKey: string,
   deps: SessionSourcePollDeps,
+  /**
+   * Lets the adapter's 429 backoff see this run's deadline. Without it the
+   * budget is only observed between passes, so a throttled connection sleeps
+   * straight through its own claim and the cron re-claims it concurrently
+   * (O-003 edge sweep, D4/D6).
+   */
+  deadlineExceededAfter: (ms: number) => boolean,
 ): SessionSource {
   switch (connection.sourceKind) {
     case POSTHOG_SOURCE_KIND:
@@ -637,6 +712,7 @@ function createSourceFor(
           sleep: deps.sleep,
           now: deps.now,
           random: deps.random,
+          deadlineExceededAfter,
         },
       );
   }

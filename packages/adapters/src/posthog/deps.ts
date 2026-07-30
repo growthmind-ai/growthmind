@@ -17,6 +17,17 @@ export interface PostHogSourceDeps {
   readonly now: () => Date;
   /** Returns a value in `[0, 1)`. */
   readonly random: () => number;
+  /**
+   * True when sleeping `ms` would overrun the caller's run budget.
+   *
+   * Optional so existing callers and tests are unaffected; when absent the
+   * adapter backs off exactly as before. The worker supplies it because its
+   * budget is otherwise only checked between passes — a throttled connection
+   * could sleep for minutes THROUGH its own claim, letting the every-minute
+   * cron re-claim the same row and run it concurrently with itself
+   * (O-003 edge sweep, D4/D6).
+   */
+  readonly deadlineExceededAfter?: (ms: number) => boolean;
 }
 
 export interface PostHogSourceConfig {

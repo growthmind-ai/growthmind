@@ -51,6 +51,7 @@ import {
   POSTHOG_SOURCE_KIND,
 } from "./constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
+import { checkHost, isSameOriginAsHost } from "./host-guard";
 import { createIdentityResolver, harvestEmailFromEvents } from "./identity";
 import { formatPostHogInstant } from "./instant";
 import type { RawEvent } from "./parse";
@@ -98,6 +99,17 @@ export function createPostHogSessionSource(
     kind: POSTHOG_SOURCE_KIND,
 
     async validate(): Promise<SessionSourceValidation> {
+      // SSRF gate (audit C-1), BEFORE any request. `validate()` runs on the
+      // attach attempt and fires an outbound request whether or not a row is
+      // ever written — so an unvalidated host means merely *trying* to connect
+      // reaches wherever the customer pointed us, and the failure codes this
+      // adapter deliberately keeps distinct (`unreachable` vs
+      // `invalid_credentials` vs `project_not_found`) become a port-scanning
+      // oracle for the provider's own network.
+      if (!checkHost(config.host).ok) {
+        return { ok: false, checkedAt: deps.now(), failure: MISCONFIGURED };
+      }
+
       // ONE bounded check that the credentials and the project reach real
       // data. `limit=1` because the question is reachability, not volume.
       const client = createPostHogClient(config, deps);
@@ -211,6 +223,21 @@ export function createPostHogSessionSource(
 
           // The ONLY end signal a page can give. A page shorter than `limit`
           // gives none (ROW 1).
+          //
+          // SECURITY (audit C-2): `next` is an ABSOLUTE url chosen by the
+          // upstream, and the client attaches the customer's personal API key
+          // to whatever it fetches. An upstream answering
+          // `{"results":[],"next":"https://attacker.tld/x"}` would hand that
+          // key straight to the attacker — and would bypass any allow-list
+          // applied only to the configured host. So every hop must stay on the
+          // configured origin.
+          //
+          // Treated as a hard failure, not as end-of-pages: stopping quietly
+          // would let a hostile upstream silently truncate a customer's data,
+          // which is a quieter bug rather than a safer outcome.
+          if (page.next !== null && !isSameOriginAsHost(page.next, config.host)) {
+            return { ok: false, failure: MISCONFIGURED };
+          }
           url = page.next;
         }
 

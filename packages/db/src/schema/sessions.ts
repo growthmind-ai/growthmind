@@ -51,13 +51,15 @@ export const sessions = pgTable(
     /** From `deriveSessionKey`. Versioned by `groupingVersion` below. */
     sessionKey: text("session_key").notNull(),
     /**
-     * PostHog's raw `distinct_id`. Named `identity_key`, NOT `identity_id`:
-     * architecture §6's `identity_id` implies the `identities` table that full
-     * stitching creates and this sprint does not. A `_id` column with no
-     * referent would make a later wave write a join to a table that does not
-     * exist, and would turn the real `identities` table into a rename
-     * migration. The later stitcher maps this key — which is exactly FR-26's
-     * "nothing keyed in a way a later real stitcher cannot re-derive".
+     * A project-salted sha256 hash of PostHog's raw `distinct_id` — never the
+     * raw value itself (CR-5, product-decisions §5, PRD FR-16). Named
+     * `identity_key`, NOT `identity_id`: architecture §6's `identity_id`
+     * implies the `identities` table that full stitching creates and this
+     * sprint does not. A `_id` column with no referent would make a later
+     * wave write a join to a table that does not exist, and would turn the
+     * real `identities` table into a rename migration. The later stitcher
+     * maps this key — which is exactly FR-26's "nothing keyed in a way a
+     * later real stitcher cannot re-derive".
      */
     identityKey: text("identity_key"),
     /** DOMAIN ONLY, never the address (product-decisions §5). */

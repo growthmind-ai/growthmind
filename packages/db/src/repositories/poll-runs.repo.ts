@@ -158,10 +158,20 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
           and(
             eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
             eq(sessionSourcePollRuns.id, id),
+            // A run is finished ONCE. Without this, a terminal row can be
+            // rewritten — a `completed` run whose non-critical health write
+            // then threw was being overwritten to `failed` with every count
+            // zeroed and `watermarkAdvancedTo` nulled, while its events were
+            // in fact persisted and its watermark had already advanced. The
+            // audit trail then lies in the one direction that matters.
+            // (O-003 edge sweep, D8.)
+            eq(sessionSourcePollRuns.status, "running"),
           ),
         )
         .returning();
 
+      // `null` here means the row was already terminal (or not this org's) —
+      // both callers treat a finish as best-effort, so it is not thrown on.
       return row ?? null;
     },
 

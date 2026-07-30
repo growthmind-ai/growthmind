@@ -1,0 +1,150 @@
+// SSRF containment for the one outbound surface this adapter has (O-003
+// security audit C-1/C-2).
+//
+// The host is customer-supplied and reaches `fetch()` from a server the
+// customer does not own. Without these checks a tenant can aim our worker at
+// `http://169.254.169.254` (cloud instance metadata), at `localhost`, or at
+// anything inside the provider's VPC — and `validate()` runs BEFORE any row is
+// written, so merely *attempting* a connection fires the request. Because the
+// adapter deliberately keeps `unreachable` / `invalid_credentials` /
+// `project_not_found` distinguishable for the customer's benefit, the response
+// doubles as a port-scanning oracle.
+//
+// The pagination cursor is the sharper half. PostHog returns `next` as an
+// ABSOLUTE url, and the client follows it with the customer's personal API key
+// in an `authorization` header. An upstream that answers
+// `{"results":[],"next":"https://attacker.tld/x"}` therefore steals the key
+// outright — and any allow-list applied only to the configured host is bypassed
+// by construction. So the cursor is origin-checked against the configured host
+// on every hop.
+
+/** Loopback, link-local (incl. cloud metadata), private, and CGNAT ranges. */
+const BLOCKED_IPV4 = [
+  { name: "loopback", test: (o: number[]) => o[0] === 127 },
+  { name: "private", test: (o: number[]) => o[0] === 10 },
+  { name: "private", test: (o: number[]) => o[0] === 172 && o[1] >= 16 && o[1] <= 31 },
+  { name: "private", test: (o: number[]) => o[0] === 192 && o[1] === 168 },
+  // 169.254.0.0/16 — AWS/GCP/Azure instance metadata lives at 169.254.169.254.
+  { name: "link-local", test: (o: number[]) => o[0] === 169 && o[1] === 254 },
+  { name: "cgnat", test: (o: number[]) => o[0] === 100 && o[1] >= 64 && o[1] <= 127 },
+  { name: "this-network", test: (o: number[]) => o[0] === 0 },
+  { name: "broadcast", test: (o: number[]) => o[0] === 255 },
+] as const;
+
+const BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "localhost.localdomain",
+  "metadata.google.internal",
+  "metadata",
+]);
+
+export type HostRejection =
+  | "not_a_url"
+  | "scheme_not_https"
+  | "hostname_blocked"
+  | "credentials_in_url";
+
+export type HostCheck =
+  | { readonly ok: true; readonly origin: string }
+  | { readonly ok: false; readonly reason: HostRejection };
+
+function ipv4Octets(hostname: string): number[] | null {
+  const parts = hostname.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) => (/^\d{1,3}$/.test(part) ? Number(part) : Number.NaN));
+  return octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
+    ? octets
+    : null;
+}
+
+/**
+ * True for a hostname that must never be fetched from a server: loopback,
+ * link-local, private, CGNAT, or a well-known metadata name.
+ *
+ * Literal-address only. A hostname that RESOLVES to a private address (DNS
+ * rebinding, or an attacker-controlled A record) is NOT caught here — closing
+ * that requires resolving and pinning the address at connect time and again per
+ * request. Named as a known limit rather than implied to be covered; the
+ * deployment-level mitigation is an egress policy on the worker.
+ */
+export function isBlockedHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (BLOCKED_HOSTNAMES.has(lower)) return true;
+  if (lower.endsWith(".localhost") || lower.endsWith(".internal")) return true;
+
+  // IPv6 loopback / unspecified / unique-local / link-local.
+  if (lower === "::1" || lower === "::") return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true;
+  if (/^fe80:/.test(lower)) return true;
+  // IPv4-mapped IPv6. Two spellings reach here: the dotted form a human types
+  // (`::ffff:127.0.0.1`) and the hex form the WHATWG URL parser normalises it
+  // to (`::ffff:7f00:1`). Checking only the dotted form would let the hex
+  // spelling of loopback straight through.
+  const mappedDotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(lower);
+  if (mappedDotted?.[1]) return isBlockedHostname(mappedDotted[1]);
+
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower);
+  if (mappedHex?.[1] && mappedHex[2]) {
+    const high = Number.parseInt(mappedHex[1], 16);
+    const low = Number.parseInt(mappedHex[2], 16);
+    return isBlockedHostname(
+      [(high >> 8) & 0xff, high & 0xff, (low >> 8) & 0xff, low & 0xff].join("."),
+    );
+  }
+
+  const octets = ipv4Octets(lower);
+  if (octets) return BLOCKED_IPV4.some((range) => range.test(octets));
+
+  return false;
+}
+
+/**
+ * Validates a customer-supplied host and returns its canonical origin.
+ *
+ * HTTPS only: a plaintext hop would expose the personal API key to anyone on
+ * the path, and it is the scheme an attacker picks when they want a
+ * network-position downgrade.
+ */
+export function checkHost(host: string): HostCheck {
+  let url: URL;
+  try {
+    url = new URL(host.trim());
+  } catch {
+    return { ok: false, reason: "not_a_url" };
+  }
+
+  if (url.protocol !== "https:") return { ok: false, reason: "scheme_not_https" };
+  // `https://user:pass@host` — credentials in the URL would be sent onward and
+  // can smuggle a different authority past a naive host comparison.
+  if (url.username !== "" || url.password !== "") {
+    return { ok: false, reason: "credentials_in_url" };
+  }
+  if (isBlockedHostname(url.hostname)) return { ok: false, reason: "hostname_blocked" };
+
+  return { ok: true, origin: url.origin };
+}
+
+/**
+ * True when `candidate` is a url we may follow while carrying the customer's
+ * credential — i.e. it is same-origin with the configured host AND that origin
+ * still passes `checkHost`.
+ *
+ * Used for the pagination cursor. A mismatch is treated as a terminal failure
+ * by the caller, never as "end of pages": silently stopping would let a hostile
+ * upstream truncate a customer's data instead of exfiltrating it, which is a
+ * quieter bug, not a safer one.
+ */
+export function isSameOriginAsHost(candidate: string, host: string): boolean {
+  const configured = checkHost(host);
+  if (!configured.ok) return false;
+
+  let candidateUrl: URL;
+  try {
+    candidateUrl = new URL(candidate);
+  } catch {
+    return false;
+  }
+
+  if (candidateUrl.username !== "" || candidateUrl.password !== "") return false;
+  return candidateUrl.origin === configured.origin;
+}

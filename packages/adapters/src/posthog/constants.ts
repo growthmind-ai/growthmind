@@ -108,6 +108,23 @@ export const IDENTITY_LOOKUP_BUDGET = 50;
  */
 export const MAX_RATE_LIMIT_ATTEMPTS = 5;
 
+/**
+ * Per-request wall-clock ceiling (audit H-1). The run budget is only checked
+ * BETWEEN passes, so without this a host that accepts the connection and then
+ * never answers hangs the poll for as long as the runtime allows. Generous
+ * enough for a slow page over a cold connection; short enough that a stuck
+ * endpoint costs one cron tick rather than a worker.
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Ceiling on a single response body (audit H-2). `MAX_PAGES_PER_RUN` bounds
+ * how MANY requests a hostile host can serve, not how large each one is — 25
+ * unbounded bodies is an OOM, not a rate limit. A legitimate events page at
+ * `EVENTS_PAGE_LIMIT` is orders of magnitude under this.
+ */
+export const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
 /** First exponential step, doubling per attempt. */
 export const BASE_DELAY_MS = 1000;
 

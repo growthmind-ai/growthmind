@@ -183,10 +183,57 @@ describe("createConnectionsService — attach", () => {
     const result = await service.connect(connectInput(ws.project.id));
     expect(result.ok).toBe(false);
 
+    // CR-13 fix: this used to read `if (state.status !== "not_connected") {
+    // expect(...isActive).toBe(false) }` — but a NEW attach that fails
+    // validation writes NOTHING (see the code comment above `refusalFor`'s
+    // call site in connections.service.ts), so `state.status` is ALWAYS
+    // `"not_connected"` here and that conditional's body never ran. Assert
+    // the actual, always-true fact directly instead of a dead branch.
     const state = await service.getState(ws.project.id);
-    if (state.status !== "not_connected") {
-      expect(state.connection.isActive).toBe(false);
-    }
+    expect(state.status).toBe("not_connected");
+  });
+
+  test("a validation failure on a RE-KEY marks the EXISTING connection failing, without deactivating it", async () => {
+    // CR-13: the branch this covers (connections.service.ts's `if (isRekey
+    // && existing) { recordHealth(... "failing" ...) }`, just above
+    // `refusalFor`) had no test at all — every existing "validation failure"
+    // test above exercises only a brand-new, never-attached project, which
+    // can never take this branch (`isRekey` requires an existing active
+    // connection on the SAME source).
+    const ws = await seedWorkspace(db, "rekey-fail-health");
+    const working = makeFakeSource();
+    const service = createConnectionsService(db, ws.ctx, deps(working));
+
+    const first = await service.connect(connectInput(ws.project.id));
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("unreachable");
+
+    // Same host/sourceProjectId/sourceKind as the first attach — `isSameSource`
+    // routes this to the re-key branch rather than FR-8's second-source path.
+    const failing = makeFakeSource({
+      validation: failedValidation(FIXED_NOW, {
+        code: "invalid_credentials",
+        message: CONNECT_REFUSAL_MESSAGES.invalid_credentials,
+      }),
+    });
+    const failingService = createConnectionsService(db, ws.ctx, deps(failing));
+    const rekeyAttempt = await failingService.connect(connectInput(ws.project.id));
+
+    expect(rekeyAttempt.ok).toBe(false);
+    if (rekeyAttempt.ok) throw new Error("unreachable");
+    expect(rekeyAttempt.refusal.code).toBe("invalid_credentials");
+
+    const state = await service.getState(ws.project.id);
+    expect(state.status).not.toBe("not_connected");
+    if (state.status === "not_connected") throw new Error("unreachable");
+    // The EXISTING attachment stays active — a bad re-key attempt must not
+    // silently disconnect a connection that was working a moment ago — but
+    // its health now reflects the failed check, terminally (never "validating").
+    expect(state.connection.id).toBe(first.connection.id);
+    expect(state.connection.isActive).toBe(true);
+    expect(state.connection.health).toBe("failing");
+    expect(state.connection.healthReasonCode).toBe("invalid_credentials");
+    expect(state.connection.healthCheckedAt).not.toBeNull();
   });
 
   test("a validation failure records a TERMINAL state — never a stuck 'validating'", async () => {

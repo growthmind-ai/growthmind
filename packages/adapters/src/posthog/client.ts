@@ -16,7 +16,14 @@
 import type { SourceFailure } from "@growthmind/shared";
 
 import { computeBackoffDelayMs, parseRetryAfterSeconds } from "./backoff";
-import { eventsUrl, MAX_RATE_LIMIT_ATTEMPTS, personsUrl } from "./constants";
+import {
+  eventsUrl,
+  MAX_RATE_LIMIT_ATTEMPTS,
+  MAX_RESPONSE_BYTES,
+  personsUrl,
+  REQUEST_TIMEOUT_MS,
+} from "./constants";
+import { isSameOriginAsHost } from "./host-guard";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
 import { mapFailure } from "./errors";
 import { assertPostHogInstant } from "./instant";
@@ -62,7 +69,37 @@ export interface PostHogClient {
  */
 async function readJsonBody(response: Response): Promise<unknown> {
   try {
-    return (await response.json()) as unknown;
+    // H-2: `MAX_PAGES_PER_RUN` bounds the request COUNT, not the bytes — so an
+    // unbounded body means a hostile host can OOM the worker 25 times over.
+    // Reject on the declared length first (cheap), then guard the undeclared
+    // case by reading with a byte counter that aborts past the cap.
+    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
+    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) return null;
+
+    const body = response.body;
+    if (!body) return (await response.json()) as unknown;
+
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+
+    const joined = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      joined.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(joined)) as unknown;
   } catch {
     return null;
   }
@@ -100,10 +137,24 @@ export function createPostHogClient(
         return { ok: false, failure: mapFailure(429, null, [config.personalApiKey]) };
       }
 
+      // SSRF containment (audit C-1/C-2). Checked per REQUEST, not once at
+      // connect: the stored row outlives its validation, and the pagination
+      // cursor supplies a fresh url on every hop.
+      if (!isSameOriginAsHost(url, config.host)) {
+        return { ok: false, failure: mapFailure(0, null, [config.personalApiKey]) };
+      }
+
       let response: Response;
       try {
         response = await deps.fetch(url, {
           headers: { authorization, accept: "application/json" },
+          // H-3: a 302 goes wherever the upstream points and would TOCTOU the
+          // origin check above. Treat a redirect as a response, not a hop.
+          redirect: "manual",
+          // H-1: without this a host that accepts the connection and never
+          // answers hangs the poll indefinitely — the run budget is only
+          // checked BETWEEN passes, never inside a request.
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
       } catch {
         // A transport fault carries no envelope at all, so it takes the
@@ -133,13 +184,26 @@ export function createPostHogClient(
         return { ok: false, failure };
       }
 
-      await deps.sleep(
-        computeBackoffDelayMs({
-          attempt: attemptsSpent[endpoint],
-          retryAfterSeconds: parseRetryAfterSeconds(response.headers.get("retry-after")),
-          random: deps.random(),
-        }),
-      );
+      const delayMs = computeBackoffDelayMs({
+        attempt: attemptsSpent[endpoint],
+        retryAfterSeconds: parseRetryAfterSeconds(response.headers.get("retry-after")),
+        random: deps.random(),
+      });
+
+      // The run budget is checked only BETWEEN passes and BETWEEN connections,
+      // never inside a walk — so without this a throttled connection could
+      // sleep through its own claim (up to 4 x RETRY_AFTER_CAP_MS on /events
+      // plus the same again on /persons, ~8 minutes) while the every-minute
+      // cron re-claims the same row. That manufactures concurrent runs on one
+      // connection, draws MORE 429s, and with concurrency 5 lets a handful of
+      // throttled tenants consume every worker slot. Giving up as
+      // `rate_limited` before overrunning the deadline is the safe direction:
+      // the next tick retries cleanly. (O-003 edge sweep, D4/D6.)
+      if (deps.deadlineExceededAfter?.(delayMs) === true) {
+        return { ok: false, failure };
+      }
+
+      await deps.sleep(delayMs);
     }
 
     // Unreachable while the loop bound and the run bound are the same

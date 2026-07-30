@@ -154,6 +154,25 @@ function asStringOrNull(value: unknown): string | null {
  * values), scrub the values we know we just wrote as a belt-and-braces second
  * pass, and deliberately attach NO `cause` — a cause chain would print the
  * parameter echo again the moment anyone logs the error object.
+ *
+ * CR-6 LEFTOVER (deliberately unresolved here): the scrub below is an EXACT
+ * string match against the ciphertext/keyId we just wrote — weaker than
+ * `@growthmind/adapters`'s `scrubSecrets`, which additionally pattern-matches
+ * `ph[a-z]_…`-shaped tokens so a re-encoded or truncated echo is still
+ * caught. That helper is not used here because this file's own module
+ * header states the constraint: `packages/db` must never depend on
+ * `packages/adapters` — that would invert the layering documented at this
+ * file's top and in `connections.service.ts` (the vendor implementation
+ * would leak into the data layer `worker/` is supposed to be the only thing
+ * composing). Since this repository's own writes are ciphertext (opaque,
+ * base64-ish, not `ph[a-z]_…`-shaped) and `credentialKeyId`, the exact-match
+ * pass already covers everything this function actually persists; the
+ * stronger pattern match matters for the PostHog client's OWN error paths
+ * (`packages/adapters/src/posthog/errors.ts`), which see the raw personal
+ * API key, not the envelope. Moving `scrubSecrets` to a lower shared package
+ * (e.g. `@growthmind/shared`) both packages could depend on is the fix that
+ * does not invert anything — a decision for whoever owns that boundary, not
+ * unilaterally added here.
  */
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
   const fields = readDriverFields(error);

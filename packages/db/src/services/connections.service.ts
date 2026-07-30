@@ -136,6 +136,14 @@ const ACTIVE_PROJECT_INDEX = "project_connections_active_project_uidx";
  * to backfill history — the scheduler owns the walk from here (D-7). */
 const FIRST_PULL_MAX_PAGES = 1;
 
+/**
+ * Mirrors `project_connections.poll_interval_seconds`'s schema default. The
+ * insert does not set that column, so the row takes the default — and the
+ * first `nextPollAt` must be one interval out, not immediate, so the cron
+ * cannot claim the row while the inline first pull is still running.
+ */
+const DEFAULT_POLL_INTERVAL_SECONDS = 60;
+
 function refuse(code: ConnectRefusalCode, message?: string): ConnectResult {
   return { ok: false, refusal: { code, message: message ?? CONNECT_REFUSAL_MESSAGES[code] } };
 }
@@ -215,6 +223,31 @@ export function createConnectionsService(
     connection: ConnectionSummary,
     source: AttachableSource,
   ): Promise<{ connection: ConnectionSummary; eventsSeen: number }> {
+    // D8, actually enforced. The docstring above always claimed this was
+    // isolated from the attach, but nothing caught: a throw anywhere below
+    // (the pull, the persist, either finish) propagated out of `connect()`
+    // AFTER the row and ciphertext were written — surfacing a successful
+    // attach as an error and leaving the run row `running` forever, which is
+    // exactly what the poll-runs schema says must never happen.
+    try {
+      return await runFirstPull(connection, source);
+    } catch (error) {
+      // No credential is in scope here — `error` is a persistence/transport
+      // fault and the adapter never puts key material on a thrown value.
+      console.error(
+        `connections.connect: first pull failed after the attachment was stored (connection ${connection.id})`,
+        error,
+      );
+      // The attachment is real and valid — validation already passed before
+      // the row was written. The scheduler will poll it on the next tick.
+      return { connection, eventsSeen: 0 };
+    }
+  }
+
+  async function runFirstPull(
+    connection: ConnectionSummary,
+    source: AttachableSource,
+  ): Promise<{ connection: ConnectionSummary; eventsSeen: number }> {
     const startedAt = deps.now();
     const run = await pollRuns.start({
       projectId: connection.projectId,
@@ -254,7 +287,7 @@ export function createConnectionsService(
         current = advanced;
         watermarkAdvancedTo = result.newestObservedAt;
       }
-    } else if (result.ok && !result.contiguous && result.resumeBefore !== null) {
+    } else if (result.ok && !result.contiguous) {
       // CR-1 FIX. This attachment has never been polled — `watermarkAt` is
       // null — so a page-capped inline first pull used to have nowhere to
       // record its resume cursor: `advanceWatermark` writes both columns in
@@ -263,6 +296,16 @@ export function createConnectionsService(
       // point survives even with no watermark yet, and the scheduler's next
       // tick can continue the walk instead of silently restarting it from
       // the newest event forever.
+      //
+      // CR-3 FIX: this now writes even when `result.resumeBefore` is `null`.
+      // `FIRST_PULL_MAX_PAGES = 1` means a RE-KEY whose connection already
+      // carried a `backfillBefore` from an earlier partial walk can hit the
+      // adapter's CR-11 "this walk got zero of the one-page budget" case
+      // (an earlier walk in the same pull already exhausted the old backlog
+      // using the whole budget). A `null` resume value there means "nothing
+      // left to resume from that direction", not "leave the stale cursor in
+      // place" — the mirror of the same fix in
+      // worker/src/tasks/session-source-poll.ts's `applyCursors`.
       const held = await connections.setBackfillCursor(connection.id, result.resumeBefore);
       if (held) {
         current = held;
@@ -420,10 +463,20 @@ export function createConnectionsService(
             credentialKeyId,
             health: "healthy",
             connectedAt: deps.now(),
-            // Due immediately: the scheduler's onboarding window is what makes
-            // the first minutes feel alive, and the inline pull below is what
-            // makes the counter non-zero before then.
-            nextPollAt: deps.now(),
+            // NOT due immediately. `performFirstPull` below covers the glue
+            // moment inline; marking the row due at the same instant lets the
+            // every-minute cron claim it WHILE that inline pull is still in
+            // flight (measured pull p90 ~25s against a 60s tick, so this is
+            // reachable on a large fraction of first connects).
+            //
+            // The race loses customer history: the cron reads a snapshot with
+            // `backfillBefore = null`, the inline pull page-caps and writes a
+            // backfill cursor, then the cron's contiguous pass advances the
+            // watermark with its stale `backfillBefore: null` and overwrites
+            // that cursor back to NULL. The unfinished backward walk's resume
+            // point is gone and every later tick restarts from newest —
+            // permanently, silently. (O-003 edge sweep, D3/D6.)
+            nextPollAt: new Date(deps.now().getTime() + DEFAULT_POLL_INTERVAL_SECONDS * 1000),
           });
         } catch (error) {
           if (error instanceof ConnectionWriteError && isSecondSourceViolation(error)) {
