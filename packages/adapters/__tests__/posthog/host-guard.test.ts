@@ -54,6 +54,24 @@ describe("checkHost blocks addresses a server must never be aimed at", () => {
     ["IPv6 loopback", "https://[::1]"],
     ["IPv4-mapped IPv6 loopback", "https://[::ffff:127.0.0.1]"],
     ["IPv6 unique-local", "https://[fd00::1]"],
+    // H-1: a fully-qualified hostname's trailing root dot. Confirmed live
+    // before the fix — each of these resolved ALLOW even though the bare
+    // spelling (no trailing dot) was already blocked.
+    ["loopback name with a trailing FQDN dot", "https://localhost./api"],
+    ["GCP metadata name with a trailing FQDN dot", "https://metadata.google.internal./"],
+    ["cluster-internal suffix with a trailing FQDN dot", "https://foo.internal./"],
+    ["loopback alias with a trailing FQDN dot", "https://localhost.localdomain./"],
+    // L-4: IPv4-compatible IPv6 (distinct from IPv4-mapped above — no `ffff`
+    // group), both spellings.
+    ["IPv4-compatible IPv6 loopback, dotted", "https://[::127.0.0.1]"],
+    ["IPv4-compatible IPv6 loopback, hex", "https://[::7f00:1]"],
+    // L-4: the four newly-added reserved IPv4 ranges.
+    ["benchmarking 198.18/15", "https://198.18.0.1"],
+    ["benchmarking 198.19/15", "https://198.19.255.1"],
+    ["IETF protocol assignments 192.0.0/24", "https://192.0.0.1"],
+    ["multicast 224/4", "https://224.0.0.1"],
+    ["multicast 239/4 upper bound", "https://239.255.255.255"],
+    ["reserved 240/4", "https://240.0.0.1"],
   ])("rejects %s", (_label, host) => {
     expect(checkHost(host)).toEqual({ ok: false, reason: "hostname_blocked" });
   });
@@ -66,6 +84,23 @@ describe("checkHost blocks addresses a server must never be aimed at", () => {
     expect(checkHost("https://100.128.0.1").ok).toBe(true);
     expect(isBlockedHostname("11.0.0.1")).toBe(false);
     expect(isBlockedHostname("eu.posthog.com")).toBe(false);
+
+    // L-4 near-misses: one below each new range's floor, one above its
+    // ceiling, so the four new predicates cannot quietly widen either.
+    expect(isBlockedHostname("198.17.255.255")).toBe(false);
+    expect(isBlockedHostname("198.20.0.0")).toBe(false);
+    expect(isBlockedHostname("192.0.1.1")).toBe(false);
+    expect(isBlockedHostname("223.255.255.255")).toBe(false);
+    // IPv4-compatible IPv6 pointed at an ordinary public address must still
+    // resolve, so the new pattern cannot be mistaken for "block all ::-forms".
+    expect(isBlockedHostname("[::0808:0808]")).toBe(false);
+
+    // H-1 near-misses: a normal public hostname must not be blocked merely
+    // for carrying a trailing dot, and a hostname that only CONTAINS
+    // "internal" as a substring (not a `.internal` suffix) must not be
+    // over-blocked either.
+    expect(isBlockedHostname("eu.posthog.com.")).toBe(false);
+    expect(isBlockedHostname("internal-tools.example.com")).toBe(false);
   });
 });
 

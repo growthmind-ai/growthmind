@@ -10,13 +10,13 @@
 // and no cast. The same injection is what makes every test here run against a
 // fake source with no network at all (FR-2).
 import type {
+  ConnectInput,
   ConnectResult,
   ConnectRefusalCode,
   ConnectionState,
   ConnectionSummary,
   CredentialKey,
   CredentialKeyResolution,
-  SessionSourceKind,
   SessionSourcePullRequest,
   SessionSourcePullResult,
   SessionSourceValidation,
@@ -25,6 +25,7 @@ import type {
 } from "@growthmind/shared";
 import {
   CONNECT_REFUSAL_MESSAGES,
+  connectInputSchema,
   credentialAad,
   encryptSecret,
   inferInternalDomain,
@@ -76,13 +77,15 @@ export interface ConnectionsServiceDeps {
   now: () => Date;
 }
 
-export interface ConnectInput {
-  projectId: string;
-  sourceKind: SessionSourceKind;
-  host: string;
-  sourceProjectId: string;
-  personalApiKey: string;
-}
+// M-3 (security audit). `ConnectInput` and its runtime `connectInputSchema`
+// live in `@growthmind/shared` (`session-source/types.ts`), alongside every
+// other cross-boundary shape this file already imports rather than defines —
+// re-exported here so existing callers of `@growthmind/db` keep importing
+// both from the same place. See that file for why the schema exists:
+// `connect()` is the boundary this data layer exposes to whatever calls it,
+// and a bare TypeScript interface is not a runtime check.
+export { connectInputSchema };
+export type { ConnectInput };
 
 export interface ConnectionsService {
   /**
@@ -379,7 +382,17 @@ export function createConnectionsService(
   }
 
   return {
-    async connect(input: ConnectInput): Promise<ConnectResult> {
+    async connect(rawInput: ConnectInput): Promise<ConnectResult> {
+      // (0) M-3, before everything else, including the D-1 gate below: a
+      // shape violation on the way in — malformed JSON from a future
+      // untrusted API route, a caller bug, a wrong-cased sourceKind — throws
+      // HERE rather than reaching an encryption call site or a database
+      // write with a value nothing has actually validated. Zod is this
+      // repo's single source of truth for shapes; this is the one entry
+      // point where a value from outside a typed caller can reach this
+      // service at all.
+      const input = connectInputSchema.parse(rawInput);
+
       // (1) D-1, FIRST and unconditionally. An installation that cannot store
       // an outside key safely makes NO request and writes NO row — the check
       // that `GROWTHMIND_ALLOW_INSECURE_DEFAULTS` cannot open sits here, at

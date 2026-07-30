@@ -92,7 +92,10 @@ export type SessionSourcePullRequest = z.infer<typeof sessionSourcePullRequestSc
  * no pull result ever carries an address (product-decisions §5). */
 export const sourceSessionSchema = z.object({
   sessionKey: z.string(),
-  /** PostHog's raw `distinct_id`. Named `identityKey`, not `identityId`,
+  /** The KEYED HMAC hash of PostHog's `distinct_id` (`../sessions/identity-
+   * key.ts`, security audit M-1) — NEVER the raw value; `identify()` is
+   * routinely called with an email address as the distinct id, so only the
+   * hash may cross this port boundary. Named `identityKey`, not `identityId`,
    * because the `identities` table full stitching creates does not exist yet
    * and a `_id` column with no referent would become a rename migration. */
   identityKey: z.string().nullable(),
@@ -212,6 +215,31 @@ export const connectionStateSchema = z.discriminatedUnion("status", [
 ]);
 export type ConnectionState = z.infer<typeof connectionStateSchema>;
 export type ConnectionStateStatus = ConnectionState["status"];
+
+/**
+ * The `connect()` boundary's own input (security audit M-3). This is the one
+ * shape that arrives at `packages/db`'s `ConnectionsService.connect` from
+ * OUTSIDE a typed caller — today the tests and the connect-time wire proof,
+ * tomorrow an O-008 API route parsing an untrusted request body — so it gets
+ * a runtime schema like every other cross-boundary shape here, rather than
+ * trusting a bare TypeScript interface a runtime value is merely SHAPED like.
+ * Lives here, not in `packages/db`, so packages/db never needs its own direct
+ * `zod` dependency for one schema — it already imports every other shape in
+ * this file the same way.
+ *
+ * `.min(1)` on every string field: an empty `projectId`, `host`,
+ * `sourceProjectId`, or `personalApiKey` is never a legitimate connect
+ * attempt, and reaching the encryption call site or a database write with
+ * one is a caller bug worth failing loudly and immediately on.
+ */
+export const connectInputSchema = z.object({
+  projectId: z.string().min(1),
+  sourceKind: sessionSourceKindSchema,
+  host: z.string().min(1),
+  sourceProjectId: z.string().min(1),
+  personalApiKey: z.string().min(1),
+});
+export type ConnectInput = z.infer<typeof connectInputSchema>;
 
 /**
  * Why a connect attempt was refused. `second_source` falls out of the partial

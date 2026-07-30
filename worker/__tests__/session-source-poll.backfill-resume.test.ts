@@ -63,7 +63,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createPostHogSessionSource } from "@growthmind/adapters";
 import { createConnectionsService, schema, type ConnectInput } from "@growthmind/db";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
-import { resolveCredentialKey } from "@growthmind/shared";
+import { deriveIdentityHmacKey, resolveCredentialKey } from "@growthmind/shared";
 
 import { runSessionSourcePoll } from "../src/tasks/session-source-poll";
 import {
@@ -374,7 +374,8 @@ test("CR-3/CR-4: a connect-time first pull that hits its own tiny page cap is co
   // The REAL PostHog adapter, wired exactly as the composition root wires
   // it — this proves the connect-time pull against the same adapter
   // contract the scheduled poll below runs against, not a hand-built pull
-  // result.
+  // result. M-1: `identityHmacKey` derived from the SAME resolved credential
+  // key the composition root derives it from, not a hand-picked test value.
   const connectionsService = createConnectionsService(db, seeded.ownerCtx, {
     createSource: (config) =>
       createPostHogSessionSource(config, {
@@ -382,6 +383,7 @@ test("CR-3/CR-4: a connect-time first pull that hits its own tiny page cap is co
         sleep: clock.sleep,
         now: clock.now,
         random: () => 0.5,
+        identityHmacKey: deriveIdentityHmacKey(resolvedKey.key),
       }),
     credentialKey: resolvedKey,
     now: clock.now,

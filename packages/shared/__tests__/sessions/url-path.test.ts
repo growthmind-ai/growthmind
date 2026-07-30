@@ -65,6 +65,77 @@ describe("normaliseUrlPath", () => {
   test("the normalisation rules are versioned", () => {
     // A rule change must be a detectable, migratable event rather than a
     // silent fork of every stored path.
-    expect(URL_PATH_NORMALISATION_VERSION).toBe(1);
+    expect(URL_PATH_NORMALISATION_VERSION).toBe(2);
+  });
+});
+
+// Security audit H-2 — a raw path segment can carry a live reset token or an
+// email address straight into `events.url_path` / `sessions.entry_url_path`.
+// FAIL DIRECTION: redact on doubt (documented beside each predicate in
+// ../../src/sessions/url-path.ts). Every case here pins one predicate's
+// positive AND its near-miss, so the deny-list cannot quietly widen into
+// redacting ordinary product paths.
+describe("normaliseUrlPath redacts identifier-shaped path segments", () => {
+  test("redacts an email-shaped segment and nothing else in the path", () => {
+    expect(normaliseUrlPath("/u/jane.doe@acme.example.invalid/settings", null)).toBe(
+      "/u/:id/settings",
+    );
+  });
+
+  test("redacts a UUID segment, any casing", () => {
+    expect(normaliseUrlPath("/orders/550e8400-e29b-41d4-a716-446655440000", null)).toBe(
+      "/orders/:id",
+    );
+    expect(normaliseUrlPath("/orders/550E8400-E29B-41D4-A716-446655440000", null)).toBe(
+      "/orders/:id",
+    );
+  });
+
+  test("redacts a long hex run — the shape of a raw reset token", () => {
+    // The exact hazard named in the security audit: a live reset token
+    // surviving in a persisted path for the length of its TTL.
+    expect(normaliseUrlPath("/reset-password/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c", null)).toBe(
+      "/reset-password/:id",
+    );
+  });
+
+  test("redacts a long base64url run that carries an uppercase letter", () => {
+    expect(normaliseUrlPath("/verify/Kx9mQ2vT8pL4wZ7nR3sB", null)).toBe("/verify/:id");
+  });
+
+  test("redacts a long digit run — a numeric order/invoice/reset-code id", () => {
+    expect(normaliseUrlPath("/invoices/123456789012", null)).toBe("/invoices/:id");
+  });
+
+  test("near miss: an ordinary short slug is left alone", () => {
+    expect(normaliseUrlPath("/pricing", null)).toBe("/pricing");
+  });
+
+  test("near miss: a long kebab-case slug with a digit is left alone", () => {
+    // The exact fixture named in the security audit: this is base64url-
+    // alphabet-shaped (letters, digits, hyphens, 16+ chars) but has no
+    // uppercase letter, so it reads as a slug, not a token.
+    expect(normaliseUrlPath("/blog/how-we-scaled-to-1m", null)).toBe("/blog/how-we-scaled-to-1m");
+  });
+
+  test("near miss: a short numeric id is left alone", () => {
+    expect(normaliseUrlPath("/orders/42", null)).toBe("/orders/42");
+  });
+
+  test("near miss: a bare 4-digit year is left alone", () => {
+    expect(normaliseUrlPath("/blog/2024/my-post", null)).toBe("/blog/2024/my-post");
+  });
+
+  test("near miss: a short hex-shaped word is left alone (below the 16-char floor)", () => {
+    expect(normaliseUrlPath("/color/cafe", null)).toBe("/color/cafe");
+  });
+
+  test("redacts a token embedded in $current_url the same way as $pathname", () => {
+    expect(
+      normaliseUrlPath(
+        null,
+        "https://app.example.invalid/reset-password/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c",
+      ),
+    ).toBe("/reset-password/:id");
   });
 });

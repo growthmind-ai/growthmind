@@ -39,6 +39,7 @@ import {
   systemTenantContextFor,
 } from "@growthmind/db/system";
 import type {
+  CredentialKey,
   ServerEnv,
   SessionSourcePullResult,
   SourceFailureCode,
@@ -48,6 +49,7 @@ import {
   CONNECT_REFUSAL_MESSAGES,
   credentialAad,
   decryptSecret,
+  deriveIdentityHmacKey,
   resolveCredentialKey,
 } from "@growthmind/shared";
 
@@ -272,10 +274,15 @@ async function pollConnection(
     return outcome;
   }
 
-  const source = createSourceFor(connection, credential.personalApiKey, deps, (ms) =>
-    // Would this backoff outlast the run's own budget? If so the adapter gives
-    // up as `rate_limited` rather than sleeping past its claim.
-    overBudgetAfter(ms),
+  const source = createSourceFor(
+    connection,
+    credential.personalApiKey,
+    credential.credentialKey,
+    deps,
+    (ms) =>
+      // Would this backoff outlast the run's own budget? If so the adapter
+      // gives up as `rate_limited` rather than sleeping past its claim.
+      overBudgetAfter(ms),
   );
   const plan = resolvePollPlan({
     connectedAt: connection.connectedAt,
@@ -624,7 +631,15 @@ async function recordUnattemptedFailure(
 }
 
 type OpenedCredential =
-  | { readonly ok: true; readonly personalApiKey: string }
+  | {
+      readonly ok: true;
+      readonly personalApiKey: string;
+      /** Security audit M-1. The resolved AES key, carried alongside the
+       * decrypted credential so `createSourceFor` can derive this run's
+       * identity HMAC key from it without re-resolving `deps.env` a second
+       * time. */
+      readonly credentialKey: CredentialKey;
+    }
   | { readonly ok: false; readonly code: SourceFailureCode; readonly message?: string };
 
 /** CR-14. The `misconfigured` code is correct here — the customer's project
@@ -678,7 +693,7 @@ async function openCredential(
     return { ok: false, code: "misconfigured", message: STORED_CREDENTIAL_UNREADABLE_MESSAGE };
   }
 
-  return { ok: true, personalApiKey: opened.value };
+  return { ok: true, personalApiKey: opened.value, credentialKey: key.key };
 }
 
 /**
@@ -690,6 +705,9 @@ async function openCredential(
 function createSourceFor(
   connection: PollableConnection,
   personalApiKey: string,
+  /** Security audit M-1. Already-resolved by `openCredential`; derived into
+   * this run's identity HMAC key here rather than re-resolving `deps.env`. */
+  credentialKey: CredentialKey,
   deps: SessionSourcePollDeps,
   /**
    * Lets the adapter's 429 backoff see this run's deadline. Without it the
@@ -712,6 +730,10 @@ function createSourceFor(
           sleep: deps.sleep,
           now: deps.now,
           random: deps.random,
+          // M-1: derived once per connection's turn (the same cadence as the
+          // decrypt above), never per event — `hashIdentityKey` is the hot
+          // path and takes the already-derived key.
+          identityHmacKey: deriveIdentityHmacKey(credentialKey),
           deadlineExceededAfter,
         },
       );
