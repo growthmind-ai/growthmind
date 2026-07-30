@@ -184,7 +184,9 @@ describe("persistPullResult", () => {
         sessions: [
           sourceSession({ sessionKey: "ph:domain-only-1", identityEmailDomain: OUTSIDE_DOMAIN }),
         ],
-        events: [sourceEvent({ sourceEventId: "evt-domain-only-1", sessionKey: "ph:domain-only-1" })],
+        events: [
+          sourceEvent({ sourceEventId: "evt-domain-only-1", sessionKey: "ph:domain-only-1" }),
+        ],
       }),
     });
 
@@ -291,7 +293,10 @@ describe("persistPullResult", () => {
     expect(counts.sessionsTouched).toBe(1);
 
     const events = await createEventsRepo(db, ws.ctx).listForProject(ws.project.id, { limit: 50 });
-    expect(events.map((e) => e.sourceEventId).sort()).toEqual(["evt-partial-1", "evt-partial-2"]);
+    expect(events.map((e) => e.sourceEventId).toSorted()).toEqual([
+      "evt-partial-1",
+      "evt-partial-2",
+    ]);
   });
 
   test("reports the malformed drop count it was handed rather than swallowing it", async () => {
