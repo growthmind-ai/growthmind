@@ -5,6 +5,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 
 import { getDb } from "./db";
+import { getPostHogClient } from "./posthog-server";
 
 type Auth = ReturnType<typeof buildAuth>;
 
@@ -19,6 +20,37 @@ export function buildAuth() {
     // Org scope is wired before any org-scoped feature exists, so nothing
     // gets built user-scoped and retrofitted (docs/stack.md, Phase 2).
     plugins: [organization()],
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            const posthog = getPostHogClient();
+            if (!posthog) return;
+            posthog.identify({ distinctId: user.id, properties: { email: user.email } });
+            posthog.capture({
+              distinctId: user.id,
+              event: "user_signed_up",
+              properties: { auth_provider: "email" },
+            });
+            await posthog.flush();
+          },
+        },
+      },
+      session: {
+        create: {
+          after: async (session) => {
+            const posthog = getPostHogClient();
+            if (!posthog) return;
+            posthog.capture({
+              distinctId: session.userId,
+              event: "user_signed_in",
+              properties: { auth_provider: "email" },
+            });
+            await posthog.flush();
+          },
+        },
+      },
+    },
   });
 }
 
