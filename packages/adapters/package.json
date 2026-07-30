@@ -1,0 +1,20 @@
+{
+  "name": "@growthmind/adapters",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Outbound ports and their vendor implementations — SessionSource today.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@growthmind/shared": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

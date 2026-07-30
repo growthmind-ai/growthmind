@@ -7,3 +7,7 @@
 export * from "./auth";
 export * from "./projects";
 export * from "./write-keys";
+export * from "./project-connections";
+export * from "./sessions";
+export * from "./events";
+export * from "./session-source-poll-runs";

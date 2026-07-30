@@ -7,6 +7,10 @@ const PROD_COMPLETE = {
   DATABASE_URL: "postgres://app:secret@db.internal:5432/growthmind",
   BETTER_AUTH_SECRET: "a-real-secret-of-adequate-length",
   BETTER_AUTH_URL: "https://app.example.com",
+  // O-003 D-1: GROWTHMIND_ENCRYPTION_KEY is required, so a "complete
+  // production environment" fixture now has to carry one. Deliberately NOT
+  // the published dev literal — that value has its own rejection tests.
+  GROWTHMIND_ENCRYPTION_KEY: "cHJvZC1maXh0dXJlLWVuY3J5cHRpb24ta2V5LTMyYnk=",
 };
 
 describe("parseServerEnv", () => {

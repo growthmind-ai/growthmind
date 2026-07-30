@@ -7,6 +7,15 @@
  */
 export const TASK = {
   HEARTBEAT: "heartbeat",
+  /**
+   * Deliberately SOURCE-AGNOSTIC. A vendor-named task
+   * ("posthog.poll-schedule") would have to be renamed the day a second
+   * adapter lands, and a task rename is exactly the stringly-typed hazard the
+   * comment above describes: jobs queued under the old name sit retrying
+   * forever. The handler is the composition root and the only place that
+   * learns which vendor it is talking to.
+   */
+  SESSION_SOURCE_POLL_SCHEDULE: "session-source.poll-schedule",
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

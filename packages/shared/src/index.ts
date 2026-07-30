@@ -1,4 +1,4 @@
-export { serverEnvSchema, parseServerEnv, type ServerEnv } from "./env";
+export { serverEnvSchema, parseServerEnv, DEV_ENCRYPTION_KEY, type ServerEnv } from "./env";
 
 export {
   tenantContextSchema,
@@ -30,3 +30,123 @@ export {
   type SignInInput,
   type WorkspaceName,
 } from "./forms";
+
+// --- O-003: credential encryption at rest -----------------------------------
+export {
+  credentialAad,
+  keyIdOf,
+  encryptSecret,
+  decryptSecret,
+  ENVELOPE_VERSION,
+  IV_BYTE_LENGTH,
+  AUTH_TAG_BYTE_LENGTH,
+  CREDENTIAL_KEY_BYTE_LENGTH,
+  type CredentialKey,
+  type DecryptFailureReason,
+  type DecryptResult,
+} from "./crypto/secret-box";
+export {
+  resolveCredentialKey,
+  type CredentialKeyFailureReason,
+  type CredentialKeyResolution,
+} from "./crypto/credential-key";
+
+// --- O-003: the SessionSource port's shapes ---------------------------------
+export {
+  sessionSourceKindSchema,
+  sourceFailureCodeSchema,
+  sourceFailureSchema,
+  connectionHealthSchema,
+  internalDomainProvenanceSchema,
+  identityResolutionSchema,
+  sessionSourceValidationSchema,
+  sessionSourcePullRequestSchema,
+  sourceSessionSchema,
+  sourceEventSchema,
+  sessionSourcePullResultSchema,
+  connectionSummarySchema,
+  connectionStateSchema,
+  connectRefusalCodeSchema,
+  connectRefusalSchema,
+  connectResultSchema,
+  pollRunStatusSchema,
+  pollRunOutcomeSchema,
+  type SessionSourceKind,
+  type SourceFailureCode,
+  type SourceFailure,
+  type ConnectionHealth,
+  type InternalDomainProvenance,
+  type IdentityResolution,
+  type SessionSourceValidation,
+  type SessionSourcePullRequest,
+  type SourceSession,
+  type SourceEvent,
+  type SessionSourcePullResult,
+  type ConnectionSummary,
+  type ConnectionState,
+  type ConnectionStateStatus,
+  type ConnectRefusalCode,
+  type ConnectRefusal,
+  type ConnectResult,
+  type PollRunStatus,
+  type PollRunOutcome,
+} from "./session-source/types";
+export {
+  CONNECTION_STATE_MESSAGES,
+  CONNECT_REFUSAL_MESSAGES,
+  secondSourceRefusalMessage,
+  EXCLUSION_REASON_LABELS,
+  COUNTER_LABELS,
+  COUNTER_WINDOW_STATEMENT,
+  COUNTER_COMPLETENESS_STATEMENT,
+  SOURCE_ABSENT_NOTICE,
+  SOURCE_DEGRADED_NOTICE,
+  expectedLagStatement,
+  ALL_CUSTOMER_FACING_MESSAGES,
+} from "./session-source/messages";
+
+// --- O-003: exclusions ------------------------------------------------------
+export {
+  exclusionReasonSchema,
+  type ExclusionReason,
+  type SessionFacts,
+  type ExclusionRuleSet,
+} from "./exclusions/types";
+export { FREE_MAIL_DOMAINS, isFreeMailDomain } from "./exclusions/free-mail";
+export { emailDomainOf, inferInternalDomain } from "./exclusions/internal-domain";
+export {
+  matchesToken,
+  HEADLESS_TOKENS,
+  KNOWN_AGENT_TOKENS,
+  CODING_AGENT_TOKENS,
+} from "./exclusions/automation";
+export {
+  classifyExclusion,
+  EXCLUSION_RULE_SET_VERSION,
+  EXCLUSION_RULE_SETS,
+  CURRENT_EXCLUSION_RULE_SET,
+} from "./exclusions/classify";
+
+// --- O-003: session assembly ------------------------------------------------
+export {
+  deriveSessionKey,
+  SESSION_GROUPING_VERSION,
+  SESSION_BUCKET_MS,
+  type SessionKeyInput,
+} from "./sessions/grouping";
+export { normaliseUrlPath, URL_PATH_NORMALISATION_VERSION } from "./sessions/url-path";
+
+// --- O-003: the onboarding counter ------------------------------------------
+export {
+  expectedLagSchema,
+  setAsideBreakdownSchema,
+  eventsSeenCounterSchema,
+  type ExpectedLag,
+  type SetAsideBreakdown,
+  type EventsSeenCounter,
+} from "./counter/types";
+export {
+  describeExpectedLag,
+  POSTHOG_P90_RETRIEVAL_SECONDS,
+  POSTHOG_MAX_RETRIEVAL_SECONDS,
+} from "./counter/lag";

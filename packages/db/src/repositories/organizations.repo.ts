@@ -21,6 +21,19 @@ export interface OrganizationsRepo {
   /** Renames the constructing context's own organization — never any
    * other org, since no organization id is ever accepted as a parameter. */
   rename(name: string): Promise<OrganizationRecord>;
+  /**
+   * The email of this organization's owner — the earliest-created `member`
+   * row with role `owner`, joined to `user.email`. Org-scoped by
+   * construction: `ctx.organizationId` is the only org this context can name.
+   *
+   * The single input to internal-domain inference (O-003 FR-11).
+   *
+   * TYPED STUB (O-003 scaffold). FAIL DIRECTION (F-2): no owner found, or an
+   * owner with no email, returns `null` ⇒ infer NOTHING. A missing creator
+   * email must never produce a guess, because a wrong internal domain
+   * silently excludes the customer's entire user base.
+   */
+  creatorEmail(): Promise<string | null>;
 }
 
 export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): OrganizationsRepo {
@@ -54,6 +67,12 @@ export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): Organ
       }
 
       return row;
+    },
+
+    // TYPED STUB (O-003 scaffold): signature and return type are final; the
+    // body throws. A later wave fills in the member-to-user join.
+    creatorEmail(): Promise<string | null> {
+      throw new Error("TYPED STUB (O-003 scaffold): createOrganizationsRepo.creatorEmail");
     },
   };
 }
