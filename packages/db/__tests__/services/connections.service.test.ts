@@ -155,7 +155,9 @@ describe("createConnectionsService — attach", () => {
     const service = createConnectionsService(db, ws.ctx, deps(harness));
 
     await service.connect(connectInput(ws.project.id));
-    await service.connect(connectInput(ws.project.id, { personalApiKey: `${FAKE_PERSONAL_KEY}-2` }));
+    await service.connect(
+      connectInput(ws.project.id, { personalApiKey: `${FAKE_PERSONAL_KEY}-2` }),
+    );
 
     const state = await service.getState(ws.project.id);
 
@@ -498,7 +500,8 @@ describe("createConnectionsService — the seven connection states", () => {
             : status === "disconnected"
               ? "disconnected"
               : "healthy",
-      watermarkAt: status === "connected_never_polled" ? null : new Date("2026-07-30T11:30:00.000Z"),
+      watermarkAt:
+        status === "connected_never_polled" ? null : new Date("2026-07-30T11:30:00.000Z"),
     });
 
     const runs = createPollRunsRepo(db, ws.ctx);

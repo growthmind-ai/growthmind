@@ -19,10 +19,7 @@ import {
   expectedLagStatement,
   secondSourceRefusalMessage,
 } from "../../src/session-source/messages";
-import {
-  connectRefusalCodeSchema,
-  connectionStateSchema,
-} from "../../src/session-source/types";
+import { connectRefusalCodeSchema, connectionStateSchema } from "../../src/session-source/types";
 
 /** Word-boundary, so "delivered" is fine and "live" is not. */
 const LIVE_CLAIM = /\blive\b/i;

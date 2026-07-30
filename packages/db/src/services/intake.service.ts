@@ -140,8 +140,7 @@ export async function persistPullResult(
     });
   }
 
-  const eventsPersisted =
-    await createEventsRepo(db, ctx).insertManyIgnoringDuplicates(eventRows);
+  const eventsPersisted = await createEventsRepo(db, ctx).insertManyIgnoringDuplicates(eventRows);
 
   return {
     // What the boundary handed us, not what we managed to store — the two

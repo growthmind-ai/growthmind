@@ -183,7 +183,8 @@ export interface FakeSourceHarness {
  * not have to script every subsequent one.
  */
 export function makeFakeSource(script?: {
-  validation?: SessionSourceValidation | ((config: SourceConnectionConfig) => SessionSourceValidation);
+  validation?:
+    SessionSourceValidation | ((config: SourceConnectionConfig) => SessionSourceValidation);
   pulls?: readonly SessionSourcePullResult[];
 }): FakeSourceHarness {
   const configs: SourceConnectionConfig[] = [];

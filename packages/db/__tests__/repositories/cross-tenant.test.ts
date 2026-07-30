@@ -257,10 +257,7 @@ describe("cross-tenant boundary on the O-003 tables", () => {
       expect(returned).toEqual([]);
     }
 
-    const served = await createSessionsRepo(db, fx.ownerCtx).findByKey(
-      fx.projectId,
-      SESSION_KEY_A,
-    );
+    const served = await createSessionsRepo(db, fx.ownerCtx).findByKey(fx.projectId, SESSION_KEY_A);
     expect(served?.organizationId).toBe(fx.ownerCtx.organizationId);
     expect(served?.identityEmailDomain).toBe("acme.example");
     expect(served?.exclusionReason).toBe("none");

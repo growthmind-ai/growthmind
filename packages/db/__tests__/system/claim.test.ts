@@ -104,16 +104,12 @@ describe("claimDuePollableConnections", () => {
     const two = await seedDueConnection(db, "limit-two");
 
     const claimed = await claimDuePollableConnections(db, { now: NOW, limit: 1 });
-    const mine = claimed.filter((row) =>
-      [one.connectionId, two.connectionId].includes(row.id),
-    );
+    const mine = claimed.filter((row) => [one.connectionId, two.connectionId].includes(row.id));
     expect(mine).toHaveLength(1);
 
     // Nothing is lost: the one that missed out is still due on the next tick.
     const next = await claimDuePollableConnections(db, { now: NOW, limit: 10 });
-    const remaining = next.filter((row) =>
-      [one.connectionId, two.connectionId].includes(row.id),
-    );
+    const remaining = next.filter((row) => [one.connectionId, two.connectionId].includes(row.id));
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).not.toBe(mine[0]?.id);
   });

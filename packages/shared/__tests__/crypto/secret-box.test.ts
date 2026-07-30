@@ -61,9 +61,7 @@ describe("encryptSecret / decryptSecret", () => {
   test("two encryptions of the same plaintext differ, because the iv is random per call", () => {
     // A deterministic ciphertext would leak "these two orgs pasted the same
     // key" straight out of the column.
-    expect(encryptSecret(PLAINTEXT, KEY_A, AAD_A)).not.toBe(
-      encryptSecret(PLAINTEXT, KEY_A, AAD_A),
-    );
+    expect(encryptSecret(PLAINTEXT, KEY_A, AAD_A)).not.toBe(encryptSecret(PLAINTEXT, KEY_A, AAD_A));
   });
 
   // Item 2 — D7

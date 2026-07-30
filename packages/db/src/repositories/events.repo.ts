@@ -100,9 +100,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
       return db
         .select()
         .from(events)
-        .where(
-          and(eq(events.organizationId, ctx.organizationId), eq(events.projectId, projectId)),
-        )
+        .where(and(eq(events.organizationId, ctx.organizationId), eq(events.projectId, projectId)))
         .orderBy(desc(events.occurredAt))
         .limit(options.limit);
     },
@@ -111,9 +109,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
       return db
         .select()
         .from(events)
-        .where(
-          and(eq(events.organizationId, ctx.organizationId), eq(events.sessionId, sessionId)),
-        )
+        .where(and(eq(events.organizationId, ctx.organizationId), eq(events.sessionId, sessionId)))
         .orderBy(desc(events.occurredAt))
         .limit(options.limit);
     },

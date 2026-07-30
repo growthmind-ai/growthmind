@@ -4,12 +4,7 @@
 //
 // Nothing in this file calls `Date.now()`, `Math.random()`, or any sleep. That
 // is what makes an inherently time-based loop deterministically testable.
-import {
-  BASE_DELAY_MS,
-  JITTER_SPREAD_MS,
-  MAX_BACKOFF_MS,
-  RETRY_AFTER_CAP_MS,
-} from "./constants";
+import { BASE_DELAY_MS, JITTER_SPREAD_MS, MAX_BACKOFF_MS, RETRY_AFTER_CAP_MS } from "./constants";
 
 export interface BackoffInput {
   /** 1-based. The exponential branch is `BASE_DELAY_MS * 2^(attempt-1)`. */

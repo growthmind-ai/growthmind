@@ -79,7 +79,13 @@ async function recordRun(
   db: TestDb,
   target: CounterTarget,
   terminal:
-    | { kind: "completed"; startedAt: Date; finishedAt: Date; withEvents: boolean; dropped?: number }
+    | {
+        kind: "completed";
+        startedAt: Date;
+        finishedAt: Date;
+        withEvents: boolean;
+        dropped?: number;
+      }
     | { kind: "failed"; startedAt: Date; finishedAt: Date; dropped?: number },
 ): Promise<void> {
   const runs = createPollRunsRepo(db, target.ws.ctx);
@@ -276,7 +282,9 @@ describe("createEventsCounterService", () => {
 
   test("not-connected, never-polled and polled-with-zero-events are three different answers", async () => {
     const absent = await seedWorkspace(db, "three-answers-absent");
-    const neverPolled = await seedConnectedProject(db, "three-answers-never", { watermarkAt: null });
+    const neverPolled = await seedConnectedProject(db, "three-answers-never", {
+      watermarkAt: null,
+    });
     const zeroEvents = await seedConnectedProject(db, "three-answers-zero", {
       watermarkAt: new Date("2026-07-30T11:45:00.000Z"),
     });

@@ -30,13 +30,7 @@ import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtur
 
 const NAMES = laneNames("sys");
 
-const REPO_ROOT = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -106,9 +100,7 @@ describe("system subpath unreachability (FR-23)", () => {
 
   // --- item 84 -------------------------------------------------------------
   it("names SYSTEM_ACTOR_ID only under the db system module, the worker, and tests", () => {
-    const roots = ["apps", "packages", "worker", "scripts"].map((dir) =>
-      path.join(REPO_ROOT, dir),
-    );
+    const roots = ["apps", "packages", "worker", "scripts"].map((dir) => path.join(REPO_ROOT, dir));
     const files = roots.flatMap((root) => listSourceFiles(root));
     expect(files.length).toBeGreaterThan(0);
 
@@ -148,9 +140,7 @@ describe("system subpath unreachability (FR-23)", () => {
   // --- item 85 (source-level) ---------------------------------------------
   it("does not re-export src/system from src/index.ts", () => {
     const barrel = readFileSync(path.join(REPO_ROOT, "packages", "db", "src", "index.ts"), "utf8");
-    const withoutComments = barrel
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/\/\/[^\n]*/g, " ");
+    const withoutComments = barrel.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
 
     expect(withoutComments).not.toMatch(/from\s+["']\.\/system/);
   });

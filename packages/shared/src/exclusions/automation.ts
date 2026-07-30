@@ -54,7 +54,7 @@ export function matchesToken(userAgent: string, token: string): boolean {
   const needle = token.toLowerCase();
   if (haystack.length === 0 || needle.length === 0) return false;
 
-  for (let from = 0; from <= haystack.length - needle.length; ) {
+  for (let from = 0; from <= haystack.length - needle.length;) {
     const at = haystack.indexOf(needle, from);
     if (at === -1) return false;
 

@@ -239,8 +239,6 @@ describe("events repository", () => {
     ]);
 
     const forSessionOne = await repo.listForSession(sessionOne.id, { limit: 50 });
-    expect(forSessionOne.map((event) => event.sourceEventId)).toEqual([
-      "db-ev-per-session-0001",
-    ]);
+    expect(forSessionOne.map((event) => event.sourceEventId)).toEqual(["db-ev-per-session-0001"]);
   });
 });

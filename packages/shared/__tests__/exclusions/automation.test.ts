@@ -188,7 +188,9 @@ describe("no host-based or domain-pattern predicate exists in src/exclusions", (
     expect(files.length).toBeGreaterThan(0);
 
     for (const file of files) {
-      const exported = [...file.code.matchAll(/export\s+(?:const|function|type|interface)\s+(\w+)/g)]
+      const exported = [
+        ...file.code.matchAll(/export\s+(?:const|function|type|interface)\s+(\w+)/g),
+      ]
         .map((match) => match[1] ?? "")
         .filter((name) => name.length > 0);
       for (const name of exported) {

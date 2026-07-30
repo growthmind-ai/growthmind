@@ -67,10 +67,7 @@ function toCount(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function createEventsCounterService(
-  db: ScopedDb,
-  ctx: TenantContext,
-): EventsCounterService {
+export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): EventsCounterService {
   return {
     async read(projectId: string): Promise<EventsSeenCounter> {
       // ---------------------------------------------------------------------

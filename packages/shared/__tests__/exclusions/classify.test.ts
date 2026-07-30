@@ -54,7 +54,11 @@ describe("classifyExclusion — internal domain (F-3)", () => {
     for (const identityResolution of ["unresolved", "absent", "resolved"] as const) {
       expect(
         classifyExclusion(
-          sessionFacts({ identityEmailDomain: null, identityResolution, internalDomain: "acme.com" }),
+          sessionFacts({
+            identityEmailDomain: null,
+            identityResolution,
+            internalDomain: "acme.com",
+          }),
           CURRENT_EXCLUSION_RULE_SET,
         ),
       ).toBe("none");
@@ -144,7 +148,10 @@ describe("classifyExclusion — reproducibility (FR-14)", () => {
 
     // Reproducing a stored stamp reads only persisted facts — the property the
     // future exclusions.backfill depends on, with zero PostHog access.
-    const kept = sessionFacts({ identityEmailDomain: "customer.example", internalDomain: "acme.com" });
+    const kept = sessionFacts({
+      identityEmailDomain: "customer.example",
+      internalDomain: "acme.com",
+    });
     expect(classifyExclusion(kept, ruleSetV1())).toBe(classifyExclusion(kept, ruleSetV1()));
   });
 

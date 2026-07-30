@@ -72,10 +72,7 @@ export async function claimDuePollableConnections(
     .select({ id: projectConnections.id })
     .from(projectConnections)
     .where(
-      and(
-        eq(projectConnections.isActive, true),
-        lte(projectConnections.nextPollAt, params.now),
-      ),
+      and(eq(projectConnections.isActive, true), lte(projectConnections.nextPollAt, params.now)),
     )
     .orderBy(asc(projectConnections.nextPollAt))
     .limit(params.limit)

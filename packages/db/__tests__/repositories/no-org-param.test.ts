@@ -154,10 +154,7 @@ describe("repository contract — no organization id parameter (FR-19)", () => {
   });
 
   it("finds the parameter lists it claims to check", () => {
-    const source = readFileSync(
-      path.join(REPOSITORIES_DIR, "project-connections.repo.ts"),
-      "utf8",
-    );
+    const source = readFileSync(path.join(REPOSITORIES_DIR, "project-connections.repo.ts"), "utf8");
     const declared = collectDeclaredParams(source);
     const owners = declared.map((entry) => entry.owner);
 
