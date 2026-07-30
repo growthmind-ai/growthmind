@@ -16,6 +16,8 @@
     "@mantine/hooks": "^9.5.0",
     "better-auth": "^1.6.25",
     "next": "16.2.12",
+    "posthog-js": "^1.257.2",
+    "posthog-node": "^4.17.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
