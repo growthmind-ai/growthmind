@@ -1,53 +1,82 @@
-import { Anchor, Container, Group, List, ListItem, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Box, Container, Group, Stack, Text } from "@mantine/core";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
+import { SignOutButton } from "../components/landing/sign-out-button";
+import { WorkspaceName } from "../components/landing/workspace-name";
 import { LogoMark, LogoWordmark } from "../components/ui/Logo";
+import { ROUTES } from "../lib/routes";
+import { getTenantContext } from "../lib/tenant";
 
 // Server component by convention — client logic lives in separate
-// "use client" components (see AGENTS.md).
-export default function HomePage() {
+// "use client" components (see AGENTS.md). This is the authenticated
+// workspace landing (ADD D-G/D-H): a signed-out visitor is redirected to
+// `/sign-in` before anything renders, so there is no client loading flash
+// and no separate "no data" state — the landing IS the empty state.
+export default async function HomePage() {
+  const tenantContext = await getTenantContext();
+
+  if (!tenantContext) {
+    redirect(ROUTES.signIn);
+  }
+
   return (
-    <Container size="sm" py="xl">
-      <Stack gap="md">
-        <Group gap="xs">
-          <LogoMark size={34} />
-          <Title order={1} size="h2">
-            <LogoWordmark size={24} />
-          </Title>
-        </Group>
-        <Text>
-          Build a product people actually use — then use again. Growthmind watches real people use
-          your product, finds where they get stuck, and tells you in Slack — one finding at a time,
-          with the session recording and the numbers attached.
-        </Text>
-        <Text>
-          This install is a pre-release scaffold: the platform is being built in the open and the
-          implementation is landing now. What exists today:
-        </Text>
-        <List>
-          <ListItem>
-            The <Anchor href="/api/health">health endpoint</Anchor>, which also reports whether the
-            database is reachable.
-          </ListItem>
-          <ListItem>
-            The published{" "}
-            <Anchor href="https://github.com/growthmind-ai/growthmind/blob/main/docs/product-decisions.md">
-              product decisions
-            </Anchor>{" "}
-            and{" "}
-            <Anchor href="https://github.com/growthmind-ai/growthmind/blob/main/docs/architecture.md">
-              architecture
-            </Anchor>{" "}
-            this codebase is built against.
-          </ListItem>
-        </List>
-        <Text c="dimmed">
-          Follow along or argue with a decision at{" "}
-          <Anchor href="https://github.com/growthmind-ai/growthmind">
-            github.com/growthmind-ai/growthmind
-          </Anchor>
-          .
-        </Text>
-      </Stack>
-    </Container>
+    <>
+      <Box
+        component="header"
+        style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+      >
+        <Container size="sm">
+          <Group justify="space-between" wrap="nowrap" py="sm">
+            <Anchor component={Link} href={ROUTES.home} underline="never" c="inherit">
+              <Group gap="xs" wrap="nowrap">
+                <LogoMark size={28} />
+                <LogoWordmark size={16} />
+              </Group>
+            </Anchor>
+            <SignOutButton />
+          </Group>
+        </Container>
+      </Box>
+
+      <Container size="sm" py="xl">
+        <Stack gap="xl">
+          {/* Workspace name lives here only — not duplicated in the header
+              (single locus; revisit when a second page exists). P1 rename
+              (UX §5) is the client island; everything else on this page
+              stays a server component. */}
+          <WorkspaceName initialName={tenantContext.organizationName} />
+
+          <Stack gap="md">
+            <Group wrap="nowrap" align="flex-start" gap="sm">
+              <Text c="band.4" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                ✓
+              </Text>
+              <Text>Your workspace is ready. You and your teammates see the same thing here.</Text>
+            </Group>
+
+            {/* Honesty rule (UX §3, binding): plain text, not a button or
+                link — nothing unbuilt is clickable. Becomes the CTA in
+                O-003. */}
+            <Group wrap="nowrap" align="flex-start" gap="sm">
+              <Text c="band.4" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                →
+              </Text>
+              <Text>
+                Next: connect your site so Growthmind can watch real sessions — that&apos;s the
+                next release step.
+              </Text>
+            </Group>
+
+            <Group wrap="nowrap" align="flex-start" gap="sm">
+              <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                ·
+              </Text>
+              <Text c="dimmed">Then: findings arrive in your Slack, with the evidence attached.</Text>
+            </Group>
+          </Stack>
+        </Stack>
+      </Container>
+    </>
   );
 }

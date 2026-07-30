@@ -1,4 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "drizzle.config.ts"]
+  "compilerOptions": {
+    // Explicit because automatic @types discovery does not traverse bun's
+    // symlinked (isolated) node_modules layout. Brings in bun:test and the
+    // bundled Node compatibility types (see packages/shared/tsconfig.json).
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts", "drizzle.config.ts", "__tests__/**/*.ts"]
 }
