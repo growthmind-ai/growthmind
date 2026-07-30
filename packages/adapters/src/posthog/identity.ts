@@ -18,16 +18,26 @@
 // than being laundered into "12 real users". A session we could not check is
 // not a session we checked and cleared.
 //
-// TYPED STUB (O-003 scaffold): the types are final; the bodies throw.
 import type { IdentityResolution } from "@growthmind/shared";
+import { emailDomainOf } from "@growthmind/shared";
 
 import type { PostHogClient } from "./client";
 import type { RawEvent } from "./parse";
+import { parsePersonsResponse } from "./parse";
 
 /** Takes the first non-empty `properties.$set.email` across the session's
  * events. Free — no request, no budget. */
-export function harvestEmailFromEvents(_events: readonly RawEvent[]): string | null {
-  throw new Error("TYPED STUB (O-003 scaffold): harvestEmailFromEvents");
+export function harvestEmailFromEvents(events: readonly RawEvent[]): string | null {
+  for (const event of events) {
+    // `setEmail` is `properties.$set.email` and NOTHING else. `$user_id` is a
+    // customer-chosen arbitrary id; the parser deliberately never reads it as
+    // an email, so no email can enter here by that route.
+    const email = event.setEmail === null ? "" : event.setEmail.trim();
+    if (email.length > 0) {
+      return email;
+    }
+  }
+  return null;
 }
 
 export interface ResolvedIdentity {
@@ -69,8 +79,83 @@ export interface IdentityResolver {
  * exhaustion is reproducible in a test rather than random.
  */
 export function createIdentityResolver(
-  _client: PostHogClient,
-  _options: { budget: number },
+  client: PostHogClient,
+  options: { budget: number },
 ): IdentityResolver {
-  throw new Error("TYPED STUB (O-003 scaffold): createIdentityResolver");
+  const cache = new Map<string, ResolvedIdentity>();
+  let spent = 0;
+
+  // One shared value, so "we did not find out" is literally the same object on
+  // every route that produces it — no route can accidentally attach a domain.
+  const NOT_FOUND_OUT: ResolvedIdentity = { resolution: "unresolved", emailDomain: null };
+
+  return {
+    async resolve(input: {
+      distinctId: string | null;
+      harvestedEmail: string | null;
+    }): Promise<ResolvedIdentity> {
+      // STEP 1 — the free harvest. `emailDomainOf` returns the DOMAIN and
+      // never the address (product-decisions §5), so the address stops here.
+      const harvestedDomain = emailDomainOf(input.harvestedEmail);
+      if (harvestedDomain !== null) {
+        return { resolution: "resolved", emailDomain: harvestedDomain };
+      }
+
+      // Nothing to look up is not a fact about this identity — it is a thing
+      // we did not find out.
+      const distinctId = input.distinctId === null ? "" : input.distinctId.trim();
+      if (distinctId.length === 0) {
+        return NOT_FOUND_OUT;
+      }
+
+      // STEP 2 — the budgeted, cached lookup. The cache is created here, so
+      // its lifetime is one resolver, i.e. one poll run for one connection: it
+      // cannot go stale, needs no invalidation story, and cannot cross an
+      // organization boundary by construction.
+      const cached = cache.get(distinctId);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      // STEP 3 — give up, VISIBLY. An exhausted budget is not evidence about
+      // the identity, so it can never read as "we checked and cleared this".
+      // Deliberately NOT cached: only a spent lookup earns a cache entry, so
+      // the first-seen order of the ids that DID spend budget stays readable.
+      if (spent >= options.budget) {
+        return NOT_FOUND_OUT;
+      }
+
+      spent += 1;
+      const result = await client.getPerson(distinctId);
+      if (!result.ok) {
+        // A failed or throttled lookup is `unresolved`, NEVER `absent` — a
+        // 429 on this endpoint must not be laundered into "this person has no
+        // email" (F-8).
+        cache.set(distinctId, NOT_FOUND_OUT);
+        return NOT_FOUND_OUT;
+      }
+
+      const email = parsePersonsResponse(result.value);
+      if (email === null) {
+        // A COMPLETED lookup that proved there is no email. This is a fact,
+        // and the only route to `absent`.
+        const absent: ResolvedIdentity = { resolution: "absent", emailDomain: null };
+        cache.set(distinctId, absent);
+        return absent;
+      }
+
+      const domain = emailDomainOf(email);
+      // An address we cannot read a domain out of is a shape we did not
+      // understand, not proof there is no email — so it fails toward
+      // `unresolved` rather than toward the stronger claim.
+      const resolved: ResolvedIdentity =
+        domain === null ? NOT_FOUND_OUT : { resolution: "resolved", emailDomain: domain };
+      cache.set(distinctId, resolved);
+      return resolved;
+    },
+
+    lookupsUsed() {
+      return spent;
+    },
+  };
 }

@@ -13,10 +13,13 @@
 // run terminates `failed` with a plain-English reason on both the run row and
 // the connection's health.
 //
-// TYPED STUB (O-003 scaffold): the types are final; the body throws.
 import type { SourceFailure } from "@growthmind/shared";
 
+import { computeBackoffDelayMs, parseRetryAfterSeconds } from "./backoff";
+import { eventsUrl, MAX_RATE_LIMIT_ATTEMPTS, personsUrl } from "./constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
+import { mapFailure } from "./errors";
+import { assertPostHogInstant } from "./instant";
 
 /** The two endpoints this adapter touches. Each keeps its own attempt
  * counter — that separation IS the per-endpoint bucket. */
@@ -52,9 +55,130 @@ export interface PostHogClient {
   rateLimitAttempts(endpoint: PostHogEndpoint): number;
 }
 
+/**
+ * Reads a JSON body without ever throwing across this boundary. A proxy's
+ * HTML error page, an empty 204-shaped body, or a truncated response all
+ * degrade to `null`, which `mapFailure` then classifies from the status alone.
+ */
+async function readJsonBody(response: Response): Promise<unknown> {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export function createPostHogClient(
-  _config: PostHogSourceConfig,
-  _deps: PostHogSourceDeps,
+  config: PostHogSourceConfig,
+  deps: PostHogSourceDeps,
 ): PostHogClient {
-  throw new Error("TYPED STUB (O-003 scaffold): createPostHogClient");
+  // PER-ENDPOINT STATE, scoped to this client — i.e. to one poll run. An
+  // `/events` 429 never pauses `/persons` and vice versa (ROW 5).
+  const attemptsSpent: Record<PostHogEndpoint, number> = { events: 0, persons: 0 };
+
+  // Built once. The key is a Bearer credential and never reaches a returned
+  // reason: every message on the failure path comes from the shared messages
+  // module, never from a url and never from the response body.
+  const authorization = `Bearer ${config.personalApiKey}`;
+
+  /**
+   * One request, with the bounded 429 loop around it.
+   *
+   * BOUNDED TWICE, deliberately. The `for` counter bounds this call, and
+   * `attemptsSpent` bounds the endpoint across the whole run — so an endpoint
+   * already given up on costs no further requests. There is no unbounded loop
+   * and no recursion here; a grep test asserts that for the whole package.
+   */
+  async function requestJson(
+    endpoint: PostHogEndpoint,
+    url: string,
+  ): Promise<ClientResult<unknown>> {
+    for (let attempt = 1; attempt <= MAX_RATE_LIMIT_ATTEMPTS; attempt += 1) {
+      // The run-lifetime give-up. Checked BEFORE the request, so an exhausted
+      // endpoint stops costing requests rather than merely stopping retries.
+      if (attemptsSpent[endpoint] >= MAX_RATE_LIMIT_ATTEMPTS) {
+        return { ok: false, failure: mapFailure(429, null) };
+      }
+
+      let response: Response;
+      try {
+        response = await deps.fetch(url, {
+          headers: { authorization, accept: "application/json" },
+        });
+      } catch {
+        // A transport fault carries no envelope at all, so it takes the
+        // status-only fallback and lands on `unreachable` — distinct from
+        // wrong-credentials and wrong-project (FR-9).
+        return { ok: false, failure: mapFailure(0, null) };
+      }
+
+      if (response.ok) {
+        return { ok: true, value: await readJsonBody(response) };
+      }
+
+      const body = await readJsonBody(response);
+      const failure = mapFailure(response.status, body);
+      if (failure.code !== "rate_limited") {
+        return { ok: false, failure };
+      }
+
+      attemptsSpent[endpoint] += 1;
+      if (attemptsSpent[endpoint] >= MAX_RATE_LIMIT_ATTEMPTS) {
+        // A terminal, named give-up with a plain-English reason — never a
+        // stuck "still trying" and never a silent zero-rows success.
+        return { ok: false, failure };
+      }
+
+      await deps.sleep(
+        computeBackoffDelayMs({
+          attempt: attemptsSpent[endpoint],
+          retryAfterSeconds: parseRetryAfterSeconds(response.headers.get("retry-after")),
+          random: deps.random(),
+        }),
+      );
+    }
+
+    // Unreachable while the loop bound and the run bound are the same
+    // constant; kept so the bound is total rather than inferred.
+    return { ok: false, failure: mapFailure(429, null) };
+  }
+
+  return {
+    firstEventsPageUrl(params: { after: string | null; before: string | null; limit: number }) {
+      const search = new URLSearchParams();
+      search.set("limit", String(params.limit));
+      if (params.after !== null) {
+        // Gated BEFORE it can reach the wire: a malformed time value returns
+        // HTTP 200 with zero rows, which would read as "caught up" forever
+        // (ROW 2). The throw is caught by the walk and mapped to a named
+        // `misconfigured` failure.
+        assertPostHogInstant(params.after);
+        search.set("after", params.after);
+      }
+      if (params.before !== null) {
+        assertPostHogInstant(params.before);
+        search.set("before", params.before);
+      }
+      return `${eventsUrl(config.host, config.sourceProjectId)}?${search.toString()}`;
+    },
+
+    getEventsPage(url: string) {
+      // The url arrives either from `firstEventsPageUrl` or as a `next` cursor
+      // followed VERBATIM. Nothing here rebuilds it: the server already
+      // encoded the filter and the exclusive `before` (ROW 1).
+      return requestJson("events", url);
+    },
+
+    getPerson(distinctId: string) {
+      const search = new URLSearchParams({ distinct_id: distinctId });
+      return requestJson(
+        "persons",
+        `${personsUrl(config.host, config.sourceProjectId)}?${search.toString()}`,
+      );
+    },
+
+    rateLimitAttempts(endpoint: PostHogEndpoint) {
+      return attemptsSpent[endpoint];
+    },
+  };
 }
