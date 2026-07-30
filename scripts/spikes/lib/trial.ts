@@ -1,21 +1,13 @@
 // Effect-injected trial runner (ADD D-5) and leg orchestration (ADD D-6).
 // Pure decision logic — zero direct I/O; every effect arrives via TrialDeps.
 
-import type {
-  LegResult,
-  PollEndpoint,
-  SignalType,
-  TrialOutcome,
-  TrialRecord,
-} from "./types";
+import type { LegResult, PollEndpoint, SignalType, TrialOutcome, TrialRecord } from "./types";
 
 /** Iteration order for per-tick endpoint outcomes (first-matcher tie-break). */
 const POLL_ENDPOINTS: readonly PollEndpoint[] = ["events", "query", "recordings"];
 
 /** Result of one capture attempt (injected dep). */
-export type CaptureResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
+export type CaptureResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /** One endpoint's outcome within a single poll tick. */
 export interface EndpointPollOutcome {
@@ -60,10 +52,7 @@ export interface TrialDeps {
  * failures are counted on the trial without aborting its poll loop. Timeout →
  * `timed-out` with the cap value recorded as elapsed.
  */
-export async function runTrialLoop(
-  config: TrialConfig,
-  deps: TrialDeps,
-): Promise<TrialRecord[]> {
+export async function runTrialLoop(config: TrialConfig, deps: TrialDeps): Promise<TrialRecord[]> {
   const records: TrialRecord[] = [];
 
   for (let trialIndex = 0; trialIndex < config.trials; trialIndex += 1) {
@@ -143,9 +132,7 @@ async function runOneTrial(
     // after the first match, remaining endpoints keep being polled (FR-10).
     const fullySatisfied =
       reportedEndpoints.size > 0 &&
-      [...reportedEndpoints].every(
-        (endpoint) => elapsedMsByEndpoint[endpoint] !== undefined,
-      );
+      [...reportedEndpoints].every((endpoint) => elapsedMsByEndpoint[endpoint] !== undefined);
     if (fullySatisfied) break;
 
     if (tickNow - t0 >= config.timeoutMs) {
@@ -163,15 +150,12 @@ async function runOneTrial(
 
   // Timeout with a partial match is still "retrieved" — the unmatched endpoint
   // carries the cap; only a fully unmatched trial is "timed-out".
-  const outcome: TrialOutcome =
-    satisfyingEndpoint === undefined ? "timed-out" : "retrieved";
+  const outcome: TrialOutcome = satisfyingEndpoint === undefined ? "timed-out" : "retrieved";
 
   return {
     ...base,
     captureTimestamp: t0,
-    ...(firstRetrievableTimestamp !== undefined
-      ? { firstRetrievableTimestamp }
-      : {}),
+    ...(firstRetrievableTimestamp !== undefined ? { firstRetrievableTimestamp } : {}),
     elapsedMsByEndpoint,
     outcome,
     ...(satisfyingEndpoint !== undefined ? { satisfyingEndpoint } : {}),

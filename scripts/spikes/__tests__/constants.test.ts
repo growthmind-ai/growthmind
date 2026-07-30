@@ -33,11 +33,7 @@ describe("spike constants registry", () => {
 
     // Event names: distinct, non-empty strings.
     const eventValues = Object.values(EVENT_NAMES);
-    expect(eventValues).toEqual([
-      "gm_spike_custom_event",
-      "$exception",
-      "gm_spike_failed_request",
-    ]);
+    expect(eventValues).toEqual(["gm_spike_custom_event", "$exception", "gm_spike_failed_request"]);
     for (const name of eventValues) {
       expect(typeof name).toBe("string");
       expect(name.length).toBeGreaterThan(0);

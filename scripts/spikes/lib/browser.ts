@@ -17,10 +17,7 @@ const WINDOWS_RELATIVE_PATHS = [
 ] as const;
 
 /** Default Windows base dirs, used when the env doesn't provide them. */
-const WINDOWS_DEFAULT_BASES = [
-  "C:\\Program Files",
-  "C:\\Program Files (x86)",
-] as const;
+const WINDOWS_DEFAULT_BASES = ["C:\\Program Files", "C:\\Program Files (x86)"] as const;
 
 const MACOS_PATHS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -61,19 +58,13 @@ function windowsCandidates(env: Record<string, string | undefined>): string[] {
  * Windows / macOS / Linux install paths. Returns the first existing path, or
  * null — the caller (recording leg) decides whether null means manual mode.
  */
-export function findBrowser(
-  env: Record<string, string | undefined>,
-): string | null {
+export function findBrowser(env: Record<string, string | undefined>): string | null {
   const override = env[ENV_VARS.CHROME_PATH];
   if (override !== undefined && override !== "" && existsSync(override)) {
     return override;
   }
 
-  const candidates = [
-    ...windowsCandidates(env),
-    ...MACOS_PATHS,
-    ...LINUX_PATHS,
-  ];
+  const candidates = [...windowsCandidates(env), ...MACOS_PATHS, ...LINUX_PATHS];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
@@ -81,8 +72,7 @@ export function findBrowser(
 }
 
 export type RecordingTrialResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

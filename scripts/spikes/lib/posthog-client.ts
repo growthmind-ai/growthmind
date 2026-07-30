@@ -12,13 +12,7 @@
 //   raw output gets pasted into issues). Response bodies are scrubbed of the
 //   keys we hold and truncated before entering a reason string.
 
-import {
-  MARKER_PROP,
-  captureUrl,
-  eventsUrl,
-  queryUrl,
-  recordingsUrl,
-} from "./constants";
+import { MARKER_PROP, captureUrl, eventsUrl, queryUrl, recordingsUrl } from "./constants";
 import type { Credentials } from "./env";
 import {
   matchesMarker,
@@ -64,11 +58,7 @@ function truncate(text: string): string {
  */
 function scrubKeys(text: string, creds: Credentials): string {
   let scrubbed = text;
-  for (const secret of [
-    creds.projectApiKey,
-    creds.personalApiKey,
-    creds.projectId,
-  ]) {
+  for (const secret of [creds.projectApiKey, creds.personalApiKey, creds.projectId]) {
     if (secret !== "") scrubbed = scrubbed.replaceAll(secret, "[redacted]");
   }
   return scrubbed;
@@ -226,10 +216,7 @@ async function pollEndpoint<T extends MarkerCandidate>(
  * the trial loop records the events-vs-HogQL delta (FR-10). Requests run
  * sequentially — the spike deliberately avoids self-inflicted rate pressure.
  */
-export async function pollEventOnce(
-  creds: Credentials,
-  marker: string,
-): Promise<PollResult> {
+export async function pollEventOnce(creds: Credentials, marker: string): Promise<PollResult> {
   const eventsParams = new URLSearchParams({
     properties: JSON.stringify([
       { key: MARKER_PROP, value: marker, operator: "exact", type: "event" },
@@ -271,10 +258,7 @@ export async function pollEventOnce(
  * when it is LISTED for this trial's identified distinct_id — listed, not
  * playable, per the PRD's explicit out-of-scope.
  */
-export async function pollRecordingOnce(
-  creds: Credentials,
-  marker: string,
-): Promise<PollResult> {
+export async function pollRecordingOnce(creds: Credentials, marker: string): Promise<PollResult> {
   const params = new URLSearchParams({ distinct_id: marker });
 
   const recordings = await pollEndpoint(

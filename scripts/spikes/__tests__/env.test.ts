@@ -60,12 +60,8 @@ describe("validateCredentials", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected ok: true");
     expect(result.creds.host).toBe(env[ENV_VARS.POSTHOG_HOST] as string);
-    expect(result.creds.projectApiKey).toBe(
-      env[ENV_VARS.POSTHOG_PROJECT_API_KEY] as string,
-    );
-    expect(result.creds.personalApiKey).toBe(
-      env[ENV_VARS.POSTHOG_PERSONAL_API_KEY] as string,
-    );
+    expect(result.creds.projectApiKey).toBe(env[ENV_VARS.POSTHOG_PROJECT_API_KEY] as string);
+    expect(result.creds.personalApiKey).toBe(env[ENV_VARS.POSTHOG_PERSONAL_API_KEY] as string);
     expect(result.creds.projectId).toBe(env[ENV_VARS.POSTHOG_PROJECT_ID] as string);
   });
 });

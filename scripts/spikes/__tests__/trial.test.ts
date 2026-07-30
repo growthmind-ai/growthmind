@@ -29,10 +29,7 @@ import { runLegs, runTrialLoop } from "../lib/trial";
 import type { TrialRecord } from "../lib/types";
 
 /** One endpoint outcome with defaults; pass overrides for parse failures. */
-function tickOutcome(
-  matched: boolean,
-  extra?: Partial<EndpointPollOutcome>,
-): EndpointPollOutcome {
+function tickOutcome(matched: boolean, extra?: Partial<EndpointPollOutcome>): EndpointPollOutcome {
   return { matched, http429: false, ...extra };
 }
 
@@ -111,10 +108,7 @@ describe("runTrialLoop", () => {
       }),
     });
 
-    const records = await runTrialLoop(
-      config({ trials: 1, timeoutMs: 120_000 }),
-      world.deps,
-    );
+    const records = await runTrialLoop(config({ trials: 1, timeoutMs: 120_000 }), world.deps);
 
     expect(records).toHaveLength(1);
     const record = records[0] as TrialRecord;
@@ -130,9 +124,7 @@ describe("runTrialLoop", () => {
   test("should record an errored outcome when capture fails and continue to the next trial", async () => {
     const world = makeFakeWorld({
       captureScript: (marker) =>
-        marker === "marker-1"
-          ? { ok: false, reason: "capture refused" }
-          : { ok: true },
+        marker === "marker-1" ? { ok: false, reason: "capture refused" } : { ok: true },
       pollScript: () => ({ events: tickOutcome(true) }),
     });
 
@@ -156,10 +148,7 @@ describe("runTrialLoop", () => {
       },
     });
 
-    const records = await runTrialLoop(
-      config({ trials: 2, pollIntervalMs: 1000 }),
-      world.deps,
-    );
+    const records = await runTrialLoop(config({ trials: 2, pollIntervalMs: 1000 }), world.deps);
 
     expect(records).toHaveLength(2);
     const first = records[0] as TrialRecord;
@@ -171,12 +160,8 @@ describe("runTrialLoop", () => {
     expect(second.elapsedMsByEndpoint.events).toBe(4000);
 
     // Elapsed is anchored on THIS trial's capture, not the run start.
-    expect(
-      (first.firstRetrievableTimestamp as number) - first.captureTimestamp,
-    ).toBe(2000);
-    expect(
-      (second.firstRetrievableTimestamp as number) - second.captureTimestamp,
-    ).toBe(4000);
+    expect((first.firstRetrievableTimestamp as number) - first.captureTimestamp).toBe(2000);
+    expect((second.firstRetrievableTimestamp as number) - second.captureTimestamp).toBe(4000);
   });
 
   test("should count poll-tick parse failures on the trial without aborting the poll loop", async () => {
@@ -211,13 +196,7 @@ describe("runTrialLoop", () => {
     const markers = records.map((r) => r.marker);
     expect(new Set(markers).size).toBe(5);
     // Each record carries the marker the factory minted for it, in order.
-    expect(markers).toEqual([
-      "marker-1",
-      "marker-2",
-      "marker-3",
-      "marker-4",
-      "marker-5",
-    ]);
+    expect(markers).toEqual(["marker-1", "marker-2", "marker-3", "marker-4", "marker-5"]);
   });
 
   test("should call onTrialComplete after every trial including timed-out and errored ones", async () => {
@@ -225,31 +204,18 @@ describe("runTrialLoop", () => {
     // 3000ms); marker-3's capture fails (errored).
     const world = makeFakeWorld({
       captureScript: (marker) =>
-        marker === "marker-3"
-          ? { ok: false, reason: "capture refused" }
-          : { ok: true },
+        marker === "marker-3" ? { ok: false, reason: "capture refused" } : { ok: true },
       pollScript: (marker) => ({
         events: tickOutcome(marker === "marker-1"),
       }),
     });
 
-    const records = await runTrialLoop(
-      config({ trials: 3, timeoutMs: 3000 }),
-      world.deps,
-    );
+    const records = await runTrialLoop(config({ trials: 3, timeoutMs: 3000 }), world.deps);
 
     // One onTrialComplete call per trial, in trial order, no outcome skipped.
     expect(world.completed).toHaveLength(3);
-    expect(world.completed.map((r) => r.outcome)).toEqual([
-      "retrieved",
-      "timed-out",
-      "errored",
-    ]);
-    expect(world.completed.map((r) => r.marker)).toEqual([
-      "marker-1",
-      "marker-2",
-      "marker-3",
-    ]);
+    expect(world.completed.map((r) => r.outcome)).toEqual(["retrieved", "timed-out", "errored"]);
+    expect(world.completed.map((r) => r.marker)).toEqual(["marker-1", "marker-2", "marker-3"]);
     // The same records come back from the loop itself.
     expect(records).toEqual(world.completed);
   });
@@ -263,10 +229,7 @@ describe("runTrialLoop", () => {
       }),
     });
 
-    const records = await runTrialLoop(
-      config({ trials: 1, pollIntervalMs: 1000 }),
-      world.deps,
-    );
+    const records = await runTrialLoop(config({ trials: 1, pollIntervalMs: 1000 }), world.deps);
 
     expect(records).toHaveLength(1);
     const record = records[0] as TrialRecord;
@@ -276,9 +239,7 @@ describe("runTrialLoop", () => {
     // Both endpoints' elapsed are carried (FR-10 endpoint comparison data).
     expect(record.elapsedMsByEndpoint.events).toBe(1000);
     expect(record.elapsedMsByEndpoint.query).toBe(3000);
-    expect(
-      (record.firstRetrievableTimestamp as number) - record.captureTimestamp,
-    ).toBe(1000);
+    expect((record.firstRetrievableTimestamp as number) - record.captureTimestamp).toBe(1000);
   });
 });
 

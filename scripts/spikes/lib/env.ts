@@ -75,9 +75,7 @@ function isRequiredEnvVar(name: string): name is RequiredEnvVar {
  * line.
  */
 export function formatCredentialError(missing: string[]): string {
-  const guidance = missing
-    .filter(isRequiredEnvVar)
-    .map((name) => VAR_GUIDANCE[name]);
+  const guidance = missing.filter(isRequiredEnvVar).map((name) => VAR_GUIDANCE[name]);
 
   const lines = [
     "Missing required environment variables:",

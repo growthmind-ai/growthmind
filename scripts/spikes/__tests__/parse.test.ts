@@ -81,9 +81,7 @@ describe("parseEventsResponse", () => {
   test("should return a named parse failure for a missing-field response, not throw", () => {
     expect(() => parseEventsResponse({})).not.toThrow();
     expect(() => parseEventsResponse({ results: "nope" })).not.toThrow();
-    expect(() =>
-      parseEventsResponse({ results: [{ id: "x", event: "y" }] }),
-    ).not.toThrow();
+    expect(() => parseEventsResponse({ results: [{ id: "x", event: "y" }] })).not.toThrow();
 
     const missingResults = parseEventsResponse({});
     expect(missingResults.ok).toBe(false);

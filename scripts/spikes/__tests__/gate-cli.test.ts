@@ -134,9 +134,7 @@ describe("m0-posthog-latency credential gate (CLI)", () => {
       const enumeration = missingEnumeration(combined);
       expect(enumeration).toContain(ENV_VARS.POSTHOG_PROJECT_ID);
 
-      const flaggedAsMissing = REQUIRED_ENV_VARS.filter((name) =>
-        enumeration.includes(name),
-      );
+      const flaggedAsMissing = REQUIRED_ENV_VARS.filter((name) => enumeration.includes(name));
       expect(flaggedAsMissing).toEqual([ENV_VARS.POSTHOG_PROJECT_ID]);
     },
     SPAWN_TIMEOUT_MS,

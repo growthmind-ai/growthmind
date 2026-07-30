@@ -41,11 +41,7 @@ import {
 } from "./lib/constants";
 import { formatCredentialError, validateCredentials } from "./lib/env";
 import { createRunPersister } from "./lib/persist";
-import {
-  captureEvent,
-  pollEventOnce,
-  pollRecordingOnce,
-} from "./lib/posthog-client";
+import { captureEvent, pollEventOnce, pollRecordingOnce } from "./lib/posthog-client";
 import {
   renderDecisionDocBlock,
   renderSummaryTable,
@@ -61,20 +57,10 @@ import {
   type TrialConfig,
   type TrialDeps,
 } from "./lib/trial";
-import type {
-  LegResult,
-  RecordingMode,
-  RunFile,
-  SignalType,
-  TrialRecord,
-} from "./lib/types";
+import type { LegResult, RecordingMode, RunFile, SignalType, TrialRecord } from "./lib/types";
 
 /** Canonical leg execution order (ADD D-6): events → exceptions → recordings. */
-const LEG_ORDER: readonly SignalType[] = [
-  "custom-event",
-  "exception",
-  "recording",
-];
+const LEG_ORDER: readonly SignalType[] = ["custom-event", "exception", "recording"];
 
 /** How long each automated/manual recording trial keeps the page alive (D-2). */
 const RECORDING_TRIAL_DURATION_MS = 15_000;
@@ -102,8 +88,7 @@ interface CliFlags {
 }
 
 type FlagParseResult =
-  | { readonly ok: true; readonly flags: CliFlags }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true; readonly flags: CliFlags } | { readonly ok: false; readonly reason: string };
 
 /** Maps a `--legs` value (events/exceptions/recordings) to its SignalType. */
 function signalForLegName(name: string): SignalType | undefined {
@@ -334,8 +319,7 @@ async function main(): Promise<number> {
     run: async () => {
       console.log(`\ncustom events leg: running ${flags.trials} trials…`);
       const deps: TrialDeps = {
-        capture: (marker) =>
-          captureEvent(creds, EVENT_NAMES.customEvent, marker),
+        capture: (marker) => captureEvent(creds, EVENT_NAMES.customEvent, marker),
         poll: (marker) => pollEventOnce(creds, marker),
         sleep,
         now,
@@ -354,12 +338,7 @@ async function main(): Promise<number> {
       console.log(`\nexceptions leg: running ${flags.trials} trials…`);
       const deps: TrialDeps = {
         capture: (marker) =>
-          captureEvent(
-            creds,
-            EVENT_NAMES.exception,
-            marker,
-            exceptionProps(marker),
-          ),
+          captureEvent(creds, EVENT_NAMES.exception, marker, exceptionProps(marker)),
         poll: (marker) => pollEventOnce(creds, marker),
         sleep,
         now,
@@ -376,9 +355,7 @@ async function main(): Promise<number> {
     signalType: "recording",
     run: async () => {
       recordingRan = true;
-      const browserPath = flags.manualRecording
-        ? null
-        : findBrowser(process.env);
+      const browserPath = flags.manualRecording ? null : findBrowser(process.env);
       recordingMode = browserPath === null ? "manual" : "automated";
 
       console.log(`\nrecordings leg: running ${flags.trials} trials…`);
@@ -391,9 +368,7 @@ async function main(): Promise<number> {
         console.log(`recordings leg: manual mode — ${why}.`);
       }
 
-      const pageHtml = await Bun.file(
-        join(import.meta.dir, "recording-page.html"),
-      ).text();
+      const pageHtml = await Bun.file(join(import.meta.dir, "recording-page.html")).text();
 
       // One server for the whole leg (ADD D-2 step 1). GET / serves the
       // page; GET /go?marker=… redirects to the full page URL with host+key
@@ -437,11 +412,7 @@ async function main(): Promise<number> {
       const deps: TrialDeps = {
         capture: async (marker): Promise<CaptureResult> => {
           if (recordingMode === "automated" && browserPath !== null) {
-            return runRecordingTrial(
-              browserPath,
-              pageUrlFor(marker),
-              RECORDING_TRIAL_DURATION_MS,
-            );
+            return runRecordingTrial(browserPath, pageUrlFor(marker), RECORDING_TRIAL_DURATION_MS);
           }
           console.log(manualInstructions(marker));
           return { ok: true };
@@ -536,12 +507,8 @@ async function main(): Promise<number> {
       : "\nNo trials completed — no run file was written.",
   );
 
-  const completedCount = results.filter(
-    (result) => result.status === "completed",
-  ).length;
-  const failedCount = results.filter(
-    (result) => result.status === "failed",
-  ).length;
+  const completedCount = results.filter((result) => result.status === "completed").length;
+  const failedCount = results.filter((result) => result.status === "failed").length;
   if (failedCount === 0) return 0;
   return completedCount === 0 ? 1 : 2;
 }
@@ -551,9 +518,7 @@ const exitCode = await main().catch((error: unknown) => {
   if (error instanceof Error && error.name === "AuthError") {
     console.error(error.message);
   } else {
-    console.error(
-      `Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
   }
   return 1;
 });

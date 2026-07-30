@@ -41,9 +41,7 @@ export function renderTrialProgressLine(record: TrialRecord): string {
           ? record.elapsedMsByEndpoint[record.satisfyingEndpoint]
           : undefined;
       const via =
-        record.satisfyingEndpoint !== undefined
-          ? ` via ${record.satisfyingEndpoint}`
-          : "";
+        record.satisfyingEndpoint !== undefined ? ` via ${record.satisfyingEndpoint}` : "";
       const timing = elapsed !== undefined ? ` in ${seconds(elapsed)}` : "";
       return `${label} ${trial}: retrieved${timing}${via}`;
     }
@@ -64,8 +62,7 @@ export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   const label = SIGNAL_LABELS[leg.signalType];
 
   if (leg.status === "failed") {
-    const reason =
-      leg.failureReason !== undefined ? ` (${leg.failureReason})` : "";
+    const reason = leg.failureReason !== undefined ? ` (${leg.failureReason})` : "";
     return `${label}: leg failed — no numbers to report${reason}`;
   }
 
@@ -141,8 +138,7 @@ function renderLegDocSection(leg: LegResult): string {
   const lines = [`### ${label}`, ""];
 
   if (leg.status === "failed") {
-    const reason =
-      leg.failureReason !== undefined ? `: ${leg.failureReason}` : "";
+    const reason = leg.failureReason !== undefined ? `: ${leg.failureReason}` : "";
     lines.push(`This leg failed before producing numbers${reason}.`);
     return lines.join("\n");
   }
@@ -156,9 +152,7 @@ function renderLegDocSection(leg: LegResult): string {
   const stats = computeStats([...leg.trials]);
 
   if (stats.kind === "no-data") {
-    lines.push(
-      `- 0 of ${attempted} trials retrieved — no latency numbers to report.`,
-    );
+    lines.push(`- 0 of ${attempted} trials retrieved — no latency numbers to report.`);
     return lines.join("\n");
   }
 

@@ -8,19 +8,9 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  renderDecisionDocBlock,
-  renderSummaryTable,
-  renderVerdictLine,
-} from "../lib/report";
+import { renderDecisionDocBlock, renderSummaryTable, renderVerdictLine } from "../lib/report";
 import { computeStats } from "../lib/stats";
-import type {
-  LegResult,
-  PollParams,
-  SignalType,
-  StatsResult,
-  TrialRecord,
-} from "../lib/types";
+import type { LegResult, PollParams, SignalType, StatsResult, TrialRecord } from "../lib/types";
 
 const T0 = 1_700_000_000_000;
 
@@ -62,10 +52,7 @@ function timedOutTrial(signalType: SignalType, trialIndex: number): TrialRecord 
   };
 }
 
-function completedLeg(
-  signalType: SignalType,
-  trials: readonly TrialRecord[],
-): LegResult {
+function completedLeg(signalType: SignalType, trials: readonly TrialRecord[]): LegResult {
   return { signalType, status: "completed", trials };
 }
 

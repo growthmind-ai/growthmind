@@ -48,9 +48,7 @@ function resultsArray(body: unknown): ParseResult<readonly unknown[]> {
 }
 
 /** Parses `GET /api/projects/:id/events` response body (D-3 primary). */
-export function parseEventsResponse(
-  body: unknown,
-): ParseResult<readonly CandidateEvent[]> {
+export function parseEventsResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
 
@@ -73,9 +71,7 @@ export function parseEventsResponse(
     }
     candidates.push({
       event: entry.event,
-      ...(typeof entry.distinct_id === "string"
-        ? { distinctId: entry.distinct_id }
-        : {}),
+      ...(typeof entry.distinct_id === "string" ? { distinctId: entry.distinct_id } : {}),
       properties: entry.properties,
     });
   }
@@ -83,9 +79,7 @@ export function parseEventsResponse(
 }
 
 /** Parses `POST /api/projects/:id/query` HogQL response body (D-3 secondary). */
-export function parseQueryResponse(
-  body: unknown,
-): ParseResult<readonly CandidateEvent[]> {
+export function parseQueryResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
   if (results.value.length === 0) return { ok: true, value: [] };
@@ -131,9 +125,7 @@ export function parseQueryResponse(
 }
 
 /** Parses `GET /api/projects/:id/session_recordings` response body. */
-export function parseRecordingsResponse(
-  body: unknown,
-): ParseResult<readonly CandidateRecording[]> {
+export function parseRecordingsResponse(body: unknown): ParseResult<readonly CandidateRecording[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
 
@@ -153,9 +145,7 @@ export function parseRecordingsResponse(
     }
     candidates.push({
       id: entry.id,
-      ...(typeof entry.distinct_id === "string"
-        ? { distinctId: entry.distinct_id }
-        : {}),
+      ...(typeof entry.distinct_id === "string" ? { distinctId: entry.distinct_id } : {}),
     });
   }
   return { ok: true, value: candidates };

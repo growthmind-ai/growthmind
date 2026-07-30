@@ -59,17 +59,17 @@ dropping them would bias the result toward the best case.
 "p90" means 9 out of 10 trials were at or under this time. "max" is the single worst
 trial. Every count is shown with its denominator (e.g. "18 of 20 retrieved").
 
-| Signal type | p50 | p90 | max | n attempted | n retrieved | n timed out or errored |
-|---|---|---|---|---|---|---|
-| Custom event | 21.2s | 23.8s | 219.7s | 20 | 20 of 20 | 0 |
-| Exception | 16.4s | 24.6s | 31.8s | 20 | 20 of 20 | 0 |
-| Session recording | n/a | n/a | n/a | 20 | 0 of 20 | 20 (see §1, §5) |
+| Signal type       | p50   | p90   | max    | n attempted | n retrieved | n timed out or errored |
+| ----------------- | ----- | ----- | ------ | ----------- | ----------- | ---------------------- |
+| Custom event      | 21.2s | 23.8s | 219.7s | 20          | 20 of 20    | 0                      |
+| Exception         | 16.4s | 24.6s | 31.8s  | 20          | 20 of 20    | 0                      |
+| Session recording | n/a   | n/a   | n/a    | 20          | 0 of 20     | 20 (see §1, §5)        |
 
 Run date/time: `2026-07-30T13:16:54Z` · PostHog host region measured: `eu`
 
 **Caveat that qualifies every number above:** the run absorbed **2,162 HTTP 429
 (rate-limit) responses** across its 60 trials at a 1,000 ms poll interval. Time lost
-to rate-limit backoff is *inside* these latencies. The true ingestion-to-retrievable
+to rate-limit backoff is _inside_ these latencies. The true ingestion-to-retrievable
 latency is therefore **at or below** what this table reports, and a better-behaved
 poller may see lower numbers. This does not change the branch taken (§3) — it makes
 the measured figures a conservative ceiling — but it is the main reason §3 recommends
@@ -85,6 +85,7 @@ architecture decision document, D-9):
 > The branch is taken on the **event legs'** p90 (the glue moment rides events —
 > mvp.md §3 explicitly lets the recording lag; the recording distribution feeds only
 > the §4 cut-table row).
+>
 > - p90 ≤ 20 s → **PostHog pull adapter ships first** (`PostHogSessionSource` in
 >   `packages/adapters`, per architecture §4.3 / mvp.md §5).
 > - p90 ≥ 60 s → events take minutes; **minimal first-party capture (rrweb
@@ -114,7 +115,7 @@ number stated and its consequences named.
    open product decision, not something this document settles.**
 2. **The exception leg is the one that matters, and it behaves well.** The glue
    moment fires on a failed request or error, i.e. the exception leg: p50 16.4 s,
-   p90 24.6 s, worst 31.8 s across 20 of 20 retrieved. Its tail is *tight*. The
+   p90 24.6 s, worst 31.8 s across 20 of 20 retrieved. Its tail is _tight_. The
    custom-event leg's 219.7 s worst case is the scarier number, but it is not the
    path the glue moment rides.
 3. **Re-run before O-003 commits to a poll design** — the 2,162 rate-limit responses

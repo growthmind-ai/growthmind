@@ -56,9 +56,7 @@ function retrievedRecords(elapsedValues: readonly number[]): TrialRecord[] {
 }
 
 /** Narrows the union; fails the test loudly if the result is not stats. */
-function assertStats(
-  result: StatsResult,
-): Extract<StatsResult, { kind: "stats" }> {
+function assertStats(result: StatsResult): Extract<StatsResult, { kind: "stats" }> {
   if (result.kind !== "stats") {
     throw new Error(`expected kind "stats", got "${result.kind}"`);
   }
@@ -91,9 +89,7 @@ describe("computeStats", () => {
   test("should compute correct percentiles for even and odd counts", () => {
     // Odd count: [1000, 2000, 3000, 4000, 5000], n = 5.
     // sorted-index: idx = ceil(p/100 × n) − 1 → p50 idx 2 = 3000, p90 idx 4 = 5000.
-    const odd = assertStats(
-      computeStats(retrievedRecords([3000, 1000, 5000, 2000, 4000])),
-    );
+    const odd = assertStats(computeStats(retrievedRecords([3000, 1000, 5000, 2000, 4000])));
     expect(odd.p50).toBe(3000);
     expect(odd.p90).toBe(5000);
     expect(odd.max).toBe(5000);
@@ -101,9 +97,7 @@ describe("computeStats", () => {
 
     // Even count: [1000, 2000, 3000, 4000], n = 4.
     // sorted-index: p50 idx ceil(2) − 1 = 1 → 2000, p90 idx ceil(3.6) − 1 = 3 → 4000.
-    const even = assertStats(
-      computeStats(retrievedRecords([4000, 1000, 3000, 2000])),
-    );
+    const even = assertStats(computeStats(retrievedRecords([4000, 1000, 3000, 2000])));
     expect(even.p50).toBe(2000);
     expect(even.p90).toBe(4000);
     expect(even.max).toBe(4000);
@@ -122,9 +116,7 @@ describe("computeStats", () => {
   });
 
   test("should count timed-out trials in denominators and report them separately", () => {
-    const retrieved = retrievedRecords(
-      Array.from({ length: 18 }, (_, i) => (i + 1) * 100),
-    );
+    const retrieved = retrievedRecords(Array.from({ length: 18 }, (_, i) => (i + 1) * 100));
     const timedOut = [
       makeRecord({ outcome: "timed-out", trialIndex: 18 }),
       makeRecord({ outcome: "timed-out", trialIndex: 19 }),
@@ -142,9 +134,7 @@ describe("computeStats", () => {
     // Retrieved elapsed values: 100..1800 step 100 (18 values). Timeouts must
     // NOT enter percentile math — only the denominator.
     // sorted-index over 18: p50 idx ceil(9) − 1 = 8 → 900, p90 idx ceil(16.2) − 1 = 16 → 1700.
-    const retrieved = retrievedRecords(
-      Array.from({ length: 18 }, (_, i) => (i + 1) * 100),
-    );
+    const retrieved = retrievedRecords(Array.from({ length: 18 }, (_, i) => (i + 1) * 100));
     const timedOut = [
       makeRecord({ outcome: "timed-out", trialIndex: 18 }),
       makeRecord({ outcome: "timed-out", trialIndex: 19 }),

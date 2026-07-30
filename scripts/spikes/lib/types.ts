@@ -92,8 +92,7 @@ export interface RunFile {
  * throw and never a silent "not yet retrievable".
  */
 export type ParseResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly reason: string };
 
 /**
  * Stats fail direction (ADD D-5): empty input is an explicit no-data marker,
