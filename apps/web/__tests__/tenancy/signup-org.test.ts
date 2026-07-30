@@ -18,11 +18,9 @@
 // session-context.test.ts, redirects.test.ts).
 import { randomUUID } from "node:crypto";
 
-import { schema } from "@growthmind/db";
+import { ensureOrganization, schema } from "@growthmind/db";
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-
-import { ensureOrganization } from "@/lib/ensure-organization";
 
 import {
   createTestAuth,
