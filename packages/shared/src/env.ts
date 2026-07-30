@@ -28,6 +28,24 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   const isProduction = source.NODE_ENV === "production";
   const merged = isProduction ? source : { ...DEV_DEFAULTS, ...withoutUndefined(source) };
 
+  // Withholding the dev defaults in production is not enough on its own: the
+  // documented setup is `cp .env.example .env`, and .env.example necessarily
+  // ships a literal secret so local dev works. Copy it, run the production
+  // compose profile, and the variable IS set — the guard above passes while
+  // the app signs sessions with a secret published in a public repo. Anyone
+  // could forge a session cookie for any user in any org. So reject the known
+  // literals by value, not merely by absence.
+  if (isProduction) {
+    for (const [key, devValue] of Object.entries(DEV_DEFAULTS)) {
+      if (source[key] === devValue) {
+        throw new Error(
+          `Invalid environment: ${key} is still set to the public example value from .env.example. ` +
+            `Generate a real one (BETTER_AUTH_SECRET: openssl rand -base64 32) before running in production.`,
+        );
+      }
+    }
+  }
+
   const result = serverEnvSchema.safeParse(merged);
   if (!result.success) {
     const problems = result.error.issues

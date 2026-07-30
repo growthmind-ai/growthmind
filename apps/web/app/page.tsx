@@ -52,7 +52,13 @@ export default async function HomePage() {
               <Text c="band.4" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
                 ✓
               </Text>
-              <Text>Your workspace is ready. You and your teammates see the same thing here.</Text>
+              {/* Honesty rule (UX §3): this claimed teammates "see the same
+                  thing here", which is not true yet — there is no way to add
+                  a teammate through the product, and the O-002 edge sweep
+                  proved that a teammate added through the API resolves into
+                  their OWN auto-created workspace, not the one they joined
+                  (shared/BUGS.md B-001). Claim only what ships. */}
+              <Text>Your workspace is ready.</Text>
             </Group>
 
             {/* Honesty rule (UX §3, binding): plain text, not a button or

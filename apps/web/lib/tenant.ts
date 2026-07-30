@@ -78,8 +78,18 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     // the UI has no "no workspace" view by contract. This is exactly the
     // state a missed or failed signup hook produces.
     console.error("getTenantContext: signed-in user has zero memberships — self-healing", { userId });
-    await ensureOrganization(getDb(), { id: userId, name: session.user.name });
-    memberRows = await readMembershipsForUser(userId);
+    try {
+      await ensureOrganization(getDb(), { id: userId, name: session.user.name });
+      memberRows = await readMembershipsForUser(userId);
+    } catch (error) {
+      // D8 failure isolation: the self-heal is a repair, not the request. If
+      // it fails, degrade to the signed-out path (caller redirects to
+      // /sign-in) rather than propagating. Propagating threw a 500 from EVERY
+      // page — `/`, `/sign-in`, and `/sign-up` all resolve tenant context — so
+      // a user in this state could not even reach a page to sign out from.
+      console.error("getTenantContext: self-heal failed — degrading to signed-out", { userId, error });
+      return null;
+    }
   }
 
   const organizations = await readOrganizationsByIds(memberRows.map((row) => row.organizationId));

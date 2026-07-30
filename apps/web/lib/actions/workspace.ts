@@ -33,6 +33,21 @@ export async function renameWorkspace(name: string): Promise<RenameWorkspaceResu
     return { ok: false, error: SAVE_FAILURE_MESSAGE };
   }
 
+  // D1 audience decision, named explicitly: renaming the workspace is an
+  // org-wide effect, so it is owner/admin-only — not any member. This matches
+  // Better Auth's own access control, which reserves `organization:update` for
+  // those roles; without this check the server action would grant a capability
+  // the auth layer it sits on deliberately withholds. Cross-org renaming is
+  // already impossible by construction (OrganizationsRepo.rename accepts no
+  // organization id) — this closes the within-org privilege gap.
+  if (tenantContext.role !== "owner" && tenantContext.role !== "admin") {
+    console.error("renameWorkspace: non-admin member attempted rename", {
+      organizationId: tenantContext.organizationId,
+      role: tenantContext.role,
+    });
+    return { ok: false, error: SAVE_FAILURE_MESSAGE };
+  }
+
   try {
     const organization = await createOrganizationsRepo(getDb(), tenantContext).rename(parsed.data);
     return { ok: true, name: organization.name };

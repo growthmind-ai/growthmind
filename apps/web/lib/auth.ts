@@ -52,9 +52,26 @@ export function buildAuth(options: BuildAuthOptions = {}) {
     secret,
     baseURL,
     emailAndPassword: { enabled: true },
+    advanced: {
+      // Derived from baseURL by default, which is `http://localhost:3000` in
+      // the shipped compose profile — so a self-hoster who terminates TLS at a
+      // proxy without overriding BETTER_AUTH_URL would get session cookies
+      // with no Secure flag. Pin it to the runtime instead of the URL.
+      useSecureCookies: process.env.NODE_ENV === "production",
+    },
     // Org scope is wired before any org-scoped feature exists, so nothing
     // gets built user-scoped and retrofitted (docs/stack.md, Phase 2).
-    plugins: [organization()],
+    // Each user gets exactly one auto-created workspace (D-C); there is no
+    // multi-workspace UX and no product decision calling for one. Leaving
+    // creation open would expose unbounded org creation with user-chosen slugs
+    // on an endpoint no test covers.
+    // Deletion is disabled because `projects` and `write_keys` FK the org with
+    // `onDelete: cascade` — a single POST to /organization/delete would
+    // silently destroy every project and write key in the org, with no
+    // confirmation surface anywhere in the product and no way back.
+    plugins: [
+      organization({ allowUserToCreateOrganization: false, disableOrganizationDeletion: true }),
+    ],
     databaseHooks: {
       user: {
         create: {
@@ -71,7 +88,12 @@ export function buildAuth(options: BuildAuthOptions = {}) {
               (async () => {
                 const posthog = getPostHogClient();
                 if (!posthog) return;
-                posthog.identify({ distinctId: user.id, properties: { email: user.email } });
+                // The user id is an opaque identifier; the email is PII and is
+                // deliberately NOT sent. Growthmind's own events discipline
+                // (product decisions §2–§4) keeps PII out of event streams —
+                // shipping every signup email to a third party on install,
+                // with no opt-out, would violate the rule the product sells.
+                posthog.identify({ distinctId: user.id });
                 posthog.capture({
                   distinctId: user.id,
                   event: "user_signed_up",
@@ -146,14 +168,31 @@ export function buildAuth(options: BuildAuthOptions = {}) {
             return { data: { activeOrganizationId } };
           },
           after: async (session) => {
-            const posthog = getPostHogClient();
-            if (!posthog) return;
-            posthog.capture({
-              distinctId: session.userId,
-              event: "user_signed_in",
-              properties: { auth_provider: "email" },
-            });
-            await posthog.flush();
+            // D8: analytics must never be able to fail the request that
+            // triggered it. `flush()` rethrows on network failure, and Better
+            // Auth awaits after-hooks in a bare loop with no error handling —
+            // so an unreachable PostHog host propagated straight out of the
+            // endpoint. With `flushAt: 1, flushInterval: 0` every auth event
+            // blocks on a synchronous round trip, so a PostHog outage hung
+            // BOTH signup and sign-in for ~36s (3 retries) and then 500'd
+            // them, despite the user, org, membership and session having
+            // committed correctly. The sibling `user.create.after` hook was
+            // already isolated this way; this one was not.
+            try {
+              const posthog = getPostHogClient();
+              if (!posthog) return;
+              posthog.capture({
+                distinctId: session.userId,
+                event: "user_signed_in",
+                properties: { auth_provider: "email" },
+              });
+              await posthog.flush();
+            } catch (error) {
+              console.error("auth.databaseHooks.session.create.after: PostHog capture failed", {
+                userId: session.userId,
+                error,
+              });
+            }
           },
         },
       },

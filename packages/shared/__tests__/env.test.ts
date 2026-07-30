@@ -16,6 +16,29 @@ describe("parseServerEnv", () => {
     expect(env.NODE_ENV).toBe("production");
   });
 
+  // The `cp .env.example .env` path: the variable IS set, and is schema-valid
+  // (34 chars), so absence-based guards pass it straight through — while the
+  // app signs every session cookie with a secret published in a public repo.
+  test("production rejects the .env.example BETTER_AUTH_SECRET literal", () => {
+    expect(() =>
+      parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars!" }),
+    ).toThrow(/still set to the public example value/);
+  });
+
+  test("production rejects the .env.example DATABASE_URL literal", () => {
+    expect(() =>
+      parseServerEnv({
+        ...PROD_COMPLETE,
+        DATABASE_URL: "postgres://growthmind:growthmind@localhost:5432/growthmind",
+      }),
+    ).toThrow(/still set to the public example value/);
+  });
+
+  test("development still accepts the example values", () => {
+    const env = parseServerEnv({ NODE_ENV: "development" });
+    expect(env.BETTER_AUTH_SECRET).toBe("dev-only-secret-change-me-32-chars!");
+  });
+
   test("production has no fallbacks — a missing DATABASE_URL throws", () => {
     const { DATABASE_URL: _omitted, ...incomplete } = PROD_COMPLETE;
     expect(() => parseServerEnv(incomplete)).toThrow(/DATABASE_URL/);

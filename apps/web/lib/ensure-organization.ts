@@ -51,6 +51,12 @@ async function findMembershipForUser(db: ScopedDb, userId: string): Promise<Memb
   return rows.find((row) => row.userId === userId);
 }
 
+/** The org owning this user's deterministic slug, if one already exists. */
+async function findOrganizationBySlug(db: ScopedDb, slug: string) {
+  const rows = await db.select().from(schema.organization);
+  return rows.find((row) => row.slug === slug);
+}
+
 export async function ensureOrganization(
   db: ScopedDb,
   user: { id: string; name?: string | null },
@@ -103,18 +109,48 @@ export async function ensureOrganization(
     );
 
     const winner = await findMembershipForUser(db, user.id);
-    if (!winner) {
-      const notFoundError = new Error(
-        `ensureOrganization: unique-slug conflict for user "${user.id}" but no membership found on re-read`,
-      );
-      console.error("ensureOrganization: race re-read failed to find winner's membership", {
-        userId: user.id,
-        slug,
-        error: notFoundError,
-      });
-      throw notFoundError;
+    if (winner) {
+      return { organizationId: winner.organizationId };
     }
 
-    return { organizationId: winner.organizationId };
+    // Not the concurrency race: the org owning this user's deterministic slug
+    // exists, but the user holds no membership in it — the orphaned-org state
+    // a removed membership leaves behind (Better Auth's organization plugin
+    // exposes member removal, and the user's own leave, at
+    // /api/auth/organization/*). Re-reading membership alone can never resolve
+    // it, so throwing here bricked the account permanently: the slug is
+    // derived from the user id, so every retry collides identically, and
+    // because `/`, `/sign-in`, and `/sign-up` all resolve tenant context, the
+    // user got a 500 on every page — including the one they would sign out
+    // from. Re-insert the missing membership instead; the org is theirs by
+    // construction (slug = `ws-<their user id>`).
+    const orphaned = await findOrganizationBySlug(db, slug);
+    if (orphaned) {
+      console.error("ensureOrganization: org exists for slug but membership is missing — restoring membership", {
+        userId: user.id,
+        slug,
+        organizationId: orphaned.id,
+      });
+
+      await db.insert(schema.member).values({
+        id: `member-${randomUUID()}`,
+        organizationId: orphaned.id,
+        userId: user.id,
+        role: "owner",
+        createdAt,
+      });
+
+      return { organizationId: orphaned.id };
+    }
+
+    const notFoundError = new Error(
+      `ensureOrganization: unique-slug conflict for user "${user.id}" but neither membership nor slug-owning organization found`,
+    );
+    console.error("ensureOrganization: conflict re-read found neither membership nor organization", {
+      userId: user.id,
+      slug,
+      error: notFoundError,
+    });
+    throw notFoundError;
   }
 }
