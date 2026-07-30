@@ -78,6 +78,7 @@ async function seedConnectedWorkspace(
   const env = testServerEnv();
   return seedPollableWorkspace(db, {
     prefix: PREFIX,
+    now: NOW,
     inferredInternalDomain: INTERNAL_DOMAIN,
     credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
     ...(overrides.watermarkAt === undefined ? {} : { watermarkAt: overrides.watermarkAt }),

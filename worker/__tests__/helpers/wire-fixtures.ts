@@ -111,12 +111,24 @@ export interface SeedWorkspaceParams {
   /** `wk-` or `e2e-`. Carried by the org name, the owner email, and the
    * project name so no two lanes can collide on a unique index. */
   prefix: string;
+  /**
+   * The suite's own fake clock instant — REQUIRED, never defaulted to the
+   * wall clock. `nextPollAt`/`connectedAt` below are anchored to this value,
+   * not to `Date.now()`. A fake-clock suite drives `runSessionSourcePoll`
+   * against `claimDuePollableConnections`'s `WHERE next_poll_at <= now`,
+   * where `now` is the suite's `FakeClock`, not the real wall clock — a
+   * scheduling column seeded from `Date.now()` is only "due" while the real
+   * clock happens to sit after the fixture's fake `now`, which made this
+   * whole lane time-of-day flaky (it failed only after 18:00 UTC). Every
+   * caller must pass the SAME instant it hands to `createFakeClock`.
+   */
+  now: Date;
   host?: string;
   sourceProjectId?: string;
   isActive?: boolean;
   watermarkAt?: Date | null;
   backfillBefore?: string | null;
-  /** Default is one hour in the past, so the connection is DUE. */
+  /** Default is one hour before `now`, so the connection is DUE. */
   nextPollAt?: Date;
   pollIntervalSeconds?: number;
   connectedAt?: Date;
@@ -222,9 +234,11 @@ export async function seedProjectWithConnection(
     health: "healthy",
     watermarkAt: params.watermarkAt ?? null,
     backfillBefore: params.backfillBefore ?? null,
-    nextPollAt: params.nextPollAt ?? new Date(Date.now() - 60 * 60_000),
+    // Anchored to the suite's fake clock (`params.now`), never `Date.now()` —
+    // see the invariant documented on `SeedWorkspaceParams.now`.
+    nextPollAt: params.nextPollAt ?? new Date(params.now.getTime() - 60 * 60_000),
     pollIntervalSeconds: params.pollIntervalSeconds ?? 60,
-    connectedAt: params.connectedAt ?? new Date(Date.now() - 60 * 60_000),
+    connectedAt: params.connectedAt ?? new Date(params.now.getTime() - 60 * 60_000),
     inferredInternalDomain: params.inferredInternalDomain ?? null,
   });
 

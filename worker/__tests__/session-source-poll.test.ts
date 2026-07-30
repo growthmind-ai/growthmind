@@ -70,6 +70,7 @@ async function seedWired(
   const env = testServerEnv();
   return seedPollableWorkspace(db, {
     prefix: PREFIX,
+    now: NOW,
     credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
     ...overrides,
   });
@@ -142,6 +143,7 @@ test("one failing connection does not fail the batch — the sibling connection 
   const broken = await seedWired({ sourceProjectId: `${PREFIX}broken` });
   const healthy = await seedProjectWithConnection(db, {
     prefix: PREFIX,
+    now: NOW,
     organizationId: broken.organizationId,
     sourceProjectId: `${PREFIX}healthy`,
     credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
@@ -413,16 +415,27 @@ test("the poll derives its tenant scope from the connection row and never from a
 // ---------------------------------------------------------------------------
 
 test("the run respects MAX_RUN_DURATION_MS and leaves the remainder for the next tick", async () => {
+  // All three connections need a REAL, decryptable credential — the point of
+  // this test is that the clock crosses the cap between connections that are
+  // each actually reaching the source. A connection seeded without
+  // `credentialFor` fails closed on the unreadable placeholder ciphertext
+  // (F-11) before ever calling fetch, which would falsify `connectionsFailed`
+  // and never advance the clock at all.
+  const env = testServerEnv();
   const first = await seedWired({ sourceProjectId: `${PREFIX}slow-1` });
   await seedProjectWithConnection(db, {
     prefix: PREFIX,
+    now: NOW,
     organizationId: first.organizationId,
     sourceProjectId: `${PREFIX}slow-2`,
+    credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
   });
   await seedProjectWithConnection(db, {
     prefix: PREFIX,
+    now: NOW,
     organizationId: first.organizationId,
     sourceProjectId: `${PREFIX}slow-3`,
+    credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
   });
 
   const clock: FakeClock = createFakeClock(NOW);

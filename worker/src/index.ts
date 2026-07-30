@@ -1,7 +1,29 @@
 import type { TaskList } from "graphile-worker";
 
+import type { ScopedDb } from "@growthmind/db";
+import { createDb } from "@growthmind/db";
+import type { ServerEnv } from "@growthmind/shared";
+import { parseServerEnv } from "@growthmind/shared";
+
 import { TASK } from "./task-names";
 import { heartbeatMessage } from "./tasks/heartbeat";
+import { runSessionSourcePoll } from "./tasks/session-source-poll";
+
+/**
+ * The process-wide database pool and parsed environment, built on FIRST USE
+ * rather than at import time. `taskList` is a module constant that tests and
+ * the registry check import for its shape alone — constructing a pool the
+ * moment this module is imported would open a socket for every one of them.
+ */
+let pollResources: { db: ScopedDb; env: ServerEnv } | null = null;
+
+function resolvePollResources(): { db: ScopedDb; env: ServerEnv } {
+  if (pollResources === null) {
+    const env = parseServerEnv(process.env);
+    pollResources = { env, db: createDb(env.DATABASE_URL) };
+  }
+  return pollResources;
+}
 
 /**
  * The task registry — the only place task names meet handlers. Handlers stay
@@ -14,15 +36,25 @@ export const taskList: TaskList = {
     helpers.logger.info(heartbeatMessage(new Date()));
     return Promise.resolve();
   },
-  // TYPED STUB (O-003 scaffold). Registered now so TASK, taskList, and
-  // crontab cannot drift — a queued name with no handler retries silently
-  // forever, which is precisely what the registry test exists to catch.
+  // THE ONLY QUEUE-AWARE LINE IN THE POLL PATH. Every effect the handler has
+  // — the clock, sleeping, the network, randomness, the logger — is assembled
+  // HERE and injected, which is what lets the wire proof drive the same plain
+  // function this closure calls, with fakes, and prove the chain end to end.
   //
-  // Wave 3 assembles the handler's deps here (the parsed environment, a db
-  // client, the real fetch/sleep/now/random, and helpers.logger) and calls
-  // `runSessionSourcePoll` from ./tasks/session-source-poll.
-  [TASK.SESSION_SOURCE_POLL_SCHEDULE]: () => {
-    throw new Error("TYPED STUB (O-003 scaffold): session-source.poll-schedule");
+  // There is no payload: the task is cron-triggered, and the handler derives
+  // its tenant scope from each claimed connection row instead (D-10).
+  [TASK.SESSION_SOURCE_POLL_SCHEDULE]: async (_payload, helpers) => {
+    const { db, env } = resolvePollResources();
+
+    await runSessionSourcePoll({
+      db,
+      env,
+      now: () => new Date(),
+      sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      fetch: globalThis.fetch,
+      random: Math.random,
+      logger: helpers.logger,
+    });
   },
 };
 
