@@ -4,8 +4,7 @@
 // payload and never from a caller-supplied id. There is no payload: the task
 // is cron-triggered.
 //
-// TYPED STUB (O-003 scaffold): the sentinel is real; the body throws.
-import type { TenantContext } from "@growthmind/shared";
+import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
 import type { PollableConnection } from "./pollable-connections";
 
@@ -30,6 +29,14 @@ export const SYSTEM_ACTOR_ROLE = "system";
  * Every repository the handler then constructs is org-scoped exactly as a
  * request-scoped one would be.
  */
-export function systemTenantContextFor(_connection: PollableConnection): TenantContext {
-  throw new Error("TYPED STUB (O-003 scaffold): systemTenantContextFor");
+export function systemTenantContextFor(connection: PollableConnection): TenantContext {
+  // Parsed through the SAME schema a request-derived context is, rather than
+  // returned as a bare object literal: there is exactly one accepted context
+  // shape in this package, and the scheduled path is held to it too.
+  return tenantContextSchema.parse({
+    userId: SYSTEM_ACTOR_ID,
+    organizationId: connection.organizationId,
+    organizationName: connection.organizationName,
+    role: SYSTEM_ACTOR_ROLE,
+  });
 }
