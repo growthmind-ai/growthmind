@@ -44,6 +44,12 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
     "The key worked, but we could not find that project. Check the project number in your analytics settings.",
   unreachable:
     "We could not reach that address. Check the region address, confirm it is reachable from this machine, then try again.",
+  // Validation is a real call to the customer's analytics account, so every
+  // way that call can fail has to be sayable to them — throttling included.
+  // This is the ONE home for the sentence; `mapFailure` in the PostHog source
+  // imports it rather than keeping a second copy to drift (D-13 / D11).
+  rate_limited:
+    "Your analytics account asked us to slow down, so we stopped this check early. We will pick up where we left off on the next one — nothing already collected is lost.",
   misconfigured:
     "This installation cannot store an outside key safely yet. Set GROWTHMIND_ENCRYPTION_KEY to a real value (openssl rand -base64 32), restart, then try again.",
 };

@@ -44,6 +44,23 @@ export interface SessionKeyInput {
  * Merging them would fabricate a giant fake session and corrupt every
  * downstream funnel; splitting them costs a few extra rows.
  */
-export function deriveSessionKey(_input: SessionKeyInput): string {
-  throw new Error("TYPED STUB (O-003 scaffold): deriveSessionKey");
+export function deriveSessionKey(input: SessionKeyInput): string {
+  // An empty string is a shape an SDK can emit, and keying on it would merge
+  // every such event into one giant `ph:` session. Absent means absent.
+  const postHogSessionId = input.postHogSessionId?.trim() ?? "";
+  if (postHogSessionId.length > 0) return `ph:${postHogSessionId}`;
+
+  const identityKey = input.identityKey?.trim() ?? "";
+  if (identityKey.length > 0) {
+    // The bucket is derived from the event's own instant, never from arrival
+    // order or a wall clock, so re-deriving a key from a persisted row is
+    // byte-identical to the key that was stamped (D12).
+    const bucket = Math.floor(input.occurredAt.getTime() / SESSION_BUCKET_MS);
+    return `gm:${identityKey}:${bucket}`;
+  }
+
+  // FAIL DIRECTION (F-12): one session per event. Merging unattributed events
+  // would fabricate a giant fake session and corrupt every downstream funnel;
+  // splitting them costs a few extra rows.
+  return `gm:anon:${input.sourceEventId}`;
 }

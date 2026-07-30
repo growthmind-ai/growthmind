@@ -216,12 +216,19 @@ export type ConnectionStateStatus = ConnectionState["status"];
 /**
  * Why a connect attempt was refused. `second_source` falls out of the partial
  * unique index — the database refuses it, never a prior read (D6).
+ *
+ * Every member of `sourceFailureCodeSchema` appears here, `rate_limited`
+ * included: validation is a real call to the customer's analytics account, so
+ * every way that call can fail has to be sayable to the customer. That
+ * containment is what gives `SOURCE_FAILURE_MESSAGES` (./messages.ts) exactly
+ * one home for its strings instead of a second, drifting copy (D-13).
  */
 export const connectRefusalCodeSchema = z.enum([
   "second_source",
   "invalid_credentials",
   "project_not_found",
   "unreachable",
+  "rate_limited",
   "misconfigured",
 ]);
 export type ConnectRefusalCode = z.infer<typeof connectRefusalCodeSchema>;

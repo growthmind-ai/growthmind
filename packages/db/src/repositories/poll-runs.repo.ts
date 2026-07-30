@@ -1,11 +1,9 @@
 // Repository for the `session_source_poll_runs` table. D-B: org-scoped at
 // construction, no organization id parameter, mutations keyed on `(org, id)`.
-//
-// TYPED STUB (O-003 scaffold): signatures and return types are final; bodies
-// throw.
 import type { PollRunOutcome, SourceFailureCode, TenantContext } from "@growthmind/shared";
+import { and, eq, sql } from "drizzle-orm";
 
-import type { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
+import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 import type { ScopedDb } from "./types";
 
 export type PollRunRecord = typeof sessionSourcePollRuns.$inferSelect;
@@ -73,6 +71,138 @@ export interface PollRunsRepo {
   aggregateFor(connectionId: string): Promise<PollRunAggregate>;
 }
 
-export function createPollRunsRepo(_db: ScopedDb, _ctx: TenantContext): PollRunsRepo {
-  throw new Error("TYPED STUB (O-003 scaffold): createPollRunsRepo");
+/** `::int` already yields a JS number through both drivers; this exists so an
+ * unexpected driver-side numeric-as-string can never reach a caller doing
+ * arithmetic on the counter. */
+function toCount(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRepo {
+  /** Newest completed run first. `nulls last` because a `finished_at` of NULL
+   * is a run that never reached a terminal state, and Postgres would sort it
+   * to the FRONT of a plain `desc` — the stuck-run row masquerading as the
+   * latest success. */
+  function completedForConnection(connectionId: string) {
+    return db
+      .select()
+      .from(sessionSourcePollRuns)
+      .where(
+        and(
+          eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+          eq(sessionSourcePollRuns.connectionId, connectionId),
+          eq(sessionSourcePollRuns.status, "completed"),
+        ),
+      )
+      .orderBy(sql`${sessionSourcePollRuns.finishedAt} desc nulls last`)
+      .limit(1);
+  }
+
+  return {
+    async start(input: StartPollRunInput): Promise<PollRunRecord> {
+      const [row] = await db
+        .insert(sessionSourcePollRuns)
+        .values({
+          organizationId: ctx.organizationId,
+          projectId: input.projectId,
+          connectionId: input.connectionId,
+          startedAt: input.startedAt,
+          status: "running",
+          outcome: null,
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error("createPollRunsRepo.start: insert returned no row");
+      }
+
+      return row;
+    },
+
+    async finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null> {
+      // The two terminal shapes are written EXHAUSTIVELY — each clears the
+      // other's columns rather than leaving them stale, so a run that failed
+      // after a previous attempt set an outcome cannot read as half-successful.
+      const columns =
+        terminal.status === "completed"
+          ? {
+              status: "completed" as const,
+              finishedAt: terminal.finishedAt,
+              outcome: terminal.outcome,
+              watermarkAdvancedTo: terminal.watermarkAdvancedTo,
+              failureCode: null,
+              failureMessage: null,
+            }
+          : {
+              status: "failed" as const,
+              finishedAt: terminal.finishedAt,
+              outcome: null,
+              watermarkAdvancedTo: null,
+              failureCode: terminal.failureCode,
+              failureMessage: terminal.failureMessage,
+            };
+
+      const [row] = await db
+        .update(sessionSourcePollRuns)
+        .set({
+          ...columns,
+          eventsReceived: terminal.eventsReceived,
+          eventsPersisted: terminal.eventsPersisted,
+          eventsDroppedMalformed: terminal.eventsDroppedMalformed,
+          sessionsTouched: terminal.sessionsTouched,
+          pagesFetched: terminal.pagesFetched,
+          identityLookupsUsed: terminal.identityLookupsUsed,
+        })
+        .where(
+          and(
+            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+            eq(sessionSourcePollRuns.id, id),
+          ),
+        )
+        .returning();
+
+      return row ?? null;
+    },
+
+    async latestCompletedFor(connectionId: string): Promise<PollRunRecord | null> {
+      const [row] = await completedForConnection(connectionId);
+      return row ?? null;
+    },
+
+    async aggregateFor(connectionId: string): Promise<PollRunAggregate> {
+      // A HAND-WRITTEN AGGREGATION CARRIES ITS OWN ORG FILTER (§9). Nothing
+      // about an aggregate inherits tenancy, so `organization_id` is in the
+      // WHERE clause explicitly and the totals are zeros — never another org's
+      // numbers — for a connection id this context does not own.
+      const [totals] = await db
+        .select({
+          runsCompleted: sql<number>`coalesce(sum(case when ${sessionSourcePollRuns.status} = 'completed' then 1 else 0 end), 0)::int`,
+          runsFailed: sql<number>`coalesce(sum(case when ${sessionSourcePollRuns.status} = 'failed' then 1 else 0 end), 0)::int`,
+          totalDroppedMalformed: sql<number>`coalesce(sum(${sessionSourcePollRuns.eventsDroppedMalformed}), 0)::int`,
+          totalEventsReceived: sql<number>`coalesce(sum(${sessionSourcePollRuns.eventsReceived}), 0)::int`,
+          totalEventsPersisted: sql<number>`coalesce(sum(${sessionSourcePollRuns.eventsPersisted}), 0)::int`,
+        })
+        .from(sessionSourcePollRuns)
+        .where(
+          and(
+            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+            eq(sessionSourcePollRuns.connectionId, connectionId),
+          ),
+        );
+
+      // Read through the typed column rather than a raw `max(…)` expression so
+      // the driver hands back a real `Date`, not a driver-dependent string.
+      const [latest] = await completedForConnection(connectionId);
+
+      return {
+        runsCompleted: toCount(totals?.runsCompleted),
+        runsFailed: toCount(totals?.runsFailed),
+        totalDroppedMalformed: toCount(totals?.totalDroppedMalformed),
+        totalEventsReceived: toCount(totals?.totalEventsReceived),
+        totalEventsPersisted: toCount(totals?.totalEventsPersisted),
+        lastSuccessfulFinishedAt: latest?.finishedAt ?? null,
+      };
+    },
+  };
 }

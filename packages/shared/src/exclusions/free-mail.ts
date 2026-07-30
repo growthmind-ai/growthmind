@@ -92,10 +92,18 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * TYPED STUB (O-003 scaffold). Exact whole-domain membership test against
- * `FREE_MAIL_DOMAINS`, case-insensitive on an already-lowercased domain.
- * Never a suffix match.
+ * Exact whole-domain membership test against `FREE_MAIL_DOMAINS`,
+ * case-insensitive. Never a suffix match, never a substring match.
+ *
+ * FAIL DIRECTION (F-1): a domain we do not recognise is NOT free mail, so
+ * inference proceeds. The destructive direction is the other one — calling a
+ * company domain free mail only costs an inference we would have made anyway,
+ * while calling `gmail.com` a company domain sets aside the whole user base.
+ * Exactness is what keeps both errors small: `gmail.acme.com` is a company
+ * running its own mail, and a suffix rule would erase it silently.
  */
-export function isFreeMailDomain(_domain: string): boolean {
-  throw new Error("TYPED STUB (O-003 scaffold): isFreeMailDomain");
+export function isFreeMailDomain(domain: string): boolean {
+  const normalised = domain.trim().toLowerCase();
+  if (normalised.length === 0) return false;
+  return FREE_MAIL_DOMAINS.has(normalised);
 }

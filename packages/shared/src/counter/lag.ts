@@ -1,6 +1,7 @@
 // Expected-lag description for the onboarding counter (O-003 FR-15).
 //
-// TYPED STUB (O-003 scaffold): the constants are real; the body throws.
+// Implemented in Wave 1 against the scaffold's final signature.
+import { expectedLagStatement } from "../session-source/messages";
 import type { ExpectedLag } from "./types";
 
 /**
@@ -26,6 +27,19 @@ export const POSTHOG_MAX_RETRIEVAL_SECONDS = 220;
  * deliver: no overlap window makes a poll on client-declared event time
  * complete (D-6f).
  */
-export function describeExpectedLag(_input: { pollIntervalSeconds: number }): ExpectedLag {
-  throw new Error("TYPED STUB (O-003 scaffold): describeExpectedLag");
+export function describeExpectedLag(input: { pollIntervalSeconds: number }): ExpectedLag {
+  // Both figures are computed from the connection's OWN cadence rather than
+  // hardcoded, so changing `poll_interval_seconds` on one connection changes
+  // what that customer is told — the number and the copy cannot drift apart.
+  const pollIntervalSeconds = Math.max(0, Math.round(input.pollIntervalSeconds));
+  const typicalSeconds = pollIntervalSeconds + POSTHOG_P90_RETRIEVAL_SECONDS;
+  const worstCaseSeconds = pollIntervalSeconds + POSTHOG_MAX_RETRIEVAL_SECONDS;
+
+  return {
+    typicalSeconds,
+    worstCaseSeconds,
+    // One home for copy (D-13). Building the sentence here would put a
+    // customer-facing string outside the file the plain-English audit reads.
+    statement: expectedLagStatement({ typicalSeconds, worstCaseSeconds }),
+  };
 }

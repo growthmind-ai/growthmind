@@ -2,7 +2,14 @@
 // no randomness of its own — `random` is injected so a 429 sequence is
 // asserted with zero wall-clock waiting.
 //
-// TYPED STUB (O-003 scaffold): the signatures are final; the bodies throw.
+// Nothing in this file calls `Date.now()`, `Math.random()`, or any sleep. That
+// is what makes an inherently time-based loop deterministically testable.
+import {
+  BASE_DELAY_MS,
+  JITTER_SPREAD_MS,
+  MAX_BACKOFF_MS,
+  RETRY_AFTER_CAP_MS,
+} from "./constants";
 
 export interface BackoffInput {
   /** 1-based. The exponential branch is `BASE_DELAY_MS * 2^(attempt-1)`. */
@@ -24,9 +31,32 @@ export interface BackoffInput {
  * anything else unparseable, so the caller falls back to the independent
  * exponential branch. That fallback is retained deliberately: only one
  * endpoint's 429 was ever observed, so header uniformity is not guaranteed.
+ *
+ * `"0"` RETURNS `null`, and that is a decision rather than an oversight. D-8
+ * says "parseable as a POSITIVE integer" while the surrounding prose only
+ * names negatives and non-integers, so zero sat between the two. Reading it as
+ * "retry immediately" would mean a server that answers `Retry-After: 0` on
+ * every 429 — a plausible proxy default — gets hammered in a zero-delay loop
+ * bounded only by MAX_RATE_LIMIT_ATTEMPTS. Returning `null` instead falls back
+ * to the exponential branch, which still retries promptly (500–1000 ms on the
+ * first attempt) but can never spin. Backoff should fail toward waiting.
  */
-export function parseRetryAfterSeconds(_header: string | null): number | null {
-  throw new Error("TYPED STUB (O-003 scaffold): parseRetryAfterSeconds");
+export function parseRetryAfterSeconds(header: string | null): number | null {
+  if (header === null) {
+    return null;
+  }
+  const trimmed = header.trim();
+  // Bare delta-seconds ONLY. The RFC also permits an HTTP-date, which was
+  // never observed here and which `Number()` would turn into NaN or nonsense —
+  // so it takes the independent exponential fallback rather than a guess.
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  const seconds = Number(trimmed);
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+    return null;
+  }
+  return seconds;
 }
 
 /**
@@ -44,6 +74,21 @@ export function parseRetryAfterSeconds(_header: string | null): number | null {
  * The asymmetry is the point: full jitter can retry early, which is fine
  * against a limit we inferred but not against one the server stated.
  */
-export function computeBackoffDelayMs(_input: BackoffInput): number {
-  throw new Error("TYPED STUB (O-003 scaffold): computeBackoffDelayMs");
+export function computeBackoffDelayMs(input: BackoffInput): number {
+  const random = Math.min(Math.max(input.random, 0), 1);
+
+  if (input.retryAfterSeconds !== null && input.retryAfterSeconds > 0) {
+    const instructed = Math.min(input.retryAfterSeconds * 1000, RETRY_AFTER_CAP_MS);
+    // ADDITIVE UPWARD ONLY. The server stated this limit, so we may wait
+    // longer than it asked but never less.
+    return Math.round(instructed + random * JITTER_SPREAD_MS);
+  }
+
+  // `Math.min` is applied BEFORE the multiplication so a large attempt number
+  // cannot overflow to Infinity on the way to the cap.
+  const attempt = Math.max(1, Math.floor(input.attempt));
+  const capped = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+  // FULL jitter. This limit was inferred, not stated, so retrying early is
+  // acceptable and spreading many projects out of lockstep is worth more.
+  return Math.round(capped * (0.5 + 0.5 * random));
 }

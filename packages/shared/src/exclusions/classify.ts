@@ -5,9 +5,13 @@
 // reproducible with zero PostHog access — the whole property the future
 // `exclusions.backfill` depends on.
 //
-// TYPED STUB (O-003 scaffold): the rule sets and constants below are REAL and
-// final; `classifyExclusion`'s signature is final and its body throws.
-import { CODING_AGENT_TOKENS, HEADLESS_TOKENS, KNOWN_AGENT_TOKENS } from "./automation";
+// Implemented in Wave 1 against the scaffold's final signatures.
+import {
+  CODING_AGENT_TOKENS,
+  HEADLESS_TOKENS,
+  KNOWN_AGENT_TOKENS,
+  matchesToken,
+} from "./automation";
 import { FREE_MAIL_DOMAINS } from "./free-mail";
 import type { ExclusionReason, ExclusionRuleSet, SessionFacts } from "./types";
 
@@ -62,6 +66,60 @@ export const CURRENT_EXCLUSION_RULE_SET: ExclusionRuleSet = RULE_SET_V1;
  * `keptIdentityUnverified` by the counter, so "we could not check" is never
  * laundered into "we checked and it is a real user".
  */
-export function classifyExclusion(_facts: SessionFacts, _rules: ExclusionRuleSet): ExclusionReason {
-  throw new Error("TYPED STUB (O-003 scaffold): classifyExclusion");
+export function classifyExclusion(facts: SessionFacts, rules: ExclusionRuleSet): ExclusionReason {
+  const userAgent = facts.userAgent?.trim() ?? "";
+
+  // FAIL DIRECTION (F-7): an absent or empty user agent is a real person until
+  // proven otherwise. SEC-A pinned that no user agent is derived server-side,
+  // so a server-side or minimal SDK integration sends none at all — treating
+  // that as automation would silently drop every such session.
+  if (userAgent.length > 0) {
+    // FAIL DIRECTION (F-4): confident EXCLUDE — the one named exception, and
+    // checked first because it is the only class we accept being wrong about
+    // in the excluding direction. A real human is essentially never on a
+    // headless browser or an end-to-end driver, and unfiltered test traffic
+    // wrecks an activation funnel outright.
+    if (firesAny(userAgent, rules.headlessTokens)) return "automation_headless";
+
+    // FAIL DIRECTION (F-5): toward INCLUDING as real. Whole-token matches
+    // against a narrow, high-precision list only. Anything ambiguous is kept:
+    // a broad heuristic here is the superset failure with a friendly name,
+    // and over-exclusion is invisible while under-exclusion is not.
+    if (firesAny(userAgent, rules.knownAgentTokens)) return "automation_known_agent";
+
+    // FAIL DIRECTION (F-6): same as F-5. Named as its own class so the
+    // counter's breakdown can explain the gap in the customer's own terms
+    // rather than lumping their coding agent in with crawlers.
+    if (firesAny(userAgent, rules.codingAgentTokens)) return "automation_coding_agent";
+  }
+
+  // FAIL DIRECTION (F-3): FAIL OPEN. `identityEmailDomain === null` is the
+  // MAJORITY path, not an edge case — ROW 6 pinned that no email reaches us on
+  // the event at all — and it yields "none". A project with no inferred domain
+  // yields "none" as well: nothing may be matched against a domain we never
+  // established. Over-exclusion is invisible and erases the evidence a finding
+  // rests on; under-exclusion is visible and cheaply re-marked by the later
+  // backfill. Asymmetric ⇒ fail open.
+  //
+  // Matching is whole-domain equality and nothing else. A suffix rule fires on
+  // `acme.com.co`; a subdomain rule fires on `acme.com.attacker.net`.
+  const internalDomain = facts.internalDomain?.trim().toLowerCase() ?? "";
+  const identityEmailDomain = facts.identityEmailDomain?.trim().toLowerCase() ?? "";
+  if (
+    internalDomain.length > 0 &&
+    identityEmailDomain.length > 0 &&
+    identityEmailDomain === internalDomain
+  ) {
+    return "internal_domain";
+  }
+
+  // FAIL DIRECTION (F-8): `facts.identityResolution` is deliberately NOT read
+  // above. "We could not check" is kept as real and reported separately by the
+  // counter as `keptIdentityUnverified`; it is never laundered into "we
+  // checked and this is our own team".
+  return "none";
+}
+
+function firesAny(userAgent: string, tokens: readonly string[]): boolean {
+  return tokens.some((token) => matchesToken(userAgent, token));
 }

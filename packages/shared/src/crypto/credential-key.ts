@@ -10,9 +10,12 @@
 // self-hoster who tries to store a PostHog credential under the published key
 // is stopped with an instruction.
 //
-// TYPED STUB (O-003 scaffold): signatures and the failure vocabulary are
-// final; the body throws.
+// Implemented in Wave 1 against the scaffold's final signatures.
+import { timingSafeEqual } from "node:crypto";
+
+import { DEV_ENCRYPTION_KEY } from "../env";
 import type { ServerEnv } from "../env";
+import { CREDENTIAL_KEY_BYTE_LENGTH } from "./secret-box";
 import type { CredentialKey } from "./secret-box";
 
 export type CredentialKeyFailureReason = "insecure_default_key" | "malformed_key";
@@ -35,6 +38,60 @@ export type CredentialKeyResolution =
  * The connection service maps either refusal to a `misconfigured` state whose
  * customer-facing message names the one step that fixes it.
  */
-export function resolveCredentialKey(_env: ServerEnv): CredentialKeyResolution {
-  throw new Error("TYPED STUB (O-003 scaffold): resolveCredentialKey");
+export function resolveCredentialKey(env: ServerEnv): CredentialKeyResolution {
+  const configured = env.GROWTHMIND_ENCRYPTION_KEY.trim();
+
+  // FAIL DIRECTION: closed, and FIRST. This check is deliberately not gated on
+  // GROWTHMIND_ALLOW_INSECURE_DEFAULTS and deliberately not reachable-around by
+  // any later branch — a production deployment that legitimately BOOTS under
+  // the bypass flag still may not store a third party's credential under a key
+  // published in a public repository.
+  if (env.NODE_ENV === "production" && isPublishedDevKey(configured)) {
+    return { ok: false, reason: "insecure_default_key" };
+  }
+
+  const material = decodeBase64Strict(configured);
+  if (!material || material.length < CREDENTIAL_KEY_BYTE_LENGTH) {
+    // FAIL DIRECTION: closed, as a NAMED result. The connection service maps
+    // this to a `misconfigured` refusal naming the one step that fixes it —
+    // never a thrown exception escaping into a poll loop.
+    return { ok: false, reason: "malformed_key" };
+  }
+
+  // `openssl rand -base64 32` — the instruction .env.example gives — produces
+  // exactly CREDENTIAL_KEY_BYTE_LENGTH bytes. A longer value is strictly more
+  // secret material, not less, so it is accepted and its first 32 bytes are
+  // used rather than stranding a deployment on a working secret. A shorter one
+  // is refused above: AES-256 has one key length.
+  return {
+    ok: true,
+    key: { bytes: new Uint8Array(material.subarray(0, CREDENTIAL_KEY_BYTE_LENGTH)) },
+  };
+}
+
+/**
+ * Compares against the published literal by VALUE, in both its encoded and its
+ * decoded form, so re-encoding the same 32 bytes (base64url, extra padding)
+ * cannot walk past the gate.
+ */
+function isPublishedDevKey(configured: string): boolean {
+  if (configured === DEV_ENCRYPTION_KEY.trim()) return true;
+
+  const configuredBytes = decodeBase64Strict(configured);
+  const devBytes = decodeBase64Strict(DEV_ENCRYPTION_KEY.trim());
+  if (!configuredBytes || !devBytes || configuredBytes.length !== devBytes.length) return false;
+  return timingSafeEqual(configuredBytes, devBytes);
+}
+
+/**
+ * `Buffer.from(value, "base64")` silently discards every character it does not
+ * recognise, so `"!!!!…"` decodes to an empty buffer rather than failing. That
+ * turns a typo into a zero-length key, so the alphabet is checked first.
+ */
+function decodeBase64Strict(value: string): Buffer | null {
+  if (value.length === 0) return null;
+  const normalised = value.replaceAll("-", "+").replaceAll("_", "/");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalised)) return null;
+  const decoded = Buffer.from(normalised, "base64");
+  return decoded.length === 0 ? null : decoded;
 }

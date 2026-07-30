@@ -4,25 +4,36 @@
 //
 // Re-implemented from scripts/spikes/lib/constants.ts — never imported.
 // Spike code is a reference, not a dependency.
-//
-// TYPED STUB (O-003 scaffold): the constants below are REAL and final; the
-// URL builders' signatures are final and their bodies throw.
 import type { SessionSourceKind } from "@growthmind/shared";
 
 /** The one implementation this sprint ships. Compile-pinned to the shared
  * Zod union so a typo here is a compile error, not a runtime one. */
 export const POSTHOG_SOURCE_KIND = "posthog" satisfies SessionSourceKind;
 
+/**
+ * Drops every trailing slash from a customer-supplied host. A host pasted as
+ * `https://eu.posthog.com/` would otherwise produce `…com//api/projects/…`,
+ * which the server treats as a DIFFERENT path — a 404 the customer would read
+ * as "wrong project number" rather than "stray slash".
+ *
+ * Private on purpose: the spike exports its own trimmer and this one is
+ * re-written rather than re-exported, so the adapter carries no dependency on
+ * `scripts/`.
+ */
+function trimHost(host: string): string {
+  return host.replace(/\/+$/, "");
+}
+
 /** Events list read API. Bearer personal key. */
-export function eventsUrl(_host: string, _sourceProjectId: string): string {
-  throw new Error("TYPED STUB (O-003 scaffold): eventsUrl");
+export function eventsUrl(host: string, sourceProjectId: string): string {
+  return `${trimHost(host)}/api/projects/${sourceProjectId}/events`;
 }
 
 /** Persons read API — the second, budgeted call identity resolution falls
  * back to (ROW 6: `person` is null on every event, so email is unreachable
  * from the events list). */
-export function personsUrl(_host: string, _sourceProjectId: string): string {
-  throw new Error("TYPED STUB (O-003 scaffold): personsUrl");
+export function personsUrl(host: string, sourceProjectId: string): string {
+  return `${trimHost(host)}/api/projects/${sourceProjectId}/persons`;
 }
 
 /**
