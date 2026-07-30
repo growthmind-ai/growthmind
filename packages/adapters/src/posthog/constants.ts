@@ -24,16 +24,27 @@ function trimHost(host: string): string {
   return host.replace(/\/+$/, "");
 }
 
-/** Events list read API. Bearer personal key. */
+/** Events list read API. Bearer personal key.
+ *
+ * M-3 (security audit): `sourceProjectId` is customer-supplied (`ConnectInput
+ * .sourceProjectId`, `@growthmind/shared`) and interpolated straight into a
+ * URL PATH segment — unescaped, a value containing `/`, `..`, `?`, or `#`
+ * could redirect the request to a different path on the same, already
+ * host-guard-validated origin (a path-injection variant of the same class of
+ * bug host-guard.ts closes for the host itself), rather than the `/events`
+ * endpoint under the customer's own project. `encodeURIComponent` is applied
+ * here, at the one place both this builder and `personsUrl` below produce a
+ * url, so every caller gets it for free. */
 export function eventsUrl(host: string, sourceProjectId: string): string {
-  return `${trimHost(host)}/api/projects/${sourceProjectId}/events`;
+  return `${trimHost(host)}/api/projects/${encodeURIComponent(sourceProjectId)}/events`;
 }
 
 /** Persons read API — the second, budgeted call identity resolution falls
  * back to (ROW 6: `person` is null on every event, so email is unreachable
- * from the events list). */
+ * from the events list). See `eventsUrl` above for why `sourceProjectId` is
+ * percent-encoded (M-3). */
 export function personsUrl(host: string, sourceProjectId: string): string {
-  return `${trimHost(host)}/api/projects/${sourceProjectId}/persons`;
+  return `${trimHost(host)}/api/projects/${encodeURIComponent(sourceProjectId)}/persons`;
 }
 
 /**

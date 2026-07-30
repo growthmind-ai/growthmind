@@ -258,16 +258,19 @@ export function createPostHogSessionSource(
        * KEPT and reported `unresolved`, never laundered into "we checked and
        * cleared this" (F-8).
        *
-       * ONLY A HASH EVER CROSSES THE PORT BOUNDARY (CR-5, product-decisions
-       * §5, PRD FR-16). PostHog's raw `distinct_id` is real signal — the
-       * `/persons` lookup above needs it, and session grouping needs a stable
-       * key derived from it — but `identify()` is routinely called with an
-       * email address, so the raw value can carry PII. `hashIdentityKey`
-       * (project-salted sha256, `@growthmind/shared`) is applied ONCE, at the
-       * point each event's identity key is produced below, so `deriveSessionKey`
-       * — and therefore `session_key` — never sees the raw value either. The
-       * raw distinct id itself lives only in this function's local scope, for
-       * exactly as long as the `/persons` lookup needs it.
+       * ONLY A HASH EVER CROSSES THE PORT BOUNDARY (CR-5, security audit M-1,
+       * product-decisions §5, PRD FR-16). PostHog's raw `distinct_id` is real
+       * signal — the `/persons` lookup above needs it, and session grouping
+       * needs a stable key derived from it — but `identify()` is routinely
+       * called with an email address, so the raw value can carry PII.
+       * `hashIdentityKey` (a KEYED HMAC-SHA256, `@growthmind/shared` — keyed,
+       * not merely project-salted, because the project id salt is public and
+       * an unkeyed digest of an email-shaped distinct id is dictionary-
+       * reversible from it) is applied ONCE, at the point each event's
+       * identity key is produced below, so `deriveSessionKey` — and therefore
+       * `session_key` — never sees the raw value either. The raw distinct id
+       * itself lives only in this function's local scope, for exactly as long
+       * as the `/persons` lookup needs it.
        */
       async function assemble(
         raw: readonly RawEvent[],
@@ -283,7 +286,7 @@ export function createPostHogSessionSource(
           const hashedIdentityKey =
             event.distinctId === null
               ? null
-              : hashIdentityKey(config.sourceProjectId, event.distinctId);
+              : hashIdentityKey(deps.identityHmacKey, config.sourceProjectId, event.distinctId);
 
           const sessionKey = deriveSessionKey({
             postHogSessionId: event.sessionId,
@@ -340,7 +343,7 @@ export function createPostHogSessionSource(
             identityKey:
               rawDistinctId === null
                 ? null
-                : hashIdentityKey(config.sourceProjectId, rawDistinctId),
+                : hashIdentityKey(deps.identityHmacKey, config.sourceProjectId, rawDistinctId),
             identityEmailDomain: identity.emailDomain,
             identityResolution: identity.resolution,
             userAgent: chronological.find((event) => event.userAgent !== null)?.userAgent ?? null,

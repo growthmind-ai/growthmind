@@ -48,4 +48,31 @@ describe("url builders", () => {
   test("POSTHOG_SOURCE_KIND is the one member of the shared kind union", () => {
     expect(POSTHOG_SOURCE_KIND).toBe("posthog");
   });
+
+  // Security audit M-3. `sourceProjectId` is customer-supplied and was
+  // interpolated into the url PATH unescaped — a value containing "/" could
+  // redirect the request to a different path on the same (already
+  // host-guard-validated) origin. FAIL DIRECTION: encode on doubt, so a
+  // path-shaped value can never widen into a path other than the customer's
+  // own project's.
+  test("percent-encodes a sourceProjectId that would otherwise inject extra path segments", () => {
+    const hostile = "424242/../../admin";
+    expect(eventsUrl(AD_HOST, hostile)).toBe(
+      `${AD_HOST}/api/projects/${encodeURIComponent(hostile)}/events`,
+    );
+    // The encoded form carries no literal "/" — the hostile value collapses
+    // to ONE opaque path segment rather than escaping it.
+    expect(eventsUrl(AD_HOST, hostile)).not.toContain("/../");
+    expect(personsUrl(AD_HOST, hostile)).toBe(
+      `${AD_HOST}/api/projects/${encodeURIComponent(hostile)}/persons`,
+    );
+  });
+
+  // Near miss: an ordinary numeric project id (the real-world shape) is
+  // encoded to itself — encoding must not visibly change the common case.
+  test("near miss: an ordinary numeric sourceProjectId is unchanged by encoding", () => {
+    expect(eventsUrl(AD_HOST, AD_SOURCE_PROJECT_ID)).toBe(
+      `${AD_HOST}/api/projects/${AD_SOURCE_PROJECT_ID}/events`,
+    );
+  });
 });

@@ -4,6 +4,7 @@
 // imported. Tests advance a fake clock only via `sleep`, so a 429 sequence is
 // asserted with zero wall-clock waiting, and `random` makes both jitter
 // branches exactly assertable at `random = 0` and `random = 1`.
+import type { IdentityHmacKey } from "@growthmind/shared";
 
 /** The subset of `fetch` this adapter uses. Typed from the platform's own
  * signature so a real `fetch` and a fake are interchangeable without a cast. */
@@ -17,6 +18,17 @@ export interface PostHogSourceDeps {
   readonly now: () => Date;
   /** Returns a value in `[0, 1)`. */
   readonly random: () => number;
+  /**
+   * Security audit M-1. The keyed HMAC key `hashIdentityKey` uses to hash
+   * every `distinct_id` before it crosses the port boundary — derived ONCE
+   * by the composition root (`deriveIdentityHmacKey`, `@growthmind/shared`,
+   * from the installation's `GROWTHMIND_ENCRYPTION_KEY` via HKDF) and handed
+   * in here, never read from an env var by this package directly. Required,
+   * not optional: an adapter with no identity key would have no safe way to
+   * hash a distinct id at all, and silently falling back to an unkeyed
+   * scheme is the exact defect this fix closes.
+   */
+  readonly identityHmacKey: IdentityHmacKey;
   /**
    * True when sleeping `ms` would overrun the caller's run budget.
    *

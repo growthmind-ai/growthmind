@@ -9,6 +9,9 @@
 // FIXTURE SEED PREFIX: `ad-`. Every value that could collide with another
 // suite carries it. Every host, project id, and key below is an obviously-fake
 // placeholder — this repo is public.
+import { deriveIdentityHmacKey } from "@growthmind/shared";
+import type { IdentityHmacKey } from "@growthmind/shared";
+
 import type { ClientResult, PostHogClient, PostHogEndpoint } from "../../src/posthog/client";
 import type { FetchLike, PostHogSourceConfig, PostHogSourceDeps } from "../../src/posthog/deps";
 
@@ -113,6 +116,18 @@ export function createPagedFetch(pages: readonly FakeResponseSpec[]): FakeFetch 
 
 export const AD_NOW = new Date("2026-07-30T18:00:00.000Z");
 
+/**
+ * Security audit M-1. A fixed, obviously-fake 32-byte root key run through
+ * the REAL `deriveIdentityHmacKey` — not a hand-rolled stand-in — so a test
+ * asserting on `hashIdentityKey` output exercises the same derivation path
+ * production does. Every test that needs a `PostHogSourceDeps` gets this
+ * through `createFakeDeps` below; a test that needs to assert on the exact
+ * digest imports this constant directly rather than re-deriving its own.
+ */
+export const AD_IDENTITY_HMAC_KEY: IdentityHmacKey = deriveIdentityHmacKey({
+  bytes: new Uint8Array(32).fill(0x42),
+});
+
 export interface FakeDeps {
   readonly deps: PostHogSourceDeps;
   /** Every `sleep` duration requested, in order. Nothing actually waits. */
@@ -135,6 +150,7 @@ export function createFakeDeps(
       },
       now: () => now,
       random: () => random,
+      identityHmacKey: AD_IDENTITY_HMAC_KEY,
     },
     sleeps,
   };

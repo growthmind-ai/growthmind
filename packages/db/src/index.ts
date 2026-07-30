@@ -69,6 +69,7 @@ export {
 
 export {
   createConnectionsService,
+  connectInputSchema,
   type ConnectionsService,
   type ConnectionsServiceDeps,
   type ConnectInput,

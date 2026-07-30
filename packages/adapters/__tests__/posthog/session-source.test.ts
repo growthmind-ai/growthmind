@@ -21,6 +21,7 @@ import { createPostHogSessionSource } from "../../src/posthog/session-source";
 import {
   AD_CONFIG,
   AD_HOST,
+  AD_IDENTITY_HMAC_KEY,
   AD_SOURCE_PROJECT_ID,
   adEventItem,
   adEventsPage,
@@ -549,13 +550,18 @@ describe("createPostHogSessionSource#pull", () => {
     expect(serialised).not.toContain(AD_EMAIL_SHAPED_DISTINCT_ID);
     expect(serialised).not.toContain("@ad-emailshaped.invalid");
 
-    const expectedHash = hashIdentityKey(AD_SOURCE_PROJECT_ID, AD_EMAIL_SHAPED_DISTINCT_ID);
+    const expectedHash = hashIdentityKey(
+      AD_IDENTITY_HMAC_KEY,
+      AD_SOURCE_PROJECT_ID,
+      AD_EMAIL_SHAPED_DISTINCT_ID,
+    );
     expect(result.sessions[0]?.identityKey).toBe(expectedHash);
     expect(result.sessions[0]?.sessionKey).toContain(expectedHash);
-    // Deterministic and stable (D12): re-hashing the same project + distinct
-    // id off the port produces the byte-identical digest that crossed it.
+    // Deterministic and stable (D12): re-hashing the same key + project +
+    // distinct id off the port produces the byte-identical digest that
+    // crossed it.
     expect(result.sessions[0]?.identityKey).toBe(
-      hashIdentityKey(AD_SOURCE_PROJECT_ID, AD_EMAIL_SHAPED_DISTINCT_ID),
+      hashIdentityKey(AD_IDENTITY_HMAC_KEY, AD_SOURCE_PROJECT_ID, AD_EMAIL_SHAPED_DISTINCT_ID),
     );
   });
 });

@@ -18,7 +18,14 @@
 // by construction. So the cursor is origin-checked against the configured host
 // on every hop.
 
-/** Loopback, link-local (incl. cloud metadata), private, and CGNAT ranges. */
+/**
+ * Loopback, link-local (incl. cloud metadata), private, and CGNAT ranges,
+ * plus (L-4) benchmarking (198.18/15), IETF protocol assignments
+ * (192.0.0/24), multicast (224/4), and the reserved "future use" class
+ * (240/4, which subsumes 255/8's broadcast — kept as its own named case
+ * below anyway so its test fixture stays self-explanatory). None of these
+ * should ever be a live customer PostHog host.
+ */
 const BLOCKED_IPV4 = [
   { name: "loopback", test: (o: number[]) => o[0] === 127 },
   { name: "private", test: (o: number[]) => o[0] === 10 },
@@ -29,6 +36,21 @@ const BLOCKED_IPV4 = [
   { name: "cgnat", test: (o: number[]) => o[0] === 100 && o[1] >= 64 && o[1] <= 127 },
   { name: "this-network", test: (o: number[]) => o[0] === 0 },
   { name: "broadcast", test: (o: number[]) => o[0] === 255 },
+  // L-4: 198.18.0.0/15, RFC 2544 benchmarking — a near-miss neighbour of the
+  // CGNAT range above and a real-world SSRF probe target.
+  { name: "benchmarking", test: (o: number[]) => o[0] === 198 && (o[1] === 18 || o[1] === 19) },
+  // L-4: 192.0.0.0/24, IETF protocol assignments (RFC 6890) — deliberately
+  // narrow (a /24, not the whole 192.0.0.0/8) so it does not shadow ordinary
+  // public 192.0.x.x addresses one octet away.
+  {
+    name: "ietf-protocol-assignments",
+    test: (o: number[]) => o[0] === 192 && o[1] === 0 && o[2] === 0,
+  },
+  // L-4: 224.0.0.0/4, multicast — never a unicast host to poll.
+  { name: "multicast", test: (o: number[]) => o[0] >= 224 && o[0] <= 239 },
+  // L-4: 240.0.0.0/4, reserved for future use (includes 255.255.255.255,
+  // already caught above by "broadcast").
+  { name: "reserved", test: (o: number[]) => o[0] >= 240 },
 ] as const;
 
 const BLOCKED_HOSTNAMES = new Set([
@@ -63,9 +85,26 @@ function ipv4Octets(hostname: string): number[] | null {
  * that requires resolving and pinning the address at connect time and again per
  * request. Named as a known limit rather than implied to be covered; the
  * deployment-level mitigation is an egress policy on the worker.
+ *
+ * FAIL DIRECTION (H-1): closed. Every normalisation below (case, brackets, a
+ * trailing FQDN dot) exists to keep an attacker from spelling a blocked name
+ * in a form the deny-list's exact-match and suffix checks would otherwise
+ * miss. A hostname is `hostname_blocked` whenever ANY normalised spelling of
+ * it matches — never "only the first spelling we thought of."
  */
 export function isBlockedHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // H-1: a FULLY-QUALIFIED hostname carries a trailing root dot
+  // (`localhost.`) that DNS treats as identical to the bare name, but that
+  // neither the exact-match `BLOCKED_HOSTNAMES` set nor the `.localhost` /
+  // `.internal` suffix checks below would match without stripping it first —
+  // `localhost.` and `metadata.google.internal.` both resolved as ALLOW
+  // before this line existed. Only ONE trailing dot is stripped: more than
+  // one is not a valid FQDN spelling and is left for the URL parser (or a
+  // downstream fetch) to reject on its own terms.
+  const lower = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
   if (BLOCKED_HOSTNAMES.has(lower)) return true;
   if (lower.endsWith(".localhost") || lower.endsWith(".internal")) return true;
 
@@ -84,6 +123,24 @@ export function isBlockedHostname(hostname: string): boolean {
   if (mappedHex?.[1] && mappedHex[2]) {
     const high = Number.parseInt(mappedHex[1], 16);
     const low = Number.parseInt(mappedHex[2], 16);
+    return isBlockedHostname(
+      [(high >> 8) & 0xff, high & 0xff, (low >> 8) & 0xff, low & 0xff].join("."),
+    );
+  }
+
+  // L-4: IPv4-COMPATIBLE IPv6 (the deprecated `::a.b.c.d` form, RFC 4291 —
+  // distinct from IPv4-MAPPED above, which always carries a literal `ffff`
+  // group). Same two spellings as the mapped case: the dotted form
+  // (`::127.0.0.1`) and the hex form a parser may normalise it to
+  // (`::7f00:1`). Checked after the `ffff`-prefixed mapped patterns above so
+  // the two forms can never be confused for one another.
+  const compatDotted = /^::(\d{1,3}(?:\.\d{1,3}){3})$/.exec(lower);
+  if (compatDotted?.[1]) return isBlockedHostname(compatDotted[1]);
+
+  const compatHex = /^::([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower);
+  if (compatHex?.[1] && compatHex[2]) {
+    const high = Number.parseInt(compatHex[1], 16);
+    const low = Number.parseInt(compatHex[2], 16);
     return isBlockedHostname(
       [(high >> 8) & 0xff, high & 0xff, (low >> 8) & 0xff, low & 0xff].join("."),
     );
