@@ -151,9 +151,19 @@ export function decryptSecret(envelope: string, key: CredentialKey, aad: string)
  * Strict base64url decode. `Buffer.from` silently discards characters it does
  * not recognise, so a corrupted field would otherwise decode to a shorter
  * buffer and read as ordinary data rather than as damage.
+ *
+ * An empty FIELD is malformed for the IV and auth tag — both callers always
+ * pass `expectedLength` for those, and a fixed-width field can never
+ * legitimately be empty. The ciphertext field is the one exception (CR-7):
+ * `encryptSecret("")` produces a zero-length ciphertext (AES-GCM's ciphertext
+ * is exactly as long as the plaintext), so its caller never passes
+ * `expectedLength`, and an empty ciphertext field there is round-tripped, not
+ * rejected as `malformed_envelope`. A customer who pastes nothing gets that
+ * distinguished upstream of encryption, not read back as corruption.
  */
 function decodeBase64Url(field: string, expectedLength?: number): Buffer | null {
-  if (field.length === 0 || !/^[A-Za-z0-9_-]+$/.test(field)) return null;
+  if (field.length === 0) return expectedLength === undefined ? Buffer.alloc(0) : null;
+  if (!/^[A-Za-z0-9_-]+$/.test(field)) return null;
   const decoded = Buffer.from(field, "base64url");
   if (decoded.length === 0) return null;
   if (expectedLength !== undefined && decoded.length !== expectedLength) return null;

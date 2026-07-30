@@ -58,6 +58,21 @@ describe("encryptSecret / decryptSecret", () => {
     expect(result).toEqual({ ok: true, value: PLAINTEXT });
   });
 
+  // CR-7 regression. Before the fix, `encryptSecret("")` produced a
+  // well-formed envelope (a zero-length ciphertext is exactly what AES-GCM
+  // produces for zero-length plaintext) that `decryptSecret` then rejected as
+  // `malformed_envelope` — reading as credential corruption rather than as a
+  // legitimate round trip of an empty string.
+  test("round-trips an empty plaintext instead of reading it back as a malformed envelope", () => {
+    const envelope = encryptSecret("", KEY_A, AAD_A);
+    const parts = envelope.split(".");
+    expect(parts).toHaveLength(5);
+    expect(parts[4]).toBe(""); // the ciphertext field itself is empty
+
+    const result = decryptSecret(envelope, KEY_A, AAD_A);
+    expect(result).toEqual({ ok: true, value: "" });
+  });
+
   test("two encryptions of the same plaintext differ, because the iv is random per call", () => {
     // A deterministic ciphertext would leak "these two orgs pasted the same
     // key" straight out of the column.

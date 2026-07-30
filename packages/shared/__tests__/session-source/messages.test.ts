@@ -6,12 +6,12 @@
 // what fails when a new constant is added without registering it there.
 import { describe, expect, test } from "bun:test";
 
+import * as messagesModule from "../../src/session-source/messages";
 import {
   ALL_CUSTOMER_FACING_MESSAGES,
   CONNECTION_STATE_MESSAGES,
   CONNECT_REFUSAL_MESSAGES,
   COUNTER_COMPLETENESS_STATEMENT,
-  COUNTER_LABELS,
   COUNTER_WINDOW_STATEMENT,
   EXCLUSION_REASON_LABELS,
   SOURCE_ABSENT_NOTICE,
@@ -78,10 +78,39 @@ describe("the plain-English audit", () => {
     // "The request failed with 401" is exactly the jargon the bar forbids:
     // PostHog's own `detail` text never reaches a customer, it is mapped to
     // one of these strings instead.
-    const offenders = ALL_CUSTOMER_FACING_MESSAGES.filter((message) =>
-      /\b[1-5]\d{2}\b/.test(message),
+    //
+    // CR-12: this used to scan only the fixed `ALL_CUSTOMER_FACING_MESSAGES`
+    // list, missing the templated messages (`secondSourceRefusalMessage`,
+    // `expectedLagStatement`) entirely — so a bare status hardcoded into a
+    // template could ship undetected. Scan every message the sprint can show
+    // a customer (`everyMessage()`), but mask the one interpolated field
+    // first — a PostHog project id is opaque customer data, not a status
+    // code, and "404" or "500" are entirely plausible real project ids. An
+    // unmasked scan would fail the audit on a customer's own id rather than
+    // on an actual leak.
+    const BARE_STATUS = /\b[1-5]\d{2}\b/;
+    const maskedMessages = everyMessage().map((message) =>
+      message.split(EXISTING_CONNECTION.sourceProjectId).join("s0-masked-project-id"),
     );
+
+    const offenders = maskedMessages.filter((message) => BARE_STATUS.test(message));
     expect(offenders).toEqual([]);
+
+    // Prove the masking is load-bearing, not vacuous: a project id that
+    // itself reads like a status code must trip the RAW (unmasked) scan —
+    // otherwise this test would pass even if the mask silently matched
+    // nothing, because s0-source-project never looked like a status anyway.
+    const statusLikeProjectId = "404";
+    const rawWithStatusLikeId = secondSourceRefusalMessage({
+      host: EXISTING_CONNECTION.host,
+      sourceProjectId: statusLikeProjectId,
+    });
+    expect(BARE_STATUS.test(rawWithStatusLikeId)).toBe(true);
+    expect(
+      BARE_STATUS.test(
+        rawWithStatusLikeId.split(statusLikeProjectId).join("s0-masked-project-id"),
+      ),
+    ).toBe(false);
   });
 
   test("the vendor's name never appears in a customer-facing message", () => {
@@ -91,24 +120,40 @@ describe("the plain-English audit", () => {
     expect(offenders).toEqual([]);
   });
 
+  // CR-10: this used to compare two hand-maintained lists against each
+  // other — `ALL_CUSTOMER_FACING_MESSAGES` against a second, separately typed
+  // copy of the same constants. A new exported string added to the module but
+  // to NEITHER list produced `missing = []`, equal lengths, and a green test:
+  // it escaped the "live"/jargon/HTTP-status audits above entirely, silently.
+  //
+  // Instead, derive the expected set from the module's ACTUAL exports
+  // (`import * as messagesModule`) — the real source of truth — so a new
+  // fixed string constant is picked up automatically the moment it is
+  // exported, with nothing to remember to copy anywhere.
   test("the audit list is complete — every fixed constant is reachable through it", () => {
-    // A new constant that is not registered here would escape the three
-    // assertions above silently. This is what stops that.
-    const registered = new Set(ALL_CUSTOMER_FACING_MESSAGES);
-    const declared = [
-      ...Object.values(CONNECTION_STATE_MESSAGES),
-      ...Object.values(CONNECT_REFUSAL_MESSAGES),
-      ...Object.values(EXCLUSION_REASON_LABELS),
-      ...Object.values(COUNTER_LABELS),
-      COUNTER_WINDOW_STATEMENT,
-      COUNTER_COMPLETENESS_STATEMENT,
-      SOURCE_ABSENT_NOTICE,
-      SOURCE_DEGRADED_NOTICE,
-    ];
+    const derivedFromExports: string[] = [];
+    for (const [name, value] of Object.entries(messagesModule)) {
+      // The derivation target itself is not part of its own input.
+      if (name === "ALL_CUSTOMER_FACING_MESSAGES") continue;
 
-    const missing = declared.filter((message) => !registered.has(message));
+      if (typeof value === "string") {
+        // A bare exported string constant (COUNTER_WINDOW_STATEMENT and kin).
+        derivedFromExports.push(value);
+      } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        // A Record<..., string> constant (CONNECTION_STATE_MESSAGES and kin).
+        for (const entry of Object.values(value)) {
+          if (typeof entry === "string") derivedFromExports.push(entry);
+        }
+      }
+      // Functions (secondSourceRefusalMessage, expectedLagStatement) are
+      // parameterised, not fixed constants — they are audited explicitly via
+      // `everyMessage()` above instead of enumerated here.
+    }
+
+    const registered = new Set(ALL_CUSTOMER_FACING_MESSAGES);
+    const missing = derivedFromExports.filter((message) => !registered.has(message));
     expect(missing).toEqual([]);
-    expect(ALL_CUSTOMER_FACING_MESSAGES.length).toBe(declared.length);
+    expect(ALL_CUSTOMER_FACING_MESSAGES.length).toBe(derivedFromExports.length);
   });
 });
 

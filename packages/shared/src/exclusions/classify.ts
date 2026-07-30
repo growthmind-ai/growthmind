@@ -65,6 +65,17 @@ export const CURRENT_EXCLUSION_RULE_SET: ExclusionRuleSet = RULE_SET_V1;
  * unresolved session is KEPT (F-8) and counted separately as
  * `keptIdentityUnverified` by the counter, so "we could not check" is never
  * laundered into "we checked and it is a real user".
+ *
+ * F-9 — host-based staging/preview exclusion — is deliberately NOT BUILT.
+ * There is no sixth predicate here, and no host/domain-pattern rule anywhere
+ * in `src/exclusions/`: a real early-stage product's production host
+ * genuinely is `something.vercel.app`, so any such predicate fires on a
+ * superset of its target by construction (the D10 conflation this sprint
+ * exists to prevent), and there is no reliable signal in `SessionFacts` to
+ * tell "this is staging" from "this is how this customer ships". The absence
+ * is stated here, not silently assumed — and enforced by a grep test
+ * (`__tests__/exclusions/automation.test.ts`) asserting no host, staging, or
+ * preview predicate, literal, or reason ever lands in this module.
  */
 export function classifyExclusion(facts: SessionFacts, rules: ExclusionRuleSet): ExclusionReason {
   const userAgent = facts.userAgent?.trim() ?? "";

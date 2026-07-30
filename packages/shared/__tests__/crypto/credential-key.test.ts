@@ -68,6 +68,36 @@ describe("resolveCredentialKey", () => {
     expect(result.key.bytes).toHaveLength(CREDENTIAL_KEY_BYTE_LENGTH);
   });
 
+  // CR-1 regression. Verified repro before the fix: the exact dev literal was
+  // refused, but the dev key's bytes plus an 8-byte suffix were ACCEPTED, and
+  // the resolved key equalled the published dev key byte-for-byte — because
+  // the gate compared the raw (mismatched-length) decoded input while
+  // `resolveCredentialKey` truncated to the first 32 bytes only afterward.
+  test("refuses a value that decodes to the published dev key bytes plus a suffix", () => {
+    const devBytes = Buffer.from(DEV_ENCRYPTION_KEY, "base64");
+    expect(devBytes).toHaveLength(CREDENTIAL_KEY_BYTE_LENGTH);
+
+    const overLength = Buffer.concat([
+      devBytes,
+      Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]),
+    ]).toString("base64");
+
+    // Not the exact published literal, so parseServerEnv's boot-time
+    // exact-match guard does not fire on it either — this value must be
+    // stopped by resolveCredentialKey itself, which is the whole point of CR-1.
+    const env = parseServerEnv({
+      ...PROD_BASE,
+      GROWTHMIND_ENCRYPTION_KEY: overLength,
+    });
+    expect(env.GROWTHMIND_ENCRYPTION_KEY).not.toBe(DEV_ENCRYPTION_KEY);
+
+    const result = resolveCredentialKey(env);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected a refusal, got a usable key");
+    expect(result.reason).toBe("insecure_default_key");
+  });
+
   test("refuses a value that is long enough to pass the schema but is not a 32-byte key", () => {
     // The schema only knows `min(44)`. Fail direction: a named refusal the
     // connection service maps to `misconfigured`, never a thrown exception

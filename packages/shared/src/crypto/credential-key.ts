@@ -41,12 +41,13 @@ export type CredentialKeyResolution =
 export function resolveCredentialKey(env: ServerEnv): CredentialKeyResolution {
   const configured = env.GROWTHMIND_ENCRYPTION_KEY.trim();
 
-  // FAIL DIRECTION: closed, and FIRST. This check is deliberately not gated on
+  // FAIL DIRECTION: closed, and FIRST. Exact-literal match, before any
+  // decoding. This check is deliberately not gated on
   // GROWTHMIND_ALLOW_INSECURE_DEFAULTS and deliberately not reachable-around by
   // any later branch — a production deployment that legitimately BOOTS under
   // the bypass flag still may not store a third party's credential under a key
   // published in a public repository.
-  if (env.NODE_ENV === "production" && isPublishedDevKey(configured)) {
+  if (env.NODE_ENV === "production" && configured === DEV_ENCRYPTION_KEY.trim()) {
     return { ok: false, reason: "insecure_default_key" };
   }
 
@@ -63,24 +64,33 @@ export function resolveCredentialKey(env: ServerEnv): CredentialKeyResolution {
   // secret material, not less, so it is accepted and its first 32 bytes are
   // used rather than stranding a deployment on a working secret. A shorter one
   // is refused above: AES-256 has one key length.
-  return {
-    ok: true,
-    key: { bytes: new Uint8Array(material.subarray(0, CREDENTIAL_KEY_BYTE_LENGTH)) },
-  };
+  const keyBytes = new Uint8Array(material.subarray(0, CREDENTIAL_KEY_BYTE_LENGTH));
+
+  // FAIL DIRECTION: closed, and checked against the SAME 32 BYTES THAT WILL
+  // ACTUALLY BE USED (`keyBytes`), never the raw decoded input (CR-1). A
+  // configured value of "the published dev key plus an arbitrary suffix"
+  // decodes to a byte length that does not match the dev key's, so a
+  // comparison gated on equal lengths against the *raw* decoded input lets it
+  // through — and it is then silently truncated back down to exactly the
+  // published dev key by the `subarray` above. Comparing the already-truncated
+  // `keyBytes` closes that regardless of what garbage a suffix adds.
+  if (env.NODE_ENV === "production" && isPublishedDevKeyBytes(keyBytes)) {
+    return { ok: false, reason: "insecure_default_key" };
+  }
+
+  return { ok: true, key: { bytes: keyBytes } };
 }
 
 /**
- * Compares against the published literal by VALUE, in both its encoded and its
- * decoded form, so re-encoding the same 32 bytes (base64url, extra padding)
- * cannot walk past the gate.
+ * Compares an already-truncated `CREDENTIAL_KEY_BYTE_LENGTH`-byte key against
+ * the published literal's decoded form, by VALUE, so re-encoding the same 32
+ * bytes (base64url, extra padding) cannot walk past the gate.
  */
-function isPublishedDevKey(configured: string): boolean {
-  if (configured === DEV_ENCRYPTION_KEY.trim()) return true;
-
-  const configuredBytes = decodeBase64Strict(configured);
+function isPublishedDevKeyBytes(keyBytes: Uint8Array): boolean {
   const devBytes = decodeBase64Strict(DEV_ENCRYPTION_KEY.trim());
-  if (!configuredBytes || !devBytes || configuredBytes.length !== devBytes.length) return false;
-  return timingSafeEqual(configuredBytes, devBytes);
+  if (!devBytes || devBytes.length !== CREDENTIAL_KEY_BYTE_LENGTH) return false;
+  if (keyBytes.length !== devBytes.length) return false;
+  return timingSafeEqual(keyBytes, devBytes);
 }
 
 /**
