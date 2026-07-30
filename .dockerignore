@@ -1,0 +1,18 @@
+# **/ prefixes matter: COPY . . must never overwrite the node_modules the
+# image just installed with the host's (platform-specific symlink) copies.
+**/node_modules
+**/.next
+**/dist
+**/out
+**/*.tsbuildinfo
+.git
+.env
+.env.*
+!.env.example
+.ai
+.claude
+.vercel
+local
+tasks
+docs/prds
+docs/adds

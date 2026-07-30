@@ -1,0 +1,28 @@
+/* Brand tokens for the few places CSS needs a value Mantine doesn't provide.
+ * Raw hexes live in lib/brand/palette.ts (mirrored here as custom properties);
+ * components consume Mantine's semantic tokens first — see lib/theme.ts and
+ * the ui-primitives-first convention. */
+
+:root {
+  /* -- palette (mirrors lib/brand/palette.ts) ------------------------ */
+  --paper: #191e19;
+  --sheet: #212721;
+  --sheet-2: #1d231d;
+  --ink: #e9ede4;
+  --soft: #adb8a8;
+  --band: #a9c4a2;
+  --onband: #161c16;
+  --stamp: #c05a3a;
+  --grey: #78826f;
+  --hair: rgba(233, 237, 228, 0.14);
+
+  /* -- typefaces (variables injected by next/font — lib/fonts.ts) ---- */
+  --geo: var(--font-geo), "Century Gothic", "Futura", sans-serif;
+  --type: var(--font-type), "Courier New", monospace;
+  --mono: var(--font-mono), ui-monospace, Menlo, monospace;
+}
+
+:focus-visible {
+  outline: 2px solid var(--band);
+  outline-offset: 3px;
+}

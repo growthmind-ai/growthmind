@@ -4,15 +4,26 @@ node_modules/
 dist/
 out/
 *.tsbuildinfo
+next-env.d.ts
 
 # env — never commit secrets; commit .env.example instead
 .env
 .env.*
 !.env.example
 
-# local AI / orchestration machinery — private, never published
+# local AI / orchestration machinery — private, never published. These write
+# their reports into .ai/, which is itself private, so publishing them would
+# leave a contributor with scripts that reference a directory they don't have.
 .claude/
 .ai/
+scripts/orchestrator.ts
+scripts/validate-build.ts
+scripts/validate-runtime.ts
+
+# local/ is the home for anything a maintainer or contributor keeps beside
+# the code but never publishes — working notes, drafts, scratch files.
+# Public versions of durable docs live in docs/ instead.
+local/
 
 # vercel
 .vercel/
@@ -20,7 +31,9 @@ out/
 # OS
 .DS_Store
 
-# orchestrator working artifacts — local only (durable ones get promoted to ../internal)
-tasks/
-docs/prds/
-docs/adds/
+# orchestrator working artifacts — local only (durable ones get promoted to
+# ../internal). Root-anchored: an unanchored tasks/ would swallow real source
+# directories like worker/src/tasks/.
+/tasks/
+/docs/prds/
+/docs/adds/

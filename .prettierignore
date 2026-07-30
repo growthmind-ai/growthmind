@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+out
+bun.lock
+next-env.d.ts
+*.tsbuildinfo
+packages/db/drizzle
+.ai
+.claude
+tasks
+local

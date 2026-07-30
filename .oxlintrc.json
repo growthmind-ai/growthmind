@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "nextjs", "jsx-a11y", "import", "typescript", "unicorn", "oxc"],
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "typescript/consistent-type-imports": ["error", { "prefer": "type-imports" }],
+    "typescript/no-explicit-any": "error",
+
+    "jsx-a11y/anchor-is-valid": "error",
+    "jsx-a11y/alt-text": "error",
+    "react/jsx-no-target-blank": "error",
+
+    "react/react-in-jsx-scope": "off",
+
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+
+    "no-underscore-dangle": "off"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**", "worker/**"],
+      "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off",
+        "no-unmodified-loop-condition": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    ".next",
+    "dist",
+    "out",
+    "node_modules",
+    "next-env.d.ts",
+    "*.tsbuildinfo",
+    "packages/db/drizzle"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@growthmind/worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Graphile Worker process — analysis pipeline, batch polling, scheduled rollups.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.24",
+    "@growthmind/db": "workspace:*",
+    "@growthmind/shared": "workspace:*",
+    "ai": "^7.0.42",
+    "graphile-worker": "^0.17.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

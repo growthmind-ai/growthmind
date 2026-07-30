@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // Explicit because automatic @types discovery does not traverse bun's
+    // symlinked (isolated) node_modules layout. Brings in bun:test and the
+    // bundled Node compatibility types.
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"]
+}

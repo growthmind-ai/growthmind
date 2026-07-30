@@ -1,0 +1,37 @@
+{
+  "name": "growthmind",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "worker"
+  ],
+  "scripts": {
+    "dev": "bun run --filter @growthmind/web dev",
+    "dev:worker": "bun run --filter @growthmind/worker dev",
+    "build": "bun run --filter @growthmind/web build",
+    "start": "bun run --filter @growthmind/web start",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "bun test",
+    "db:generate": "bun run --filter @growthmind/db db:generate",
+    "db:generate:auth": "bunx @better-auth/cli@1.4.21 generate --config apps/web/lib/auth.schema.ts --output packages/db/src/schema/auth.ts --yes",
+    "db:migrate": "bun run --filter @growthmind/db db:migrate",
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^26.0.0",
+    "oxlint": "^1.76.0",
+    "prettier": "3.9.6",
+    "typescript": "^7.0.2"
+  }
+}
