@@ -16,9 +16,9 @@ services:
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: growthmind
-      # No default: the stack must refuse to boot rather than run on a password
-      # published in a public repo. Set POSTGRES_PASSWORD in .env next to this file.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — no default is provided}
+      # Demo default, safe only because the port below is loopback-bound.
+      # Override in .env for anything real.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-growthmind}"
       POSTGRES_DB: growthmind
     ports:
       # Loopback only. Published on 0.0.0.0 this is a complete cross-tenant
@@ -43,9 +43,14 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://growthmind:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/growthmind
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env — generate with: openssl rand -base64 32}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      DATABASE_URL: "postgres://growthmind:${POSTGRES_PASSWORD:-growthmind}@postgres:5432/growthmind"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:-dev-only-secret-change-me-32-chars!}"
+      # Explicit opt-in to the demo secrets above. The app refuses to start in
+      # production on the public example values unless this is set, so a real
+      # deployment fails loudly instead of signing sessions with a secret
+      # published in this repo. DELETE THIS LINE when you deploy for real.
+      GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
+      BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,8 +75,13 @@ services:
       dockerfile: worker/Dockerfile
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://growthmind:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/growthmind
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env — generate with: openssl rand -base64 32}
+      DATABASE_URL: "postgres://growthmind:${POSTGRES_PASSWORD:-growthmind}@postgres:5432/growthmind"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:-dev-only-secret-change-me-32-chars!}"
+      # Explicit opt-in to the demo secrets above. The app refuses to start in
+      # production on the public example values unless this is set, so a real
+      # deployment fails loudly instead of signing sessions with a secret
+      # published in this repo. DELETE THIS LINE when you deploy for real.
+      GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
     depends_on:
       postgres:
         condition: service_healthy

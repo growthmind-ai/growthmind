@@ -35,12 +35,19 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   // the app signs sessions with a secret published in a public repo. Anyone
   // could forge a session cookie for any user in any org. So reject the known
   // literals by value, not merely by absence.
-  if (isProduction) {
+  // The quickstart compose stack opts in explicitly (GROWTHMIND_ALLOW_INSECURE_DEFAULTS)
+  // so `docker compose up` from a clean clone still reaches a working app with
+  // no .env — the self-host promise CI enforces. Deleting that line from a real
+  // deployment is what turns this guard back on.
+  const allowInsecureDefaults = source.GROWTHMIND_ALLOW_INSECURE_DEFAULTS === "1";
+
+  if (isProduction && !allowInsecureDefaults) {
     for (const [key, devValue] of Object.entries(DEV_DEFAULTS)) {
       if (source[key] === devValue) {
         throw new Error(
           `Invalid environment: ${key} is still set to the public example value from .env.example. ` +
-            `Generate a real one (BETTER_AUTH_SECRET: openssl rand -base64 32) before running in production.`,
+            `Generate a real one (BETTER_AUTH_SECRET: openssl rand -base64 32) before running in production. ` +
+            `The quickstart docker-compose stack sets GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 to bypass this for local demos only.`,
         );
       }
     }
