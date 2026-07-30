@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "bun:test";
 
 import { crontab, taskList } from "../src/index";
-import { TASK } from "../src/task-names";
+import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../src/task-names";
 
 // Graphile Worker matches jobs to handlers by string name. These tests make
 // the failure mode — a queued name with no handler, or a handler nothing can
@@ -67,7 +67,7 @@ test("the scheduled poll name is the exported constant, not a look-alike string"
   // Guards the D9 hazard directly: a cron line scheduling `posthog.poll` or a
   // typo'd variant would queue jobs nothing handles, and the set-based test
   // above would still pass if the constant itself had drifted.
-  expect(TASK.SESSION_SOURCE_POLL_SCHEDULE).toBe("session-source.poll-schedule");
+  expect(TASK.SESSION_SOURCE_POLL_SCHEDULE).toBe("session-source:poll-schedule");
   expect(crontab).toContain(TASK.SESSION_SOURCE_POLL_SCHEDULE);
   expect(taskList[TASK.SESSION_SOURCE_POLL_SCHEDULE]).toBeDefined();
 });
@@ -135,3 +135,42 @@ function stringLiteralsIn(source: string): string[] {
   }
   return out;
 }
+
+/**
+ * Every task name must satisfy Graphile Worker's crontab identifier grammar.
+ *
+ * This exists because `session-source.poll-schedule` shipped through a green
+ * unit suite and then crashed the worker ON BOOT — "Invalid command
+ * specification in line 2 of crontab" — because the parser's character set
+ * (letter or underscore, then letters, digits, colon, slash, underscore, hyphen) excludes the dot. Nothing below the crontab
+ * string had ever been fed to the real parser, so the whole container was the
+ * first thing to find out. A name that only fails inside a running container
+ * is exactly the D9 stringly-typed hazard task-names.ts warns about.
+ */
+test("every TASK name parses as a Graphile Worker crontab identifier", () => {
+  for (const [key, name] of Object.entries(TASK)) {
+    expect(
+      GRAPHILE_TASK_NAME_PATTERN.test(name),
+      `TASK.${key} = "${name}" is not a valid Graphile Worker identifier — allowed: letter or underscore, then letters digits colon slash underscore hyphen. A dot will crash the worker on boot.`,
+    ).toBe(true);
+  }
+});
+
+test("every crontab line's command is a registered, well-formed task name", () => {
+  const registered = new Set(Object.keys(taskList));
+
+  for (const [index, line] of crontab.split("\n").entries()) {
+    if (line.trim() === "" || line.trim().startsWith("#")) continue;
+    // 5 time fields, then the command, then optional ?opts / {payload}.
+    const command = line.trim().split(/\s+/)[5];
+    expect(command, `crontab line ${index + 1} has no command`).toBeDefined();
+    expect(
+      GRAPHILE_TASK_NAME_PATTERN.test(command ?? ""),
+      `crontab line ${index + 1} command "${command}" is not a valid identifier`,
+    ).toBe(true);
+    expect(
+      registered.has(command ?? ""),
+      `crontab line ${index + 1} schedules "${command}", which no registered task handles — it would retry forever`,
+    ).toBe(true);
+  }
+});
