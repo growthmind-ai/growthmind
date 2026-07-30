@@ -39,10 +39,7 @@ const BLOCKED_HOSTNAMES = new Set([
 ]);
 
 export type HostRejection =
-  | "not_a_url"
-  | "scheme_not_https"
-  | "hostname_blocked"
-  | "credentials_in_url";
+  "not_a_url" | "scheme_not_https" | "hostname_blocked" | "credentials_in_url";
 
 export type HostCheck =
   | { readonly ok: true; readonly origin: string }
@@ -75,7 +72,7 @@ export function isBlockedHostname(hostname: string): boolean {
   // IPv6 loopback / unspecified / unique-local / link-local.
   if (lower === "::1" || lower === "::") return true;
   if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true;
-  if (/^fe80:/.test(lower)) return true;
+  if (lower.startsWith("fe80:")) return true;
   // IPv4-mapped IPv6. Two spellings reach here: the dotted form a human types
   // (`::ffff:127.0.0.1`) and the hex form the WHATWG URL parser normalises it
   // to (`::ffff:7f00:1`). Checking only the dotted form would let the hex

@@ -125,6 +125,14 @@ export const REQUEST_TIMEOUT_MS = 30_000;
  */
 export const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
+/**
+ * Ceiling on stream chunks per response. The byte cap alone is not a bound: a
+ * hostile host can emit endless ZERO-length chunks and never trip it. At a
+ * realistic 16 KiB per chunk this is ~64 MiB of headroom over
+ * `MAX_RESPONSE_BYTES`, so a legitimate body can never reach it.
+ */
+export const MAX_RESPONSE_CHUNKS = 4096;
+
 /** First exponential step, doubling per attempt. */
 export const BASE_DELAY_MS = 1000;
 

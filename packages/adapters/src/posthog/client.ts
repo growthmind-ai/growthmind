@@ -20,6 +20,7 @@ import {
   eventsUrl,
   MAX_RATE_LIMIT_ATTEMPTS,
   MAX_RESPONSE_BYTES,
+  MAX_RESPONSE_CHUNKS,
   personsUrl,
   REQUEST_TIMEOUT_MS,
 } from "./constants";
@@ -82,7 +83,15 @@ async function readJsonBody(response: Response): Promise<unknown> {
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
-    for (;;) {
+    // Bounded by CHUNK COUNT as well as by bytes. `for(;;)` would be the
+    // natural shape here and is deliberately not used: this package forbids
+    // unbounded loops outright and asserts it with a structural test, because
+    // every loop in it is driven by a hostile-capable remote. A stream that
+    // yields endless zero-length chunks would satisfy the byte cap forever, so
+    // the iteration count is capped too.
+    let readsRemaining = MAX_RESPONSE_CHUNKS;
+    while (readsRemaining > 0) {
+      readsRemaining -= 1;
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
@@ -91,6 +100,12 @@ async function readJsonBody(response: Response): Promise<unknown> {
         return null;
       }
       chunks.push(value);
+    }
+    if (readsRemaining === 0) {
+      // Hit the chunk ceiling without `done` — treat as unreadable, never as a
+      // truncated-but-valid body.
+      await reader.cancel();
+      return null;
     }
 
     const joined = new Uint8Array(total);
