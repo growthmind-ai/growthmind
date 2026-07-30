@@ -18,6 +18,15 @@ const ENTRYPOINT = join("scripts", "spikes", "m0-posthog-latency.ts");
 
 const LOCAL_SPIKES_DIR = join(REPO_ROOT, "local", "spikes");
 
+/**
+ * An env file that defines nothing. bun auto-loads the repo-root `.env` into
+ * any process it spawns, which would re-inject the POSTHOG_* credentials that
+ * scrubbedEnv() just removed — making these tests pass only on a machine
+ * without a configured `.env`. Pointing `--env-file` here suppresses that
+ * default load, so the gate genuinely sees no credentials either way.
+ */
+const NO_VARS_ENV_FILE = join(import.meta.dir, "fixtures", "no-vars.env");
+
 /** Generous: bun spawning bun is slow on Windows, especially first run. */
 const SPAWN_TIMEOUT_MS = 60_000;
 
@@ -47,7 +56,7 @@ async function runEntrypoint(env: Record<string, string | undefined>): Promise<{
   exitCode: number;
   combined: string;
 }> {
-  const proc = Bun.spawn([process.execPath, ENTRYPOINT], {
+  const proc = Bun.spawn([process.execPath, `--env-file=${NO_VARS_ENV_FILE}`, ENTRYPOINT], {
     cwd: REPO_ROOT,
     env,
     stdout: "pipe",
