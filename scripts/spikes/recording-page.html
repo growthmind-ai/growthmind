@@ -1,0 +1,134 @@
+<!--
+  recording-page.html — M-0 PostHog latency spike, session-recording leg
+  (ADD D-2, section 4 file 10).
+
+  This page is served on localhost by the spike harness only (Bun.serve on an
+  ephemeral port) and is driven headlessly by a Chromium-family browser — it
+  exists to be automated, not seen. The phc_ project API key arrives via a
+  query param on localhost only: it is never committed and never logged.
+  No external resources are loaded beyond the PostHog host itself.
+
+  Query params consumed (the entrypoint must build the URL to match):
+    host   — PostHog host URL (e.g. https://us.posthog.com)
+    key    — phc_ project API key (write-side, localhost-only transport)
+    marker — per-trial UUID; identified as distinct_id and stamped on events
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>gm-spike-recording</title>
+  </head>
+  <body>
+    <main id="stage">
+      <p id="status">booting</p>
+      <p id="counter">0</p>
+      <div id="mutations"></div>
+    </main>
+    <script>
+      (function () {
+        "use strict";
+
+        // MARKER_PROP mirrors MARKER_PROP in scripts/spikes/lib/constants.ts
+        // (an HTML page cannot import the TS module; keep that one literal in
+        // sync). DONE_EVENT is page-local — it is not in EVENT_NAMES.
+        var MARKER_PROP = "gm_spike_marker";
+        var DONE_EVENT = "gm_spike_recording_done";
+        var ACTIVITY_INTERVAL_MS = 500;
+        var DONE_AFTER_MS = 12000;
+
+        var params = new URLSearchParams(location.search);
+        var host = params.get("host");
+        var key = params.get("key");
+        var marker = params.get("marker");
+
+        function fail(message) {
+          document.title = "gm-spike-error: " + message;
+          var status = document.getElementById("status");
+          if (status) {
+            status.textContent = "gm-spike-error: " + message;
+          }
+        }
+
+        // Guard: without all three params, report the error and make no
+        // network request of any kind.
+        if (!host || !key || !marker) {
+          fail("missing required query params: host, key, marker");
+          return;
+        }
+
+        // PostHog public loader stub — the documented init snippet, verbatim
+        // (minified upstream; do not hand-edit). It queues calls on a stub
+        // `window.posthog` and injects `<host>/static/array.js`, which drains
+        // the queue once loaded. This is the supported way to load posthog-js
+        // without a package install (ADD D-2: zero new dependencies).
+        /* eslint-disable */
+        // prettier-ignore
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        /* eslint-enable */
+
+        window.posthog.init(key, {
+          api_host: host,
+          autocapture: true,
+          disable_session_recording: false,
+          session_recording: {},
+          loaded: function (ph) {
+            onLoaded(ph);
+          },
+        });
+
+        function onLoaded(ph) {
+          ph.identify(marker);
+
+          // Super-property: every captured event (autocapture included)
+          // carries the trial marker.
+          var superProps = {};
+          superProps[MARKER_PROP] = marker;
+          ph.register(superProps);
+
+          setStatus("recording");
+
+          var counterEl = document.getElementById("counter");
+          var mutationsEl = document.getElementById("mutations");
+          var ticks = 0;
+
+          // DOM activity so rrweb has content: append/remove text nodes,
+          // toggle a counter, and fire synthetic clicks for autocapture.
+          var interval = setInterval(function () {
+            ticks += 1;
+            counterEl.textContent = String(ticks);
+
+            var node = document.createElement("p");
+            node.textContent = "mutation " + ticks + " for trial " + marker;
+            mutationsEl.appendChild(node);
+            while (mutationsEl.childNodes.length > 10) {
+              mutationsEl.removeChild(mutationsEl.firstChild);
+            }
+
+            document.body.click();
+          }, ACTIVITY_INTERVAL_MS);
+
+          // After ~12s: stop activity, capture the terminal marker event, and
+          // keep the page alive — posthog-js batches, and the final capture
+          // plus the page surviving to trial end (harness kills the browser
+          // at ~15s) is the flush path.
+          setTimeout(function () {
+            clearInterval(interval);
+            var props = {};
+            props[MARKER_PROP] = marker;
+            ph.capture(DONE_EVENT, props);
+            setStatus("done");
+            document.title = "gm-spike-done";
+          }, DONE_AFTER_MS);
+        }
+
+        function setStatus(text) {
+          var status = document.getElementById("status");
+          if (status) {
+            status.textContent = text;
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>
