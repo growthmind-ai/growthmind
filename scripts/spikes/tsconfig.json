@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    // Explicit because automatic @types discovery does not traverse bun's
+    // symlinked (isolated) node_modules layout — same pattern as the
+    // workspace packages. Brings in bun:test and Bun globals.
+    "types": ["bun"]
+  },
+  "include": ["**/*.ts"]
+}
