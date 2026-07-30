@@ -96,10 +96,14 @@ export interface SeededMember {
  * Inserts a `member` row linking a user to an organization.
  * `member.createdAt` has no default in the generated schema (unlike
  * `user.createdAt`), so it must be stamped explicitly here.
+ *
+ * `createdAt` is overridable because it is load-bearing, not incidental:
+ * `resolveActiveOrganization` picks the OLDEST membership, so a suite proving
+ * ordering needs to control it rather than race the clock.
  */
 export async function seedMember(
   db: ScopedDb,
-  params: { organizationId: string; userId: string; role?: string },
+  params: { organizationId: string; userId: string; role?: string; createdAt?: Date },
 ): Promise<SeededMember> {
   const id = randomUUID();
 
@@ -110,7 +114,7 @@ export async function seedMember(
       organizationId: params.organizationId,
       userId: params.userId,
       role: params.role ?? "member",
-      createdAt: new Date(),
+      createdAt: params.createdAt ?? new Date(),
     })
     .returning();
 

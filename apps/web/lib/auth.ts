@@ -1,11 +1,16 @@
-import { schema, type ScopedDb } from "@growthmind/db";
-import { parseServerEnv, resolveActiveOrganization, type Membership } from "@growthmind/shared";
+import {
+  ensureOrganization,
+  findMembershipsByUserId,
+  findUserNameById,
+  schema,
+  type ScopedDb,
+} from "@growthmind/db";
+import { parseServerEnv, resolveActiveOrganization } from "@growthmind/shared";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 
 import { getDb } from "./db";
-import { ensureOrganization } from "./ensure-organization";
 import { getPostHogClient } from "./posthog-server";
 
 type Auth = ReturnType<typeof buildAuth>;
@@ -22,22 +27,6 @@ export interface BuildAuthOptions {
   db?: ScopedDb;
   secret?: string;
   baseURL?: string;
-}
-
-type MemberRow = typeof schema.member.$inferSelect;
-
-// apps/web deliberately has no `drizzle-orm` dependency of its own
-// (repositories/queries live in `packages/db` per ADD D-A) — these lookups
-// select the whole table and filter in-memory, mirroring the precedent
-// already set by `apps/web/__tests__/tenancy/helpers/auth-fixture.ts`.
-async function readMembershipsForUser(db: ScopedDb, userId: string): Promise<MemberRow[]> {
-  const rows = await db.select().from(schema.member);
-  return rows.filter((row) => row.userId === userId);
-}
-
-async function readUserName(db: ScopedDb, userId: string): Promise<string | null> {
-  const rows = await db.select().from(schema.user);
-  return rows.find((row) => row.id === userId)?.name ?? null;
 }
 
 /** Exported for auth.schema.ts (schema generation) — use getAuth() at runtime. */
@@ -129,9 +118,9 @@ export function buildAuth(options: BuildAuthOptions = {}) {
             let activeOrganizationId: string | null = null;
 
             try {
-              let memberRows = await readMembershipsForUser(db, session.userId);
+              let memberships = await findMembershipsByUserId(db, session.userId);
 
-              if (memberRows.length === 0) {
+              if (memberships.length === 0) {
                 // D8 self-heal, at the earliest point possible: Better
                 // Auth defers `user.create.after` (its own
                 // `queueAfterTransactionHook`) until the WHOLE signUpEmail
@@ -141,20 +130,14 @@ export function buildAuth(options: BuildAuthOptions = {}) {
                 // Calling it here too (idempotent, D-C) means the FIRST
                 // session gets a correct stamp instead of a null one that
                 // only self-heals on the next sign-in.
-                const name = await readUserName(db, session.userId);
+                const name = await findUserNameById(db, session.userId);
                 await ensureOrganization(db, { id: session.userId, name });
-                memberRows = await readMembershipsForUser(db, session.userId);
+                memberships = await findMembershipsByUserId(db, session.userId);
               }
 
-              if (memberRows.length > 0) {
-                const memberships: Membership[] = memberRows.map((row) => ({
-                  organizationId: row.organizationId,
-                  organizationName: "",
-                  role: row.role,
-                  createdAt: row.createdAt,
-                }));
-                activeOrganizationId = resolveActiveOrganization(memberships, null);
-              }
+              // Resolves to null on an empty list, which is exactly the stamp
+              // a user with no memberships should get.
+              activeOrganizationId = resolveActiveOrganization(memberships, null);
             } catch (error) {
               console.error(
                 "auth.databaseHooks.session.create.before: failed to resolve activeOrganizationId",

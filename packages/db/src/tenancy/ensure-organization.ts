@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { schema, type ScopedDb } from "@growthmind/db";
 import { deriveWorkspaceName } from "@growthmind/shared";
 
+import { member, organization } from "../schema/auth";
+import type { ScopedDb } from "../repositories/types";
+import { findMembershipsByUserId, findOrganizationBySlug } from "./queries";
+
 /**
- * Idempotent, transactional signup->org completion (ADD D-C):
+ * Idempotent, transactional signup->org completion:
  *   1. If `user` already has a membership, return it.
  *   2. Otherwise insert `organization` + `member` (role "owner") in one
  *      transaction, name from `deriveWorkspaceName(user.name)`, slug
@@ -13,25 +16,16 @@ import { deriveWorkspaceName } from "@growthmind/shared";
  *      `organization.slug` — caught, then re-read the winner's membership
  *      (D6, settled by the constraint, not an earlier check).
  *
- * Invoked from two places: Better Auth's `user.create.after` hook (happy
- * path) and `getTenantContext()`'s self-heal path (D8: no orgless state is
- * ever observable). Failures are logged with context, never swallowed (D8).
+ * Invoked from two places in `apps/web`: Better Auth's `user.create.after`
+ * hook (happy path) and `getTenantContext()`'s self-heal path (D8: no orgless
+ * state is ever observable). Failures are logged with context, never
+ * swallowed (D8).
  *
- * `db` is typed `ScopedDb` (`@growthmind/db`, `packages/db/src/repositories/types.ts`)
- * — the union of the production `NodePgDatabase` and the PGlite-backed
- * `TestDb` used by `apps/web/__tests__/tenancy/signup-org.test.ts` — so this
- * function compiles against both the real driver and the test harness
- * without a cast or `any`.
- *
- * apps/web deliberately has no `drizzle-orm` dependency of its own
- * (repositories/queries live in `packages/db` per ADD D-A) — membership
- * lookups below select the whole table and filter in-memory, mirroring the
- * precedent already set by
- * `apps/web/__tests__/tenancy/helpers/auth-fixture.ts` rather than importing
- * `eq`/`and` from `drizzle-orm` just for this file.
+ * `db` is typed `ScopedDb` (../repositories/types) — the union of the
+ * production `NodePgDatabase` and the PGlite-backed `TestDb` — so this
+ * function compiles against both the real driver and the test harness without
+ * a cast or `any`.
  */
-
-type MemberRow = typeof schema.member.$inferSelect;
 
 interface EnsureOrganizationResult {
   organizationId: string;
@@ -46,22 +40,11 @@ function isUniqueViolation(error: unknown): boolean {
   return cause?.code === "23505";
 }
 
-async function findMembershipForUser(db: ScopedDb, userId: string): Promise<MemberRow | undefined> {
-  const rows = await db.select().from(schema.member);
-  return rows.find((row) => row.userId === userId);
-}
-
-/** The org owning this user's deterministic slug, if one already exists. */
-async function findOrganizationBySlug(db: ScopedDb, slug: string) {
-  const rows = await db.select().from(schema.organization);
-  return rows.find((row) => row.slug === slug);
-}
-
 export async function ensureOrganization(
   db: ScopedDb,
   user: { id: string; name?: string | null },
 ): Promise<EnsureOrganizationResult> {
-  const existing = await findMembershipForUser(db, user.id);
+  const [existing] = await findMembershipsByUserId(db, user.id);
   if (existing) {
     return { organizationId: existing.organizationId };
   }
@@ -82,8 +65,8 @@ export async function ensureOrganization(
 
   try {
     await db.transaction(async (tx) => {
-      await tx.insert(schema.organization).values({ id: organizationId, name, slug, createdAt });
-      await tx.insert(schema.member).values({
+      await tx.insert(organization).values({ id: organizationId, name, slug, createdAt });
+      await tx.insert(member).values({
         id: `member-${randomUUID()}`,
         organizationId,
         userId: user.id,
@@ -111,7 +94,7 @@ export async function ensureOrganization(
       { userId: user.id, slug },
     );
 
-    const winner = await findMembershipForUser(db, user.id);
+    const [winner] = await findMembershipsByUserId(db, user.id);
     if (winner) {
       return { organizationId: winner.organizationId };
     }
@@ -138,7 +121,7 @@ export async function ensureOrganization(
         },
       );
 
-      await db.insert(schema.member).values({
+      await db.insert(member).values({
         id: `member-${randomUUID()}`,
         organizationId: orphaned.id,
         userId: user.id,

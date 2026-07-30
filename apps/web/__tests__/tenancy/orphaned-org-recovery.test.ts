@@ -17,11 +17,9 @@
 // Found by the O-002 security audit (H-1).
 import { randomUUID } from "node:crypto";
 
-import { schema } from "@growthmind/db";
+import { ensureOrganization, schema } from "@growthmind/db";
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-
-import { ensureOrganization } from "@/lib/ensure-organization";
 
 import { readMembershipsForUser } from "./helpers/auth-fixture";
 

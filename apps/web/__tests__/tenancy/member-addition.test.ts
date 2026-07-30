@@ -15,10 +15,9 @@
 // this file.
 import { randomUUID } from "node:crypto";
 
+import { ensureOrganization } from "@growthmind/db";
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-
-import { ensureOrganization } from "@/lib/ensure-organization";
 
 import {
   addTestMember,
