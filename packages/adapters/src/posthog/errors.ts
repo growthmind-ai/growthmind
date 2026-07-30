@@ -18,6 +18,8 @@ import type { SourceFailure, SourceFailureCode } from "@growthmind/shared";
 import { CONNECT_REFUSAL_MESSAGES } from "@growthmind/shared";
 import { z } from "zod";
 
+import { scrubSecrets } from "./scrub";
+
 /**
  * The envelope shape, parsed permissively: `detail` and `attr` are tolerated
  * absent or `null`, because the parser's job is to find `code`, not to
@@ -68,13 +70,36 @@ const SOURCE_FAILURE_MESSAGES: Record<SourceFailureCode, string> = {
   rate_limited: CONNECT_REFUSAL_MESSAGES.rate_limited,
 };
 
-/** Builds the failure with its one plain-English sentence. Nothing from the
- * response body is ever interpolated in. */
-function failure(code: SourceFailureCode): SourceFailure {
-  return { code, message: SOURCE_FAILURE_MESSAGES[code] };
+/**
+ * Builds the failure with its one plain-English sentence, run through
+ * `scrubSecrets` (`./scrub.ts`) before it leaves this function (CR-6).
+ *
+ * This is a belt-and-braces pass, the same shape as
+ * `packages/db/src/repositories/project-connections.repo.ts`'s
+ * `rethrowWithoutParameters`: `SOURCE_FAILURE_MESSAGES` is a fixed,
+ * hand-written set of sentences that structurally never contains
+ * `secrets` today, exactly like `detail` is parsed above and never
+ * interpolated in. The guard exists so that stays true by CONSTRUCTION
+ * rather than by "nobody has changed this function yet" — a later edit that
+ * starts folding response content into a message (or the pattern pass alone,
+ * for a key PostHog echoes back that this process never held) is caught here
+ * rather than shipped.
+ */
+function failure(code: SourceFailureCode, secrets: readonly string[]): SourceFailure {
+  return { code, message: scrubSecrets(SOURCE_FAILURE_MESSAGES[code], secrets) };
 }
 
-export function mapFailure(status: number, body: unknown): SourceFailure {
+/**
+ * `secrets` are scrubbed out of the returned message even though the message
+ * itself never echoes response content — see `failure` above. Callers pass
+ * the credential currently in play (`client.ts` passes
+ * `config.personalApiKey`) so the guard is live rather than aspirational.
+ */
+export function mapFailure(
+  status: number,
+  body: unknown,
+  secrets: readonly string[] = [],
+): SourceFailure {
   const envelope = posthogErrorEnvelopeSchema.safeParse(body);
   const code = envelope.success ? envelope.data.code : undefined;
 
@@ -85,9 +110,9 @@ export function mapFailure(status: number, body: unknown): SourceFailure {
   switch (code) {
     case POSTHOG_ERROR_CODE.AUTHENTICATION_FAILED:
     case POSTHOG_ERROR_CODE.NOT_AUTHENTICATED:
-      return failure("invalid_credentials");
+      return failure("invalid_credentials", secrets);
     case POSTHOG_ERROR_CODE.THROTTLED:
-      return failure("rate_limited");
+      return failure("rate_limited", secrets);
     default:
       break;
   }
@@ -98,13 +123,13 @@ export function mapFailure(status: number, body: unknown): SourceFailure {
   // auth-shaped that is not one of the codes above takes the generic path
   // rather than a branch written on a guess.
   if (status === 401) {
-    return failure("invalid_credentials");
+    return failure("invalid_credentials", secrets);
   }
   if (status === 404) {
-    return failure("project_not_found");
+    return failure("project_not_found", secrets);
   }
   if (status === 429) {
-    return failure("rate_limited");
+    return failure("rate_limited", secrets);
   }
-  return failure("unreachable");
+  return failure("unreachable", secrets);
 }

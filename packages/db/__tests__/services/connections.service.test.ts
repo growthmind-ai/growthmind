@@ -44,6 +44,7 @@ import {
   failedValidation,
   makeFakeSource,
   okValidation,
+  pageCappedPull,
   sourceEvent,
   sourceSession,
   successfulPull,
@@ -420,6 +421,52 @@ describe("createConnectionsService — attach", () => {
     expect(harness.pullRequests[0]?.maxPages).toBe(1);
     // A brand-new attachment has never been polled.
     expect(harness.pullRequests[0]?.watermarkAt).toBeNull();
+  });
+
+  // --- CR-1 regression -------------------------------------------------------
+  // First-connect backlog stall: a brand-new attachment (never polled, so
+  // `watermarkAt` is null) whose inline first pull hits the page cap used to
+  // record NEITHER `watermarkAt` NOR `backfillBefore` — `advanceWatermark`
+  // needs a `Date` for `watermarkAt` and there was no watermark to hold
+  // steady. This test MUST FAIL against the pre-fix code: `attached.
+  // connection.backfillBefore` would be `null` instead of the resume cursor.
+
+  test("CR-1: a page-capped inline first pull on a never-polled connection persists a resume cursor and does NOT advance the watermark", async () => {
+    const ws = await seedWorkspace(db, "cr1-first-pull-backlog");
+    const resumeCursor =
+      "https://eu.analytics.example.invalid/api/projects/00000/events?before=cr1-resume-token";
+    const harness = makeFakeSource({
+      pulls: [
+        pageCappedPull({
+          sessions: [sourceSession({ sessionKey: "ph:cr1-backlog-1" })],
+          events: [
+            sourceEvent({ sourceEventId: "evt-cr1-backlog-1", sessionKey: "ph:cr1-backlog-1" }),
+          ],
+          resumeBefore: resumeCursor,
+        }),
+      ],
+    });
+    const service = createConnectionsService(db, ws.ctx, deps(harness));
+
+    const result = await service.connect(connectInput(ws.project.id));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    // THE FIX: the resume cursor survives even though this connection has
+    // never had a watermark.
+    expect(result.connection.backfillBefore).toBe(resumeCursor);
+    // The watermark invariant is preserved exactly as before the fix: a
+    // page-capped walk must never advance it.
+    expect(result.connection.watermarkAt).toBeNull();
+
+    // Read back through the service's own state surface too, so the
+    // assertion is not just on the in-memory return value.
+    const state = await service.getState(ws.project.id);
+    expect(state.status).not.toBe("not_connected");
+    if (state.status === "not_connected") throw new Error("unreachable");
+    expect(state.connection.backfillBefore).toBe(resumeCursor);
+    expect(state.connection.watermarkAt).toBeNull();
   });
 
   test("the counter is non-zero the moment connect returns", async () => {

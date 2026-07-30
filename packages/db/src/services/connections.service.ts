@@ -254,6 +254,19 @@ export function createConnectionsService(
         current = advanced;
         watermarkAdvancedTo = result.newestObservedAt;
       }
+    } else if (result.ok && !result.contiguous && result.resumeBefore !== null) {
+      // CR-1 FIX. This attachment has never been polled — `watermarkAt` is
+      // null — so a page-capped inline first pull used to have nowhere to
+      // record its resume cursor: `advanceWatermark` writes both columns in
+      // one statement and needs an existing watermark to hold steady.
+      // `setBackfillCursor` touches `backfill_before` alone, so the resume
+      // point survives even with no watermark yet, and the scheduler's next
+      // tick can continue the walk instead of silently restarting it from
+      // the newest event forever.
+      const held = await connections.setBackfillCursor(connection.id, result.resumeBefore);
+      if (held) {
+        current = held;
+      }
     }
 
     const finishedAt = deps.now();

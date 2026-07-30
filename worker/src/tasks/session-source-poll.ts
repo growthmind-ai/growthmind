@@ -462,15 +462,13 @@ async function runOnePass(input: {
  * - Contiguous walk ⇒ the watermark moves to page 1, item 0. `greatest(…)` in
  *   the repository keeps it monotonic, so a late run can never drag it back.
  * - Page-capped walk ⇒ the watermark does NOT move; only the resume cursor is
- *   recorded, by holding the current watermark steady in the same statement.
- *
- * KNOWN GAP, stated rather than hidden: a page-capped walk on a connection
- * that has NEVER been polled (`watermark_at IS NULL`) cannot record its
- * resume cursor, because the repository writes both columns in one statement
- * and there is no watermark to hold steady. That walk re-starts from the
- * newest event next tick — correct, but repeating, and it cannot drain a
- * backlog deeper than one run's page cap until the first contiguous walk
- * lands. Closing it needs a repository method this handler does not own.
+ *   recorded, via `setBackfillCursor`, which touches `backfill_before` alone
+ *   (CR-1 fix). That is what lets a NEVER-POLLED connection
+ *   (`watermark_at IS NULL`) record a resume cursor too: there is no
+ *   watermark to hold steady, because nothing here writes that column at
+ *   all. Without this, a backlog deeper than one run's page cap could never
+ *   drain — every tick would re-walk from the newest event forever, and the
+ *   first-connect backlog would stall permanently and silently.
  */
 async function applyCursors(
   connections: ConnectionsRepo,
@@ -494,14 +492,11 @@ async function applyCursors(
     }
   }
 
-  if (!result.contiguous && result.resumeBefore !== null && currentWatermarkAt !== null) {
-    // A no-op on the watermark by construction — `greatest(x, x)` — carrying
-    // only the resume cursor. Without it, a backlog longer than one run's
-    // page cap would be re-walked from the top forever and never drain.
-    const held = await connections.advanceWatermark(connectionId, {
-      watermarkAt: currentWatermarkAt,
-      backfillBefore: result.resumeBefore,
-    });
+  if (!result.contiguous && result.resumeBefore !== null) {
+    // CR-1 FIX: `setBackfillCursor` touches `backfill_before` alone, so this
+    // persists the resume cursor whether or not a watermark exists yet —
+    // including the never-polled case this branch used to silently drop.
+    const held = await connections.setBackfillCursor(connectionId, result.resumeBefore);
     if (held) {
       return {
         watermarkAt: held.watermarkAt,

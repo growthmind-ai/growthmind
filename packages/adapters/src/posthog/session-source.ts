@@ -21,10 +21,15 @@
 //      at or before the previous watermark. NEVER treat "fewer rows than
 //      `limit`" as an end signal.
 //   4. `newestObservedAt` is PAGE 1, ITEM 0 — the ordering is strictly
-//      newest-first, so it is never accumulated from the last page.
+//      newest-first, so it is never accumulated from the last page. If THAT
+//      item could not be parsed, its instant is unknown, and no later item on
+//      the page may stand in for it: `newestObservedAt` is `null` for the
+//      whole walk rather than a watermark that quietly skips past it (CR-8).
 //   5. `contiguous` is true only for (3)'s first or third termination. A
-//      page-cap stop sets `contiguous: false` and a `resumeBefore` cursor,
-//      and the caller must not advance the watermark.
+//      page-cap stop sets `contiguous: false` and a `resumeBefore` cursor —
+//      but ONLY when a page was actually fetched in the walk that hit the
+//      cap. A walk that starts with zero budget left resumes from `null`,
+//      never from the request url it was never able to send (CR-11).
 //
 import type {
   SessionSourcePullRequest,
@@ -34,7 +39,7 @@ import type {
   SourceFailure,
   SourceSession,
 } from "@growthmind/shared";
-import { CONNECT_REFUSAL_MESSAGES, deriveSessionKey } from "@growthmind/shared";
+import { CONNECT_REFUSAL_MESSAGES, deriveSessionKey, hashIdentityKey } from "@growthmind/shared";
 
 import type { SessionSource } from "../session-source";
 import { createPostHogClient } from "./client";
@@ -135,12 +140,30 @@ export function createPostHogSessionSource(
       async function walk(startUrl: string): Promise<WalkOutcome> {
         let url: string | null = startUrl;
         let firstItemAt: Date | null = null;
+        // CR-8: `firstItemAt` may only ever be seeded from THIS walk's own
+        // page 1 (ROW 1). Tracked explicitly rather than inferred from
+        // `firstItemAt === null`, because a page 1 that contributes zero
+        // parseable events (all malformed, or a page whose `next` still
+        // points to a page 2) must not let a later page's item 0 be mistaken
+        // for the newest.
+        let isFirstPageOfThisWalk = true;
+        // CR-11: a page-cap `resumeBefore` must be a cursor the SERVER handed
+        // us via a page's `next`. If THIS walk call never got to fetch a
+        // single page (the budget was already spent by an earlier walk in
+        // the same run), `url` here is still exactly `startUrl` — for pass 2
+        // that is the freshly-built forward-pass url, not a real resume
+        // cursor. Storing it would make the next run's pass 1 replay the
+        // exact same range pass 2 is about to build fresh anyway.
+        let madeAnyRequest = false;
 
         while (url !== null) {
           if (pagesFetched >= pageCap) {
             // NOT end-of-data. The cursor we did not follow is handed back so
             // the caller can resume, and the watermark must not advance.
-            return { ok: true, stop: { reason: "page_cap", resumeBefore: url, firstItemAt } };
+            return {
+              ok: true,
+              stop: { reason: "page_cap", resumeBefore: madeAnyRequest ? url : null, firstItemAt },
+            };
           }
 
           const response = await client.getEventsPage(url);
@@ -150,14 +173,26 @@ export function createPostHogSessionSource(
             return { ok: false, failure: response.failure };
           }
           pagesFetched += 1;
+          madeAnyRequest = true;
 
           const page = parseEventsPage(response.value);
           droppedMalformed += page.droppedMalformed;
           eventsReceived += page.events.length;
 
           const newestOnPage = page.events[0];
-          if (firstItemAt === null && newestOnPage !== undefined) {
-            firstItemAt = newestOnPage.timestamp;
+          if (isFirstPageOfThisWalk) {
+            // CR-8: trust `events[0]` as "the newest instant, everything at
+            // or after this is captured" ONLY when page 1's own item 0 was
+            // itself readable. A dropped item 0 means the true newest instant
+            // is unknown — `events[0]` here would be a strictly OLDER item —
+            // so `firstItemAt` stays `null` for the whole walk, which is what
+            // keeps the caller from advancing the watermark past it
+            // (packages/db's connections service only commits
+            // `newestObservedAt` when it is non-null).
+            if (!page.firstItemDropped && newestOnPage !== undefined) {
+              firstItemAt = newestOnPage.timestamp;
+            }
+            isFirstPageOfThisWalk = false;
           }
           for (const event of page.events) {
             collected.push(event);
@@ -186,15 +221,26 @@ export function createPostHogSessionSource(
        * Groups the walk's events into sessions and resolves each one's
        * identity, in deterministic first-seen order.
        *
-       * IDENTITY INSIDE THE WALK IS HARVEST-ONLY, and that is a decision.
-       * `harvestEmailFromEvents` is free, so it always runs. The budgeted
-       * `/persons` fallback is NOT spent here: a lookup per assembled session
-       * turns one poll into an N+1 fan-out against the one endpoint whose
-       * throttle profile was never measured (§7 ASSUMED), and the fail
-       * direction of not spending it is the safe one — the session is KEPT and
-       * reported `unresolved`, never laundered into "we checked and cleared
-       * this" (F-8). The resolver is handed no distinct id, so no budget can
-       * be spent by this path and `identityLookupsUsed` is structurally 0.
+       * IDENTITY RESOLUTION SPENDS THE BUDGET HERE, and that is a decision.
+       * `harvestEmailFromEvents` (free) is tried first; only when it comes
+       * back empty does resolving a session spend one `/persons` lookup
+       * (CR-2 — the resolver is handed the session's REAL raw distinct id, so
+       * D-5's step 2 can actually run, rather than a hardcoded `null` that
+       * made step 2 permanently unreachable). The fail direction on a spent
+       * OR an exhausted budget is the safe one either way — the session is
+       * KEPT and reported `unresolved`, never laundered into "we checked and
+       * cleared this" (F-8).
+       *
+       * ONLY A HASH EVER CROSSES THE PORT BOUNDARY (CR-5, product-decisions
+       * §5, PRD FR-16). PostHog's raw `distinct_id` is real signal — the
+       * `/persons` lookup above needs it, and session grouping needs a stable
+       * key derived from it — but `identify()` is routinely called with an
+       * email address, so the raw value can carry PII. `hashIdentityKey`
+       * (project-salted sha256, `@growthmind/shared`) is applied ONCE, at the
+       * point each event's identity key is produced below, so `deriveSessionKey`
+       * — and therefore `session_key` — never sees the raw value either. The
+       * raw distinct id itself lives only in this function's local scope, for
+       * exactly as long as the `/persons` lookup needs it.
        */
       async function assemble(
         raw: readonly RawEvent[],
@@ -203,9 +249,18 @@ export function createPostHogSessionSource(
         const grouped = new Map<string, RawEvent[]>();
 
         for (const event of raw) {
+          // CR-5: hashed ONCE, here, so every downstream consumer of an
+          // identity key — session grouping below, and the persisted session
+          // further down — only ever sees the hash, never the raw PostHog
+          // value.
+          const hashedIdentityKey =
+            event.distinctId === null
+              ? null
+              : hashIdentityKey(config.sourceProjectId, event.distinctId);
+
           const sessionKey = deriveSessionKey({
             postHogSessionId: event.sessionId,
-            identityKey: event.distinctId,
+            identityKey: hashedIdentityKey,
             occurredAt: event.timestamp,
             sourceEventId: event.id,
           });
@@ -241,15 +296,24 @@ export function createPostHogSessionSource(
             continue;
           }
 
-          const identityKey = chronological.find((event) => event.distinctId !== null)?.distinctId;
+          // CR-2: the RAW distinct id — PostHog's own identifier, not ours to
+          // invent a substitute for — is what the budgeted `/persons` lookup
+          // (D-5 step 2) needs. It stays local to this call; the resolver
+          // never persists it, and the value that crosses the port boundary
+          // below is always the hash (CR-5).
+          const rawDistinctId =
+            chronological.find((event) => event.distinctId !== null)?.distinctId ?? null;
           const identity = await resolver.resolve({
-            distinctId: null,
+            distinctId: rawDistinctId,
             harvestedEmail: harvestEmailFromEvents(chronological),
           });
 
           sessions.push({
             sessionKey,
-            identityKey: identityKey ?? null,
+            identityKey:
+              rawDistinctId === null
+                ? null
+                : hashIdentityKey(config.sourceProjectId, rawDistinctId),
             identityEmailDomain: identity.emailDomain,
             identityResolution: identity.resolution,
             userAgent: chronological.find((event) => event.userAgent !== null)?.userAgent ?? null,

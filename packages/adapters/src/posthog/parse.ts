@@ -51,6 +51,19 @@ export interface ParsedEventsPage {
    * treat "fewer rows than `limit`" as an end signal.
    */
   readonly next: string | null;
+  /**
+   * `true` when `results[0]` existed but could not be parsed (O-003 CR-8).
+   * `false` for a page with no items at all — that is "nothing to be newest
+   * of", not "an unreadable newest item".
+   *
+   * The walk (`session-source.ts`) must never derive `firstItemAt` from
+   * `events[0]` when this is `true`: `events[0]` there is a LATER (older)
+   * item than the genuinely newest one, and trusting it as "everything at or
+   * after this instant is captured" would let the exclusive `after`/`before`
+   * boundary silently age the unparsed item out of the overlap window and
+   * lose it for good — visible only as a rising `droppedMalformed` count.
+   */
+  readonly firstItemDropped: boolean;
 }
 
 /** A plain object, for the handful of places this parser steps into one. */
@@ -136,25 +149,35 @@ export function parseEventsPage(json: unknown): ParsedEventsPage {
     // The whole envelope is unreadable. It is reported as ONE dropped item
     // rather than as a clean empty page, because an empty page is never
     // authoritative here (ROW 2) and a silent zero is exactly the failure this
-    // adapter is built to avoid.
-    return { events: [], droppedMalformed: 1, next };
+    // adapter is built to avoid. There is no `results[0]` to speak of, so
+    // `firstItemDropped` is `false` — the walk already treats an empty
+    // `events` array as "nothing to seed `firstItemAt` from" on its own.
+    return { events: [], droppedMalformed: 1, next, firstItemDropped: false };
   }
 
   const events: RawEvent[] = [];
   let droppedMalformed = 0;
+  let firstItemDropped = false;
 
-  for (const item of results) {
-    const parsed = parseEventItem(item);
+  for (let index = 0; index < results.length; index += 1) {
+    const parsed = parseEventItem(results[index]);
     if (parsed === null) {
       // PER ITEM, NEVER PER PAGE. One weird event costs itself and nothing
       // else — and is counted, so it can never be silently discarded.
       droppedMalformed += 1;
+      // CR-8: index 0 specifically is the page's claimed newest item. If it
+      // is the one that could not be read, the caller must not treat any
+      // LATER item on this page as "the newest" — that would fabricate a
+      // watermark past an event we never captured.
+      if (index === 0) {
+        firstItemDropped = true;
+      }
       continue;
     }
     events.push(parsed);
   }
 
-  return { events, droppedMalformed, next };
+  return { events, droppedMalformed, next, firstItemDropped };
 }
 
 /**

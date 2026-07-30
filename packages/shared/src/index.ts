@@ -135,6 +135,7 @@ export {
   type SessionKeyInput,
 } from "./sessions/grouping";
 export { normaliseUrlPath, URL_PATH_NORMALISATION_VERSION } from "./sessions/url-path";
+export { hashIdentityKey } from "./sessions/identity-key";
 
 // --- O-003: the onboarding counter ------------------------------------------
 export {

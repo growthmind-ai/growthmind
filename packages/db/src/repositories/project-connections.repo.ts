@@ -86,6 +86,18 @@ export interface ProjectConnectionsRepo {
    * re-open a window we have already covered (D6).
    */
   advanceWatermark(id: string, input: AdvanceWatermarkInput): Promise<ConnectionSummary | null>;
+  /**
+   * Persists the resume cursor for an unfinished backward walk INDEPENDENTLY
+   * of `watermark_at` — the fix for CR-1's first-connect backlog stall.
+   *
+   * `advanceWatermark` writes both columns in one statement and its
+   * `watermarkAt` field is a non-null `Date`, so a never-polled connection
+   * (`watermark_at IS NULL`) has no watermark to hold steady while recording
+   * a page-cap stop. This method touches `backfill_before` alone, so a
+   * connection with no watermark yet can still resume its unfinished walk —
+   * `watermark_at` stays exactly as it was, `NULL` included.
+   */
+  setBackfillCursor(id: string, backfillBefore: string | null): Promise<ConnectionSummary | null>;
   setInferredInternalDomain(
     id: string,
     input: SetInferredInternalDomainInput,
@@ -348,6 +360,27 @@ export function createProjectConnectionsRepo(
           watermarkAt: sql`greatest(${projectConnections.watermarkAt}, ${input.watermarkAt}::timestamptz)`,
           backfillBefore: input.backfillBefore,
         })
+        .where(
+          and(
+            eq(projectConnections.organizationId, ctx.organizationId),
+            eq(projectConnections.id, id),
+          ),
+        )
+        .returning();
+
+      return row ? toConnectionSummary(row) : null;
+    },
+
+    async setBackfillCursor(
+      id: string,
+      backfillBefore: string | null,
+    ): Promise<ConnectionSummary | null> {
+      // NO `watermark_at` in this statement's `set` — that is the whole fix.
+      // A never-polled connection keeps its NULL watermark while still
+      // recording where its unfinished backward walk left off.
+      const [row] = await db
+        .update(projectConnections)
+        .set({ backfillBefore })
         .where(
           and(
             eq(projectConnections.organizationId, ctx.organizationId),

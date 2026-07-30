@@ -97,7 +97,7 @@ export function createPostHogClient(
       // The run-lifetime give-up. Checked BEFORE the request, so an exhausted
       // endpoint stops costing requests rather than merely stopping retries.
       if (attemptsSpent[endpoint] >= MAX_RATE_LIMIT_ATTEMPTS) {
-        return { ok: false, failure: mapFailure(429, null) };
+        return { ok: false, failure: mapFailure(429, null, [config.personalApiKey]) };
       }
 
       let response: Response;
@@ -109,7 +109,7 @@ export function createPostHogClient(
         // A transport fault carries no envelope at all, so it takes the
         // status-only fallback and lands on `unreachable` — distinct from
         // wrong-credentials and wrong-project (FR-9).
-        return { ok: false, failure: mapFailure(0, null) };
+        return { ok: false, failure: mapFailure(0, null, [config.personalApiKey]) };
       }
 
       if (response.ok) {
@@ -117,7 +117,11 @@ export function createPostHogClient(
       }
 
       const body = await readJsonBody(response);
-      const failure = mapFailure(response.status, body);
+      // CR-6: the key is threaded in as a `scrubSecrets` secret on every
+      // constructed failure (`mapFailure` / `errors.ts`) — belt-and-braces,
+      // since `body`'s `detail` is never actually read into the message, but
+      // the guard is then live rather than a comment's unenforced promise.
+      const failure = mapFailure(response.status, body, [config.personalApiKey]);
       if (failure.code !== "rate_limited") {
         return { ok: false, failure };
       }
@@ -140,7 +144,7 @@ export function createPostHogClient(
 
     // Unreachable while the loop bound and the run bound are the same
     // constant; kept so the bound is total rather than inferred.
-    return { ok: false, failure: mapFailure(429, null) };
+    return { ok: false, failure: mapFailure(429, null, [config.personalApiKey]) };
   }
 
   return {

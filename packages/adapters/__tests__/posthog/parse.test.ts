@@ -28,6 +28,39 @@ describe("parseEventsPage", () => {
 
     expect(parsed.events.map((event) => event.id)).toEqual([AD_ID_GOOD_1, AD_ID_GOOD_2]);
     expect(parsed.droppedMalformed).toBe(1);
+    // A malformed item in the MIDDLE of the page is not the page's claimed
+    // newest — `firstItemDropped` names specifically whether `results[0]`
+    // itself survived (CR-8).
+    expect(parsed.firstItemDropped).toBe(false);
+  });
+
+  // CR-8 — the genuinely newest item on the page (index 0) is the one this
+  // adapter's own watermark logic can never afford to silently skip past.
+  test("firstItemDropped is true only when results[0] itself could not be parsed", () => {
+    const droppedFirst = parseEventsPage(
+      adEventsPage([
+        // Index 0: no `id`, so it cannot be read.
+        { distinct_id: "ad-broken", timestamp: "2026-07-30T17:57:49.891000+00:00", person: null },
+        adEventItem({ id: AD_ID_GOOD_1, timestamp: "2026-07-30T17:57:48.891000+00:00" }),
+      ]),
+    );
+    expect(droppedFirst.droppedMalformed).toBe(1);
+    expect(droppedFirst.events.map((event) => event.id)).toEqual([AD_ID_GOOD_1]);
+    expect(droppedFirst.firstItemDropped).toBe(true);
+
+    // A page with no items at all has no "item 0" to have dropped.
+    const empty = parseEventsPage(adEventsPage([], null));
+    expect(empty.firstItemDropped).toBe(false);
+
+    // An unreadable envelope (not even an array) has no readable `results[0]`
+    // either — it is reported as one dropped envelope, not a dropped item 0.
+    const unreadable = parseEventsPage({ next: null, results: "not-an-array" });
+    expect(unreadable.firstItemDropped).toBe(false);
+    expect(unreadable.droppedMalformed).toBe(1);
+
+    // Every item on the page is fine: nothing was dropped anywhere.
+    const clean = parseEventsPage(adEventsPage([adEventItem({ id: AD_ID_GOOD_2 })]));
+    expect(clean.firstItemDropped).toBe(false);
   });
 
   // Item 35 — ROW 1.

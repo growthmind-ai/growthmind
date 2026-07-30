@@ -13,6 +13,8 @@
 //
 // WAVE 0: `runSessionSourcePoll` is a typed stub whose body throws. Every test
 // here MUST fail on that, never on a compile error or a fixture collision.
+import { randomUUID } from "node:crypto";
+
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { schema } from "@growthmind/db";
@@ -88,6 +90,38 @@ async function pollRunsFor(connectionId: string) {
 async function eventsFor(projectId: string) {
   const rows = await db.select().from(schema.events);
   return rows.filter((row) => row.projectId === projectId);
+}
+
+/**
+ * A DB wrapper that behaves exactly like the real one, except that inserting
+ * into ONE named table throws — the write-side sibling of the network faults
+ * `createFakePostHog` injects on the read side, used to cover the
+ * `runOnePass` catch block (persistence throws after the pull already
+ * succeeded). Every other call — the ownership-filter selects inside the
+ * repositories, the poll-run writes, the connection health write — passes
+ * straight through to the real PGlite instance untouched, via a `Proxy`
+ * rather than a hand-rolled fake, so nothing about the passthrough calls can
+ * drift from the real `TestDb` surface.
+ */
+function dbThatFailsToInsert(realDb: TestDb, table: unknown, message: string): TestDb {
+  const handler: ProxyHandler<TestDb> = {
+    get(target, prop, receiver) {
+      if (prop === "insert") {
+        return (arg: unknown) => {
+          if (arg === table) {
+            throw new Error(message);
+          }
+          const original = Reflect.get(target, prop, receiver) as (arg: unknown) => unknown;
+          return original.call(target, arg);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  };
+  return new Proxy(realDb, handler);
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +293,46 @@ for (const scenario of EXIT_SCENARIOS) {
 }
 
 // ---------------------------------------------------------------------------
+// Item 109 (a sixth exit path, uncovered by EXIT_SCENARIOS) — a stored
+// credential this installation cannot decrypt fails closed, with NO request
+// ever made (ADD §8 F-11).
+// ---------------------------------------------------------------------------
+
+test("a connection whose stored credential this installation cannot decrypt fails closed, records a failed run, and makes no request", async () => {
+  // Omitting `credentialFor` leaves the fixture's default placeholder
+  // ciphertext (`v1.00000000.aaaa.bbbb.cccc`): well-formed enough to parse
+  // (five dot-separated fields, version `v1`), but stamped with a key id no
+  // real key resolves to — exactly the "written under a different key id"
+  // shape F-11 names, and it fails closed on `key_id_mismatch` inside
+  // `decryptSecret` rather than throwing.
+  const seeded = await seedPollableWorkspace(db, { prefix: PREFIX, now: NOW });
+  const clock = createFakeClock(NOW);
+  const posthog = createFakePostHog({});
+
+  await runSessionSourcePoll(createPollDeps({ db, fetch: posthog.fetch, clock }));
+
+  // THE POINT OF THIS TEST: fail-closed means no request is even attempted —
+  // neither an events call nor a persons call.
+  expect(posthog.calls).toEqual([]);
+
+  const runs = await pollRunsFor(seeded.connectionId);
+  expect(runs.length).toBeGreaterThanOrEqual(1);
+  const run = runs[0];
+  expect(run?.status).toBe("failed");
+  expect(run?.finishedAt).not.toBeNull();
+  expect(run?.failureCode).toBe("misconfigured");
+  expect((run?.failureMessage ?? "").length).toBeGreaterThan(0);
+  // Plain English: no product jargon, no bare HTTP status, and never the
+  // vendor's own `detail` text.
+  expect(jargonIn(run?.failureMessage ?? "")).toEqual([]);
+
+  const connection = (await db.select().from(schema.projectConnections)).find(
+    (row) => row.id === seeded.connectionId,
+  );
+  expect(connection?.health).toBe("failing");
+});
+
+// ---------------------------------------------------------------------------
 // Item 110 — partial progress survives a mid-pull fault (FR-22)
 // ---------------------------------------------------------------------------
 
@@ -311,6 +385,96 @@ test("a mid-pull network fault leaves already-persisted rows intact and does NOT
   const runs = await pollRunsFor(seeded.connectionId);
   expect(runs.some((run) => run.status === "failed")).toBe(true);
   expect(runs.every((run) => run.watermarkAdvancedTo === null)).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// Item 110 (a second fault site, uncovered) — partial progress survives a
+// mid-PERSIST write fault too, not only a mid-pull network fault (FR-22).
+// ---------------------------------------------------------------------------
+
+test("a mid-persist DB write failure leaves already-persisted events untouched and does NOT advance the watermark", async () => {
+  const watermark = new Date(NOW.getTime() - 10 * 60_000);
+  const seeded = await seedWired({ watermarkAt: watermark });
+
+  // Data from a PRIOR successful run — the "already-persisted state" this
+  // test proves survives this run's failure untouched.
+  const priorOccurredAt = new Date(NOW.getTime() - 20 * 60_000);
+  const priorSessionId = randomUUID();
+  await db.insert(schema.sessions).values({
+    id: priorSessionId,
+    organizationId: seeded.organizationId,
+    projectId: seeded.projectId,
+    connectionId: seeded.connectionId,
+    sessionKey: `${PREFIX}prior-session`,
+    identityKey: null,
+    identityEmailDomain: null,
+    identityResolution: "unresolved",
+    userAgent: null,
+    entryUrlPath: null,
+    startedAt: priorOccurredAt,
+    lastEventAt: priorOccurredAt,
+    origin: "real",
+    exclusionReason: "none",
+    internalDomainAtStamp: null,
+    exclusionRuleSetVersion: 1,
+    groupingVersion: 1,
+  });
+  await db.insert(schema.events).values({
+    id: randomUUID(),
+    organizationId: seeded.organizationId,
+    projectId: seeded.projectId,
+    connectionId: seeded.connectionId,
+    sessionId: priorSessionId,
+    sourceEventId: `${PREFIX}prior-event`,
+    name: "$pageview",
+    occurredAt: priorOccurredAt,
+    urlPath: "/prior",
+  });
+
+  const clock = createFakeClock(NOW);
+  const posthog = createFakePostHog({
+    events: () => ({
+      results: [
+        fakeEvent({
+          distinctId: `${PREFIX}visitor-fail`,
+          sessionId: `${PREFIX}session-fail`,
+          occurredAt: new Date(NOW.getTime() - 60_000),
+        }),
+      ],
+      next: null,
+    }),
+  });
+
+  // The pull succeeds; the WRITE fails, on the events table specifically —
+  // after the sessions half of the same `persistPullResult` call has already
+  // gone through, which is what makes this "mid-persist" rather than "never
+  // attempted" (the credential test above).
+  const failingDb = dbThatFailsToInsert(db, schema.events, "simulated events write failure");
+
+  await runSessionSourcePoll(createPollDeps({ db: failingDb, fetch: posthog.fetch, clock }));
+
+  // The prior event is untouched — not duplicated, not lost. persistence
+  // failing on THIS run's events must not corrupt what an earlier run wrote.
+  const eventsAfter = await eventsFor(seeded.projectId);
+  expect(eventsAfter.length).toBe(1);
+  expect(eventsAfter[0]?.sourceEventId).toBe(`${PREFIX}prior-event`);
+
+  // The advance is skipped entirely on a failed pass (FR-22) — the watermark
+  // stays exactly where it was before this run, same as the network-fault
+  // case above.
+  const connection = (await db.select().from(schema.projectConnections)).find(
+    (row) => row.id === seeded.connectionId,
+  );
+  expect(connection?.watermarkAt?.getTime()).toBe(watermark.getTime());
+  expect(connection?.health).toBe("failing");
+
+  const runs = await pollRunsFor(seeded.connectionId);
+  expect(runs.length).toBeGreaterThanOrEqual(1);
+  const run = runs[runs.length - 1];
+  expect(run?.status).toBe("failed");
+  expect(run?.finishedAt).not.toBeNull();
+  expect((run?.failureMessage ?? "").length).toBeGreaterThan(0);
+  expect(jargonIn(run?.failureMessage ?? "")).toEqual([]);
 });
 
 // ---------------------------------------------------------------------------

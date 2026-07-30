@@ -366,6 +366,92 @@ describe("project-connections repository", () => {
     expect(readBack?.backfillBefore).toBe("2026-07-30T10:15:00.123+00:00");
   });
 
+  // --- CR-1 fix --------------------------------------------------------------
+  it("setBackfillCursor persists a resume cursor on a NEVER-POLLED connection, leaving watermark_at NULL", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("cr1-never-polled"),
+      userName: NAMES.userName("cr1-never-polled"),
+      email: NAMES.email("cr1-never-polled"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("cr1-never-polled"),
+    });
+    // No `watermarkAt` override — this connection has never been polled.
+    const connection = await seedConnection(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+    });
+    const repo = createProjectConnectionsRepo(db, org.ctx);
+    expect((await repo.getActiveForProject(project.id))?.watermarkAt).toBeNull();
+
+    const held = await repo.setBackfillCursor(connection.id, "2026-07-30T10:15:00.123+00:00");
+
+    // The whole point of the fix: a never-polled connection can now record a
+    // resume cursor WITHOUT a watermark to hold steady — `advanceWatermark`
+    // cannot express this because its `watermarkAt` field is a non-null Date.
+    expect(held?.watermarkAt).toBeNull();
+    expect(held?.backfillBefore).toBe("2026-07-30T10:15:00.123+00:00");
+
+    const readBack = await repo.getActiveForProject(project.id);
+    expect(readBack?.watermarkAt).toBeNull();
+    expect(readBack?.backfillBefore).toBe("2026-07-30T10:15:00.123+00:00");
+  });
+
+  it("setBackfillCursor never touches watermark_at on an already-polled connection", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("cr1-polled"),
+      userName: NAMES.userName("cr1-polled"),
+      email: NAMES.email("cr1-polled"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("cr1-polled"),
+    });
+    const watermark = new Date("2026-07-30T11:00:00.000Z");
+    const connection = await seedConnection(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      watermarkAt: watermark,
+    });
+    const repo = createProjectConnectionsRepo(db, org.ctx);
+
+    const held = await repo.setBackfillCursor(connection.id, "2026-07-30T09:00:00.000+00:00");
+
+    expect(held?.watermarkAt?.getTime()).toBe(watermark.getTime());
+    expect(held?.backfillBefore).toBe("2026-07-30T09:00:00.000+00:00");
+  });
+
+  it("setBackfillCursor returns null for a foreign org's connection and changes nothing", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("cr1-foreign-a"),
+      userName: NAMES.userName("cr1-foreign-a"),
+      email: NAMES.email("cr1-foreign-a"),
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("cr1-foreign-b"),
+      userName: NAMES.userName("cr1-foreign-b"),
+      email: NAMES.email("cr1-foreign-b"),
+    });
+    const project = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: NAMES.projectName("cr1-foreign"),
+    });
+    const connection = await seedConnection(db, {
+      organizationId: orgA.organizationId,
+      projectId: project.id,
+    });
+
+    const repoB = createProjectConnectionsRepo(db, orgB.ctx);
+    expect(
+      await repoB.setBackfillCursor(connection.id, "2026-07-30T09:00:00.000+00:00"),
+    ).toBeNull();
+
+    const repoA = createProjectConnectionsRepo(db, orgA.ctx);
+    const after = await repoA.getActiveForProject(project.id);
+    expect(after?.backfillBefore).toBeNull();
+  });
+
   // --- item 69 -------------------------------------------------------------
   it("returns null from every mutation for a foreign org's connection and changes nothing", async () => {
     const orgA = await seedOrgWithOwner(db, {

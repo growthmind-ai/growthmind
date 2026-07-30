@@ -98,6 +98,32 @@ export function successfulPull(input: {
   };
 }
 
+/**
+ * A page-capped, NON-contiguous result — the shape a walk returns when it hit
+ * its page cap rather than reaching a literal `null` cursor or the previous
+ * watermark (CR-1). `newestObservedAt` is `null` because PASS 2 (the forward
+ * pass) never ran: a resumed walk that is still capped reports no fresh
+ * `newestObservedAt`, exactly like the real adapter's PASS 1 short-circuit.
+ */
+export function pageCappedPull(input: {
+  sessions: readonly SourceSession[];
+  events: readonly SourceEvent[];
+  resumeBefore: string;
+}): SessionSourcePullResult {
+  return {
+    ok: true,
+    sessions: [...input.sessions],
+    events: [...input.events],
+    newestObservedAt: null,
+    contiguous: false,
+    resumeBefore: input.resumeBefore,
+    pagesFetched: 1,
+    droppedMalformed: 0,
+    identityLookupsUsed: 0,
+    eventsReceived: input.events.length,
+  };
+}
+
 export function failedPull(input: {
   failure: SourceFailure;
   partialSessions?: readonly SourceSession[];

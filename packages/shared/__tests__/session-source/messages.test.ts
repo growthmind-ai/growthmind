@@ -107,9 +107,7 @@ describe("the plain-English audit", () => {
     });
     expect(BARE_STATUS.test(rawWithStatusLikeId)).toBe(true);
     expect(
-      BARE_STATUS.test(
-        rawWithStatusLikeId.split(statusLikeProjectId).join("s0-masked-project-id"),
-      ),
+      BARE_STATUS.test(rawWithStatusLikeId.split(statusLikeProjectId).join("s0-masked-project-id")),
     ).toBe(false);
   });
 

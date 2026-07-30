@@ -28,8 +28,15 @@ export interface PostHogSourceConfig {
   /**
    * The customer's personal API key, decrypted for the lifetime of one poll
    * run. It is presented as a Bearer credential and must never appear in a
-   * returned reason, a persisted row, or a log line — `scrubSecrets` is
-   * applied to anything that could become one.
+   * returned reason, a persisted row, or a log line. `client.ts` threads it
+   * through as a `scrubSecrets` (`./scrub.ts`) secret on every `mapFailure`
+   * call (`./errors.ts`) — a belt-and-braces pass, since `mapFailure`'s
+   * messages are a fixed, hand-written set that never interpolates response
+   * content today, but the guard is live rather than a comment's unenforced
+   * promise (CR-6). `scrubSecrets` and friends are barrel-exported from
+   * `@growthmind/adapters` so `packages/db` and `worker/` can apply the same
+   * guard to whatever reason/log strings they build from this adapter's
+   * output.
    */
   readonly personalApiKey: string;
 }

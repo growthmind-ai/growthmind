@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { mapFailure } from "../../src/posthog/errors";
+import { REDACTED_PLACEHOLDER } from "../../src/posthog/scrub";
 import { AD_FAKE_PERSONAL_KEY } from "../helpers/fakes";
 
 /** The three envelopes pinned against the live API (SEC-D + ROW 5). */
@@ -103,5 +104,30 @@ describe("mapFailure", () => {
 
     // The throttled envelope is the same shape and maps by `code`.
     expect(mapFailure(429, AD_THROTTLED_BODY).code).toBe("rate_limited");
+  });
+
+  // CR-6 — the wiring itself. Nothing in `SOURCE_FAILURE_MESSAGES` is
+  // expected to ever contain a secret (the messages are a fixed,
+  // hand-written set), so this proves `mapFailure` actually CALLS
+  // `scrubSecrets` on the message it builds, rather than merely accepting an
+  // unused `secrets` parameter — a substring lifted straight out of the
+  // `unreachable` sentence stands in for "a value the caller told
+  // `mapFailure` to treat as a secret".
+  test("mapFailure scrubs every secret it is handed out of the returned message", () => {
+    const clean = mapFailure(503, {});
+    const fragment = "reach that address";
+    expect(clean.message).toContain(fragment);
+
+    const scrubbed = mapFailure(503, {}, [fragment]);
+    expect(scrubbed.code).toBe("unreachable");
+    expect(scrubbed.message).not.toContain(fragment);
+    expect(scrubbed.message).toContain(REDACTED_PLACEHOLDER);
+
+    // The credential shape `client.ts` actually threads through
+    // (`config.personalApiKey`) is scrubbed the same way, even though it
+    // structurally never appears in a message today.
+    expect(mapFailure(401, AD_INVALID_KEY_BODY, [AD_FAKE_PERSONAL_KEY]).message).not.toContain(
+      AD_FAKE_PERSONAL_KEY,
+    );
   });
 });

@@ -77,10 +77,9 @@ describe("resolveCredentialKey", () => {
     const devBytes = Buffer.from(DEV_ENCRYPTION_KEY, "base64");
     expect(devBytes).toHaveLength(CREDENTIAL_KEY_BYTE_LENGTH);
 
-    const overLength = Buffer.concat([
-      devBytes,
-      Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]),
-    ]).toString("base64");
+    const overLength = Buffer.concat([devBytes, Buffer.from([1, 2, 3, 4, 5, 6, 7, 8])]).toString(
+      "base64",
+    );
 
     // Not the exact published literal, so parseServerEnv's boot-time
     // exact-match guard does not fire on it either — this value must be
