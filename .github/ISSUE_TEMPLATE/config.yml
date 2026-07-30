@@ -1,0 +1,18 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/growthmind-ai/growthmind/blob/main/SECURITY.md
+    about: >-
+      Please use private vulnerability reporting or email
+      founders@growthmind.ai instead of opening a public issue.
+  - name: Questions and open-ended ideas
+    url: https://github.com/growthmind-ai/growthmind/discussions
+    about: >-
+      Ask how something works, or think out loud about an idea that isn't a
+      concrete piece of work yet. Nothing is decided there — to argue with a
+      product decision, use the "Argue with a decision" template.
+  - name: Website issues
+    url: https://github.com/growthmind-ai/website/issues
+    about: >-
+      Problems with growthmind.ai (the marketing site) belong in the website
+      repo.

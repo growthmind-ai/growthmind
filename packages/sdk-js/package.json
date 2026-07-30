@@ -1,0 +1,13 @@
+{
+  "name": "@growthmind/sdk-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser event capture — capture, masking, and internal-traffic exclusion.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

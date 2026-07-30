@@ -1,0 +1,44 @@
+name: Bug report
+description: Something is broken.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: >-
+        What did you do, what did you expect, what happened instead. Plain
+        English is perfect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: >-
+        Steps, a failing command, or a minimal example. "docker compose up on
+        a clean clone, then…" is the ideal shape.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running Growthmind?
+      options:
+        - Self-hosted (docker compose)
+        - Self-hosted (other)
+        - Cloud (growthmind.ai)
+        - Local development (bun run dev)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser if relevant, and any log output that looks related.
+      render: text
+    validations:
+      required: false

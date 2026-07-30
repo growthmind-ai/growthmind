@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  # Keeps the SHA pins in .github/workflows/* current, and rewrites the
+  # trailing `# vX.Y.Z` comment to match. Without this, pinning to a SHA just
+  # means silently running a year-old action.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: bun
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
+      prefix-development: "build"
+    groups:
+      # One PR for the React/Next set: they are released together and pinned
+      # to exact versions, so splitting them produces PRs that cannot build
+      # alone.
+      next:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      tooling:
+        patterns:
+          - "typescript"
+          - "oxlint"
+          - "prettier"
+          - "@types/node"
+          - "@types/bun"

@@ -1,0 +1,38 @@
+name: Argue with a decision
+description: >-
+  Challenge a product decision or an architecture choice. This is a
+  first-class issue type here — the decisions are published precisely so
+  they can be argued with. GOVERNANCE.md ("How to change our mind") covers
+  what happens after you file: the decision changes first, the code follows,
+  and a decline stays public with its reasoning.
+labels: ["decision"]
+body:
+  - type: input
+    id: decision
+    attributes:
+      label: Which decision?
+      description: >-
+        Point at the section — e.g. "product decisions §7, hard rate limit on
+        findings" or "architecture D-4, backpressure is a scheduler".
+      placeholder: product decisions §…, or architecture D-… / T-…
+    validations:
+      required: true
+
+  - type: textarea
+    id: argument
+    attributes:
+      label: The argument
+      description: >-
+        Why the decision is wrong or incomplete. The strongest form is a
+        concrete scenario where following the decision produces a worse
+        product than the alternative you propose.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: What would you do instead?
+      description: The replacement rule, and what it costs.
+    validations:
+      required: true

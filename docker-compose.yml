@@ -1,0 +1,73 @@
+# The whole quickstart: `docker compose up` from a clean clone reaches a
+# working app on http://localhost:3000 with no .env, no signup, no API key.
+# CI boots this file on every push so the promise can never silently break
+# (.github/workflows/ci.yml).
+#
+# Every default below is for local use. For anything internet-facing, set
+# BETTER_AUTH_SECRET (openssl rand -base64 32) and a real Postgres password —
+# see .env.example.
+
+name: growthmind
+
+services:
+  postgres:
+    # pgvector ships in the image so embeddings never need a second datastore
+    # or a later extension migration (docs/stack.md, Phase 1).
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: growthmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-growthmind}
+      POSTGRES_DB: growthmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U growthmind -d growthmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://growthmind:${POSTGRES_PASSWORD:-growthmind}@postgres:5432/growthmind
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-change-me-32-chars!}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # The image has no curl; bun is the probe. /api/health checks Postgres
+      # reachability too, so "healthy" means the whole stack works.
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://growthmind:${POSTGRES_PASSWORD:-growthmind}@postgres:5432/growthmind
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-change-me-32-chars!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -1,0 +1,27 @@
+# Line endings are normalised here, not left to each contributor's Git config.
+#
+# This repository is developed on Windows and `bun run format:check` is a CI
+# gate. Without this file, a contributor whose Git has core.autocrlf=true
+# commits CRLF, Prettier fails in CI, and nothing in the diff explains why.
+# Text files are stored and checked out LF everywhere.
+* text=auto eol=lf
+
+# Binary files must never be normalised — doing so corrupts them.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+
+# SVG is text and should be diffable.
+*.svg text eol=lf
+
+# Generated, never hand-edited. Collapsed in review and excluded from the
+# repository's language statistics.
+#   bun.lock            — written by `bun install`
+#   schema/auth.ts      — written by `bun run db:generate:auth` (see AGENTS.md)
+bun.lock                        linguist-generated=true
+packages/db/src/schema/auth.ts  linguist-generated=true

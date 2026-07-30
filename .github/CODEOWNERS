@@ -1,0 +1,22 @@
+# Every path has an owner, so no pull request can be merged without a review
+# from someone accountable for it. Enable "Require review from Code Owners" in
+# branch protection or this file is decoration.
+
+*                       @growthmind-ai/founders
+
+# The product contract. Changes here are product decisions, not docs edits.
+/docs/                  @growthmind-ai/founders
+
+# Licensing, contribution terms and the security policy define what anyone may
+# do with this repository. Changes to them are not routine.
+/LICENSE                @growthmind-ai/founders
+/CONTRIBUTING.md        @growthmind-ai/founders
+/GOVERNANCE.md          @growthmind-ai/founders
+/SECURITY.md            @growthmind-ai/founders
+
+# CI runs with repository credentials and installs dependencies. Treat any
+# change here as a change to what the repo is allowed to execute.
+/.github/workflows/     @growthmind-ai/founders
+/package.json           @growthmind-ai/founders
+/bun.lock               @growthmind-ai/founders
+/docker-compose.yml     @growthmind-ai/founders
