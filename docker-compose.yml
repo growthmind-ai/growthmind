@@ -49,6 +49,11 @@ services:
       # production on the public example values unless this is set, so a real
       # deployment fails loudly instead of signing sessions with a secret
       # published in this repo. DELETE THIS LINE when you deploy for real.
+      # Published dev-only key so a clean clone boots (O-003 D-1). It is refused
+      # at the *encryption call site* in production regardless of the flag
+      # above — see packages/shared/src/crypto/credential-key.ts — because its
+      # blast radius is a customer PostHog account, not just this deployment.
+      GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
       BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
     depends_on:
@@ -81,6 +86,11 @@ services:
       # production on the public example values unless this is set, so a real
       # deployment fails loudly instead of signing sessions with a secret
       # published in this repo. DELETE THIS LINE when you deploy for real.
+      # Published dev-only key so a clean clone boots (O-003 D-1). It is refused
+      # at the *encryption call site* in production regardless of the flag
+      # above — see packages/shared/src/crypto/credential-key.ts — because its
+      # blast radius is a customer PostHog account, not just this deployment.
+      GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
     depends_on:
       postgres:
