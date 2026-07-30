@@ -100,4 +100,30 @@ describe("parseServerEnv", () => {
     const env = parseServerEnv(PROD_COMPLETE);
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
+
+  // ADD §9 item 7 — FR-17 / OQ-4 graceful absence (O-003 D-14).
+  //
+  // The four POSTHOG_* variables are validated-if-present and read by nothing
+  // in the app: customer credentials come exclusively from project_connections,
+  // because a global env key would be a single-tenant design in a multi-tenant
+  // product. So a self-hoster who has no PostHog account at all must boot a
+  // PRODUCTION deployment cleanly, with none of them set.
+  test("parses in production with all four POSTHOG_* absent", () => {
+    for (const key of [
+      "POSTHOG_HOST",
+      "POSTHOG_PROJECT_API_KEY",
+      "POSTHOG_PERSONAL_API_KEY",
+      "POSTHOG_PROJECT_ID",
+    ]) {
+      expect(PROD_COMPLETE).not.toHaveProperty(key);
+    }
+
+    const env = parseServerEnv(PROD_COMPLETE);
+
+    expect(env.NODE_ENV).toBe("production");
+    expect(env.POSTHOG_HOST).toBeUndefined();
+    expect(env.POSTHOG_PROJECT_API_KEY).toBeUndefined();
+    expect(env.POSTHOG_PERSONAL_API_KEY).toBeUndefined();
+    expect(env.POSTHOG_PROJECT_ID).toBeUndefined();
+  });
 });
