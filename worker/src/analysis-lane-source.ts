@@ -30,7 +30,7 @@ import {
   type AnalysisLane,
   type AnalysisLaneSource,
   type AnalysisLogger,
-} from "./tasks/analysis-tick";
+} from "./analysis/types";
 
 /**
  * The trailing window a tick analyses, ending at the tick's own instant.
