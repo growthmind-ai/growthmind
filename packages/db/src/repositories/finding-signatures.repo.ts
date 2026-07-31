@@ -3,10 +3,6 @@
 // mutations keyed on `(organization_id, project_id, signature)` — there is
 // no `updateById`.
 //
-// STUB (Wave 0B / T3, schema + TDD-contract task): every exported type and
-// the factory's signature are FINAL. Every method body throws
-// "not implemented"; a later wave fills them in against the failing tests a
-// later wave writes.
 import type { TenantContext } from "@growthmind/shared";
 import type { FindingClass } from "@growthmind/core";
 import { and, eq, sql } from "drizzle-orm";

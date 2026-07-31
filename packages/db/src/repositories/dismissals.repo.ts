@@ -10,10 +10,6 @@
 // here — the same reason `ensure-organization.ts` writes on `tx` directly
 // rather than through a repository.
 //
-// STUB (Wave 0B / T3, schema + TDD-contract task): every exported type and
-// the factory's signature are FINAL. Every method body throws
-// "not implemented"; a later wave fills them in against the failing tests a
-// later wave writes.
 import type { DismissalAction, TenantContext } from "@growthmind/shared";
 import { and, desc, eq } from "drizzle-orm";
 

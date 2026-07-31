@@ -6,10 +6,6 @@
 // on a `tx` handle in the same transaction as `carryForward` (ADD D-3a,
 // D-8), for the same reason `dismissals.repo.ts` has no write method.
 //
-// STUB (Wave 0B / T3, schema + TDD-contract task): every exported type and
-// the factory's signature are FINAL. Every method body throws
-// "not implemented"; a later wave fills them in against the failing tests a
-// later wave writes.
 import { ANCESTRY_RESOLUTION_MAX_HOPS, type TenantContext } from "@growthmind/shared";
 import { and, eq } from "drizzle-orm";
 

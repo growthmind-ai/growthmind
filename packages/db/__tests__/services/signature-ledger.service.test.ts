@@ -128,13 +128,15 @@ describe("computeFindingSignature — the one real digest (ADD D-1, T-DB-6)", ()
       evidenceShape: GOLDEN_EVIDENCE_SHAPE,
     };
 
-    // PIN_IN_IMPLEMENTATION_WAVE — this literal MUST be replaced by actually
-    // running `computeFindingSignature(input)` once `signatureTuple`'s and
-    // `sha256Hex`'s stub bodies are implemented, and pasting the real 64-char
-    // lowercase hex digest it prints. Never guess it — this is the one and
-    // only place in the codebase that pins a real sha256 digest end to end
-    // (tuple string from `@growthmind/core` + hash from `packages/db`).
-    const GOLDEN_SIGNATURE_HEX = "PIN_IN_IMPLEMENTATION_WAVE";
+    // Pinned in the implementation wave by actually running
+    // `computeFindingSignature(input)` once `signatureTuple` and `sha256Hex`
+    // were implemented, and capturing the exact 64-char lowercase hex digest
+    // it printed (`bun test packages/db/__tests__/services/signature-ledger.service.test.ts
+    // -t "reproduces a committed golden hex digest"`) — never guessed. This is
+    // the one and only place in the codebase that pins a real sha256 digest
+    // end to end (tuple string from `@growthmind/core` + hash from
+    // `packages/db`).
+    const GOLDEN_SIGNATURE_HEX = "c3a43b5e321594016abb50d0f33a8d37013b5101dca1f6c39bddbe5daa672297";
 
     // `computeFindingSignature` returns a branded `SignatureHex`; widening to
     // `string` here is a safe upcast (every `SignatureHex` IS a `string`) and

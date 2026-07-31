@@ -25,22 +25,57 @@
 // cache in front of any read in this service, and a later wave must not add
 // one without re-litigating this note.
 //
-// STUB (Wave 0B / T3, schema + TDD-contract task): every exported type and
-// the factory's signature are FINAL. `computeFindingSignature`'s dispatch
-// is real (ADD D-1: it is the ONE function that turns a candidate into a
-// signature, and the only caller of `sha256Hex` in production code) — but
-// because both `signatureTuple` and `sha256Hex` are themselves stubs that
-// throw, calling it still throws "not implemented" today. Every other
-// method's body throws "not implemented" directly; a later wave fills them
-// in against the failing tests a later wave writes.
+// Implemented (Wave 5) against this scaffold's final signatures.
+// `computeFindingSignature`'s dispatch composes `signatureTuple`
+// (`@growthmind/core`, pure) and `sha256Hex` (`../signatures/hex`, this
+// package) — the ONE function that turns a candidate into a signature (ADD
+// D-1, D11), and the only caller of `sha256Hex` in production code.
+//
+// Every other method resolves its input signature FORWARD through
+// `signature_ancestry` before touching the ledger (ADD D-3(b)) — a stale
+// pre-re-key signature (e.g. a Slack interaction payload minted before a
+// churn) must land on the live row, never silently stamp a signature nothing
+// consults anymore.
+//
+// `recordDismissal` and `recordAncestry` each open exactly one
+// `db.transaction(async (tx) => { … })` and write on `tx` directly — never
+// through a repository factory constructed over `tx`, because `ScopedDb`
+// (`../repositories/types.ts`) is a union of `NodePgDatabase` and
+// `PgliteDatabase` that a transaction handle is not assignable to without a
+// cast. `../tenancy/ensure-organization.ts:67` is the precedent this copies:
+// `db: ScopedDb`, hand-written queries inside the callback, every query
+// naming `ctx.organizationId` literally (ADD D-8). Repository factories
+// (`createFindingSignaturesRepo`, `createSignatureAncestryRepo`) are used
+// everywhere else, where a single read or a single atomic upsert is enough.
 import type { AncestryReason, DismissalAction, TenantContext } from "@growthmind/shared";
-import type { CandidateFinding, FindingClass, SuppressionDecision } from "@growthmind/core";
-import { signatureTuple, SIGNATURE_TUPLE_VERSION } from "@growthmind/core";
+import type {
+  CandidateFinding,
+  FindingClass,
+  LedgerRowState,
+  SuppressionDecision,
+} from "@growthmind/core";
+import {
+  EVIDENCE_SHAPE_SERIALISERS,
+  signatureTuple,
+  SIGNATURE_TUPLE_VERSION,
+  suppressionDecision,
+  SUPPRESSION_POLICY_VERSION,
+} from "@growthmind/core";
+import { and, eq, sql } from "drizzle-orm";
 
-import type { AncestryRecord } from "../repositories/signature-ancestry.repo";
 import type { DismissalRecord } from "../repositories/dismissals.repo";
-import type { FindingSignatureRecord } from "../repositories/finding-signatures.repo";
+import {
+  createFindingSignaturesRepo,
+  type FindingSignatureRecord,
+} from "../repositories/finding-signatures.repo";
+import {
+  createSignatureAncestryRepo,
+  type AncestryRecord,
+} from "../repositories/signature-ancestry.repo";
 import type { ScopedDb } from "../repositories/types";
+import { dismissals } from "../schema/dismissals";
+import { findingSignatures } from "../schema/finding-signatures";
+import { signatureAncestry } from "../schema/signature-ancestry";
 import { sha256Hex, type SignatureHex } from "../signatures/hex";
 
 /** Everything `computeFindingSignature` reads to compose an identity. Named
@@ -64,10 +99,7 @@ export interface ComputeFindingSignatureInput {
  * FR-I(e)) — the only caller of `sha256Hex` in production code.
  *
  * `signatureTuple` (pure, `@growthmind/core`) produces the canonical tuple
- * string; `sha256Hex` (this package, `../signatures/hex`) hashes it. Both
- * are themselves Wave 0B stubs whose bodies throw, so calling this today
- * throws "not implemented" too — the composition itself is real and will
- * not need to change when the next wave fills those two bodies in.
+ * string; `sha256Hex` (this package, `../signatures/hex`) hashes it.
  */
 export function computeFindingSignature(
   input: ComputeFindingSignatureInput,
@@ -167,49 +199,290 @@ export interface SignatureLedgerService {
   recordAncestry(input: RecordAncestryInput): Promise<AncestryRecord>;
 }
 
+/** `computeFindingSignature` needs `projectId` (which `CandidateFinding`
+ * does not carry) plus the four tuple inputs the candidate DOES carry.
+ * Local to this factory — never exported — so there is exactly one place
+ * a `CandidateFinding` is read down to a `ComputeFindingSignatureInput`. */
+function toComputeInput(
+  projectId: string,
+  candidate: CandidateFinding,
+): ComputeFindingSignatureInput {
+  return {
+    projectId,
+    surface: candidate.surface,
+    symptomClass: candidate.finalClass,
+    evidenceShape: candidate.evidenceShape,
+  };
+}
+
 export function createSignatureLedgerService(
   db: ScopedDb,
   ctx: TenantContext,
 ): SignatureLedgerService {
-  void db;
-  void ctx;
+  const ledgerRepo = createFindingSignaturesRepo(db, ctx);
+  const ancestryRepo = createSignatureAncestryRepo(db, ctx);
+
+  /**
+   * Resolves `signature` FORWARD through `signature_ancestry` (ADD D-3(b)):
+   * a caller holding a stale pre-re-key signature must land on the live
+   * row. An unresolvable walk (a cycle or the hop cap) has no "live" answer
+   * to fall back to, so it degrades to the ORIGINAL input signature —
+   * logged, never thrown — leaving the caller to operate on the signature
+   * it was given rather than silently substituting a different one.
+   */
+  async function resolveForward(signature: SignatureHex): Promise<SignatureHex> {
+    const resolution = await ancestryRepo.resolve(signature);
+    if (resolution.resolution === "resolved") {
+      return resolution.signature;
+    }
+
+    console.error(
+      "signature-ledger: ancestry walk unresolvable — operating on the unresolved input signature",
+      { cause: resolution.cause },
+    );
+    return signature;
+  }
 
   return {
     async recordSignature(
       projectId: string,
       candidate: CandidateFinding,
     ): Promise<RecordSignatureResult> {
-      void projectId;
-      void candidate;
-      throw new Error("not implemented");
+      // `recordSignature` is the ONLY producer of a signature (FR-I(e)) —
+      // every other entry point either accepts one already computed or
+      // resolves one forward, never re-derives it.
+      const signature = computeFindingSignature(toComputeInput(projectId, candidate));
+
+      const record = await ledgerRepo.upsertSeen({
+        projectId,
+        signature,
+        symptomClass: candidate.finalClass,
+        surface: candidate.surface,
+        signatureTupleVersion: SIGNATURE_TUPLE_VERSION,
+        evidenceShapeVersion: candidate.evidenceShapeVersion,
+        surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
+        seenAt: new Date(),
+      });
+
+      return { signature, record };
     },
 
     async consultSignature(
       projectId: string,
       input: CandidateFinding | SignatureHex,
     ): Promise<SuppressionDecision> {
-      void projectId;
-      void input;
-      throw new Error("not implemented");
+      // A bare `SignatureHex` is a `string`; a `CandidateFinding` is not —
+      // that alone discriminates the union with no brand check needed.
+      const isCandidate = typeof input !== "string";
+
+      if (isCandidate) {
+        // The one catch boundary this service owns (ADD D-10, D5/D8): an
+        // `evidenceShapeVersion` this build has no registered serialiser for
+        // surfaces as a named suppression, never a thrown error to the
+        // caller. Checked BEFORE computing a signature — computing one
+        // would succeed regardless (the candidate's `evidenceShape` is
+        // already a serialised string), which is exactly why the version
+        // must be checked explicitly rather than discovered as a side
+        // effect of some other call throwing.
+        if (!EVIDENCE_SHAPE_SERIALISERS.has(input.evidenceShapeVersion)) {
+          // Logged with the VERSION ONLY — never the candidate's surface,
+          // which can carry a live reset token or an email address
+          // (evidence-shape.ts's own redaction rule, restated for this
+          // service's one catch boundary).
+          console.error(
+            "signature-ledger: unknown evidence_shape version — suppressing on doubt",
+            { evidenceShapeVersion: input.evidenceShapeVersion },
+          );
+          return suppressionDecision(
+            { resolution: "unknown_shape_version" },
+            SUPPRESSION_POLICY_VERSION,
+          );
+        }
+      }
+
+      const signature = isCandidate
+        ? computeFindingSignature(toComputeInput(projectId, input))
+        : input;
+
+      const resolution = await ancestryRepo.resolve(signature);
+      if (resolution.resolution === "unresolvable") {
+        console.error(
+          "signature-ledger: ancestry walk unresolvable — suppressing on doubt",
+          { cause: resolution.cause },
+        );
+        return suppressionDecision(
+          { resolution: "unresolvable_ancestry" },
+          SUPPRESSION_POLICY_VERSION,
+        );
+      }
+
+      const row = await ledgerRepo.findBySignature(projectId, resolution.signature);
+      const rowState: LedgerRowState | null = row
+        ? { deliveredAt: row.deliveredAt, dismissedAt: row.dismissedAt }
+        : null;
+
+      return suppressionDecision({ resolution: "resolved", row: rowState }, SUPPRESSION_POLICY_VERSION);
     },
 
     async markSignatureDelivered(
       projectId: string,
       signature: SignatureHex,
     ): Promise<FindingSignatureRecord | null> {
-      void projectId;
-      void signature;
-      throw new Error("not implemented");
+      const resolved = await resolveForward(signature);
+      return ledgerRepo.markDelivered(projectId, resolved, new Date());
     },
 
     async recordDismissal(input: RecordDismissalInput): Promise<DismissalRecord> {
-      void input;
-      throw new Error("not implemented");
+      const resolvedSignature = await resolveForward(input.signature);
+      const now = new Date();
+
+      // ONE transaction (ADD D-8): the dismissal insert and the ledger's
+      // `dismissed_at` stamp succeed together or not at all — a partial
+      // write would leave a dismissal that suppresses nothing. Written on
+      // `tx` directly (see this file's header) — never through a repository
+      // factory, which `ScopedDb` cannot accept a transaction handle for
+      // without a cast.
+      return db.transaction(async (tx) => {
+        // `onConflictDoNothing` keyed on the same tuple the unique index
+        // conflicts on: a second identical dismissal is a no-op insert, not
+        // an error (D4/D6 idempotence).
+        await tx
+          .insert(dismissals)
+          .values({
+            organizationId: ctx.organizationId,
+            projectId: input.projectId,
+            findingId: input.findingId,
+            signature: resolvedSignature,
+            action: input.action,
+            dismissedByUserId: input.dismissedByUserId,
+            dismissedAt: now,
+          })
+          .onConflictDoNothing({
+            target: [dismissals.organizationId, dismissals.findingId, dismissals.action],
+          });
+
+        const [dismissalRow] = await tx
+          .select()
+          .from(dismissals)
+          .where(
+            and(
+              eq(dismissals.organizationId, ctx.organizationId),
+              eq(dismissals.findingId, input.findingId),
+              eq(dismissals.action, input.action),
+            ),
+          );
+
+        if (!dismissalRow) {
+          throw new Error(
+            "signature-ledger.recordDismissal: dismissal insert/read-back returned no row",
+          );
+        }
+
+        // `dismissed_at = coalesce(dismissed_at, $now)` — permanent once
+        // set; a replay never moves the original instant (D-8, D4).
+        await tx
+          .update(findingSignatures)
+          .set({ dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, ${now})` })
+          .where(
+            and(
+              eq(findingSignatures.organizationId, ctx.organizationId),
+              eq(findingSignatures.projectId, input.projectId),
+              eq(findingSignatures.signature, resolvedSignature),
+            ),
+          );
+
+        return dismissalRow;
+      });
     },
 
     async recordAncestry(input: RecordAncestryInput): Promise<AncestryRecord> {
-      void input;
-      throw new Error("not implemented");
+      // ONE transaction (ADD D-3a, D-8): the edge insert and the
+      // carry-forward upsert succeed together or not at all. The
+      // carry-forward half is hand-written here on `tx` — mirroring
+      // `finding-signatures.repo.ts`'s `carryForward` exactly — rather than
+      // calling the repository method, which is constructed over `db`, not
+      // `tx`, and could not share this transaction.
+      return db.transaction(async (tx) => {
+        const [edge] = await tx
+          .insert(signatureAncestry)
+          .values({
+            organizationId: ctx.organizationId,
+            projectId: input.projectId,
+            oldSignature: input.oldSignature,
+            newSignature: input.newSignature,
+            reason: input.reason,
+          })
+          .returning();
+
+        if (!edge) {
+          throw new Error(
+            "signature-ledger.recordAncestry: ancestry edge insert returned no row",
+          );
+        }
+
+        // The OLD signature may never have been recorded (e.g. a
+        // version-bump migration ancestry edge drawn before any candidate
+        // under the old identity was ever seen in THIS org/project scope) —
+        // that is a legitimate degenerate case, not an error: there is
+        // nothing to carry forward, so the edge stands alone and the new
+        // signature starts its own ledger history the ordinary way, via
+        // `recordSignature`, the next time it is seen.
+        const [oldRow] = await tx
+          .select()
+          .from(findingSignatures)
+          .where(
+            and(
+              eq(findingSignatures.organizationId, ctx.organizationId),
+              eq(findingSignatures.projectId, input.projectId),
+              eq(findingSignatures.signature, input.oldSignature),
+            ),
+          );
+
+        if (oldRow) {
+          // Upsert onto the NEW signature — the old row is never touched,
+          // staying in place as the audit trail (D-3a point 3).
+          const [carried] = await tx
+            .insert(findingSignatures)
+            .values({
+              organizationId: ctx.organizationId,
+              projectId: input.projectId,
+              signature: input.newSignature,
+              symptomClass: oldRow.symptomClass,
+              surface: oldRow.surface,
+              signatureTupleVersion: oldRow.signatureTupleVersion,
+              evidenceShapeVersion: oldRow.evidenceShapeVersion,
+              surfaceNormalisationVersion: oldRow.surfaceNormalisationVersion,
+              firstSeenAt: oldRow.firstSeenAt,
+              lastSeenAt: oldRow.lastSeenAt,
+              timesSeen: oldRow.timesSeen,
+              deliveredAt: oldRow.deliveredAt,
+              dismissedAt: oldRow.dismissedAt,
+            })
+            .onConflictDoUpdate({
+              target: [
+                findingSignatures.organizationId,
+                findingSignatures.projectId,
+                findingSignatures.signature,
+              ],
+              set: {
+                firstSeenAt: sql`least(${findingSignatures.firstSeenAt}, excluded.first_seen_at)`,
+                lastSeenAt: sql`greatest(${findingSignatures.lastSeenAt}, excluded.last_seen_at)`,
+                timesSeen: sql`${findingSignatures.timesSeen} + excluded.times_seen`,
+                deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, excluded.delivered_at)`,
+                dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, excluded.dismissed_at)`,
+              },
+            })
+            .returning();
+
+          if (!carried) {
+            throw new Error(
+              "signature-ledger.recordAncestry: carry-forward upsert returned no row",
+            );
+          }
+        }
+
+        return edge;
+      });
     },
   };
 }
