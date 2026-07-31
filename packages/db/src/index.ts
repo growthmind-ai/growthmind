@@ -131,3 +131,13 @@ export {
   type RecordDismissalInput,
   type RecordAncestryInput,
 } from "./services/signature-ledger.service";
+export {
+  createDeliveriesRepo,
+  DELIVERY_CONFLICT_TARGET,
+  type DeliveriesRepo,
+  type DeliveryRecord,
+  type ClaimDeliveryInput,
+  type ClaimDeliveryResult,
+  type MarkPostedInput,
+  type MarkFailedInput,
+} from "./repositories/deliveries.repo";

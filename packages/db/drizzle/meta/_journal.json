@@ -43,6 +43,13 @@
       "when": 1785481299943,
       "tag": "0005_fast_living_tribunal",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785493328415,
+      "tag": "0006_deliveries",
+      "breakpoints": true
     }
   ]
 }

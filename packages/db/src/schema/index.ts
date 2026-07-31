@@ -14,3 +14,4 @@ export * from "./session-source-poll-runs";
 export * from "./finding-signatures";
 export * from "./dismissals";
 export * from "./signature-ancestry";
+export { deliveries } from "./deliveries";

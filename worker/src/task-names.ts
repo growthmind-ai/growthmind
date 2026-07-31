@@ -24,6 +24,16 @@ export const TASK = {
    * nothing below the crontab string had ever been fed to the real parser.
    */
   SESSION_SOURCE_POLL_SCHEDULE: "session-source:poll-schedule",
+  /**
+   * The delivery lane's tick (O-007). CHANNEL-AGNOSTIC for the same reason the
+   * poll above is source-agnostic: Slack is today's only delivery channel, but
+   * a task named "slack:post" would have to be renamed the day a second channel
+   * lands, and a task rename strands every job queued under the old name.
+   *
+   * Colon separator, never a dot — see the note above; a dot crashes the worker
+   * on boot inside `crontab`, and only inside a running container.
+   */
+  DELIVERY_TICK: "delivery:tick",
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

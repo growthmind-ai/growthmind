@@ -220,3 +220,37 @@ export {
   ALL_SUPPRESSION_REASON_MESSAGES,
   FORBIDDEN_PRODUCT_JARGON,
 } from "./signatures/messages";
+
+// --- O-007: the delivery lane's shapes --------------------------------------
+export {
+  deliveryDecisionSchema,
+  nothingTodayReasonSchema,
+  deliveryStatusSchema,
+  residualPiiKindSchema,
+  RESIDUAL_PII_KINDS,
+  NOTHING_TODAY_REASONS,
+  type DeliveryDecision,
+  type NothingTodayReason,
+  type DeliveryStatus,
+  type ResidualPiiKind,
+} from "./delivery/types";
+export {
+  NOTHING_TODAY_LEAD,
+  DELIVERY_DECISION_MESSAGES,
+  NOTHING_TODAY_REASON_MESSAGES,
+  DELIVERY_STATUS_MESSAGES,
+  RESIDUAL_PII_KIND_MESSAGES,
+  NO_RATE_SENTENCE,
+  DELIVERY_VOCABULARY,
+  ALL_DELIVERY_MESSAGES,
+} from "./delivery/messages";
+export {
+  postFailureCodeSchema,
+  postResultSchema,
+  isRetryablePostFailure,
+  type PostFailureCode,
+  type PostResult,
+  type PostRequest,
+  type DeliveryPoster,
+} from "./delivery/poster";
+export { POST_FAILURE_MESSAGES } from "./delivery/messages";
