@@ -16,6 +16,7 @@
     "@growthmind/shared": "workspace:*",
     "@mantine/core": "^9.5.0",
     "@mantine/hooks": "^9.5.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "@next/env": "^16.2.12",
     "better-auth": "^1.6.25",
     "next": "16.2.12",
