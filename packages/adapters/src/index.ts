@@ -37,3 +37,26 @@ export {
   SLACK_ERRORS_CALL_FAILED,
 } from "./slack/errors";
 export type { SlackPosterConfig, SlackPosterDeps } from "./slack/deps";
+
+// --- O-011: the model lane's summariser -------------------------------------
+// The `ai` / `@ai-sdk/anthropic` dependency is declared ONLY in this package
+// and imported only under ./anthropic/ — nothing outside packages/adapters may
+// reach the SDK. Consumers get this port and the shapes in @growthmind/shared.
+export { createAnthropicSessionSummariser } from "./anthropic/summariser";
+export type { SessionSummariser, SummariseInput } from "./anthropic/summariser";
+export { DEFAULT_COLDSTART_MODEL } from "./anthropic/constants";
+// The provider constructor, exported so the composition root can build the
+// `LanguageModel` the summariser takes WITHOUT importing the SDK itself. The
+// key travels one function call and is never exported back out: `AnthropicModelConfig`
+// declares the field the caller fills in, exactly as `SlackPosterConfig`
+// declares its bot token — a shape, never a credential.
+export { createAnthropicModel } from "./anthropic/model";
+export type { AnthropicModelConfig } from "./anthropic/model";
+export {
+  mapSummaryError,
+  summaryFailure,
+  SUMMARY_FAILURE_MESSAGES,
+  UNCLASSIFIED_SUMMARY_ERROR_CODE,
+} from "./anthropic/errors";
+export type { SummaryFailureArgs } from "./anthropic/errors";
+export type { AnthropicSummariserDeps, SummaryOutput } from "./anthropic/deps";

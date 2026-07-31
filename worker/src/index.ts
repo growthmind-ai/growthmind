@@ -1,6 +1,12 @@
 import type { TaskList } from "graphile-worker";
 
 import type { SessionSummariser } from "@growthmind/adapters";
+import {
+  DEFAULT_COLDSTART_MODEL,
+  createAnthropicModel,
+  createAnthropicSessionSummariser,
+} from "@growthmind/adapters";
+import { modelSummaryOutputSchema } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import {
   createAnalysisRunsRepo,
@@ -100,61 +106,97 @@ type AnalysisComposition = {
 };
 
 /**
- * The analysis lane's runtime composition — NULL ON THIS INSTALLATION TODAY,
- * deliberately and visibly, exactly like `resolveDeliveryComposition` above.
+ * THE NO-KEY BRANCH. It lives at this end of the wire and nowhere else
+ * (AD-15, FR-M12).
  *
- * ── WHAT IS MISSING, AND WHAT IS NOT ────────────────────────────────────────
- * `lanes` is the gap. `packages/core` ships the detectors, the evidence gate and
- * the candidate contract, but nothing that turns sessions and events into a
- * `DetectorCorpus`, runs every detector and assembles gate-passed candidates —
- * that assembler is a sprint of its own (ADD §3.1 option B, AD-0). Everything
- * else O-011 promised is here and proven: the ladder, the cap, the guard, the
- * floor, the two repositories and the run's terminal writes.
- *
- * TODO(the corpus-reader heir of ADD AD-0 / R-9): implement `AnalysisLaneSource`
- * as a repository read that assembles gate-passed candidates from sessions and
- * events, and return `{ summariser, lanes }` from here. THIS FUNCTION IS THE
- * ONLY PLACE THAT CHANGES — `runAnalysisTick` takes both as injected
- * dependencies typed by their ports and names no vendor and no table, and its
- * suite already drives the whole ladder through the real entry point with fakes.
- * What lands here is the wire, not the behaviour.
- *
- * ── THE NO-KEY BRANCH LIVES AT THIS END, AND NOWHERE ELSE (AD-15, FR-M12) ───
- * When this returns a value, `summariser` is `null` IFF `env.ANTHROPIC_API_KEY`
- * is absent. That branch SELECTS the lane; it never tries a port and swallows
- * the failure. With no key there is no provider constructed and no port passed,
- * so a candidate reaches `floor_no_key_configured` BEFORE the cap is claimed and
- * the count of model calls attempted is structurally zero — not zero because an
- * error was caught, zero because nothing was ever called. `probe.test.ts:181-203`
+ * `null` IFF `env.ANTHROPIC_API_KEY` is absent. That branch SELECTS the lane; it
+ * never tries a port and swallows the failure. With no key there is no provider
+ * constructed and no port passed, so a candidate reaches `floor_no_key_configured`
+ * BEFORE the cap is claimed and the count of model calls attempted is
+ * structurally zero — not zero because an error was caught, zero because nothing
+ * was ever called. `packages/adapters/__tests__/anthropic/probe.test.ts:181-203`
  * is why it has to be this way round: `createAnthropic({})` does NOT throw
- * without a key, and neither does obtaining a model from it, so the absence
- * would otherwise surface as a failed call at the network edge — billed as a
- * cap claim, reported as `floor_model_call_failed`, and telling a self-hoster
- * their model call broke when in truth they simply never configured one.
+ * without a key, and neither does obtaining a model from it, so the absence would
+ * otherwise surface as a failed call at the network edge — billed as a cap claim,
+ * reported as `floor_model_call_failed`, and telling a self-hoster their model
+ * call broke when in truth they simply never configured one.
  *
  * This is the self-host promise `packages/shared/src/env.ts:31-39` and
  * `.env.example:36-41` already made in writing: `docker compose up` from a clean
- * clone, with no key anywhere, must reach a working pipeline. Every finding
- * still ships, carrying its numbers, with no written explanation attached. A
- * worker that crash-looped because no model key was configured would take the
- * whole analysis pipeline down over an optional feature.
+ * clone, with no key anywhere, must reach a working pipeline. Every finding still
+ * ships, carrying its numbers, with no written explanation attached. A worker that
+ * crash-looped because no model key was configured would take the whole analysis
+ * pipeline down over an optional feature.
  *
  * THE API KEY IS READ ONLY HERE. It is never logged, never persisted, never
  * echoed into an error message and never handed to the task body, which reads no
- * environment variable by any route. What reaches a run row is the resolved
- * MODEL ID, which is configuration, not a credential.
+ * environment variable by any route. It travels exactly one function call, into
+ * `createAnthropicModel` (`@growthmind/adapters`), which is where the SDK lives —
+ * NO file under `worker/` may import `ai` or `@ai-sdk/anthropic` (ADD §9, task
+ * 4.1), and passing the bare model id string instead would typecheck and then
+ * resolve through the Vercel AI Gateway rather than Anthropic. What reaches a run
+ * row is the resolved MODEL ID, which is configuration, not a credential.
  *
- * TODO(the corpus-reader heir of ADD AD-0): the with-key arm is
- * `createAnthropicSessionSummariser({ model, resolvedModelId, outputSchema })` —
- * `resolvedModelId` = `env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL`
- * (never a model id written at a call site, AD-3), `outputSchema` =
- * `modelSummaryOutputSchema` from `@growthmind/core` (AD-16, one home for the
- * anti-invention contract). The one piece that has no home yet is `model`
- * itself: building it means `createAnthropic({ apiKey })`, and `@ai-sdk/anthropic`
- * is declared in `packages/adapters` alone — NO file under `worker/` may import
- * the SDK (ADD §9, task 4.1). So the arm lands together with a model factory
- * exported from `@growthmind/adapters`, beside the summariser it feeds, and the
- * key travels one function call rather than into this package's dependencies.
+ * The model id is RESOLVED here and hardcoded nowhere (AD-3): configuration
+ * first, then the one default that lives beside the adapter that speaks to the
+ * vendor. The same resolved id goes to the provider and to the port, so the id a
+ * run row names is always the id the call addressed.
+ *
+ * `outputSchema` is core's, injected (AD-16). `packages/adapters` may never
+ * import `packages/core`, so the anti-invention shape keeps one home and this is
+ * the seam where the two meet.
+ */
+function resolveSummariser(env: ServerEnv): SessionSummariser | null {
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (apiKey === undefined) {
+    return null;
+  }
+
+  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
+
+  return createAnthropicSessionSummariser({
+    model: createAnthropicModel({ apiKey, resolvedModelId }),
+    resolvedModelId,
+    outputSchema: modelSummaryOutputSchema,
+  });
+}
+
+/**
+ * Which projects have gate-passed candidates waiting — NULL ON EVERY
+ * INSTALLATION TODAY, deliberately and visibly.
+ *
+ * `packages/core` ships the detectors, the evidence gate and the candidate
+ * contract, but nothing that turns sessions and events into a `DetectorCorpus`,
+ * runs every detector and assembles gate-passed candidates — that assembler is a
+ * sprint of its own (ADD §3.1 option B, AD-0). Everything else O-011 promised is
+ * here and proven: the ladder, the cap, the guard, the floor, the summariser and
+ * its provider, the two repositories and the run's terminal writes.
+ *
+ * TODO(the corpus-reader heir of ADD AD-0 / R-9): implement `AnalysisLaneSource`
+ * as a repository read that assembles gate-passed candidates from sessions and
+ * events, and return it from here. THIS FUNCTION IS THE ONLY PLACE THAT CHANGES —
+ * `runAnalysisTick` takes the lane source as an injected dependency typed by its
+ * port and names no vendor and no table, and its suite already drives the whole
+ * ladder through the real entry point with fakes. What lands here is the wire,
+ * not the behaviour.
+ */
+function resolveAnalysisLanes(): AnalysisLaneSource | null {
+  return null;
+}
+
+/**
+ * The analysis lane's runtime composition — still NULL ON THIS INSTALLATION
+ * TODAY, for exactly one remaining reason, and it is not the model.
+ *
+ * The two halves are resolved independently above and they fail differently, on
+ * purpose. A missing lane source means there is nothing to analyse and the tick
+ * has no work at all. A missing API key means there is work and it will be done
+ * — the deterministic floor writes every finding, carrying its numbers, with no
+ * written explanation attached. Collapsing those into one "not configured" would
+ * throw away the distinction the whole lane's vocabulary exists to keep.
+ *
+ * The lane source is resolved FIRST so that an installation with nothing to
+ * analyse never constructs a provider it would not use.
  *
  * ── BE HONEST ABOUT WHAT THIS MEANS ─────────────────────────────────────────
  * Until the heir lands, this tick analyses nothing on any installation: it logs
@@ -167,7 +209,14 @@ type AnalysisComposition = {
  * per tick, and this comment is the reason it is not a silent no-op.
  */
 function resolveAnalysisComposition(): AnalysisComposition | null {
-  return null;
+  const lanes = resolveAnalysisLanes();
+  if (lanes === null) {
+    return null;
+  }
+
+  const { env } = resolveResources();
+
+  return { summariser: resolveSummariser(env), lanes };
 }
 
 /**
