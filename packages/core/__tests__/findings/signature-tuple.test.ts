@@ -27,17 +27,64 @@
 //
 // No clock and no randomness anywhere in this file — every fixture is a
 // literal.
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { evidenceShape } from "../../src/findings/evidence-shape";
 import type { EvidenceShapeInput } from "../../src/findings/evidence-shape";
-import * as signatureTupleModule from "../../src/findings/signature-tuple";
 import {
   SIGNATURE_TUPLE_SERIALISERS,
   signatureTuple,
 } from "../../src/findings/signature-tuple";
 import type { SignatureTupleInput } from "../../src/findings/signature-tuple";
 import { canonicalJson } from "../../src/serialise/canonical-json";
+
+// ── source-text scanner (D12 non-vacuity, `purity.test.ts` precedent) ─────
+//
+// FR-A(b)'s frozen-literal claim used to be proven by re-importing this
+// module with `SIGNATURE_TUPLE_VERSION` stubbed via `mock.module`. That is a
+// Bun-process-global: registering it here corrupted an UNRELATED file
+// (`packages/db/__tests__/services/signature-ledger.service.test.ts`) the
+// moment both suites ran in one process, because `mock.module` patches the
+// module registry for the whole test run, not just this file (O-006
+// cross-file test-pollution bug). Replaced with the same technique
+// `packages/core/__tests__/detect/purity.test.ts` uses to prove "no node
+// builtin": read the shipped source text off disk and assert a property of
+// it, never execute a mutated copy of the module.
+
+const SIGNATURE_TUPLE_SRC_PATH = `${import.meta.dir}/../../src/findings/signature-tuple.ts`;
+
+/**
+ * The balanced-brace body of one named function DECLARATION — from the
+ * `function <name>(` keyword through its own closing brace, found at COLUMN
+ * ZERO after the parameter list the same way `purity.test.ts`'s
+ * `collectFunctionRegions` finds a top-level declaration's own terminator: a
+ * nested block (the `if` inside `signatureTuple`, the object literal inside
+ * `serialiseV1`) is always indented, so it can never be mistaken for the
+ * function's own end.
+ */
+function functionBody(source: string, functionName: string): string {
+  const head = new RegExp(`function\\s+${functionName}\\s*\\(`).exec(source);
+  if (head === null) return "";
+
+  let depth = 0;
+  let paramEnd = -1;
+  for (let index = head.index + head[0].length - 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        paramEnd = index;
+        break;
+      }
+    }
+  }
+  if (paramEnd === -1) return "";
+
+  const terminator = source.indexOf("\n}", paramEnd);
+  const stop = terminator === -1 ? source.length : terminator + 2;
+  return source.slice(head.index, stop);
+}
 
 // ── fixtures ──────────────────────────────────────────────────────────────
 
@@ -88,41 +135,43 @@ function baseInput(overrides: Partial<SignatureTupleInput> = {}): SignatureTuple
 
 describe("signatureTuple — the v1 serialiser is frozen (FR-A b, D12)", () => {
   test("should emit a literal v1 and never the current version constant", async () => {
-    // Prove the frozen-literal claim FOR REAL rather than by convention:
-    // re-import the module with `SIGNATURE_TUPLE_VERSION` stubbed far ahead
-    // of 1. `serialiseV1` must hardcode the literal `1`
-    // (`evidence-shape.ts:116-119` precedent) — if it read the mutable
-    // constant instead, this stubbed import's v1 map entry would emit
-    // `"v":99`, forking every v1 identity on record the moment the constant
-    // ever moves (D12). The real, unmocked module was already captured by
-    // the static `import * as signatureTupleModule` above, before this call
-    // registers the mock, so spreading it here cannot recurse back into the
-    // mock.
-    mock.module("../../src/findings/signature-tuple", () => ({
-      ...signatureTupleModule,
-      SIGNATURE_TUPLE_VERSION: 99,
-    }));
+    // Behavioural half: the real, unmocked module.
+    const v1 = SIGNATURE_TUPLE_SERIALISERS.get(1);
+    expect(v1).toBeDefined();
+    expect(v1!(baseInput())).toContain('"v":1');
 
-    try {
-      const stubbed = (await import(
-        "../../src/findings/signature-tuple"
-      )) as typeof signatureTupleModule;
-      expect(stubbed.SIGNATURE_TUPLE_VERSION).toBe(99); // the stub actually took effect
+    // Source-text half — the actual FR-A(b)/D12 proof. Read `serialiseV1`'s
+    // own declared body off disk and assert it hardcodes the literal `1`
+    // rather than reading `SIGNATURE_TUPLE_VERSION`. Had it read the mutable
+    // constant instead, a later version bump would silently rewrite every v1
+    // identity already on record — every dismissal and never-twice guarantee
+    // hanging off those digests would detach (D12).
+    const source = await Bun.file(SIGNATURE_TUPLE_SRC_PATH).text();
+    expect(source.length).toBeGreaterThan(0);
 
-      const v1 = stubbed.SIGNATURE_TUPLE_SERIALISERS.get(1);
-      expect(v1).toBeDefined();
-      const output = v1!(baseInput());
+    const serialiseV1Body = functionBody(source, "serialiseV1");
+    const signatureTupleBody = functionBody(source, "signatureTuple");
 
-      expect(output).toContain('"v":1');
-      // ANTI-VACUITY: had the frozen serialiser read the (now-stubbed)
-      // "current" constant instead of hardcoding `1`, this would be `"v":99`.
-      expect(output).not.toContain('"v":99');
-    } finally {
-      // Restore the real module for every other import in this test run —
-      // no other test in this file re-imports dynamically, but a lingering
-      // stub is exactly the kind of cross-file leak this suite must not risk.
-      mock.module("../../src/findings/signature-tuple", () => signatureTupleModule);
-    }
+    // ANTI-VACUITY (a): the extractor actually located both declarations, and
+    // each is a whole body ending at its own closing brace — not an empty
+    // string from a regex that silently failed to match.
+    expect(serialiseV1Body.length).toBeGreaterThan(0);
+    expect(serialiseV1Body).toContain("canonicalJson(tuple)");
+    expect(serialiseV1Body.trimEnd().endsWith("}")).toBe(true);
+    expect(signatureTupleBody.length).toBeGreaterThan(0);
+    expect(signatureTupleBody).toContain("SIGNATURE_TUPLE_SERIALISERS.get(version)");
+    expect(signatureTupleBody.trimEnd().endsWith("}")).toBe(true);
+
+    // ANTI-VACUITY (b): the SAME extractor and the SAME identifier check DO
+    // find `SIGNATURE_TUPLE_VERSION` when it is genuinely present in a
+    // function body — the dispatcher's own refuse-and-throw message names it.
+    // This proves the "must NOT contain" assertion below means something,
+    // rather than the check being blind to the identifier everywhere.
+    expect(signatureTupleBody).toContain("SIGNATURE_TUPLE_VERSION");
+
+    // THE FROZEN-LITERAL CLAIM ITSELF.
+    expect(serialiseV1Body).toMatch(/\bv\s*:\s*1\b/);
+    expect(serialiseV1Body).not.toContain("SIGNATURE_TUPLE_VERSION");
   });
 
   test("should dispatch by version through the map", () => {
