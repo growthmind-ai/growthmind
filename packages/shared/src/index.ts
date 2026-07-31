@@ -287,6 +287,7 @@ export {
   listOpenFixesOutputSchema,
   fixSpecEnvelopeSchema,
   findingEvidenceSchema,
+  getFindingOutputSchema,
   type McpSetAsideBasis,
   type McpCountBasis,
   type McpMeasuredCount,
@@ -300,4 +301,5 @@ export {
   type ListOpenFixesOutput,
   type FixSpecEnvelope,
   type FindingEvidence,
+  type GetFindingOutput,
 } from "./mcp/types";

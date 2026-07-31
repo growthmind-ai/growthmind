@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@growthmind/core": "workspace:*",
     "@growthmind/db": "workspace:*",
     "@growthmind/shared": "workspace:*",
     "@mantine/core": "^9.5.0",
