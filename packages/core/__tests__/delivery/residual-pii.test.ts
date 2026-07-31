@@ -1,0 +1,128 @@
+// Residual PII scanner (O-007). The last gate before generated text reaches
+// Slack.
+//
+// This is a D10 classifier, so the tests below are organised around its FAIL
+// DIRECTION rather than around its regexes: the question is never "will a
+// pattern scanner miss something" (it will — see the `names` test), but which
+// way it fails when it does. Every test here pins that direction.
+import { describe, expect, it } from "bun:test";
+
+import { isCleanForDelivery, scanResidualPii } from "../../src/delivery/residual-pii";
+
+describe("scanResidualPii — detects the classes it claims to detect", () => {
+  it("flags an email address", () => {
+    const result = scanResidualPii("Checkout failed for jane.doe@acme.example twice.");
+
+    expect(result.clean).toBe(false);
+    expect(result.findings.map((f) => f.kind)).toContain("email_address");
+  });
+
+  it("flags a payment card number", () => {
+    const result = scanResidualPii("card 4111 1111 1111 1111 was declined");
+
+    expect(result.findings.map((f) => f.kind)).toContain("payment_card");
+  });
+
+  it("flags an IP address", () => {
+    const result = scanResidualPii("request came from 203.0.113.42");
+
+    expect(result.findings.map((f) => f.kind)).toContain("ip_address");
+  });
+
+  it("flags a phone number", () => {
+    const result = scanResidualPii("they called +44 7700 900123 to complain");
+
+    expect(result.findings.map((f) => f.kind)).toContain("phone_number");
+  });
+
+  it("flags a credential-shaped token", () => {
+    const result = scanResidualPii("retry with sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH");
+
+    expect(result.findings.map((f) => f.kind)).toContain("credential");
+  });
+});
+
+describe("scanResidualPii — NEVER echoes the matched text", () => {
+  // The scanner's whole job is to stop personal data travelling. A report that
+  // quotes what it found copies that data into logs, error messages, and any
+  // alert built on it — moving the leak rather than closing it. This is the
+  // same guard `computeFindingSignature`'s refusal path already applies to the
+  // offending surface value.
+  it("reports kind and offset but no fragment of the personal data", () => {
+    const email = "jane.doe@acme.example";
+    const result = scanResidualPii(`Checkout failed for ${email} twice.`);
+
+    const serialised = JSON.stringify(result);
+    expect(serialised).not.toContain(email);
+    expect(serialised).not.toContain("jane.doe");
+    expect(serialised).not.toContain("acme.example");
+    // The offset is enough to find it in the source text without carrying it.
+    expect(result.findings[0]?.at).toBeGreaterThan(0);
+  });
+
+  it("does not echo a card number in its report", () => {
+    const result = scanResidualPii("card 4111 1111 1111 1111 declined");
+
+    expect(JSON.stringify(result)).not.toContain("4111");
+  });
+});
+
+describe("scanResidualPii — fail direction is CLOSED (block on doubt)", () => {
+  // The asymmetry that decides this scanner's design: a false positive costs a
+  // withheld Slack post that a human can re-trigger. A false negative posts a
+  // customer's personal data into a shared channel, where it is retained,
+  // indexed, and unrecallable. So every ambiguous case blocks.
+  it("blocks text it cannot make a clean judgement about rather than passing it", () => {
+    // A digit run that is not a valid card but is long enough to be an account
+    // number, an order id containing an email-ish fragment — neither is
+    // provably safe, so neither passes.
+    expect(isCleanForDelivery("account 9876543210987654 was charged")).toBe(false);
+  });
+
+  it("passes ordinary finding prose that contains no personal data", () => {
+    // The scanner must not be so broad that it blocks the product's own
+    // output — a gate that never opens is a gate nobody keeps.
+    const prose =
+      "3 of 28 sessions dropped off at the payment step. That is the biggest single drop in this funnel.";
+
+    expect(isCleanForDelivery(prose)).toBe(true);
+    expect(scanResidualPii(prose).findings).toHaveLength(0);
+  });
+
+  it("passes a count with denominators and a URL path, which findings always carry", () => {
+    expect(isCleanForDelivery("12 of 240 sessions failed on /checkout/payment.")).toBe(true);
+  });
+});
+
+describe("scanResidualPii — the miss it cannot cover, stated out loud", () => {
+  // NOT AN ASPIRATION — a pinned limitation. A pattern scanner cannot detect a
+  // person's name, and pretending otherwise would let someone treat this gate
+  // as a guarantee it is not. The real control is upstream: names never enter
+  // the corpus (product decisions §2-§4). This test exists so that if someone
+  // later claims "the scanner catches PII", the claim is bounded by a named
+  // test rather than by a comment nobody reads.
+  it("does NOT detect a bare personal name — upstream masking is the real control", () => {
+    expect(isCleanForDelivery("Jane Doe abandoned the checkout")).toBe(true);
+  });
+});
+
+describe("scanResidualPii — data shape (D5)", () => {
+  it("treats empty string as clean", () => {
+    expect(scanResidualPii("").clean).toBe(true);
+    expect(scanResidualPii("").findings).toHaveLength(0);
+  });
+
+  it("reports every distinct occurrence when text carries several", () => {
+    const result = scanResidualPii("a@b.example and c@d.example both bounced from 203.0.113.42");
+
+    expect(result.findings.length).toBeGreaterThanOrEqual(3);
+    expect(result.findings.map((f) => f.kind)).toContain("ip_address");
+  });
+
+  it("returns findings ordered by position so the first problem is first", () => {
+    const result = scanResidualPii("clean words then a@b.example then 203.0.113.42");
+    const offsets = result.findings.map((f) => f.at);
+
+    expect(offsets.toSorted((x, y) => x - y)).toEqual(offsets);
+  });
+});

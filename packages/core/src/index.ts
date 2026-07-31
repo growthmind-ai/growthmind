@@ -179,3 +179,11 @@ export {
   type FloorSummary,
   type FloorSummarySource,
 } from "./summary/types";
+
+// --- O-007 -------------------------------------------------------------------
+export {
+  scanResidualPii,
+  isCleanForDelivery,
+  type ResidualPiiFinding,
+  type ResidualPiiScan,
+} from "./delivery/residual-pii";
