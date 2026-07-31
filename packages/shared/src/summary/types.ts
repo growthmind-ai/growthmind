@@ -1,14 +1,14 @@
 import { z } from "zod";
 
 // The cold-start analysis lane's shapes (O-005 D-10, D-1). Zod is the single
-// runtime source of truth. This sprint ships NO table and NO migration:
-// nothing in `packages/db` references these unions yet. When the lane's run
-// table is written, its enum columns WILL BE pinned to these unions via
-// `satisfies` (D9) so a typo'd column value is a compile error rather than a
-// runtime surprise — that pinning is an inherited obligation of whoever
-// writes that schema file. The pattern to copy already exists and does this
-// today for the poll-run enums:
-// `packages/db/src/schema/session-source-poll-runs.ts:11-27`.
+// runtime source of truth. The lane's run table EXISTS as of O-011:
+// `packages/db/src/schema/analysis-runs.ts` declares it, and its `status`,
+// `analysis_outcome` and `stop_reason` columns are pinned to the three unions
+// below via `text({ enum })` + `as const satisfies` (D9), so a member added
+// here and not there is a compile error rather than a runtime surprise. That
+// inherited obligation is DISCHARGED; the pattern is the one
+// `packages/db/src/schema/session-source-poll-runs.ts:11-27` already used for
+// the poll-run enums.
 //
 // Four closed unions, each TOTAL: no path in this lane may return `null` or
 // `undefined` to mean one of these states. That constrains the table when it
@@ -24,11 +24,9 @@ import { z } from "zod";
 // drifting apart.
 
 /**
- * Did the run finish? One row per project per analysis tick — but that run
- * table is NOT YET BUILT (D-9). There is no
- * `packages/db/src/schema/analysis-runs.ts`, no migration, and no persistence
- * in this sprint; this union is the shape its `status` column will be pinned
- * to when someone writes it.
+ * Did the run finish? One row per project per analysis tick, and that run
+ * table is BUILT (D-9): `packages/db/src/schema/analysis-runs.ts`, with its
+ * migration, pins its `status` column to this union.
  */
 export const analysisRunStatusSchema = z.enum([
   /** We are looking at this project's activity right now. A customer landing
@@ -138,17 +136,17 @@ export type SummarySource = z.infer<typeof summarySourceSchema>;
  * - a schema-violating or unparsable result is `output_invalid`;
  * - everything else (transport, auth, rate limit, timeout) is `call_failed`.
  *
- * NOTHING MAPS ONTO THESE TWO MEMBERS YET.
- * `packages/adapters/src/anthropic/errors.ts` does not exist — no adapter and
- * no mapping ship in this sprint. That file WILL MAP every SDK error class
- * onto one of these two.
+ * `packages/adapters/src/anthropic/errors.ts` MAPS onto these two members: it
+ * reads the SDK's error only to select a code, and draws the sentence from its
+ * own fixed table.
  *
- * INHERITED OBLIGATION, handed forward to whoever writes that adapter (D-13):
- * the vendor's own error text must NEVER surface verbatim on the failure arm
- * below. An Anthropic SDK error message can carry request-identifying detail,
- * and `message: z.string()` accepts it silently — the schema cannot enforce
- * this, so the adapter must, and it needs a test pinning it. This is a
- * requirement being handed forward, not a guarantee already met.
+ * THE INHERITED OBLIGATION IS DISCHARGED THERE, structurally rather than by
+ * scrubbing. The vendor's own error text must never surface verbatim on the
+ * failure arm below — an Anthropic SDK error message can carry request-
+ * identifying detail, and `message: z.string()` accepts it silently. That
+ * module's surface takes no vendor-text parameter at all, so no expression
+ * exists by which a byte of the SDK's response could reach a returned
+ * `message`, and its own suite pins that.
  */
 export const summaryFailureCodeSchema = z.enum([
   /** The call completed but what came back could not be read as the
@@ -175,19 +173,37 @@ export type SummaryUsage = z.infer<typeof summaryUsageSchema>;
 /**
  * The port's return value. `resolvedModelId` and `usage` are present on
  * BOTH arms — a call that failed still consumed the cap and may still have
- * been metered. The run row that will record the model actually addressed
- * does not exist yet (see the run-table note at the top of this file); when
- * it is written, its `resolved_model_id` may be null only where no call was
- * attempted at all, never where one merely failed.
+ * been metered. Two rows record the model actually addressed, one per scope:
+ * `findings.resolved_model_id` (`packages/db/src/schema/findings.ts`) is per
+ * candidate, and `analysis_runs.resolved_model_id`
+ * (`packages/db/src/schema/analysis-runs.ts`) is per run. Both columns'
+ * own headers document the same rule: null iff no call was attempted at all
+ * for that scope — never merely because a call was attempted and failed.
+ *
+ * `findings.resolved_model_id` does not hold that rule today. When the
+ * summariser port throws instead of returning
+ * (`worker/src/tasks/analysis-tick.ts`, the catch arm around the render
+ * call), the candidate still reaches the floor with `attempted: true` and
+ * `resolvedModelId: null` — the one path where null does not mean "no call
+ * was attempted". Three states — no call attempted, a call attempted and
+ * failed with a known model id, a call attempted and failed with the model
+ * id lost to the throw — collapse into the same stored NULL. Treat a null
+ * `findings.resolved_model_id` as ambiguous, not as proof no call was made,
+ * until that gap closes.
+ *
+ * `analysis_model_calls` (`packages/db/src/schema/analysis-model-calls.ts`)
+ * is neither of these rows and carries no `resolved_model_id` column at
+ * all — deliberately: it is the cap's claim ledger, not a usage record, and
+ * its own header says so.
  */
 export const summaryRenderResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     /** The model's short, plain-English restatement. Never a number, a class
-     * name, or a confidence word (FR-8). The output schema that will enforce
-     * that structurally — `packages/core/src/summary/output-schema.ts`, which
-     * will declare `{ headline, context }` and no field for any of them — is
-     * not written yet. Until it is, FR-8 rests on this comment alone. */
+     * name, or a confidence word (FR-8). FR-8 no longer rests on this comment:
+     * `packages/core/src/summary/output-schema.ts` declares a strict
+     * `{ headline, context }` with no field for any of them, and its runtime
+     * guard judges the text itself before it may be persisted. */
     headline: z.string(),
     context: z.string(),
     resolvedModelId: z.string(),
