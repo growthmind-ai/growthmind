@@ -20,6 +20,23 @@ This project is founder-led, and [GOVERNANCE.md](GOVERNANCE.md) says plainly
 who decides, what is open to contribution and what isn't, and how commit
 access could be earned. Worth two minutes before a large PR.
 
+## Reading the comments
+
+About half the lines in `packages/` and `worker/` are comments, and they are
+full of short identifiers — `D7`, `AD-20`, `FR-M9`, `SAC-10`. They mark which
+decision a piece of code is discharging, so you can tell a deliberate awkward
+shape from an accident before you "simplify" it.
+
+[docs/spec-vocabulary.md](docs/spec-vocabulary.md) decodes them, and defines the
+`D1`–`D12` edge-case taxonomy those comments lean on hardest — worth skimming
+once, because it is the design vocabulary the whole codebase argues in.
+
+You never need to resolve an identifier to understand a comment: the prose
+beside it always states the reasoning in full, and the tag only records where
+the decision was ratified. Some of those documents are internal. If you ever hit
+a comment where the tag is doing work the prose is not, that is a documentation
+bug — please open an issue.
+
 ## Getting started
 
 ```bash

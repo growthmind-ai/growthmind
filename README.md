@@ -10,7 +10,8 @@
   <a href="https://growthmind.ai">growthmind.ai</a> ·
   <a href="https://growthmind.ai/pricing">pricing</a> ·
   <a href="docs/product-decisions.md">product decisions</a> ·
-  <a href="docs/architecture.md">architecture</a>
+  <a href="docs/architecture.md">architecture</a> ·
+  <a href="docs/spec-vocabulary.md">spec vocabulary</a>
 </p>
 
 <p align="center">
