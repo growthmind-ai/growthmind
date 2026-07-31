@@ -56,14 +56,13 @@ declare const signatureHexBrand: unique symbol;
 export type SignatureHex = string & { readonly [signatureHexBrand]: true };
 
 /**
- * True only for a value carrying this module's brand.
- *
- * NOT IMPLEMENTED — Wave 0B stub (T3). A later wave fills this body in
- * against the failing tests a later wave writes.
+ * True only for a value carrying this module's brand — in practice, true
+ * only for a value structurally matching `SIGNATURE_HEX_FORMAT`, since that
+ * regex is the sole gate every constructor in this file runs a value through
+ * before casting. Never throws.
  */
 export function isSignatureHex(value: string): value is SignatureHex {
-  void value;
-  throw new Error("not implemented");
+  return SIGNATURE_HEX_FORMAT.test(value);
 }
 
 /**
@@ -76,12 +75,15 @@ export function isSignatureHex(value: string): value is SignatureHex {
  * caller's raw input — which might not even be hex-shaped, e.g. a stray
  * token or an email address — gets copied into a log line. The message
  * names the EXPECTED format only.
- *
- * NOT IMPLEMENTED — Wave 0B stub (T3).
  */
 export function signatureHex(value: string): SignatureHex {
-  void value;
-  throw new Error("not implemented");
+  if (!isSignatureHex(value)) {
+    throw new Error(
+      `invalid signature: expected exactly ${String(SIGNATURE_HEX_LENGTH)} lowercase hex characters (0-9a-f)`,
+    );
+  }
+
+  return value;
 }
 
 /**
@@ -95,11 +97,14 @@ export function signatureHex(value: string): SignatureHex {
  * from `signatureTuple`'s output, and is the ONLY caller of this function in
  * production code (ADD D-1, D11).
  *
- * NOT IMPLEMENTED — Wave 0B stub (T3).
+ * Node's `sha256` + `"hex"` digest encoding is unconditionally 64 lowercase
+ * hex characters, so the cast below is safe without re-running it through
+ * `signatureHex`'s refusal path.
  */
 export function sha256Hex(material: string): SignatureHex {
-  void material;
-  throw new Error("not implemented");
+  const digest = createHash("sha256").update(material).digest("hex");
+
+  return digest as SignatureHex;
 }
 
 /**
@@ -107,15 +112,7 @@ export function sha256Hex(material: string): SignatureHex {
  * — it is shorter than `SIGNATURE_HEX_LENGTH` — and must never be accepted
  * as a lookup input; a test in the next wave asserts exactly that
  * (`isSignatureHex` must reject a prefix-length string).
- *
- * NOT IMPLEMENTED — Wave 0B stub (T3).
  */
 export function signatureDisplayPrefix(signature: SignatureHex): string {
-  void signature;
-  throw new Error("not implemented");
+  return signature.slice(0, SIGNATURE_DISPLAY_PREFIX_LENGTH);
 }
-
-// `createHash` is referenced only here until the next wave fills
-// `sha256Hex`'s body in with the real one-liner; keeping the import used
-// means the eventual implementation needs no new import to land.
-void createHash;
