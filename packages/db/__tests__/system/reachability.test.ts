@@ -123,12 +123,13 @@ describe("system subpath unreachability (FR-23)", () => {
   });
 
   // --- item 85 -------------------------------------------------------------
-  it("exports none of the three system functions from the main db barrel", () => {
+  it("exports none of the four system functions from the main db barrel", () => {
     const exported = Object.keys(dbBarrel);
 
     expect(exported).not.toContain("claimDuePollableConnections");
     expect(exported).not.toContain("readConnectionCredential");
     expect(exported).not.toContain("systemTenantContextFor");
+    expect(exported).not.toContain("listAnalysableProjects");
     expect(exported).not.toContain("SYSTEM_ACTOR_ID");
 
     // Not vacuous: the barrel really is loaded and really does export the

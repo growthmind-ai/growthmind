@@ -24,17 +24,22 @@ const FINDING_CLASSES = [
  * lifetime state (architecture.md:143-145, O-006 ADD §2 D-1, D-9, §5 Wave 3).
  *
  * ── NO FOREIGN KEY TO `findings` (closes OQ-5, ADD D-7) ─────────────────────
- * `findings` belongs to the concurrently-shipping O-005 sprint; a FK here
- * would couple this migration to a table that does not exist in this
- * branch's history, and O-005's own acceptance criterion asserts NO
- * signature column exists on `findings` at all — the collision contract
- * forbids touching it. The ledger is keyed by SIGNATURE, and its lifetime
- * state outlives any individual finding row: a finding can be re-derived and
- * re-delivered against the same signature, and the ledger's job is to
- * remember across that, not to point at one row. A
+ * `findings` did not exist when this table shipped, so a FK here would have
+ * coupled this migration to a table absent from the branch's history. It
+ * exists NOW (`./findings.ts`, O-011), and carries a `signature` column of its
+ * own (ADD v2 AD-20) — so the reason above has expired and this note records
+ * what replaced it, rather than an obsolete claim that no such column exists.
+ *
+ * The FK is STILL not added, and the reason is the ledger's shape rather than
+ * the table's absence: the ledger is keyed by SIGNATURE, and its lifetime state
+ * outlives any individual finding row. A finding can be re-derived and
+ * re-delivered against the same signature, and the ledger's job is to remember
+ * across that, not to point at one row. `findings.signature` is a stored copy
+ * of this table's key — the `deliveries.signature` / `dismissals.signature`
+ * pattern, so an identity resolves without a join — and NOT a second producer:
+ * `computeFindingSignature` remains the only function that mints one. A
  * `dismissals.finding_id -> findings.id` FK is the deliberate target of a
- * LATER sprint, once O-005's table exists in history this branch can build
- * on.
+ * LATER sprint.
  *
  * ── `architecture.md:145` FIELDS DELIBERATELY ABSENT, AND NOT PRECLUDED ────
  * That line names the ledger's eventual full state: "first seen, times seen,

@@ -16,3 +16,8 @@ export * from "./dismissals";
 export * from "./signature-ancestry";
 export { deliveries } from "./deliveries";
 export { apiKeys } from "./api-keys";
+// The analysis lane (O-011). `analysis-runs` first: `findings` and
+// `analysis-model-calls` both reference it.
+export * from "./analysis-runs";
+export * from "./findings";
+export * from "./analysis-model-calls";

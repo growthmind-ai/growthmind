@@ -130,6 +130,16 @@ export {
   type EvidenceShapeInput,
   type EvidenceShapeSerialiser,
 } from "./findings/evidence-shape";
+// The candidate assembler (O-012) — the join between the detectors, the gate,
+// and the candidate contract. `confidenceBasisForPass` is exported beside it
+// because the assembler's derivation must be testable against the predicate
+// maths it lives next to.
+export {
+  assembleCandidates,
+  type AssembledCandidates,
+  type RejectedCandidate,
+} from "./findings/assemble";
+export { confidenceBasisForPass } from "./evidence/predicates";
 
 // --- O-006 -------------------------------------------------------------------
 export {
@@ -179,6 +189,25 @@ export {
   type FloorSummary,
   type FloorSummarySource,
 } from "./summary/types";
+
+// --- O-011: the model lane's output shape, sentence join, and SAC guard ------
+//
+// The three functions are exported because the model lane's callers live
+// outside this package: `worker` renders through the port and must judge what
+// comes back before persisting it. Each has its mirroring
+// `__tests__/summary/output-schema.test.ts` and is called there by name, which
+// is what `coverage.test.ts` requires of every barrel-exported function.
+export {
+  modelSummaryOutputSchema,
+  splitSentences,
+  joinSentences,
+  guardModelText,
+  type ModelSummaryOutput,
+  type GuardedSacId,
+  type GuardRefusal,
+  type GuardVerdict,
+  type SacOffence,
+} from "./summary/output-schema";
 
 // --- O-007 -------------------------------------------------------------------
 export {

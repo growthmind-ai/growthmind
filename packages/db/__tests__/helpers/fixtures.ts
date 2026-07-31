@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
+import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.repo";
 import type { ScopedDb } from "../../src/repositories/types";
 import * as schema from "../../src/schema";
 
@@ -211,6 +212,33 @@ export async function seedProject(
   }
 
   return { id: row.id, name: row.name };
+}
+
+export interface SeededAnalysisRun {
+  id: string;
+}
+
+/**
+ * Opens a real `analysis_runs` row through `createAnalysisRunsRepo` rather
+ * than a raw insert (O-011). `findings.run_id` is a real FK
+ * (`findings_run_id_analysis_runs_id_fk`) — a synthetic string id fails that
+ * constraint, so any test persisting a finding needs a genuine run row first.
+ * Going through the repo's own `open()` also keeps the fixture honest about
+ * how a run actually comes into being (the partial-unique-index-backed
+ * single-writer-per-project guarantee, AD-4), rather than hand-rolling a shape
+ * that could drift from what the real writer produces.
+ */
+export async function seedAnalysisRun(
+  db: ScopedDb,
+  params: { ctx: TenantContext; projectId: string; tickAt?: Date },
+): Promise<SeededAnalysisRun> {
+  const repo = createAnalysisRunsRepo(db, params.ctx);
+  const { run } = await repo.open({
+    projectId: params.projectId,
+    tickAt: params.tickAt ?? new Date(),
+  });
+
+  return { id: run.id };
 }
 
 export interface SeededConnection {

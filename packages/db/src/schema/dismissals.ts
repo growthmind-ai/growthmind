@@ -39,6 +39,19 @@ const DISMISSAL_ACTIONS = ["not_useful"] as const satisfies readonly [
  * once that table exists in this branch's history. `signature` is carried
  * on this row so suppression can resolve WITHOUT joining `findings` at all.
  *
+ * DEFERRAL, NAMED HEIR (O-011 FR-M17 / ADD AD-11). `findings` NOW EXISTS
+ * (`packages/db/src/schema/findings.ts`), so the missing-table reason above has
+ * expired — and the FK is STILL not added, for a different and cited reason:
+ * this table's shipped suites insert rows carrying SYNTHETIC `finding_id`
+ * values that reference no `findings` row, and those suites are frozen. The
+ * `ALTER TABLE … ADD CONSTRAINT` is cheap; repairing frozen fixtures is not,
+ * and doing it inside O-011 is precisely the scope creep that sprint forbids.
+ * HEIR: the sprint that lands the findings producer end to end (the
+ * corpus-reader heir of ADD AD-0) — the same sprint that must migrate these
+ * fixtures — owns adding the FK. This paragraph is the deferral's only
+ * git-tracked home: sprint task files are gitignored, so a deferral recorded
+ * only there does not exist.
+ *
  * ── `dismissedByUserId` IS `SET NULL`, NEVER CASCADE (ADD D-7) ──────────────
  * A dismissal must outlive its author. If deleting a user row cascaded into
  * deleting the dismissals they made, every signature they ever dismissed

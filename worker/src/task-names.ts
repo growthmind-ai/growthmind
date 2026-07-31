@@ -34,6 +34,19 @@ export const TASK = {
    * on boot inside `crontab`, and only inside a running container.
    */
   DELIVERY_TICK: "delivery:tick",
+  /**
+   * The analysis lane's tick (O-011). MODEL-AGNOSTIC, for exactly the reason
+   * the poll above is source-agnostic and the delivery tick is channel-agnostic:
+   * Anthropic is today's only model vendor, but a task named "anthropic:analyse"
+   * would have to be renamed the day a second provider lands, and a task rename
+   * strands every job queued under the old name. The handler is the composition
+   * root and the only place that learns which vendor — if any — it is talking
+   * to; the lane itself cannot name one.
+   *
+   * Colon separator, never a dot — see the note above; a dot crashes the worker
+   * on boot inside `crontab`, and only inside a running container.
+   */
+  ANALYSIS_TICK: "analysis:tick",
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

@@ -12,7 +12,7 @@
 // validation, and error construction — with only the network edge replaced.
 import { describe, expect, test } from "bun:test";
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateObject, NoObjectGeneratedError } from "ai";
+import { APICallError, generateObject, NoObjectGeneratedError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 
@@ -172,6 +172,180 @@ describe("A-3 — error taxonomy: isInstance is the mechanism, never instanceof"
 
     expect(caught).toBeDefined();
     expect(NoObjectGeneratedError.isInstance(caught)).toBe(true);
+  });
+});
+
+// ── A-6 / A-7 ───────────────────────────────────────────────────────────────
+// Added after a post-sprint security audit (H-2, M-4). Both fixes rest on
+// `generateObject` options nothing in this repository had ever exercised, and
+// the SDK's documentation is not admissible here — this file is the paid-for
+// evidence of what the INSTALLED version actually does. `ai/dist/index.d.ts`
+// types `generateObject`'s options as `... & Omit<RequestOptions, 'timeout'>`
+// (:640-659, :7168), so `abortSignal` and `maxRetries` are in and `timeout` is
+// deliberately out — which is why the adapter builds its own signal rather than
+// passing a `timeout` the type would reject.
+
+describe("A-6 — abortSignal is a live generateObject option and reaches the model call", () => {
+  test("the abortSignal passed to generateObject is handed down to the model's doGenerate", async () => {
+    let seen: AbortSignal | undefined;
+    const controller = new AbortController();
+    const model = new MockLanguageModelV3({
+      doGenerate: async ({ abortSignal }) => {
+        seen = abortSignal;
+        return stubGenerateResult(JSON.stringify({ headline: "h", context: "c" }));
+      },
+    });
+
+    await generateObject({
+      model,
+      schema: PROBE_SCHEMA,
+      prompt: "probe",
+      abortSignal: controller.signal,
+    });
+
+    // The wire, proven rather than assumed (D11): an option the SDK accepted
+    // but dropped on the floor would type-check identically and enforce nothing.
+    expect(seen).toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  // RECORDED BECAUSE IT IS SURPRISING, AND BECAUSE IT SETS THE LIMIT OF WHAT
+  // THE DEADLINE BUYS: `generateObject` does NOT pre-check the signal itself.
+  // An already-aborted signal handed to a model that ignores it produces a
+  // perfectly successful result. Enforcement is entirely the PROVIDER's — the
+  // real Anthropic provider forwards the signal into `fetch`, which is what
+  // rejects. So the property the adapter can actually rely on is the one A-6's
+  // first test pins (the signal reaches the model), plus this one (a provider
+  // that honours it produces a non-validation rejection).
+  test("the SDK itself does not pre-check the signal: enforcement belongs to the provider", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: stubGenerateResult(JSON.stringify({ headline: "h", context: "c" })),
+    });
+
+    const result = await generateObject({
+      model,
+      schema: PROBE_SCHEMA,
+      prompt: "probe",
+      abortSignal: AbortSignal.abort(),
+      maxRetries: 0,
+    });
+
+    expect(result.object).toEqual({ headline: "h", context: "c" });
+  });
+
+  test("a model that honours the signal rejects, and the rejection is not the object-validation class", async () => {
+    // What a real HTTP provider does: the signal goes into `fetch`, and an
+    // aborted `fetch` rejects with the signal's own reason — a `DOMException`
+    // named `AbortError` for a manual abort, `TimeoutError` for the
+    // `AbortSignal.timeout` the adapter builds.
+    const model = new MockLanguageModelV3({
+      doGenerate: async ({ abortSignal }) => {
+        if (abortSignal?.aborted === true) {
+          throw abortSignal.reason as unknown;
+        }
+        return stubGenerateResult(JSON.stringify({ headline: "h", context: "c" }));
+      },
+    });
+
+    let caught: unknown;
+    try {
+      await generateObject({
+        model,
+        schema: PROBE_SCHEMA,
+        prompt: "probe",
+        abortSignal: AbortSignal.abort(),
+        maxRetries: 0,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeDefined();
+    // The load-bearing half for D-13's mapping: an abort must NOT arrive as
+    // `NoObjectGeneratedError`, or `./errors.ts` would call a call that never
+    // completed an unreadable OUTPUT. It falls to `call_failed` instead, which
+    // claims only that the attempt did not go through.
+    expect(NoObjectGeneratedError.isInstance(caught)).toBe(false);
+  });
+});
+
+/** A retryable transport failure — the class the SDK's retry wrapper acts on.
+ * A plain `Error` is NOT retryable, which is why A-3's stub never loops. */
+function retryableFailure(): APICallError {
+  return new APICallError({
+    message: "service unavailable",
+    url: "https://api.example.invalid/v1/messages",
+    requestBodyValues: {},
+    statusCode: 503,
+    isRetryable: true,
+  });
+}
+
+function countingModel(counter: { attempts: number }): MockLanguageModelV3 {
+  return new MockLanguageModelV3({
+    doGenerate: async () => {
+      counter.attempts += 1;
+      throw retryableFailure();
+    },
+  });
+}
+
+describe("A-7 — maxRetries controls how many upstream requests one call issues", () => {
+  // M-4's FIX. One claim, one request — what the cap has to mean for
+  // "hard per-project cost cap" to be a true sentence.
+  test("with maxRetries 0, one retryable failure costs exactly one upstream request", async () => {
+    const counter = { attempts: 0 };
+    await expect(
+      generateObject({
+        model: countingModel(counter),
+        schema: PROBE_SCHEMA,
+        prompt: "probe",
+        maxRetries: 0,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(counter.attempts).toBe(1);
+  });
+
+  // The other direction, so `maxRetries` is proven to be a live knob rather
+  // than an option the SDK accepts and ignores — one retry is genuinely one
+  // extra upstream request. Unset, the SDK's declared default is 2
+  // (`ai/dist/index.d.ts:7128`), which is M-4 in one line: three requests per
+  // cap claim. It is not pinned here because the retry wrapper waits out its
+  // real exponential backoff (~6s for the default) and because the assertion
+  // that actually protects the cap lives on the adapter, in
+  // `summariser.test.ts` A6 — that one holds whatever the SDK's default becomes.
+  test("with maxRetries 1, the same failure costs exactly two upstream requests", async () => {
+    const counter = { attempts: 0 };
+    await expect(
+      generateObject({
+        model: countingModel(counter),
+        schema: PROBE_SCHEMA,
+        prompt: "probe",
+        maxRetries: 1,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(counter.attempts).toBe(2);
+  });
+
+  test("a retry-exhausted failure is not the object-validation class either", async () => {
+    const counter = { attempts: 0 };
+    let caught: unknown;
+    try {
+      await generateObject({
+        model: countingModel(counter),
+        schema: PROBE_SCHEMA,
+        prompt: "probe",
+        maxRetries: 0,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    // Same reason as A-6: a transport failure must land on `call_failed`, never
+    // on `output_invalid`.
+    expect(NoObjectGeneratedError.isInstance(caught)).toBe(false);
   });
 });
 

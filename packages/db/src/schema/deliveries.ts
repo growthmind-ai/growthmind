@@ -49,6 +49,19 @@ const DELIVERY_STATUSES = ["pending", "posted", "failed"] as const satisfies rea
  * of a later sprint, once that table exists in history this branch can build
  * on.
  *
+ * DEFERRAL, NAMED HEIR (O-011 FR-M17 / ADD AD-11). `findings` NOW EXISTS
+ * (`packages/db/src/schema/findings.ts`), so the missing-table reason above has
+ * expired — and the FK is STILL not added, for a different and cited reason:
+ * this table's shipped suites insert rows carrying SYNTHETIC `finding_id`
+ * values that reference no `findings` row, and those suites are frozen. The
+ * `ALTER TABLE … ADD CONSTRAINT` is cheap; repairing frozen fixtures is not,
+ * and doing it inside O-011 is precisely the scope creep that sprint forbids.
+ * HEIR: the sprint that lands the findings producer end to end (the
+ * corpus-reader heir of ADD AD-0) — the same sprint that must migrate these
+ * fixtures — owns adding the FK. This paragraph is the deferral's only
+ * git-tracked home: sprint task files are gitignored, so a deferral recorded
+ * only there does not exist.
+ *
  * ── `channel_id` IS THE ADDRESS, AND THERE IS NO `channel_kind` YET ──────────
  * Slack is the only delivery channel at MVP, so the address is a Slack
  * channel id and the unique tuple ends there. A second adapter (email, a

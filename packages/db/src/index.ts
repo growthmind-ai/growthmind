@@ -158,3 +158,37 @@ export {
   type ApiKeyRow,
   type ResolvedApiKey,
 } from "./repositories/api-keys.repo";
+
+// --- O-011 -------------------------------------------------------------------
+// The analysis lane's two repositories. NOTE (AD-12, FR-M18): `findings` has NO
+// consumer this sprint — the `delivery-tick` lane-source wire is deliberately
+// CUT and lands with the first sprint that needs findings flowing to delivery.
+// The full statement lives in `./repositories/findings.repo.ts`'s header.
+export {
+  createFindingsRepo,
+  findingContextSchema,
+  measuredCountRowSchema,
+  FINDING_CONFLICT_TARGET,
+  type FindingsRepo,
+  type FindingRecord,
+  type PersistFindingInput,
+  type ListFindingsOptions,
+  type MeasuredCountRow,
+} from "./repositories/findings.repo";
+// `ANALYSIS_RUN_LEASE_MS` is re-exported deliberately (ADD v2 AD-25.1). The
+// worker's own comments reason about it in prose (`worker/src/tasks/
+// analysis-tick.ts`), so a constant the worker argues from must be reachable
+// from the barrel the worker imports — not only through a deep path into
+// `./repositories/analysis-runs.repo`, which until now was how the single
+// consumer (that repository's own suite) got at it.
+export {
+  createAnalysisRunsRepo,
+  ANALYSIS_RUN_LEASE_MS,
+  type AnalysisRunsRepo,
+  type AnalysisRunRecord,
+  type OpenRunInput,
+  type OpenRunResult,
+  type CloseRunInput,
+  type ClaimModelCallInput,
+  type ClaimModelCallResult,
+} from "./repositories/analysis-runs.repo";

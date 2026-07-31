@@ -92,6 +92,22 @@ services:
       # blast radius is a customer PostHog account, not just this deployment.
       GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
+      # The analysis lane's model key, and which model it asks. Forwarded ONLY
+      # here: the worker is where the lane runs, and a key set in .env that
+      # never crossed into this container was a wire that looked connected and
+      # was not — the lane silently produced findings with no written
+      # explanation and no way to tell that from "no key was set".
+      # Written with NO VALUE on purpose — the compose pass-through form, which
+      # forwards the variable when the host or .env has it and leaves it UNSET
+      # when they do not. Not `"${VAR:-}"`: that spelling sets the variable to
+      # an empty string, and both of these are `z.string().min(1).optional()` in
+      # packages/shared/src/env.ts, where a present-but-empty value is a
+      # validation FAILURE. A keyless `docker compose up` from a clean clone
+      # would then crash the worker at startup instead of doing what it does
+      # today — see no key, select the no-key branch, and ship every finding
+      # carrying its numbers with no written explanation attached.
+      ANTHROPIC_API_KEY:
+      GROWTHMIND_COLDSTART_MODEL:
     depends_on:
       postgres:
         condition: service_healthy

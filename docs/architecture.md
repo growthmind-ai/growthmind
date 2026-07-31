@@ -794,9 +794,14 @@ proven impossible by test.
 **PII (§5).** Allowlist-first masking at capture; a deterministic residual scanner at
 ingest that quarantines rather than drops; a per-project mask report that makes "we
 can prove it" a statement about mechanism rather than an audit promise. English
-narratives are the hard part — free text captures what a typed field never would —
-so generated finding text passes the same residual scanner before it is persisted or
-posted.
+narratives are the hard part — free text captures what a typed field never would.
+**Generated finding text does NOT yet pass that residual scanner.** O-011 shipped the
+first model-written text and guards it with `guardModelText`, which checks the
+assertion contract — that a sentence adds no claim the candidate's own fields do not
+carry — and is not a personal-data scan. Running `scanResidualPii` over model text is
+what promotes SAC-9 out of `SAC_NOT_YET_ENFORCED`; its heir is named in
+`packages/shared/src/summary/assertion-contract.ts`. Until that lands, nothing here or
+anywhere else may be read as that scan having happened.
 
 **Forbidden surfaces (§5).** Pricing, billing, auth, consent flows and terms are a
 hard deny list checked at proposal time against the surface registry. A growth agent
