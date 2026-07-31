@@ -56,13 +56,33 @@ const SURFACE_ROLES = ["surface"] as const;
  * a join to the row that carries it.
  *
  * The D12 hazard a stored identity raises is FORKING — a signature is exactly
- * as stable as its least stable input, and `surface` is re-derived. That hazard
- * is answered, and answered elsewhere on purpose: O-006 shipped
- * `signature_ancestry` (`./signature-ancestry.ts`, `consultSignature`'s
- * old→new resolution), so a signature that legitimately churns has a recorded
- * migration path rather than a silent second life (AC-D12). `signature_version`
- * sits beside the value so provenance is READ, never re-derived — the same
- * discipline as `finding_signatures.signature_tuple_version`.
+ * as stable as its least stable input, and `surface` is re-derived.
+ *
+ * THE MECHANISM FOR THAT HAZARD EXISTS; ITS PRODUCER DOES NOT, AND THIS COLUMN
+ * SHIPS FORKABLE TODAY. Read that before hanging anything off this value. O-006
+ * shipped the ancestry table (`./signature-ancestry.ts`), the service method
+ * that writes an edge (`recordAncestry`,
+ * `../services/signature-ledger.service.ts`) and the old→new resolution that
+ * reads it (`consultSignature`, same file) — but NOTHING IN PRODUCTION CALLS
+ * `recordAncestry`. Its only callers are this package's own tests, and the
+ * analysis lane stubs it out. No ancestry edge is written by any shipped path,
+ * so the "migration path" is a capability rather than a behaviour.
+ *
+ * WHAT THAT COSTS, CONCRETELY. `@growthmind/core`'s `signature-tuple.ts` D12
+ * input table names three live churn events for `surfaceId` — a customer route
+ * rename, a `URL_PATH_NORMALISATION_VERSION` bump, and the M1 ts-morph
+ * derivation swap — plus an `EVIDENCE_SHAPE_VERSION` bump for `evidenceShape`.
+ * Any one of them forks this column with no edge recorded, and the fork is
+ * SILENT: the unique index below matches nothing, the finding re-mints as new,
+ * `findBySignature`'s reuse rung misses, the cap's lifetime ceiling re-opens for
+ * a problem already paid for (`./analysis-model-calls.ts`), and O-006's
+ * dismissals quietly stop suppressing it. The heir is a CALLER for
+ * `recordAncestry` on whichever path re-derives a surface — not a second
+ * mechanism, and not another paragraph here.
+ *
+ * `signature_version` sits beside the value so provenance is READ, never
+ * re-derived — the same discipline as
+ * `finding_signatures.signature_tuple_version`.
  *
  * What a POSITIONAL key would have done instead is the reason this column is
  * what it is: an ordinal-and-tick-instant handle mints a fresh identity every

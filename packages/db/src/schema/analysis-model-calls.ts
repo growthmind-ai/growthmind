@@ -58,9 +58,16 @@ import { projects } from "./projects";
  * PROBLEM per project, counted over the lifetime of these rows. A positional or
  * tick-prefixed handle would mint a fresh key every tick, so the unique index
  * would match nothing and a lifetime cap of N would silently become N per tick.
- * D12's churn hazard for a content-derived key is answered where identity
- * lives: O-006's `signature_ancestry` records an old→new mapping, so a
- * legitimate fork has a migration path (AC-D12).
+ * D12's churn hazard for a content-derived key is NOT CLOSED TODAY, and this
+ * ceiling is one of the things that costs. The MECHANISM exists — O-006's
+ * `signature_ancestry` records an old→new mapping (AC-D12) — but its PRODUCER
+ * does not: nothing in production calls `recordAncestry`
+ * (`../services/signature-ledger.service.ts`), so a customer route rename, a
+ * `URL_PATH_NORMALISATION_VERSION` bump or the M1 ts-morph derivation swap forks
+ * the signature with no edge written. A forked signature is a FRESH ROW here,
+ * which re-opens lifetime budget for a problem already paid for, under both
+ * ceilings. `./findings.ts`'s header carries the full account and names the heir
+ * (a caller, on whichever path re-derives a surface).
  *
  * Two candidates on one signature are ONE claim — deliberately. The budget is
  * the right to write up a problem, not the right to write up a row.

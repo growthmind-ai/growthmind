@@ -41,6 +41,38 @@
  * finding itself is unaffected. It is above all NOT SILENCE, which is the
  * failure SAC-10 exists to prevent. The heir is an account-scope sentence added
  * to the message table in `@growthmind/shared`, never a string authored here.
+ *
+ * ── A LIFETIME CEILING IS ALSO AN EXPOSURE, AND IT SHIPS UNWINDOWED ────────
+ * NAMED HERE RATHER THAN LEFT FOR SOMEBODY TO DISCOVER. Both ceilings count
+ * LIFETIME, NEVER-PRUNED rows (`packages/db/src/schema/analysis-model-calls.ts`,
+ * "LIFETIME WINDOW"), and the claim mints one row per DISTINCT SIGNATURE. A
+ * signature's inputs include the candidate's `surface` — a normalised URL path
+ * derived from CUSTOMER TRAFFIC (`packages/core/src/findings/signature-tuple.ts`,
+ * the D12 input table). So the count is driven, in part, by an input an
+ * outsider can influence.
+ *
+ * THE ADVERSARIAL CASE, OUT LOUD. Someone who drives traffic to many distinct
+ * URL paths that each clear the evidence gate mints a distinct signature per
+ * path, and can therefore walk a tenant's claim count to either ceiling. Under
+ * the organisation-wide one that is not confined to the project attacked: it
+ * spends the budget of EVERY project the organisation owns. Because nothing
+ * prunes the ledger and no window rolls, the exhaustion is PERMANENT and there
+ * is no refund path a customer or an operator can take.
+ *
+ * WHAT IT COSTS AND WHAT IT DOES NOT. Spend stays bounded — that is exactly
+ * what these ceilings are for, so this is not a cost attack. What is lost is
+ * the FEATURE: written explanations denied for good. It degrades rather than
+ * disappears — every candidate is still persisted with its numbers under
+ * `floor_cap_exhausted` and the run still records `stop_reason = cap_exhausted`
+ * — so it is a permanent downgrade to the floor, never silence.
+ *
+ * WHY IT IS NOT FIXED HERE. Windowing either ceiling would make the shipped
+ * sentence above ("...for this product's first check...") false, and a true one
+ * would be a NEW customer-facing string — which this sprint does not author
+ * (AD-23, AD-26). The heir is the same heir the wrong-scope paragraph names: a
+ * window, or an operator-facing reset, landed TOGETHER WITH its sentence in
+ * `@growthmind/shared`'s message table. Until then this exposure is a known,
+ * written-down property of the design and not an oversight.
  */
 
 /**
@@ -66,14 +98,22 @@
  *
  * ── TWELVE CLAIMS IS TWELVE BILLABLE REQUESTS ──────────────────────────────
  * The number below counts CLAIM ROWS, and a claim is only a true cost ceiling
- * if a claim can buy exactly one upstream request. It can:
- * `packages/adapters/src/anthropic/constants.ts:MODEL_CALL_MAX_RETRIES` is `0`,
- * stated at the `generateObject` call site rather than inherited, and
+ * if a claim can buy exactly one upstream request. It can: the adapter's
+ * `MODEL_CALL_MAX_RETRIES` is `0`, stated at the `generateObject` call site in
+ * `packages/adapters/src/anthropic/summariser.ts` rather than inherited, and
  * `packages/adapters/__tests__/anthropic/summariser.test.ts` A6 asserts a
  * retryable failure invokes the model exactly once. So the worst case a reader
  * has to compute is the number itself — no retry multiplier, no correction
  * factor. (Left unset, the AI SDK retries twice by default, which would have
  * made one claim worth up to three requests and this cap a 3× estimate.)
+ *
+ * THAT CONSTANT IS PACKAGE-INTERNAL, and this paragraph reasons about it from
+ * outside. It is declared in `packages/adapters/src/anthropic/constants.ts` and
+ * is NOT re-exported by the `@growthmind/adapters` barrel — which exports only
+ * `DEFAULT_COLDSTART_MODEL` from that file — so the name above is a DEEP PATH a
+ * reader opens, never something this file can import. Nothing here should add
+ * that export merely to make the citation shorter: the arithmetic is a fact
+ * about the adapter, and this file states it rather than depending on it.
  *
  * The other half of the same arithmetic is time, not money:
  * `MODEL_REQUEST_TIMEOUT_MS` beside it bounds a single call, and the tick

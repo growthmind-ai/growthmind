@@ -1,7 +1,8 @@
 // The one default model id in this codebase (AD-3).
 //
 // Model selection is CONFIGURATION — `GROWTHMIND_COLDSTART_MODEL`
-// (`packages/shared/src/env.ts:39`), validated-if-present. The default lives
+// (declared in `packages/shared/src/env.ts`; cited by SYMBOL, because a line
+// number here was wrong the day it was written), validated-if-present. The default lives
 // here, beside the adapter that speaks to the vendor, rather than in the env
 // schema: `packages/shared` must not know which vendor this lane calls, and a
 // default written into the env schema would silently become a second home for

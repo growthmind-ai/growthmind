@@ -55,8 +55,11 @@ import { detectorNameSchema, findingClassSchema } from "../rules/types";
  * every one of those is already on the candidate, and a second copy authored by
  * a model is a second claim nobody proved.
  *
- * `packages/shared/src/summary/types.ts:188-191` said FR-8 rested on a comment
- * alone until this schema existed. This is what makes it structural.
+ * `summaryRenderResultSchema`'s `headline` field in
+ * `packages/shared/src/summary/types.ts` said FR-8 rested on a comment alone
+ * until this schema existed. This is what makes it structural. Cited by SYMBOL
+ * rather than by line: that comment has already moved once inside its own file,
+ * and a line number is a citation that rots on somebody else's edit.
  *
  * Both fields are REQUIRED and non-empty. An empty headline is a shape failure
  * — `floor_model_output_invalid` — and not text for the guard to judge.
