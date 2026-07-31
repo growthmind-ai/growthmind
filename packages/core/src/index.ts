@@ -220,3 +220,21 @@ export {
   type SlackBlock,
   type SlackMessage,
 } from "./delivery/slack-message";
+
+// --- O-009: the minimal fix spec ---------------------------------------------
+export {
+  renderFixSpec,
+  isCodeShaped,
+  fixSpecSchema,
+  fixSpecInputSchema,
+  CODE_SHAPED_MARKERS,
+  FIX_SPEC_EVIDENCE_TEMPLATES,
+  FIX_SPEC_NO_EVIDENCE_TEMPLATE,
+  FIX_SPEC_BOUNDARY_TEMPLATES,
+  FIX_SPEC_EVIDENCE_LIMIT_TEMPLATE,
+  FIX_SPEC_COVERAGE_TEMPLATES,
+  FIX_SPEC_ALL_TEMPLATES,
+  type FixSpec,
+  type FixSpecInput,
+  type CodeShapedMarker,
+} from "./fixes/fix-spec";
