@@ -99,9 +99,7 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
     }
 
     // And they contribute nothing to the audited set.
-    expect(ALL_SUPPRESSION_REASON_MESSAGES.length).toBe(
-      REASON_CODES.length - DELIVER_CODES.length,
-    );
+    expect(ALL_SUPPRESSION_REASON_MESSAGES.length).toBe(REASON_CODES.length - DELIVER_CODES.length);
   });
 
   test("doubt reasons never assert health or duplication", () => {

@@ -1397,9 +1397,7 @@ describe("cross-tenant boundary on the O-006 signature ledger tables", () => {
     expect(
       await createDismissalsRepo(db, fx.ownerCtx).findFor(fx.findingId, "not_useful"),
     ).toBeNull();
-    expect(
-      await createSignatureAncestryRepo(db, fx.ownerCtx).forwardEdge(fx.signature),
-    ).toBeNull();
+    expect(await createSignatureAncestryRepo(db, fx.ownerCtx).forwardEdge(fx.signature)).toBeNull();
   });
 
   // --- T-XT-3 (D1 FLAGSHIP — the single most important row in this file) ----

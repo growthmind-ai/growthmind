@@ -31,10 +31,7 @@ import { describe, expect, test } from "bun:test";
 
 import { evidenceShape } from "../../src/findings/evidence-shape";
 import type { EvidenceShapeInput } from "../../src/findings/evidence-shape";
-import {
-  SIGNATURE_TUPLE_SERIALISERS,
-  signatureTuple,
-} from "../../src/findings/signature-tuple";
+import { SIGNATURE_TUPLE_SERIALISERS, signatureTuple } from "../../src/findings/signature-tuple";
 import type { SignatureTupleInput } from "../../src/findings/signature-tuple";
 import { canonicalJson } from "../../src/serialise/canonical-json";
 

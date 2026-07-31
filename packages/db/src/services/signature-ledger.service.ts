@@ -82,7 +82,12 @@
 // naming `ctx.organizationId` literally (ADD D-8). Repository factories
 // (`createFindingSignaturesRepo`, `createSignatureAncestryRepo`) are used
 // everywhere else, where a single read or a single atomic upsert is enough.
-import { normaliseUrlPath, type AncestryReason, type DismissalAction, type TenantContext } from "@growthmind/shared";
+import {
+  normaliseUrlPath,
+  type AncestryReason,
+  type DismissalAction,
+  type TenantContext,
+} from "@growthmind/shared";
 import type {
   CandidateFinding,
   FindingClass,
@@ -268,7 +273,10 @@ export interface SignatureLedgerService {
    * THROWS on a foreign `projectId` (M-2). Its `null` return means "no such
    * ledger row" and never "wrong tenant" — the two must not collapse.
    */
-  markSignatureDelivered(projectId: string, signature: SignatureHex): Promise<FindingSignatureRecord | null>;
+  markSignatureDelivered(
+    projectId: string,
+    signature: SignatureHex,
+  ): Promise<FindingSignatureRecord | null>;
   /**
    * Caller: the Slack "Not useful" button (a later outcome). Resolves
    * `signature` forward, then — in ONE transaction (ADD D-8) —
@@ -361,9 +369,7 @@ export function createSignatureLedgerService(
   async function assertProjectInOrg(projectId: string): Promise<void> {
     const project = await projectsRepo.findById(projectId);
     if (!project) {
-      throw new Error(
-        "signature-ledger: project does not belong to the caller's organization",
-      );
+      throw new Error("signature-ledger: project does not belong to the caller's organization");
     }
   }
 
@@ -483,10 +489,9 @@ export function createSignatureLedgerService(
           // which can carry a live reset token or an email address
           // (evidence-shape.ts's own redaction rule, restated for this
           // service's one catch boundary).
-          console.error(
-            "signature-ledger: unknown evidence_shape version — suppressing on doubt",
-            { evidenceShapeVersion: input.evidenceShapeVersion },
-          );
+          console.error("signature-ledger: unknown evidence_shape version — suppressing on doubt", {
+            evidenceShapeVersion: input.evidenceShapeVersion,
+          });
           return suppressionDecision(
             { resolution: "unknown_shape_version" },
             SUPPRESSION_POLICY_VERSION,
@@ -500,10 +505,9 @@ export function createSignatureLedgerService(
 
       const resolution = await ancestryRepo.resolve(signature);
       if (resolution.resolution === "unresolvable") {
-        console.error(
-          "signature-ledger: ancestry walk unresolvable — suppressing on doubt",
-          { cause: resolution.cause },
-        );
+        console.error("signature-ledger: ancestry walk unresolvable — suppressing on doubt", {
+          cause: resolution.cause,
+        });
         return suppressionDecision(
           { resolution: "unresolvable_ancestry" },
           SUPPRESSION_POLICY_VERSION,
@@ -542,7 +546,10 @@ export function createSignatureLedgerService(
         }
       }
 
-      return suppressionDecision({ resolution: "resolved", row: rowState }, SUPPRESSION_POLICY_VERSION);
+      return suppressionDecision(
+        { resolution: "resolved", row: rowState },
+        SUPPRESSION_POLICY_VERSION,
+      );
     },
 
     async markSignatureDelivered(

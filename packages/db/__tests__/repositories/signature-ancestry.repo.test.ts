@@ -94,11 +94,7 @@ async function seedChain(
 /** A complete `upsertSeen` input for the carry-forward fixtures below — the
  * ledger half of D-3(a) needs REAL ledger rows on both sides of an ancestry
  * edge, and `upsertSeen` is the only public way to make one. */
-function makeSeen(
-  projectId: string,
-  signature: SignatureHex,
-  seenAt: Date,
-): UpsertSeenInput {
+function makeSeen(projectId: string, signature: SignatureHex, seenAt: Date): UpsertSeenInput {
   return {
     projectId,
     signature,
@@ -446,9 +442,7 @@ describe("signature ancestry repository", () => {
       caught = error;
     } finally {
       await db.execute(
-        sql.raw(
-          `alter table finding_signatures drop constraint t_db_17_block_carry_forward`,
-        ),
+        sql.raw(`alter table finding_signatures drop constraint t_db_17_block_carry_forward`),
       );
     }
 

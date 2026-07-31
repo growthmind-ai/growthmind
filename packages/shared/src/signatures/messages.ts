@@ -53,8 +53,7 @@ export const SUPPRESSION_REASON_MESSAGES: Record<SuppressionReasonCode, string |
   // MAY: that we reported this before.
   // MAY NOT: "it happened again" — we know what we sent you, not what anyone
   // ran into since.
-  already_delivered:
-    "We have already told you about this one, so we are not sending it again.",
+  already_delivered: "We have already told you about this one, so we are not sending it again.",
 
   // A deliver decision. No customer-facing string exists, and none is invented.
   not_seen_before: null,

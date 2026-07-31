@@ -25,10 +25,7 @@
 // Pure: no clock, no I/O, no randomness. Every state below is a literal.
 import { describe, expect, test } from "bun:test";
 
-import {
-  SUPPRESSION_POLICIES,
-  suppressionDecision,
-} from "../../src/findings/suppression-policy";
+import { SUPPRESSION_POLICIES, suppressionDecision } from "../../src/findings/suppression-policy";
 import type {
   LedgerRowState,
   ResolvedLedgerState,

@@ -38,7 +38,10 @@ export interface DismissalsRepo {
    * satisfied by `findFor`, which takes no project at all; a read whose
    * caller HANDS us a project id must honour it, or a caller passing a
    * foreign project id would be answered from another project's history. */
-  findLatestForSignature(projectId: string, signature: SignatureHex): Promise<DismissalRecord | null>;
+  findLatestForSignature(
+    projectId: string,
+    signature: SignatureHex,
+  ): Promise<DismissalRecord | null>;
 }
 
 export function createDismissalsRepo(db: ScopedDb, ctx: TenantContext): DismissalsRepo {

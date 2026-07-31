@@ -106,7 +106,10 @@ export interface FindingSignaturesRepo {
    */
   upsertSeen(input: UpsertSeenInput): Promise<FindingSignatureRecord>;
   /** Org-filtered lookup by signature — `null` for a foreign org. */
-  findBySignature(projectId: string, signature: SignatureHex): Promise<FindingSignatureRecord | null>;
+  findBySignature(
+    projectId: string,
+    signature: SignatureHex,
+  ): Promise<FindingSignatureRecord | null>;
   /**
    * `delivered_at = coalesce(delivered_at, $at)` — a delivery replay never
    * moves the first-delivery instant (D4). Returns `null` for a foreign
@@ -199,10 +202,7 @@ export function createFindingSignaturesRepo(
       projectId: string,
       signature: SignatureHex,
     ): Promise<FindingSignatureRecord | null> {
-      const [row] = await db
-        .select()
-        .from(findingSignatures)
-        .where(byTuple(projectId, signature));
+      const [row] = await db.select().from(findingSignatures).where(byTuple(projectId, signature));
 
       return row ?? null;
     },

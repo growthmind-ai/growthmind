@@ -132,7 +132,10 @@ function policyV1(state: ResolvedLedgerState): SuppressionDecision {
  * current" — see the header for why an unknown version throws rather than
  * falling back.
  */
-export function suppressionDecision(state: ResolvedLedgerState, version: number): SuppressionDecision {
+export function suppressionDecision(
+  state: ResolvedLedgerState,
+  version: number,
+): SuppressionDecision {
   const policy = SUPPRESSION_POLICIES.get(version);
   if (policy === undefined) {
     throw new Error(

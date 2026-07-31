@@ -196,7 +196,7 @@ const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
  * with itself.
  */
 const GOLDEN_V1_TUPLE_BASELINE =
-  "{\"evidenceShape\":\"{\\\"detector\\\":\\\"funnel_dropoff\\\",\\\"signalKinds\\\":[\\\"failure_uncorrelated\\\",\\\"struggle\\\"],\\\"surface\\\":\\\"/checkout\\\",\\\"surfaceNormalisationVersion\\\":2,\\\"symptomClass\\\":\\\"broken\\\",\\\"v\\\":1}\",\"projectId\":\"11111111-1111-4111-8111-111111111111\",\"surfaceId\":\"/checkout\",\"symptomClass\":\"broken\",\"v\":1}";
+  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":2,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
 
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
@@ -231,7 +231,12 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
     );
 
     const tupleUnderV2 = signatureTuple(
-      { projectId: PROJECT_ID, surfaceId: BASELINE_SURFACE, symptomClass: "broken", evidenceShape: shapeUnderV2 },
+      {
+        projectId: PROJECT_ID,
+        surfaceId: BASELINE_SURFACE,
+        symptomClass: "broken",
+        evidenceShape: shapeUnderV2,
+      },
       SIGNATURE_TUPLE_VERSION,
     );
     const tupleUnderV3 = signatureTuple(
@@ -276,11 +281,21 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
       }) ?? "";
 
     const tupleV1Shape = signatureTuple(
-      { projectId: PROJECT_ID, surfaceId: BASELINE_SURFACE, symptomClass: "broken", evidenceShape: v1Shape },
+      {
+        projectId: PROJECT_ID,
+        surfaceId: BASELINE_SURFACE,
+        symptomClass: "broken",
+        evidenceShape: v1Shape,
+      },
       SIGNATURE_TUPLE_VERSION,
     );
     const tupleV2Shape = signatureTuple(
-      { projectId: PROJECT_ID, surfaceId: BASELINE_SURFACE, symptomClass: "broken", evidenceShape: v2Shape },
+      {
+        projectId: PROJECT_ID,
+        surfaceId: BASELINE_SURFACE,
+        symptomClass: "broken",
+        evidenceShape: v2Shape,
+      },
       SIGNATURE_TUPLE_VERSION,
     );
 
@@ -294,15 +309,28 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
     const checkoutSurface = mustNormalise("/checkout");
     const paySurface = mustNormalise("/pay");
 
-    const checkoutShape = evidenceShape(shapeInputWithSurface(checkoutSurface), EVIDENCE_SHAPE_VERSION);
+    const checkoutShape = evidenceShape(
+      shapeInputWithSurface(checkoutSurface),
+      EVIDENCE_SHAPE_VERSION,
+    );
     const payShape = evidenceShape(shapeInputWithSurface(paySurface), EVIDENCE_SHAPE_VERSION);
 
     const checkoutTuple = signatureTuple(
-      { projectId: PROJECT_ID, surfaceId: checkoutSurface, symptomClass: "broken", evidenceShape: checkoutShape },
+      {
+        projectId: PROJECT_ID,
+        surfaceId: checkoutSurface,
+        symptomClass: "broken",
+        evidenceShape: checkoutShape,
+      },
       SIGNATURE_TUPLE_VERSION,
     );
     const payTuple = signatureTuple(
-      { projectId: PROJECT_ID, surfaceId: paySurface, symptomClass: "broken", evidenceShape: payShape },
+      {
+        projectId: PROJECT_ID,
+        surfaceId: paySurface,
+        symptomClass: "broken",
+        evidenceShape: payShape,
+      },
       SIGNATURE_TUPLE_VERSION,
     );
 
@@ -330,7 +358,10 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
     const perStepSurface = mustNormalise("/checkout/step-1");
     const perOriginSurface = mustNormalise("/checkout");
 
-    const perStepShape = evidenceShape(shapeInputWithSurface(perStepSurface), EVIDENCE_SHAPE_VERSION);
+    const perStepShape = evidenceShape(
+      shapeInputWithSurface(perStepSurface),
+      EVIDENCE_SHAPE_VERSION,
+    );
     const perOriginShape = evidenceShape(
       shapeInputWithSurface(perOriginSurface),
       EVIDENCE_SHAPE_VERSION,
