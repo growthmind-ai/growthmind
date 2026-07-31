@@ -130,3 +130,21 @@ export {
   type EvidenceShapeInput,
   type EvidenceShapeSerialiser,
 } from "./findings/evidence-shape";
+
+// --- O-006 -------------------------------------------------------------------
+export {
+  signatureTuple,
+  SIGNATURE_TUPLE_VERSION,
+  SIGNATURE_TUPLE_SERIALISERS,
+  type SignatureTupleInput,
+  type SignatureTupleSerialiser,
+} from "./findings/signature-tuple";
+export {
+  suppressionDecision,
+  SUPPRESSION_POLICY_VERSION,
+  SUPPRESSION_POLICIES,
+  type LedgerRowState,
+  type ResolvedLedgerState,
+  type SuppressionDecision,
+  type SuppressionPolicy,
+} from "./findings/suppression-policy";

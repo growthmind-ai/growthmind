@@ -92,3 +92,42 @@ export {
   createDetectorCorpusService,
   type DetectorCorpusService,
 } from "./services/detector-corpus.service";
+
+// --- O-006 -------------------------------------------------------------------
+export {
+  SIGNATURE_HEX_LENGTH,
+  SIGNATURE_HEX_FORMAT,
+  SIGNATURE_DISPLAY_PREFIX_LENGTH,
+  isSignatureHex,
+  signatureHex,
+  sha256Hex,
+  signatureDisplayPrefix,
+  type SignatureHex,
+} from "./signatures/hex";
+export {
+  createFindingSignaturesRepo,
+  type FindingSignaturesRepo,
+  type FindingSignatureRecord,
+  type UpsertSeenInput,
+  type CarryForwardInput,
+} from "./repositories/finding-signatures.repo";
+export {
+  createDismissalsRepo,
+  type DismissalsRepo,
+  type DismissalRecord,
+} from "./repositories/dismissals.repo";
+export {
+  createSignatureAncestryRepo,
+  type SignatureAncestryRepo,
+  type AncestryRecord,
+  type AncestryResolution,
+} from "./repositories/signature-ancestry.repo";
+export {
+  createSignatureLedgerService,
+  computeFindingSignature,
+  type SignatureLedgerService,
+  type ComputeFindingSignatureInput,
+  type RecordSignatureResult,
+  type RecordDismissalInput,
+  type RecordAncestryInput,
+} from "./services/signature-ledger.service";

@@ -908,6 +908,62 @@ describe("detector purity and coverage (FR-5, FR-8, D-13)", () => {
     expect(offenders).toEqual([]);
   });
 
+  // --- the W0-3 pin (O-006) ------------------------------------------------
+  //
+  // WHY THIS ASSERTION EXISTS. Test 3 above bans `node:crypto` — and O-006's
+  // D-1 decides that the sha256 helper's home is `packages/db/src/signatures/
+  // hex.ts`, where importing `node:crypto` is LEGAL and load-bearing. The only
+  // thing keeping those two facts compatible is that `SRC_DIR` resolves to
+  // `packages/core/src` and NOTHING WIDER.
+  //
+  // That scope is currently a fact about one template literal. Widen it to a
+  // package root, a monorepo root, or a sibling package, and test 3 starts
+  // failing on `hex.ts`'s perfectly legal import — with no signal anywhere
+  // that a documented architecture decision (D-1) was being revoked rather
+  // than a real impurity being caught. W0-3 asks for the scope itself to be
+  // pinned, so the widening fails HERE, on an assertion that names the
+  // decision, instead of THERE, as a mystery failure a reader would "fix" by
+  // deleting an import that belongs where it is.
+  test("should assert purity scans packages/core/src and nothing wider", async () => {
+    // `import.meta.dir` is backslash-separated on Windows, and `SRC_DIR` is
+    // an UNRESOLVED literal (`…/__tests__/detect/../../src`). Both are
+    // normalised here — forward slashes, `..` segments collapsed — so the pin
+    // means the same thing on every platform. Collapsed by hand rather than
+    // with `node:path`, because this suite must not import the builtin it
+    // polices (see the file header).
+    const segments: string[] = [];
+    for (const segment of SRC_DIR.replaceAll("\\", "/").split("/")) {
+      if (segment === "..") segments.pop();
+      else if (segment !== ".") segments.push(segment);
+    }
+    const resolved = segments.join("/");
+
+    // The scan is rooted at THIS package's source directory.
+    expect(resolved.endsWith("/packages/core/src")).toBe(true);
+
+    // ...and reaches no sibling package. Named explicitly rather than left to
+    // the suffix check, because `packages/db/src` is the one that D-1 places a
+    // legal `node:crypto` import inside.
+    expect(resolved).not.toContain("/packages/db/");
+    expect(resolved).not.toContain("/packages/shared/");
+    expect(resolved).not.toContain("/packages/adapters/");
+
+    // Non-vacuity, and the half a string check cannot give: what the scanner
+    // ACTUALLY enumerates is core modules only. `signatures/hex.ts` is
+    // `packages/db`'s file and must be absent from every path this suite ever
+    // scans; `detect/error-event.ts` is core's and must be present.
+    const paths = await listSourceModules();
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths).toContain("detect/error-event.ts");
+    expect(paths.filter((path) => path.endsWith("signatures/hex.ts"))).toEqual([]);
+
+    // And the D-1 file itself is real and does import the builtin — so this
+    // pin is protecting a live decision, not a hypothetical one. If `hex.ts`
+    // ever moves into `packages/core`, THIS assertion is what fails first.
+    const hexSource = await Bun.file(`${SRC_DIR}/../../db/src/signatures/hex.ts`).text();
+    expect(collectImportSpecifiers(hexSource).filter(isNodeBuiltin)).toEqual(["node:crypto"]);
+  });
+
   // --- test 6 --------------------------------------------------------------
   test("should produce the declared number of candidates when one session carries two matching signals", () => {
     const ruleSet = ruleSetV1();

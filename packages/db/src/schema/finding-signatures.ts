@@ -1,0 +1,102 @@
+import { randomUUID } from "node:crypto";
+
+import type { FindingClass } from "@growthmind/core";
+import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+
+import { organization } from "./auth";
+import { projects } from "./projects";
+
+// Enum tuple compile-pinned to @growthmind/core's Zod union (C-f, D9) — the
+// same `text({ enum })` + `as const satisfies` discipline
+// `session-source-poll-runs.ts` uses for its shared-package enums, applied
+// here against `packages/core` because `symptomClass` IS
+// `CandidateFinding.finalClass`, a `FindingClass` (`db -> core` is legal,
+// C-c — `core -> db` is not, and never will be).
+const FINDING_CLASSES = [
+  "broken",
+  "confusing",
+  "changed_mind",
+  "instrumentation",
+] as const satisfies readonly [FindingClass, ...FindingClass[]];
+
+/**
+ * The signature ledger — one row per DISTINCT finding identity, holding its
+ * lifetime state (architecture.md:143-145, O-006 ADD §2 D-1, D-9, §5 Wave 3).
+ *
+ * ── NO FOREIGN KEY TO `findings` (closes OQ-5, ADD D-7) ─────────────────────
+ * `findings` belongs to the concurrently-shipping O-005 sprint; a FK here
+ * would couple this migration to a table that does not exist in this
+ * branch's history, and O-005's own acceptance criterion asserts NO
+ * signature column exists on `findings` at all — the collision contract
+ * forbids touching it. The ledger is keyed by SIGNATURE, and its lifetime
+ * state outlives any individual finding row: a finding can be re-derived and
+ * re-delivered against the same signature, and the ledger's job is to
+ * remember across that, not to point at one row. A
+ * `dismissals.finding_id -> findings.id` FK is the deliberate target of a
+ * LATER sprint, once O-005's table exists in history this branch can build
+ * on.
+ *
+ * ── `architecture.md:145` FIELDS DELIBERATELY ABSENT, AND NOT PRECLUDED ────
+ * That line names the ledger's eventual full state: "first seen, times seen,
+ * delivered at, dismissed at, experiments run, verdicts reached, human
+ * overrides." This table carries the first four. `experiments run`,
+ * `verdicts reached`, and `human overrides` are NOT columns here — O-006's
+ * scope is identity + suppression, not experiment tracking (a later
+ * outcome's concern) — and their absence is a stated scope boundary, not an
+ * oversight: a later sprint ADDS columns to THIS table, it never needs a
+ * second one, because the signature is already the ledger's primary key.
+ *
+ * ── CLOSING WINDOW (identity-key.ts:55-64 style) ────────────────────────────
+ * Nothing has shipped against this table yet — it lands empty in every
+ * environment. That means there is nothing to backfill TODAY. That is a
+ * closing window, not a standing exemption: the day a real signature is
+ * recorded, every decision above (no FK, no experiment columns) is a real
+ * constraint on production data, not a hypothetical, and whoever changes it
+ * owns the migration path.
+ */
+export const findingSignatures = pgTable(
+  "finding_signatures",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** 64-char lowercase hex sha256 digest. Branded `SignatureHex` at the
+     * repository boundary (`packages/db/src/signatures/hex.ts`) — a plain
+     * `text` column here, because a Drizzle column type carries no brand. */
+    signature: text("signature").notNull(),
+    symptomClass: text("symptom_class", { enum: FINDING_CLASSES }).notNull(),
+    /** Provenance beside identity — NOT re-derived from `signature`. */
+    surface: text("surface").notNull(),
+    signatureTupleVersion: integer("signature_tuple_version").notNull(),
+    evidenceShapeVersion: integer("evidence_shape_version").notNull(),
+    /** `null` = written before versions were recorded (ES-14 precedent,
+     * `evidence-shape.ts:54`). */
+    surfaceNormalisationVersion: integer("surface_normalisation_version"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    timesSeen: integer("times_seen").default(1).notNull(),
+    /** Stamped ONLY by `markSignatureDelivered` (ADD D-4) — `recordSignature`
+     * (the re-record path) must NEVER touch this column. This is D-9's most
+     * dangerous line: a re-record that clears a delivery would make the
+     * `already_delivered` suppress branch unreachable in production. */
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    /** Stamped ONLY inside `recordDismissal`'s transaction (ADD D-8) —
+     * permanent once set; no write path ever clears it. */
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("finding_signatures_org_project_signature_key").on(
+      table.organizationId,
+      table.projectId,
+      table.signature,
+    ),
+    index("finding_signatures_organization_id_idx").on(table.organizationId),
+  ],
+);
