@@ -15,8 +15,19 @@
 //     a screen can never show two situations the same way;
 //   - the vendor's name never appears — the pipeline behind the port does not
 //     learn it, and neither does the customer-facing copy.
+//
+// O-004 D-19: the evidence gate's eight reason sentences are DEFINED in
+// `../gate/messages` (they are `core`'s data, and `core` imports them back)
+// and re-exported through this module on purpose — the completeness test below
+// derives its scan from THIS module's exports, so a re-export here is what puts
+// them under the four audits above without a second copy of either the strings
+// or the audit.
+import { GATE_REASON_MESSAGES } from "../gate/messages";
 import type { ExclusionReason } from "../exclusions/types";
 import type { ConnectRefusalCode, ConnectionStateStatus } from "./types";
+
+export { GATE_REASON_MESSAGES };
+export type { GateReasonKey } from "../gate/messages";
 
 /** The seven states O-008 renders. Pairwise distinct by construction. */
 export const CONNECTION_STATE_MESSAGES: Record<ConnectionStateStatus, string> = {
@@ -150,6 +161,8 @@ export const ALL_CUSTOMER_FACING_MESSAGES: readonly string[] = [
   ...Object.values(CONNECT_REFUSAL_MESSAGES),
   ...Object.values(EXCLUSION_REASON_LABELS),
   ...Object.values(COUNTER_LABELS),
+  // O-004 D-19 — the gate's reason sentences audited alongside everything else.
+  ...Object.values(GATE_REASON_MESSAGES),
   COUNTER_WINDOW_STATEMENT,
   COUNTER_COMPLETENESS_STATEMENT,
   SOURCE_ABSENT_NOTICE,

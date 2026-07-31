@@ -8,16 +8,10 @@
 //
 // A LIVE AGGREGATION, not a rollup — correct and simple at this volume. It
 // needs a rollup table before `events` reaches tens of millions of rows.
-import type {
-  EventsSeenCounter,
-  ExclusionReason,
-  SetAsideBreakdown,
-  TenantContext,
-} from "@growthmind/shared";
+import type { EventsSeenCounter, ExclusionReason, TenantContext } from "@growthmind/shared";
 import {
   COUNTER_COMPLETENESS_STATEMENT,
   COUNTER_WINDOW_STATEMENT,
-  EXCLUSION_REASON_LABELS,
   describeExpectedLag,
 } from "@growthmind/shared";
 import { and, eq, sql } from "drizzle-orm";
@@ -27,6 +21,7 @@ import { events } from "../schema/events";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 import { sessions } from "../schema/sessions";
 import { deriveConnectionState, findLatestConnection } from "./connection-state";
+import { buildSetAsideBreakdown } from "./set-aside-breakdown";
 
 export interface EventsCounterService {
   /**
@@ -150,8 +145,11 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
         .orderBy(sql`${sessionSourcePollRuns.finishedAt} desc nulls last`)
         .limit(1);
 
+      // THE UNIT HERE IS **EVENTS**. `detector-corpus.service.ts` builds the
+      // same-shaped breakdown out of **sessions**, which is why the unit is
+      // named explicitly at both call sites below.
       let kept = 0;
-      const setAside: SetAsideBreakdown[] = [];
+      const eventsByReason: [ExclusionReason, number][] = [];
 
       for (const row of breakdownRows) {
         const count = toCount(row.count);
@@ -165,19 +163,12 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
           continue;
         }
 
-        setAside.push({
-          reason: row.reason satisfies ExclusionReason,
-          count,
-          // The customer's own terms, on the same screen as the number. An
-          // unexplained gap reads as a broken product: "the counter says 3 but
-          // my analytics says 8".
-          label: EXCLUSION_REASON_LABELS[row.reason],
-        });
+        eventsByReason.push([row.reason satisfies ExclusionReason, count]);
       }
 
-      // Stable order — largest gap first — so the same data never renders in
-      // two different orders between reads.
-      setAside.sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+      // Labels and stable order come from the ONE builder both aggregations
+      // share, so O-007 renders one vocabulary in one order (D-7).
+      const setAside = buildSetAsideBreakdown({ unit: "events", countsByReason: eventsByReason });
 
       const droppedUnreadable = toCount(runTotals?.droppedUnreadable);
       const setAsideTotal = setAside.reduce((total, row) => total + row.count, 0);

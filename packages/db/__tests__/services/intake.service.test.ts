@@ -18,7 +18,9 @@ import {
   EXCLUSION_RULE_SETS,
   EXCLUSION_RULE_SET_VERSION,
   SESSION_GROUPING_VERSION,
+  URL_PATH_NORMALISATION_VERSION,
   classifyExclusion,
+  normaliseUrlPath,
   type SessionFacts,
 } from "@growthmind/shared";
 
@@ -267,6 +269,69 @@ describe("persistPullResult", () => {
     if (!row) throw new Error("unreachable");
 
     expect(EXCLUSION_RULE_SETS.get(row.exclusionRuleSetVersion)).toBe(CURRENT_EXCLUSION_RULE_SET);
+  });
+
+  // --- the normalisation stamp asserts, it does not assume (M-1) -----------
+
+  test("stamps the normalisation version only on a path that is already normalised, and null on one that is not", async () => {
+    const { ws, connection } = await seedIntakeTarget(db, "normalisation-stamp");
+
+    // An UN-NORMALISED path, in the exact shape the stamp exists to protect:
+    // an identifier-shaped segment `normaliseUrlPath` would redact. The value
+    // is an all-zero placeholder uuid — obviously fake, authenticates nothing,
+    // and this repository is public. A second source adapter forwarding a raw
+    // `$current_url` produces exactly this shape.
+    const unnormalised = "/reset-password/00000000-0000-4000-8000-000000000000";
+
+    // ANTI-VACUITY: if a later normalisation change made this fixture already
+    // normalised, the assertion below would pass for the wrong reason. Pin the
+    // premise rather than trusting it.
+    expect(normaliseUrlPath(unnormalised, null)).not.toBe(unnormalised);
+
+    await persistPullResult(db, ws.ctx, {
+      connection,
+      result: successfulPull({
+        sessions: [sourceSession({ sessionKey: "ph:norm-1" })],
+        events: [
+          sourceEvent({
+            sourceEventId: "evt-norm-raw",
+            sessionKey: "ph:norm-1",
+            urlPath: unnormalised,
+          }),
+          sourceEvent({
+            sourceEventId: "evt-norm-clean",
+            sessionKey: "ph:norm-1",
+            urlPath: "/pricing",
+          }),
+          sourceEvent({ sourceEventId: "evt-norm-nopath", sessionKey: "ph:norm-1", urlPath: null }),
+        ],
+      }),
+    });
+
+    const rows = await createEventsRepo(db, ws.ctx).listForProject(ws.project.id, { limit: 50 });
+    const byId = new Map(rows.map((row) => [row.sourceEventId, row]));
+    expect(byId.size).toBe(3);
+
+    // The whole point: `null` means "redaction status unknown, remediate me",
+    // and IS selected by the §5 remediation query
+    // (`WHERE url_path_normalisation_version IS NULL OR < N`). A version stamp
+    // on this row would hide a live token from that query permanently.
+    expect(byId.get("evt-norm-raw")?.urlPathNormalisationVersion).toBeNull();
+    // FAIL DIRECTION: flagged, never dropped. Intake is a write path, so an
+    // un-normalised path costs a remediation flag, not the event.
+    expect(byId.get("evt-norm-raw")?.urlPath).toBe(unnormalised);
+
+    // Its siblings in the SAME batch are unaffected — the stamp is per-value,
+    // not per-write.
+    expect(byId.get("evt-norm-clean")?.urlPathNormalisationVersion).toBe(
+      URL_PATH_NORMALISATION_VERSION,
+    );
+    // A no-path row still carries the version (D-15): `NULL` in this column
+    // must keep meaning exactly one thing.
+    expect(byId.get("evt-norm-nopath")?.urlPath).toBeNull();
+    expect(byId.get("evt-norm-nopath")?.urlPathNormalisationVersion).toBe(
+      URL_PATH_NORMALISATION_VERSION,
+    );
   });
 
   // --- partial progress ----------------------------------------------------

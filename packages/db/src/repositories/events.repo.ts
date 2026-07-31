@@ -18,6 +18,10 @@ export interface EventInsertRow {
   name: string;
   occurredAt: Date;
   urlPath: string | null;
+  /** Which normalisation rules produced `urlPath`. Nullable, never coerced:
+   * `null` means "redaction status unknown", which is not the same claim as
+   * version 0. */
+  urlPathNormalisationVersion: number | null;
 }
 
 export interface EventsRepo {
@@ -85,6 +89,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
             name: row.name,
             occurredAt: row.occurredAt,
             urlPath: row.urlPath,
+            urlPathNormalisationVersion: row.urlPathNormalisationVersion,
           })),
         )
         .onConflictDoNothing({ target: [events.projectId, events.sourceEventId] })

@@ -107,6 +107,11 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES,
 } from "./session-source/messages";
 
+// --- O-004: the evidence gate's plain-English reasons (D-19) ----------------
+// Defined here so `ALL_CUSTOMER_FACING_MESSAGES` (and the plain-English audit
+// that scans it) covers them; `packages/core` imports them back for the trace.
+export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
+
 // --- O-003: exclusions ------------------------------------------------------
 export {
   exclusionReasonSchema,

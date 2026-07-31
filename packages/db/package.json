@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@growthmind/core": "workspace:*",
     "@growthmind/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.22.0"
