@@ -66,6 +66,15 @@ function failureCorrelated(): EvidenceSignal {
     occurredAt: EXCEPTION_AT,
     precedingActionName: "save_clicked",
     correlationWindowMs: 30_000,
+    // The proven cohort, required since audit C-1: `broken` may not pass on a
+    // single correlated session while its count reports a larger population.
+    correlatedSessions: measuredCount({
+      numerator: 3,
+      denominator: 10,
+      unit: "sessions",
+      timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
+      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+    }),
   };
 }
 

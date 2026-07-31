@@ -70,6 +70,28 @@ function normalisedSurface(rawPathname: string): string {
  * else, and this is the fixture that proves adding a field to a signal cannot
  * move an identity already on record.
  */
+/**
+ * A correlated-failure signal. Carries `correlatedSessions` because audit C-1
+ * made the proven cohort part of the signal — `broken` may not pass on one
+ * correlated session while the finding reports a larger population.
+ */
+function correlatedFailure(overrides: { readonly occurredAt?: Date } = {}): EvidenceSignal {
+  return {
+    kind: "failure_correlated",
+    eventName: "$exception",
+    occurredAt: overrides.occurredAt ?? FIRST_EXCEPTION_AT,
+    precedingActionName: "save_clicked",
+    correlationWindowMs: 30_000,
+    correlatedSessions: measuredCount({
+      numerator: 3,
+      denominator: 10,
+      unit: "sessions",
+      timeframe: { start: FIRST_EXCEPTION_AT, end: LATER_EXCEPTION_AT },
+      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+    }),
+  };
+}
+
 function struggleSignal(input: {
   readonly subkind: "repeated_attempt" | "backtrack";
   readonly surface: string;
@@ -148,13 +170,7 @@ describe("evidenceShape — identity across a churn event (FR-16, D12)", () => {
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
       signals: [
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: FIRST_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 30_000,
-        },
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",
@@ -183,13 +199,7 @@ describe("evidenceShape — identity across a churn event (FR-16, D12)", () => {
           strugglingSessions: 3,
           kept: 10,
         }),
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: FIRST_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 30_000,
-        },
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",
@@ -237,13 +247,7 @@ describe("evidenceShape — magnitudes and instants are excluded (D-12)", () => 
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
       signals: [
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: FIRST_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 30_000,
-        },
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",
@@ -263,13 +267,7 @@ describe("evidenceShape — magnitudes and instants are excluded (D-12)", () => 
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
       signals: [
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: LATER_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 45_000,
-        },
+        correlatedFailure({ occurredAt: LATER_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",
@@ -315,13 +313,7 @@ describe("evidenceShape — versioning forks deliberately (FR-16)", () => {
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
       signals: [
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: FIRST_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 30_000,
-        },
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",
@@ -447,13 +439,7 @@ describe("evidenceShape — surfaceNormalisationVersion is part of identity (D-1
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion,
       signals: [
-        {
-          kind: "failure_correlated",
-          eventName: "$exception",
-          occurredAt: FIRST_EXCEPTION_AT,
-          precedingActionName: "checkout_submit",
-          correlationWindowMs: 30_000,
-        },
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
         struggleSignal({
           subkind: "repeated_attempt",
           surface: "/checkout",

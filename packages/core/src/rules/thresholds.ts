@@ -71,6 +71,34 @@ const RULE_SET_V1: ThresholdRuleSet = {
    * one: that is what keeps its fail direction UNDER-DETECT as it grows. */
   passiveEventNames: ["$pageview", "$pageleave", "$identify", "$web_vitals"],
 
+  /**
+   * THE FAIL-DIRECTION FIX for the denylist above (O-004 edge sweep, D10).
+   *
+   * The reasoning above is right that interaction names are unpinned, but its
+   * conclusion inverted this file's own priority. A denylist lets an UNKNOWN
+   * vendor event fall through to the action branch — so `$feature_flag_called`,
+   * `$set`, `$groupidentify` or any future PostHog release name becomes "the
+   * thing the user was trying to do", and the gate then tells a founder we
+   * proved their user's action failed when nobody was trying to do anything.
+   * That is the wrong-verdict outcome §6 and FR-14 exist to prevent, and this
+   * file names it as the worst case four paragraphs above.
+   *
+   * The split below needs no guessing, because it keys on WHOSE event it is
+   * rather than on what it is called:
+   *
+   * - No `$` prefix: the customer instrumented it themselves. `checkout_submitted`
+   *   is a user action by construction. Every real correlation the denylist was
+   *   protecting lives here, so nothing is dropped.
+   * - `$` prefix: PostHog's own. Passive UNLESS listed as user-initiated —
+   *   a set that is small, knowable, and does not grow with traffic.
+   *
+   * Unknown vendor names now fail toward SILENCE instead of toward a false
+   * claim. Adding a name here can only ever create correlations, so the list
+   * is the one thing to review when a real interaction is being missed.
+   */
+  vendorEventPrefix: "$",
+  userInitiatedVendorEvents: ["$autocapture", "$rageclick", "$dead_click", "$copy_autocapture"],
+
   /** UNDER-DETECT: narrow enough that an exception 45 seconds after the click
    * is not attributed to it. A wider window buys more correlations and every
    * extra one is a coincidence dressed as a cause. */

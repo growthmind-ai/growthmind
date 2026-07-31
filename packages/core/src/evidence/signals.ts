@@ -29,6 +29,19 @@ export type EvidenceSignal =
       readonly occurredAt: Date;
       readonly precedingActionName: string;
       readonly correlationWindowMs: number;
+      /**
+       * The COHORT this proof covers: how many kept sessions had an exception
+       * actually CORRELATED to a preceding action, over `basis.kept`.
+       *
+       * It exists for the same reason `struggle.strugglingSessions` does
+       * (ruling 31), on the higher-stakes class. Without it, one correlated
+       * session satisfied `broken` while the candidate's count reported the
+       * all-exceptions cohort — so the gate said "we could prove the thing
+       * they were trying to do failed on them" over a count of three when it
+       * was proven for one. The number a founder reads and the number the
+       * verdict rests on must describe the SAME population.
+       */
+      readonly correlatedSessions: MeasuredCount;
     }
   | {
       readonly kind: "failure_uncorrelated";
@@ -99,6 +112,7 @@ export const evidenceSignalSchema = z.discriminatedUnion("kind", [
     occurredAt: z.date(),
     precedingActionName: z.string().min(1),
     correlationWindowMs: z.number().int().nonnegative(),
+    correlatedSessions: measuredCountSchema,
   }),
   z.object({
     kind: z.literal("failure_uncorrelated"),

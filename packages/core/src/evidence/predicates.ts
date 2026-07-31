@@ -91,6 +91,13 @@ function magnitudeSatisfied(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): 
           ruleSet.instrumentationDropRatioPercent * signal.expected.numerator
       );
     case "failure_correlated":
+      // THE COHORT GATE for the product's strongest claim (O-004 audit C-1).
+      // Previously unconditional `true`, so ONE correlated session satisfied
+      // `broken` while the candidate reported the all-exceptions cohort — the
+      // gate asserting "we could prove it failed" over a number that counted
+      // sessions it had not proven anything about. Same shape ruling 31 fixed
+      // for `struggle`, on the class where a wrong verdict costs most.
+      return signal.correlatedSessions.numerator >= ruleSet.errorMinAffectedSessions;
     case "failure_uncorrelated":
     case "clean_exit":
       return true;

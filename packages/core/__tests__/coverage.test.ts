@@ -486,6 +486,10 @@ const NAME_LIST_FAIL_DIRECTION_TESTS: Record<NameListKey, FailDirectionEvidence>
     test: "should not name a passive page event as the action an exception broke",
     file: "detect/error-event.test.ts",
   },
+  userInitiatedVendorEvents: {
+    test: "should not name an unlisted vendor event as the action an exception broke",
+    file: "detect/error-event.test.ts",
+  },
 };
 
 /**

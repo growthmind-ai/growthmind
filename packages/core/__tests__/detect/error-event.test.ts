@@ -876,13 +876,76 @@ describe("detectErrorEvent — a passive event is never the preceding action (FR
     expect(evaluate(result.candidates[0], ruleSet).kind).toBe("pass");
   });
 
+  /**
+   * THE FAIL-DIRECTION PROOF for the vendor-prefix rule (O-004 audits, D10).
+   *
+   * `$feature_flag_called` is not on the denylist and never will be — the
+   * vendor namespace grows with every PostHog release, so no list can
+   * enumerate it. It fires automatically, routinely moments after page load.
+   *
+   * Before the prefix rule it became `precedingActionName`, producing the only
+   * signal `brokenProofSignals` admits, and the gate then told a founder "We
+   * could prove the thing they were trying to do failed on them" when nobody
+   * was trying to do anything. Both O-004 audits reproduced it independently.
+   *
+   * The assertion is on the CLAIM, not just the signal: proving no correlation
+   * exists is weaker than proving no false verdict reaches the customer.
+   */
+  test("should not name an unlisted vendor event as the action an exception broke", () => {
+    const ruleSet = ruleSetV1();
+    const unlistedVendorEvent = "$feature_flag_called";
+    expect(ruleSet.passiveEventNames).not.toContain(unlistedVendorEvent);
+    expect(ruleSet.userInitiatedVendorEvents).not.toContain(unlistedVendorEvent);
+
+    const result = detectErrorEvent(
+      t1psvCorpus(
+        t1psvPassiveThenException({
+          count: ruleSet.errorMinAffectedSessions,
+          passiveName: unlistedVendorEvent,
+          exceptionName: ruleSet.exceptionEventName,
+          exceptionAt: FIXTURE_EXCEPTION_AT,
+          gapMs: T1PSV_GAP_MS,
+        }),
+      ),
+      ruleSet,
+    );
+
+    const correlated = correlatedSignalsOf(result);
+    expect(correlated.some((signal) => signal.precedingActionName === unlistedVendorEvent)).toBe(
+      false,
+    );
+
+    // The direction, stated as an assertion: with no action to name, the
+    // `broken` claim has no admissible proof and must NOT pass. Silence is the
+    // correct output here.
+    const candidate = result.candidates[0];
+    if (candidate !== undefined) {
+      const outcome = evaluate(candidate, ruleSet);
+      // Either the claim was dropped outright, or it survived as something
+      // weaker. What must never happen is `broken` — that is the class whose
+      // sentence asserts we PROVED the user's action failed.
+      if (outcome.kind === "pass") {
+        expect(outcome.finalClass).not.toBe("broken");
+      }
+    }
+  });
+
   test("should treat an unlisted event name as an ordinary action, so the denylist is data", () => {
     const ruleSet = ruleSetV1();
     const [passiveName] = ruleSet.passiveEventNames;
     // The SAME corpus, judged under a rule set whose denylist is empty. A
     // detector with the names inlined would still refuse; one reading the rule
     // set correlates. This is D-14 asserted, not claimed.
-    const permissive: ThresholdRuleSet = { ...ruleSet, passiveEventNames: [] };
+    // Both name lists cleared, because passivity is now decided by TWO rules
+    // that compose: the explicit denylist, and "an unknown vendor-prefixed
+    // event is passive" (the D10 fail-direction fix). Naming the event as
+    // user-initiated is how a rule set says "this one IS an action" — so this
+    // now proves D-14 for both lists rather than one.
+    const permissive: ThresholdRuleSet = {
+      ...ruleSet,
+      passiveEventNames: [],
+      userInitiatedVendorEvents: [...ruleSet.userInitiatedVendorEvents, passiveName ?? ""],
+    };
 
     const sessions = t1psvPassiveThenException({
       count: ruleSet.errorMinAffectedSessions,

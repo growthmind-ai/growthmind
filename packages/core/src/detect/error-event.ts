@@ -52,11 +52,19 @@ const CLAIMED_CLASS: DetectorProposedClass = "broken";
  * escapes: `candidateOf` copies the signals out.
  */
 type SurfaceGroup = {
-  readonly signals: EvidenceSignal[];
+  readonly signals: DraftSignal[];
   /** Distinct sessions carrying an exception on this surface — the numerator,
    * and what `errorMinAffectedSessions` gates on (PL ruling 17: correlated or
    * not). A set, so two exceptions in one session count that session once. */
   readonly sessionIds: Set<string>;
+  /**
+   * The subset of `sessionIds` whose exception was actually CORRELATED to a
+   * preceding action — i.e. the population the `broken` claim can honestly
+   * speak for. Kept apart from `sessionIds` because the two diverge whenever
+   * some exceptions correlate and others do not, and conflating them let a
+   * one-session proof be reported as a three-session finding (audit C-1).
+   */
+  readonly correlatedSessionIds: Set<string>;
   readonly normalisationVersions: Set<number | null>;
 };
 
@@ -104,11 +112,20 @@ function attributionOf(
  * is `failure_uncorrelated` — an EXPLICITLY ABSENT correlation, never a
  * fabricated `failure_correlated` (ES-13).
  */
+/**
+ * A signal minus the cohort count, which is not knowable while walking ONE
+ * session: `correlatedSessions` is a property of the whole surface group, so
+ * it is attached in `candidateOf` once every session has been seen.
+ */
+type DraftSignal =
+  | Omit<Extract<EvidenceSignal, { kind: "failure_correlated" }>, "correlatedSessions">
+  | Extract<EvidenceSignal, { kind: "failure_uncorrelated" }>;
+
 function signalFor(
   exception: TimelineEvent,
   precedingAction: TimelineEvent | null,
   ruleSet: ThresholdRuleSet,
-): EvidenceSignal {
+): DraftSignal {
   if (
     precedingAction !== null &&
     exception.occurredAt.getTime() - precedingAction.occurredAt.getTime() <=
@@ -139,7 +156,18 @@ function signalFor(
  * vendor vocabulary change stays a rule-set edit plus a version bump.
  */
 function isPassiveEvent(event: TimelineEvent, ruleSet: ThresholdRuleSet): boolean {
-  return ruleSet.passiveEventNames.includes(event.name);
+  if (ruleSet.passiveEventNames.includes(event.name)) return true;
+
+  // Unknown VENDOR events are passive by default (D10 fail-direction). A
+  // denylist alone let any un-named PostHog event become "the action that
+  // broke" — a false `broken` verdict in the customer's own words. The
+  // customer's own events carry no vendor prefix and are unaffected, so no
+  // real correlation is lost.
+  if (event.name.startsWith(ruleSet.vendorEventPrefix)) {
+    return !ruleSet.userInitiatedVendorEvents.includes(event.name);
+  }
+
+  return false;
 }
 
 /**
@@ -211,12 +239,20 @@ function collectSession(
     const group: SurfaceGroup = groups.get(attribution.surface) ?? {
       signals: [],
       sessionIds: new Set<string>(),
+      correlatedSessionIds: new Set<string>(),
       normalisationVersions: new Set<number | null>(),
     };
     groups.set(attribution.surface, group);
 
-    group.signals.push(signalFor(event, precedingAction, ruleSet));
+    const draft = signalFor(event, precedingAction, ruleSet);
+    group.signals.push(draft);
     group.sessionIds.add(session.sessionId);
+    // The PROVEN cohort, tracked apart from the all-exceptions cohort. These
+    // two diverging is exactly the defect: the count reported one population
+    // while the verdict rested on the other (audit C-1).
+    if (draft.kind === "failure_correlated") {
+      group.correlatedSessionIds.add(session.sessionId);
+    }
     group.normalisationVersions.add(attribution.normalisationVersion);
   }
 }
@@ -235,6 +271,17 @@ function unanimousVersion(versions: ReadonlySet<number | null>): number | null {
   return observed.every((version) => version === first) ? (first ?? null) : null;
 }
 
+/** One count builder, so every number this detector emits shares a denominator. */
+function countOf(numerator: number, corpus: DetectorCorpus) {
+  return measuredCount({
+    numerator,
+    denominator: corpus.basis.kept,
+    unit: "sessions",
+    timeframe: corpus.window,
+    basis: corpus.basis,
+  });
+}
+
 function candidateOf(
   surface: string,
   group: SurfaceGroup,
@@ -246,7 +293,11 @@ function candidateOf(
     claimedClass: CLAIMED_CLASS,
     surface,
     surfaceNormalisationVersion: unanimousVersion(group.normalisationVersions),
-    signals: [...group.signals],
+    signals: group.signals.map((draft) =>
+      draft.kind === "failure_correlated"
+        ? { ...draft, correlatedSessions: countOf(group.correlatedSessionIds.size, corpus) }
+        : draft,
+    ),
     // The one magnitude this detector claims: sessions on this surface carrying
     // the exception, over kept sessions (D-7, D-8, FR-10). It travels as a
     // `MeasuredCount` so it cannot reach a customer without its denominator.

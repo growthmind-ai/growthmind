@@ -77,6 +77,18 @@ export type ThresholdRuleSet = {
   readonly version: number;
   readonly exceptionEventName: string;
   readonly passiveEventNames: readonly string[];
+  /**
+   * Vendor-namespace prefix. An event carrying it is PostHog's, not the
+   * customer's instrumentation, so it may not be named as "the thing the user
+   * was trying to do" unless it appears in `userInitiatedVendorEvents`.
+   */
+  readonly vendorEventPrefix: string;
+  /**
+   * The vendor events that ARE a real user action. Small and enumerable —
+   * unlike the passive set, which is open-ended and grows with every PostHog
+   * release.
+   */
+  readonly userInitiatedVendorEvents: readonly string[];
   readonly errorCorrelationWindowMs: number;
   readonly errorMinAffectedSessions: number;
   readonly funnelMinSessionsAtOrigin: number;

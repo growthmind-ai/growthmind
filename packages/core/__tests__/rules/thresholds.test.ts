@@ -71,13 +71,21 @@ const IMMUTABILITY_MESSAGE =
  * is simply not true yet. It becomes true the moment this branch merges, and
  * from then on the only legitimate change is a version 2.
  *
+ * Third move, same still-unshipped v1: `vendorEventPrefix` and
+ * `userInitiatedVendorEvents` were added to close a CONFIRMED false-claim path
+ * the O-004 audits both found — an unlisted vendor event (`$feature_flag_called`
+ * and friends) could be named as "the thing the user was trying to do", and the
+ * gate would then tell a founder we proved their user's action failed when
+ * nobody was acting. The denylist could not enumerate a vendor namespace that
+ * grows with every PostHog release; the prefix rule does not have to.
+ *
  * Once v1 ships, a change here is only legitimate as a deliberate VERSION 2 —
  * a new entry in `THRESHOLD_RULE_SETS` with its own golden beside this one,
  * never a re-pin of this line. Re-pinning it to silence a red test you did not
  * intend is precisely the failure `IMMUTABILITY_MESSAGE` describes, and it
  * silently reinterprets every judgement already stamped with version 1.
  */
-const V1_CONTENT_HASH: string = "b9b126dab1204165e45b8234fc3db81ff6decb8318fa23d0b4d9c0f712937a78";
+const V1_CONTENT_HASH: string = "de73a91a398a32b3c5ff0696bd86b9d8fbb12df3a5ca51c94dc7d201414e92ab";
 
 /** Fail direction is a property of a MAGNITUDE. Names and the version have none. */
 type FailDirection = "under_detect" | "not_a_magnitude";
@@ -106,6 +114,16 @@ type FailDirectionNote = {
  * gate at all.
  */
 const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote> = {
+  vendorEventPrefix: {
+    direction: "not_a_magnitude",
+    because:
+      "a namespace marker, not a threshold — it decides WHOSE event this is, and the judgement direction it enables is declared on userInitiatedVendorEvents",
+  },
+  userInitiatedVendorEvents: {
+    direction: "under_detect",
+    because:
+      "a vendor event missing from this list is treated as passive; adding one can only ever create correlations, so growing the list cannot manufacture a claim retroactively",
+  },
   version: {
     direction: "not_a_magnitude",
     because: "the rule set's own identity, not a judgement it makes",
@@ -192,6 +210,8 @@ describe("THRESHOLD_RULE_SETS (D-14, FR-8, FR-9, FR-11)", () => {
       version: 1,
       exceptionEventName: "$exception",
       passiveEventNames: ["$pageview", "$pageleave", "$identify", "$web_vitals"],
+      vendorEventPrefix: "$",
+      userInitiatedVendorEvents: ["$autocapture", "$rageclick", "$dead_click", "$copy_autocapture"],
       errorCorrelationWindowMs: 30_000,
       errorMinAffectedSessions: 3,
       funnelMinSessionsAtOrigin: 20,
