@@ -21,14 +21,21 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
+import { and, eq, sql } from "drizzle-orm";
+
 import {
   ANCESTRY_RESOLUTION_MAX_HOPS,
   type AncestryReason,
   type TenantContext,
 } from "@growthmind/shared";
 
+import {
+  createFindingSignaturesRepo,
+  type UpsertSeenInput,
+} from "../../src/repositories/finding-signatures.repo";
 import { createSignatureAncestryRepo } from "../../src/repositories/signature-ancestry.repo";
 import * as schema from "../../src/schema";
+import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
@@ -82,6 +89,40 @@ async function seedChain(
       recordedAt: RECORDED_AT,
     });
   }
+}
+
+/** A complete `upsertSeen` input for the carry-forward fixtures below — the
+ * ledger half of D-3(a) needs REAL ledger rows on both sides of an ancestry
+ * edge, and `upsertSeen` is the only public way to make one. */
+function makeSeen(
+  projectId: string,
+  signature: SignatureHex,
+  seenAt: Date,
+): UpsertSeenInput {
+  return {
+    projectId,
+    signature,
+    symptomClass: "broken",
+    surface: "/checkout",
+    signatureTupleVersion: 1,
+    evidenceShapeVersion: 1,
+    surfaceNormalisationVersion: 2,
+    seenAt,
+  };
+}
+
+/** Every ledger row in one org/project, so a carry-forward can be asserted to
+ * have produced no EXTRA rows and destroyed no existing one. */
+async function ledgerRowsFor(db: TestDb, scope: Scope) {
+  return db
+    .select()
+    .from(schema.findingSignatures)
+    .where(
+      and(
+        eq(schema.findingSignatures.organizationId, scope.organizationId),
+        eq(schema.findingSignatures.projectId, scope.projectId),
+      ),
+    );
 }
 
 describe("signature ancestry repository", () => {
@@ -265,5 +306,178 @@ describe("signature ancestry repository", () => {
     const repo = createSignatureAncestryRepo(db, scope.ctx);
     const survivor = await repo.forwardEdge(oldSignature);
     expect(survivor?.newSignature).toBe(firstNew);
+  });
+
+  // T-DB-16 — D-3(a)'s carry-forward, asserted through `recordAncestry` (the
+  // SHIPPED call site, on `tx`) against a target signature that ALREADY has
+  // its own ledger row. That case is the one `CARRY_FORWARD_SET` exists for:
+  // with an empty target the upsert is a plain insert and `least` / `+` /
+  // `coalesce` never combine anything, so an empty-target-only test proves
+  // none of the four columns' semantics. Here both sides are populated and
+  // each of the four is pinned in the direction that can actually be wrong:
+  //   first_seen_at = least(new 07-10, old 07-01)  -> the OLDER, old's
+  //   times_seen    = 2 + 3                        -> the SUM
+  //   delivered_at  = coalesce(new 07-12, old …)   -> the EXISTING one
+  //   dismissed_at  = coalesce(null, old …)        -> the OLD one, which is
+  //                                                   the whole D12 remedy: a
+  //                                                   dismissal survives a
+  //                                                   re-key.
+  it("should carry first_seen_at, times_seen, delivered_at, and dismissed_at forward onto the new signature when ancestry is recorded", async () => {
+    const scope = await seedScope(db, "carry-forward");
+    const ledger = createFindingSignaturesRepo(db, scope.ctx);
+    const service = createSignatureLedgerService(db, scope.ctx);
+    const oldSignature = testSignature(90);
+    const newSignature = testSignature(91);
+
+    const oldFirstSeen = new Date("2026-07-01T09:00:00.000Z");
+    const oldLastSeen = new Date("2026-07-09T09:00:00.000Z");
+    const oldDelivered = new Date("2026-07-02T09:00:00.000Z");
+    const newFirstSeen = new Date("2026-07-10T09:00:00.000Z");
+    const newLastSeen = new Date("2026-07-15T09:00:00.000Z");
+    const newDelivered = new Date("2026-07-12T09:00:00.000Z");
+
+    // OLD identity: seen three times, delivered, then dismissed forever.
+    await ledger.upsertSeen(makeSeen(scope.projectId, oldSignature, oldFirstSeen));
+    await ledger.upsertSeen(
+      makeSeen(scope.projectId, oldSignature, new Date("2026-07-05T09:00:00.000Z")),
+    );
+    await ledger.upsertSeen(makeSeen(scope.projectId, oldSignature, oldLastSeen));
+    await ledger.markDelivered(scope.projectId, oldSignature, oldDelivered);
+    await service.recordDismissal({
+      projectId: scope.projectId,
+      findingId: "finding-carry-forward",
+      signature: oldSignature,
+      action: "not_useful",
+      dismissedByUserId: null,
+    });
+
+    // NEW identity: already recorded naturally twice and delivered, never
+    // dismissed — the common case (the pipeline saw the re-keyed finding
+    // before anything noticed the re-key).
+    await ledger.upsertSeen(makeSeen(scope.projectId, newSignature, newFirstSeen));
+    await ledger.upsertSeen(makeSeen(scope.projectId, newSignature, newLastSeen));
+    await ledger.markDelivered(scope.projectId, newSignature, newDelivered);
+
+    const oldBefore = await ledger.findBySignature(scope.projectId, oldSignature);
+    expect(oldBefore?.timesSeen).toBe(3);
+    // Stamped as `now` inside `recordDismissal`'s transaction — captured, not
+    // asserted against a literal; what matters is that it TRAVELS.
+    const oldDismissedAt = oldBefore?.dismissedAt;
+    expect(oldDismissedAt).toBeInstanceOf(Date);
+
+    await service.recordAncestry({
+      projectId: scope.projectId,
+      oldSignature,
+      newSignature,
+      reason: REASON,
+    });
+
+    const carried = await ledger.findBySignature(scope.projectId, newSignature);
+    expect(carried?.firstSeenAt.getTime()).toBe(oldFirstSeen.getTime());
+    expect(carried?.timesSeen).toBe(5);
+    expect(carried?.deliveredAt?.getTime()).toBe(newDelivered.getTime());
+    expect(carried?.dismissedAt?.getTime()).toBe(oldDismissedAt?.getTime());
+    expect(carried?.lastSeenAt.getTime()).toBe(newLastSeen.getTime());
+
+    // D-3(a) point 3: the OLD row is LEFT IN PLACE, untouched, as the audit
+    // trail — a carry-forward that moved or cleared it would destroy the only
+    // record of what the identity used to be.
+    const oldAfter = await ledger.findBySignature(scope.projectId, oldSignature);
+    expect(oldAfter?.id).toBe(oldBefore!.id);
+    expect(oldAfter?.timesSeen).toBe(3);
+    expect(oldAfter?.firstSeenAt.getTime()).toBe(oldFirstSeen.getTime());
+    expect(oldAfter?.lastSeenAt.getTime()).toBe(oldLastSeen.getTime());
+    expect(oldAfter?.deliveredAt?.getTime()).toBe(oldDelivered.getTime());
+    expect(oldAfter?.dismissedAt?.getTime()).toBe(oldDismissedAt?.getTime());
+
+    // Exactly two rows — the carry-forward UPSERTS onto the existing new row,
+    // it never mints a third identity.
+    const rows = await ledgerRowsFor(db, scope);
+    expect(rows).toHaveLength(2);
+  });
+
+  // T-DB-17 — D-8's atomicity, which `signature-ledger.service.ts:663-669`
+  // asserts in a COMMENT ("succeed together or not at all") and nothing
+  // executes. A committed edge with no carry-forward is the worst reachable
+  // state in this sprint: `resolve` would route every future consult to a new
+  // signature whose row does not carry the dismissal, silently un-suppressing
+  // a permanent customer decision with no error anywhere.
+  //
+  // The failure is forced with REAL SQL — a CHECK constraint added to
+  // `finding_signatures` for the duration of this test that rejects the new
+  // signature's value — not by faking a repository or stubbing the driver.
+  // The edge insert runs first and succeeds; the carry-forward insert then
+  // violates the constraint, and Postgres' own rollback is what the
+  // assertions below inspect.
+  it("should leave both the ancestry edge and the ledger unchanged when the carry-forward half of the transaction fails", async () => {
+    const scope = await seedScope(db, "atomicity");
+    const ledger = createFindingSignaturesRepo(db, scope.ctx);
+    const service = createSignatureLedgerService(db, scope.ctx);
+    const oldSignature = testSignature(100);
+    const newSignature = testSignature(101);
+
+    const oldFirstSeen = new Date("2026-07-01T09:00:00.000Z");
+    const oldDelivered = new Date("2026-07-02T09:00:00.000Z");
+
+    await ledger.upsertSeen(makeSeen(scope.projectId, oldSignature, oldFirstSeen));
+    await ledger.markDelivered(scope.projectId, oldSignature, oldDelivered);
+    const oldBefore = await ledger.findBySignature(scope.projectId, oldSignature);
+    expect(oldBefore).not.toBeNull();
+
+    // The forced failure. Scoped to ONE signature value, so no other row in
+    // this shared PGlite instance can violate it, and dropped in `finally` so
+    // no later test inherits it.
+    await db.execute(
+      sql.raw(
+        `alter table finding_signatures add constraint t_db_17_block_carry_forward ` +
+          `check (signature <> '${newSignature}')`,
+      ),
+    );
+
+    let caught: unknown;
+    try {
+      await service.recordAncestry({
+        projectId: scope.projectId,
+        oldSignature,
+        newSignature,
+        reason: REASON,
+      });
+    } catch (error) {
+      caught = error;
+    } finally {
+      await db.execute(
+        sql.raw(
+          `alter table finding_signatures drop constraint t_db_17_block_carry_forward`,
+        ),
+      );
+    }
+
+    // The call fails loudly — a caller must never be told an ancestry mapping
+    // was recorded when it was not.
+    expect(caught).toBeDefined();
+
+    // NEITHER half survived. The edge is gone...
+    const repo = createSignatureAncestryRepo(db, scope.ctx);
+    expect(await repo.forwardEdge(oldSignature)).toBeNull();
+    // ...so a stale pre-re-key signature still resolves to itself, exactly as
+    // it did before the failed attempt.
+    expect(await repo.resolve(oldSignature)).toEqual({
+      resolution: "resolved",
+      signature: oldSignature,
+      hops: 0,
+    });
+
+    // ...and the ledger is untouched: no row was minted for the new
+    // signature, and the old row's state is bit-for-bit what it was.
+    expect(await ledger.findBySignature(scope.projectId, newSignature)).toBeNull();
+    const oldAfter = await ledger.findBySignature(scope.projectId, oldSignature);
+    expect(oldAfter?.id).toBe(oldBefore!.id);
+    expect(oldAfter?.timesSeen).toBe(1);
+    expect(oldAfter?.firstSeenAt.getTime()).toBe(oldFirstSeen.getTime());
+    expect(oldAfter?.deliveredAt?.getTime()).toBe(oldDelivered.getTime());
+    expect(oldAfter?.dismissedAt).toBeNull();
+
+    const rows = await ledgerRowsFor(db, scope);
+    expect(rows).toHaveLength(1);
   });
 });

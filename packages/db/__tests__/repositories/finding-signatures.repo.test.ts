@@ -21,6 +21,7 @@ import {
   createFindingSignaturesRepo,
   type UpsertSeenInput,
 } from "../../src/repositories/finding-signatures.repo";
+import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
@@ -146,6 +147,82 @@ describe("finding signatures repository", () => {
     const foundFromA = await repoA.findBySignature(projectA.id, sharedSignature);
     expect(foundFromA?.id).toBe(rowA.id);
     expect(foundFromA?.organizationId).toBe(orgA.organizationId);
+  });
+
+  // T-DB-3 — the ADD calls the `set`-clause OMISSION this guards "the single
+  // most dangerous line in the sprint" (`finding-signatures.repo.ts:158-162`).
+  // Nothing else in the suite fails if `deliveredAt`, `dismissedAt`, or
+  // `firstSeenAt` are ADDED back to `upsertSeen`'s `onConflictDoUpdate.set`:
+  // every other test records a signature that was never delivered and never
+  // dismissed, so clearing those columns is invisible. This one records the
+  // full lifecycle FIRST and then re-records — the ordinary steady state, a
+  // finding seen again by a later analysis run after it was already delivered
+  // and already dismissed forever.
+  //
+  // The dismissal is stamped through `recordDismissal` (the ONLY write path
+  // that sets `dismissed_at`, ADD D-8) rather than by a direct UPDATE, so the
+  // value being protected here got there the way production puts it there.
+  it("should not clear delivered_at, dismissed_at, or first_seen_at when a delivered-and-dismissed signature is re-recorded", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-lifecycle-preserved",
+      userName: "Owner Lifecycle Preserved",
+      email: "owner-lifecycle-preserved@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "checkout-lifecycle-preserved",
+    });
+    const repo = createFindingSignaturesRepo(db, org.ctx);
+    const service = createSignatureLedgerService(db, org.ctx);
+    const signature = testSignature("f".repeat(64));
+
+    const firstSeenAt = new Date("2026-07-01T09:00:00.000Z");
+    const deliveredAt = new Date("2026-07-02T09:00:00.000Z");
+    const laterSeenAt = new Date("2026-07-20T09:00:00.000Z");
+
+    // 1. Seen.
+    await repo.upsertSeen(makeUpsertInput(project.id, { signature, seenAt: firstSeenAt }));
+    // 2. Delivered.
+    await repo.markDelivered(project.id, signature, deliveredAt);
+    // 3. Dismissed forever, org-wide, by a real member.
+    await service.recordDismissal({
+      projectId: project.id,
+      findingId: "finding-lifecycle-preserved",
+      signature,
+      action: "not_useful",
+      dismissedByUserId: org.userId,
+    });
+
+    const beforeReRecord = await repo.findBySignature(project.id, signature);
+    expect(beforeReRecord?.deliveredAt?.getTime()).toBe(deliveredAt.getTime());
+    expect(beforeReRecord?.firstSeenAt.getTime()).toBe(firstSeenAt.getTime());
+    // Stamped as `now` inside `recordDismissal`'s transaction, so the exact
+    // instant is captured here rather than asserted against a literal — the
+    // point below is that it does not MOVE, not what it is.
+    const stampedDismissedAt = beforeReRecord?.dismissedAt;
+    expect(stampedDismissedAt).toBeInstanceOf(Date);
+
+    // 4. The SAME signature seen again by a later analysis run.
+    const reRecorded = await repo.upsertSeen(
+      makeUpsertInput(project.id, { signature, seenAt: laterSeenAt }),
+    );
+
+    // The re-record does its own job...
+    expect(reRecorded.timesSeen).toBe(2);
+    expect(reRecorded.lastSeenAt.getTime()).toBe(laterSeenAt.getTime());
+    // ...and touches NONE of the lifetime state. Exact values, not
+    // truthiness: an `excluded.*` in the `set` clause would overwrite
+    // `first_seen_at` with a NON-null later date and still read as "set".
+    expect(reRecorded.deliveredAt?.getTime()).toBe(deliveredAt.getTime());
+    expect(reRecorded.firstSeenAt.getTime()).toBe(firstSeenAt.getTime());
+    expect(reRecorded.dismissedAt?.getTime()).toBe(stampedDismissedAt?.getTime());
+
+    // And the persisted row agrees with what the upsert returned.
+    const persisted = await repo.findBySignature(project.id, signature);
+    expect(persisted?.deliveredAt?.getTime()).toBe(deliveredAt.getTime());
+    expect(persisted?.dismissedAt?.getTime()).toBe(stampedDismissedAt?.getTime());
+    expect(persisted?.firstSeenAt.getTime()).toBe(firstSeenAt.getTime());
+    expect(persisted?.timesSeen).toBe(2);
   });
 
   // T-DB-4 (post-sprint audit Finding 3).
