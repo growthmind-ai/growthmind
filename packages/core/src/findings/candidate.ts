@@ -10,7 +10,7 @@
 import { z } from "zod";
 
 import { measuredCountSchema } from "../counts/measured-count";
-import { analysisWindowSchema, detectorCoverageSchema } from "../detect/types";
+import { analysisWindowSchema, claimSubjectSchema, detectorCoverageSchema } from "../detect/types";
 import { isReachableClass } from "../evidence/gate";
 import { downgradeTraceSchema } from "../evidence/trace";
 import { detectorNameSchema, findingClassSchema } from "../rules/types";
@@ -60,7 +60,10 @@ export type RankingInputs = z.infer<typeof rankingInputsSchema>;
  * - a `finalClass` unreachable from `claimedClass` via `DOWNGRADE_PATH`
  *   (FR-17) — such a candidate did not come out of this gate;
  * - a count that is not a branded `MeasuredCount`, i.e. one built without its
- *   denominator (FR-17, FR-10).
+ *   denominator (FR-17, FR-10);
+ * - one that does not say what its `surface` is a claim ABOUT (FR-3c, ESC-6) —
+ *   the refusal is what makes `claimSubject` a wire rather than a field the
+ *   detectors write and nobody reads.
  */
 export const candidateFindingSchema = z
   .object({
@@ -70,6 +73,20 @@ export const candidateFindingSchema = z
     trace: downgradeTraceSchema,
     counts: z.array(measuredCountSchema).min(1),
     timeframe: analysisWindowSchema,
+    /**
+     * What `surface` below is a claim ABOUT (O-005 D-5, ESC-6) — REQUIRED, and
+     * stated in the schema rather than in a comment (FR-3c).
+     *
+     * Both T1 detectors already SET this on `DetectorCandidate`; until this
+     * field existed nothing read it, so the value was computed and dropped on
+     * the floor — the dead-wire shape the edge-case taxonomy calls D11. O-006
+     * hashes this identity, and a candidate reaching it with no stated subject
+     * would be a surface claim by ASSUMPTION rather than by contract. Optional
+     * would be the same dead wire with a nicer type: a claim about something
+     * else must edit `claimSubjectSchema`, and that edit is the compile-visible
+     * event this field exists to force.
+     */
+    claimSubject: claimSubjectSchema,
     /** The normalised `url_path` this claim is about. */
     surface: z.string().min(1),
     /** `null` for a row written before versions were recorded (ES-14). */

@@ -127,6 +127,22 @@ export type DetectorCorpus = {
 };
 
 /**
+ * What `surface` is ABOUT (O-005 D-5, ESC-6). A one-member literal union,
+ * not a bare `string` and not a comment: today every T1 detector's claim is
+ * about a `surface` (a normalised `url_path`) and nothing else, and this type
+ * is what makes a FUTURE detector claiming something else — a user segment,
+ * a feature flag, anything not a surface — a COMPILE-VISIBLE event rather
+ * than a silent overload of the same field. "Encode the rule in the type,
+ * not in a reviewer's memory" (O-004 retro).
+ *
+ * Zod, not a comment (FR-3c): a one-member schema still buys the same
+ * widening protection a `z.enum` would — adding a second claim subject
+ * later means editing THIS schema, which is the compile-visible event.
+ */
+export const claimSubjectSchema = z.literal("surface");
+export type ClaimSubject = z.infer<typeof claimSubjectSchema>;
+
+/**
  * What a T1 detector proposes. `claimedClass` is `DetectorProposedClass`, so
  * the class a detector may propose is constrained BY TYPE (D-9) — the front
  * door FR-13B's cascade floor cannot close on its own.
@@ -134,6 +150,10 @@ export type DetectorCorpus = {
 export type DetectorCandidate = {
   readonly detector: DetectorName;
   readonly claimedClass: DetectorProposedClass;
+  /** What `surface` below is a claim ABOUT (D-5, ESC-6). Every T1 detector
+   * this sprint claims a surface; nothing here reads "surface" out of a
+   * comment anywhere else in this package. */
+  readonly claimSubject: ClaimSubject;
   /** The normalised `url_path` the claim is about. */
   readonly surface: string;
   /** `null` for a row written before versions were recorded (ES-14). */

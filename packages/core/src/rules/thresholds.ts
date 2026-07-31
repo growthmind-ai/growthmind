@@ -32,7 +32,7 @@ import {
 import type { ThresholdRuleSet } from "./types";
 
 /** The rule set new judgements are made under. */
-export const THRESHOLD_RULE_SET_VERSION = 1;
+export const THRESHOLD_RULE_SET_VERSION = 2;
 
 const RULE_SET_V1: ThresholdRuleSet = {
   version: 1,
@@ -180,18 +180,84 @@ const RULE_SET_V1: ThresholdRuleSet = {
 };
 
 /**
- * Every rule set ever shipped, keyed by version. When v2 lands,
- * `THRESHOLD_RULE_SETS.get(1)` still reproduces a v1 decision exactly, so a
+ * D-3 (O-005). SAME NUMBERS AS RULE_SET_V1 — spread from it, deliberately, so
+ * "the numeric values are unchanged" is a fact the compiler and the runtime
+ * both reuse rather than a claim a reviewer has to eyeball across two blocks
+ * — WHAT CHANGED IS WHICH QUANTITY THE NUMBERS MEASURE.
+ *
+ * Under v1, `funnelMinSessionsAtOrigin`, `funnelMinDropoffSessions` and
+ * `funnelDropoffRateThresholdPercent` were evaluated once per
+ * (origin, destination) PAIR — the funnel detector's emission loop ran one
+ * gate check per destination reachable from an origin
+ * (`../detect/funnel-dropoff.ts`, pre-D-2 shape). D-2's aggregation rewrite
+ * (O-005) collapses that emission to at most one candidate PER ORIGIN:
+ * `visited` and `dropped` are now counted once, across every destination `O`
+ * can reach, not compared destination by destination. The same three
+ * constants below now gate a per-origin quantity instead of a per-pair one.
+ *
+ * THIS IS THE D12 HAZARD THIS FILE'S OWN HEADER COMMENT WARNS ABOUT, MADE
+ * CONCRETE. Holding the version at 1 while the measured quantity changed
+ * underneath it would have silently reinterpreted every threshold decision
+ * already on record — exactly the "unversioned normalisation feeding a dedup
+ * key" fork D12 names. Bumping to v2 is what keeps
+ * `THRESHOLD_RULE_SETS.get(1)` a truthful, permanent answer to "what did v1
+ * actually gate", the same discipline `exclusionRuleSetVersion` and
+ * `groupingVersion` exist for at
+ * `packages/db/src/services/intake.service.ts:151-155` (verbatim: "When a v2
+ * rule set lands, `EXCLUSION_RULE_SETS.get(1)` still reproduces this row's
+ * stamp exactly, so a rule change is a migratable event rather than a silent
+ * fork").
+ *
+ * NO SECOND REASON — AND THE ARITHMETIC SAYS SO. An earlier draft of this
+ * comment argued that aggregation made `funnelMinDropoffSessions: 5` newly
+ * REACHABLE, and offered that as an independent justification for the bump.
+ * It is false. The floor was structurally unreachable under v1 and REMAINS
+ * structurally unreachable under v2: a candidate must clear all three gates
+ * in order (`../detect/funnel-dropoff.ts`), and gate 1 forces
+ * `atOrigin >= funnelMinSessionsAtOrigin` (20), so gate 3
+ * (`dropped * 100 >= funnelDropoffRateThresholdPercent * atOrigin`) demands
+ * `dropped >= 40 * 20 / 100 = 8`. Eight subsumes five, so deleting the
+ * `funnelMinDropoffSessions` check would change no outcome — under v2 exactly
+ * as under v1. Aggregation raises the numerator (`dropped`) and the
+ * denominator (`atOrigin`) together; it cannot move a floor that the rate gate
+ * already dominates at the smallest legal denominator.
+ *
+ * Following the O-004 precedent, that property is PINNED BY A NAMED TEST
+ * rather than left as prose a reader has to re-derive — grep
+ * `thresholds.test.ts` for `funnelMinDropoffSessions remains structurally
+ * unreachable under v2 aggregation`. It derives the rate-implied floor from
+ * the rule set's own three values, so a future threshold edit that makes the
+ * floor genuinely reachable fails that test and forces this paragraph to be
+ * rewritten honestly.
+ *
+ * The bump therefore stands on the SEMANTIC change above, alone — which is
+ * sufficient on its own.
+ *
+ * TRADE-OFF ACCEPTED (ADD §8.4): a reader diffing RULE_SET_V1 against
+ * RULE_SET_V2 sees identical numbers and must read this comment to learn
+ * what changed. That is the accepted cost of versioning semantics rather
+ * than values — do not "fix" the apparent no-op diff by nudging a number;
+ * the numbers are correct exactly as printed.
+ */
+const RULE_SET_V2: ThresholdRuleSet = {
+  ...RULE_SET_V1,
+  version: 2,
+};
+
+/**
+ * Every rule set ever shipped, keyed by version. `THRESHOLD_RULE_SETS.get(1)`
+ * still reproduces a v1 decision exactly now that v2 has landed, so a
  * threshold change is a detectable and migratable event rather than a silent
  * D12 fork of every judgement on record.
  *
  * FR-11: a golden test pins `sha256(canonicalJson(THRESHOLD_RULE_SETS.get(1)))`.
- * V1 IS A SHIPPED DECISION AND IS IMMUTABLE — add version 2, do not edit
- * version 1.
+ * V1 IS A SHIPPED DECISION AND IS IMMUTABLE — add version 3 for the next
+ * change, do not edit version 1 or version 2.
  */
 export const THRESHOLD_RULE_SETS: ReadonlyMap<number, ThresholdRuleSet> = new Map([
   [1, RULE_SET_V1],
+  [2, RULE_SET_V2],
 ]);
 
 /** The rule set `THRESHOLD_RULE_SET_VERSION` names. */
-export const CURRENT_THRESHOLD_RULE_SET: ThresholdRuleSet = RULE_SET_V1;
+export const CURRENT_THRESHOLD_RULE_SET: ThresholdRuleSet = RULE_SET_V2;

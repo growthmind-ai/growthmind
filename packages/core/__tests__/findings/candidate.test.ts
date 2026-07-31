@@ -30,6 +30,7 @@ import { describe, expect, test } from "bun:test";
 
 import { isMeasuredCount, measuredCount } from "../../src/counts/measured-count";
 import type { MeasuredCount } from "../../src/counts/measured-count";
+import { claimSubjectSchema } from "../../src/detect/types";
 import type { AnalysisWindow } from "../../src/detect/types";
 import { isReachableClass } from "../../src/evidence/gate";
 import { PROOF_PREDICATE_VERSION } from "../../src/evidence/predicates";
@@ -134,6 +135,9 @@ function candidateFixture(now: Date, overrides: CandidateFixture = {}): Candidat
     trace: brokenDowngradedToConfusingTrace(),
     counts: [keptSessionCount(now)],
     timeframe: windowEndingAt(now),
+    // What `surface` is a claim ABOUT (FR-3c, ESC-6). Every T1 detector sets
+    // it; the contract now requires it, so no fixture may omit it.
+    claimSubject: "surface",
     surface: "/checkout/payment",
     surfaceNormalisationVersion: 1,
     evidenceShape:
@@ -156,6 +160,7 @@ const REQUIRED_FIELDS = [
   "trace",
   "counts",
   "timeframe",
+  "claimSubject",
   "surface",
   "surfaceNormalisationVersion",
   "evidenceShape",
@@ -283,6 +288,92 @@ describe("candidateFindingSchema — what the contract carries (FR-17)", () => {
         rejected: true,
       });
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FR-3c / ESC-6 — the claim subject: what the schema refuses today, and what
+// it cannot yet refuse (D11, D9).
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// THE DEFECT THE TEST BELOW CLOSES. `claimSubject` is declared on
+// `DetectorCandidate` (`detect/types.ts`) and SET by both T1 detectors —
+// `detect/funnel-dropoff.ts` and `detect/error-event.ts` each write
+// `claimSubject: "surface"` — while `candidateFindingSchema` had no such
+// field. Produced by two writers, read by nobody: a value computed and
+// dropped on the floor, which is the edge-case taxonomy's D11 exactly. The
+// type-level half looked complete, and O-006 would have hashed an identity
+// whose subject was an assumption.
+//
+// WHAT IS PROTECTED, AND BY WHAT. Both ends now DECLARE the field:
+// `DetectorCandidate.claimSubject` is required and typed `ClaimSubject`, and
+// `candidateFindingSchema` requires `claimSubjectSchema`. The protection is
+// the schema's REFUSAL of a candidate that omits it — the single test below,
+// and the whole of the enforcement that exists today. That refusal is what
+// converts D11's silent no-op into a loud `.parse` failure: a composer that
+// forgets the field cannot produce a `CandidateFinding` at all. A field only
+// the producer writes and nothing refuses would not be wired.
+//
+// WHAT IS NOT PROTECTED, STATED PLAINLY. There is no composition path from
+// `DetectorCandidate` to `CandidateFinding` anywhere in `packages/core/src`:
+// no function takes one and returns the other, and nothing in `src/` parses
+// with `candidateFindingSchema` at all — `evidence/gate.ts` does not compose
+// one, and `index.ts` only re-exports the schema. NO TEST IN THIS FILE
+// CARRIES A VALUE ACROSS THAT BOUNDARY, because the boundary has no code yet.
+// Carrying it across is therefore an INHERITED OBLIGATION on whoever writes
+// that composer (O-006): its own suite must assert that the `claimSubject` on
+// the input `DetectorCandidate` is the `claimSubject` on the output
+// `CandidateFinding`. A composer that enumerates output fields by hand and
+// omits this one is precisely the regression this file cannot catch — the
+// schema's refusal is what will make that omission throw instead of pass.
+//
+// A DELETED TEST, recorded so it is not re-added in the same shape. A test
+// here previously claimed to cross that boundary "in one test". It did not:
+// it copied eight fields off a typed `DetectorCandidate` literal onto the
+// loose fixture and parsed the FIXTURE, and it wrote `claimSubject: "surface"`
+// on the producer side itself — so `expect(parsed.claimSubject).toBe(
+// produced.claimSubject)` compared a literal to the same literal. With
+// `claimSubjectSchema` a `z.literal("surface")`, that assertion cannot fail
+// under any wiring, correct or severed, and its "non-vacuity" leg re-asserted
+// the omission rejection already made below. The producer end is asserted
+// where it can be asserted for real — over actual detector output, in
+// `__tests__/detect/funnel-dropoff.test.ts`.
+
+describe("candidateFindingSchema — the claim subject discriminator (FR-3c, ESC-6, D11)", () => {
+  test("should reject a candidate finding that omits claimSubject, or claims a subject that is not a surface", () => {
+    // (a) THE LOAD-BEARING REFUSAL. Adding the field without this assertion
+    //     would leave the same dead wire behind a nicer type: a field only the
+    //     producer writes and nothing refuses is not wired.
+    const omitted = candidateFixture(FIXTURE_NOW);
+    delete omitted.claimSubject;
+    expect(rejectionPaths(omitted)).toContain("claimSubject");
+
+    // ...and it is NOT quietly defaulted to the only value it can hold. A
+    // `.default("surface")` would satisfy every presence check in this file
+    // while asserting nothing about what the detector actually claimed.
+    expect(rejectionPaths(candidateFixture(FIXTURE_NOW, { claimSubject: undefined }))).toContain(
+      "claimSubject",
+    );
+
+    // (b) D9, the runtime half. Inside TypeScript a wrong subject is a COMPILE
+    //     error — `DetectorCandidate.claimSubject` is typed `ClaimSubject` and
+    //     the schema is a `z.literal`, so `claimSubject: "segment"` on a typed
+    //     producer fails `bun run typecheck` before any test runs. This covers
+    //     the same line for a value arriving from outside the type system (a
+    //     persisted row, a JSON payload), where a wrong string would otherwise
+    //     be a silent overload of the surface field.
+    for (const wrongSubject of ["segment", "feature_flag", "Surface", "surfaces", ""]) {
+      expect(
+        rejectionPaths(candidateFixture(FIXTURE_NOW, { claimSubject: wrongSubject })),
+      ).toContain("claimSubject");
+      // The refusal comes from `claimSubjectSchema` itself — the single source
+      // of truth (D9). Nothing here reads "surface" out of a comment.
+      expect(claimSubjectSchema.safeParse(wrongSubject).success).toBe(false);
+    }
+
+    // NON-VACUITY: the same fixture with a real subject parses, so every
+    // rejection above is attributable to `claimSubject` and not to the fixture.
+    expect(candidateFindingSchema.safeParse(candidateFixture(FIXTURE_NOW)).success).toBe(true);
   });
 });
 

@@ -436,7 +436,7 @@ function stripComments(source: string): string {
 // ---------------------------------------------------------------------------
 
 describe("detectFunnelDropoff", () => {
-  test("should emit each transition's drop-off as a MeasuredCount over sessions", () => {
+  test("should emit a qualifying origin's drop-off as a MeasuredCount over sessions", () => {
     const corpus = firingCorpus();
 
     // Fixture self-check: 40 sessions selected, 30 kept. If this drifts, every
@@ -449,7 +449,10 @@ describe("detectFunnelDropoff", () => {
     const result = detectFunnelDropoff(corpus, ruleSetV1());
 
     expect(result.detector).toBe("funnel_dropoff");
-    // One observed transition (`/pricing` -> `/checkout`), one candidate.
+    // One qualifying origin (`/pricing`), one candidate — O-005 D-2 emits per
+    // ORIGIN, not per transition. This fixture has a single destination, so the
+    // two happen to coincide here; the multi-destination fixtures at the foot of
+    // this file are what tell them apart.
     expect(result.candidates).toHaveLength(1);
 
     const candidate = result.candidates[0];
@@ -855,12 +858,43 @@ const STRUGGLE_DESTINATION = "/t1str/checkout";
  * two. This is what "separate visits" means. */
 const STRUGGLE_DETOUR = "/t1str/help";
 
-/** 12 converters + 8 droppers = 20 sessions at the origin — exactly
- * `funnelMinSessionsAtOrigin` — and 8 of 20 is exactly the 40% rate gate. Every
- * gate EXCEPT the struggle magnitude is therefore satisfied by construction, so
- * an absent struggle signal can only ever mean the struggle magnitude held. */
-const STRUGGLE_CONVERTED = 12;
+/**
+ * WHY THIS FIXTURE HAS THREE COHORTS AND NOT TWO (O-005 D-2, FR-4a).
+ *
+ * Under per-origin aggregation `D(O)` is built by `transitionsOf` from the
+ * corpus's OWN walks, so `/t1str/help` — the detour a revisiting session walks
+ * through — is itself a member of `D(/t1str/pricing)`. A session that revisits
+ * the origin therefore CONTINUED by construction and can never be counted as
+ * dropped. That is a structural property, not an accident, and the D-2a test
+ * further down this file pins it.
+ *
+ * The PREDECESSOR fixture had ONE cohort supply both the revisits and the
+ * drop-off. After aggregation it produced `dropped = 0`, no candidate fired,
+ * and all four tests below died at their non-vacuity preconditions rather than
+ * at their subject. The replacement gives the two jobs to two cohorts, which
+ * works because the struggle magnitudes are computed over `atOrigin` and NOT
+ * over `dropped` (`funnel-dropoff.ts:294-298`, unmodified by this sprint):
+ *
+ *   - a REVISIT cohort walks `[O, detour, O, …]`, so it CONTINUES, and it is
+ *     what supplies `attempts` / `strugglingSessions`;
+ *   - a DROPPED cohort walks `[O]` — the walk ENDS at the origin — and it is
+ *     what supplies the drop-off;
+ *   - a CONVERTED cohort walks `[O, destination]` and pads the denominator.
+ *
+ * All three sit in `atOrigin`, so the drop-off gates and the struggle magnitude
+ * are both live in one corpus.
+ */
+const STRUGGLE_AT_ORIGIN = 20;
 const STRUGGLE_DROPPED = 8;
+/** The revisiting cohort of `struggleAtMinimumCorpus`. Small enough that the
+ * converted cohort still pads `atOrigin` to exactly the origin floor. */
+const STRUGGLE_REVISITING = 4;
+/** Tests 3 and 4 need MANY shallow revisiters, so that a SUMMING implementation
+ * of `attempts` would clear the minimum while the per-session maximum does not. */
+const STRUGGLE_SHALLOW_MANY = 8;
+/** The D-2a disjointness fixture: EVERY continuing session revisits, so the
+ * dropped cohort and the struggling cohort together partition `atOrigin`. */
+const STRUGGLE_ALL_REVISITING = STRUGGLE_AT_ORIGIN - STRUGGLE_DROPPED;
 
 /** The back-navigation fixture (ruling 18). 12 + 8 + 14 = 34 at the origin,
  * 14 of 34 is 41.2% — over the rate gate, so the candidate fires and the
@@ -919,18 +953,44 @@ function struggleCorpus(input: {
   return corpusOf({ sessions, connectionState: CONNECTED_RECEIVING, truncated: false });
 }
 
-/** The exactly-at-the-boundary corpus, named because two tests need it. */
-function struggleAtMinimumCorpus(rules: ThresholdRuleSet): DetectorCorpus {
+/**
+ * Every corpus the four tests below use. The DROP-OFF cohort and the
+ * denominator are held FIXED at exactly the gate — `STRUGGLE_DROPPED` sessions
+ * whose walk ends at the origin, out of exactly `STRUGGLE_AT_ORIGIN` — and only
+ * the REVISITING cohorts vary. So the drop-off always fires, and an absent
+ * struggle signal can only ever be the struggle magnitude holding.
+ *
+ * The converted cohort is DERIVED rather than passed, so a caller cannot
+ * silently drift the denominator off the origin floor while varying the thing
+ * the test is actually about.
+ */
+function struggleFixture(revisits: readonly RevisitCohort[]): DetectorCorpus {
+  const revisiting = revisits.reduce((sum, spec) => sum + spec.count, 0);
+  const converted = STRUGGLE_AT_ORIGIN - STRUGGLE_DROPPED - revisiting;
+  if (converted < 0) {
+    throw new Error("struggleFixture: the revisiting cohorts exceed the continuing budget");
+  }
+
   return struggleCorpus({
-    converted: STRUGGLE_CONVERTED,
+    converted,
     revisits: [
-      {
-        count: STRUGGLE_DROPPED,
-        visits: rules.struggleRepeatedAttemptMin,
-        detour: STRUGGLE_DETOUR,
-      },
+      ...revisits,
+      // The drop-off. `visits: 1` is `[origin]` — a walk that ENDS at the
+      // origin, which is what `dropped` reduces to under D-2a.
+      { count: STRUGGLE_DROPPED, visits: 1, detour: STRUGGLE_DETOUR },
     ],
   });
+}
+
+/** The exactly-at-the-boundary corpus, named because two tests need it. */
+function struggleAtMinimumCorpus(rules: ThresholdRuleSet): DetectorCorpus {
+  return struggleFixture([
+    {
+      count: STRUGGLE_REVISITING,
+      visits: rules.struggleRepeatedAttemptMin,
+      detour: STRUGGLE_DETOUR,
+    },
+  ]);
 }
 
 type StruggleSignal = Extract<EvidenceSignal, { kind: "struggle" }>;
@@ -948,7 +1008,7 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
 
     // Fixture self-check. Every OTHER gate is satisfied EXACTLY, so what this
     // test observes can only be the struggle magnitude.
-    expect(corpus.basis.kept).toBe(STRUGGLE_CONVERTED + STRUGGLE_DROPPED);
+    expect(corpus.basis.kept).toBe(STRUGGLE_AT_ORIGIN);
     expect(corpus.basis.kept).toBe(rules.funnelMinSessionsAtOrigin);
     expect(STRUGGLE_DROPPED).toBeGreaterThanOrEqual(rules.funnelMinDropoffSessions);
     expect(STRUGGLE_DROPPED * 100).toBe(
@@ -957,6 +1017,12 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
 
     const result = detectFunnelDropoff(corpus, rules);
     const struggles = struggleSignalsOf(result);
+
+    // NON-VACUITY. The drop-off fires — ONE candidate for the ONE origin
+    // (O-005 D-2) — so the struggle assertions below are about a claim that
+    // actually reached a founder.
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].counts[1].numerator).toBe(STRUGGLE_DROPPED);
 
     // D-6: the boundary is INCLUSIVE. It fires AT the minimum, not one above
     // it — the fail direction is carried by the magnitude, never by `>` vs `>=`.
@@ -984,13 +1050,10 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
     // into the single-visit case that proves nothing.
     expect(nearMissVisits).toBeGreaterThanOrEqual(2);
 
-    const corpus = struggleCorpus({
-      converted: STRUGGLE_CONVERTED,
-      revisits: [
-        { count: STRUGGLE_DROPPED - 1, visits: 1, detour: STRUGGLE_DETOUR },
-        { count: 1, visits: nearMissVisits, detour: STRUGGLE_DETOUR },
-      ],
-    });
+    // ONE session revisits, one below the minimum. Everything else in the
+    // corpus visits the origin exactly once, so the per-session maximum is that
+    // one session's count and nothing else can raise it.
+    const corpus = struggleFixture([{ count: 1, visits: nearMissVisits, detour: STRUGGLE_DETOUR }]);
 
     expect(corpus.basis.kept).toBe(rules.funnelMinSessionsAtOrigin);
 
@@ -1011,16 +1074,15 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
     const rules = ruleSetV1();
     const perSessionVisits = rules.struggleRepeatedAttemptMin - 1;
 
-    const corpus = struggleCorpus({
-      converted: STRUGGLE_CONVERTED,
-      revisits: [{ count: STRUGGLE_DROPPED, visits: perSessionVisits, detour: STRUGGLE_DETOUR }],
-    });
+    const corpus = struggleFixture([
+      { count: STRUGGLE_SHALLOW_MANY, visits: perSessionVisits, detour: STRUGGLE_DETOUR },
+    ]);
 
     // EIGHT sessions visiting the origin twice each. A summing implementation
     // sees 16 and fires; ruling 31 says the greatest SINGLE session's count is
     // 2, which is below the minimum, so nothing fires. Eight people each
     // glancing at a page twice is not one person stuck on it.
-    expect(STRUGGLE_DROPPED * perSessionVisits).toBeGreaterThanOrEqual(
+    expect(STRUGGLE_SHALLOW_MANY * perSessionVisits).toBeGreaterThanOrEqual(
       rules.struggleRepeatedAttemptMin,
     );
     expect(perSessionVisits).toBeLessThan(rules.struggleRepeatedAttemptMin);
@@ -1037,15 +1099,12 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
     const deepestVisits = rules.struggleRepeatedAttemptMin + 1;
     const shallowVisits = rules.struggleRepeatedAttemptMin - 1;
     const deepestCount = 2;
-    const shallowCount = STRUGGLE_DROPPED - deepestCount;
+    const shallowCount = STRUGGLE_SHALLOW_MANY - deepestCount;
 
-    const corpus = struggleCorpus({
-      converted: STRUGGLE_CONVERTED,
-      revisits: [
-        { count: shallowCount, visits: shallowVisits, detour: STRUGGLE_DETOUR },
-        { count: deepestCount, visits: deepestVisits, detour: STRUGGLE_DETOUR },
-      ],
-    });
+    const corpus = struggleFixture([
+      { count: shallowCount, visits: shallowVisits, detour: STRUGGLE_DETOUR },
+      { count: deepestCount, visits: deepestVisits, detour: STRUGGLE_DETOUR },
+    ]);
 
     expect(corpus.basis.kept).toBe(rules.funnelMinSessionsAtOrigin);
 
@@ -1135,6 +1194,193 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
 });
 
 // ===========================================================================
+// O-005 D-2a / D-2b — two structural properties of the emission loop, PINNED
+// rather than left as prose (FR-7a, FR-7b).
+//
+// They rest on DIFFERENT mechanisms, and this block does not conflate them:
+//   - D-2a's disjointness is a property of FIRST-VISIT SEMANTICS combined with
+//     `D(O)` being built from the corpus's own walks;
+//   - D-2b's unreachability is a property of `pathWalk`'s CONSECUTIVE-REPEAT
+//     COLLAPSE alone, and holds under `indexOf` and `lastIndexOf` alike.
+//
+// These follow the O-004 precedent set for `funnelMinDropoffSessions`: a
+// property that is STRUCTURALLY true of the implementation, rather than a
+// magnitude somebody tuned, still earns a named test — otherwise the only
+// record of it is a comment, and a comment cannot fail.
+//
+// LANE: every id and path below is `t1d2b`-prefixed and collides with nothing
+// above. Fixture time still descends from `FIRST_SESSION_STARTED_AT` via
+// `cohortStart`; no `Date.now()` is introduced (ADD §6.5).
+// ===========================================================================
+
+const D2B_ORIGIN = "/t1d2b/pricing";
+const D2B_DESTINATION = "/t1d2b/checkout";
+const D2B_DETOUR = "/t1d2b/help";
+
+/** 4 + 8 + 8 = 20 at the origin — exactly `funnelMinSessionsAtOrigin` — and
+ * 8 of 20 is exactly the 40% rate gate, so the candidate fires and neither
+ * assertion below is vacuous. */
+const D2B_CONVERTED = 4;
+const D2B_REVISITING = 8;
+const D2B_DROPPED = 8;
+
+/**
+ * The same twenty sessions twice over: once with CONSECUTIVE REPEATS of the
+ * origin in the raw event stream, once already collapsed by hand. `pathWalk`
+ * (`funnel-dropoff.ts:44-56`) collapses the first into the second, which is the
+ * whole of D-2b's unreachability.
+ */
+function selfTransitionCorpus(collapsed: boolean): DetectorCorpus {
+  const converted = collapsed
+    ? [D2B_ORIGIN, D2B_DESTINATION]
+    : [D2B_ORIGIN, D2B_ORIGIN, D2B_DESTINATION];
+  const revisiting = collapsed
+    ? [D2B_ORIGIN, D2B_DETOUR, D2B_ORIGIN]
+    : [D2B_ORIGIN, D2B_ORIGIN, D2B_DETOUR, D2B_ORIGIN, D2B_ORIGIN];
+  const dropped = collapsed ? [D2B_ORIGIN] : [D2B_ORIGIN, D2B_ORIGIN, D2B_ORIGIN];
+
+  return corpusOf({
+    sessions: [
+      ...cohort({
+        idPrefix: "t1d2b-converted",
+        count: D2B_CONVERTED,
+        paths: converted,
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(0),
+      }),
+      ...cohort({
+        idPrefix: "t1d2b-revisiting",
+        count: D2B_REVISITING,
+        paths: revisiting,
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(1),
+      }),
+      ...cohort({
+        idPrefix: "t1d2b-dropped",
+        count: D2B_DROPPED,
+        paths: dropped,
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(2),
+      }),
+    ],
+    connectionState: CONNECTED_RECEIVING,
+    truncated: false,
+  });
+}
+
+describe("detectFunnelDropoff — the D-2 structural properties (O-005)", () => {
+  test("D-2a — the dropped and struggling cohorts are structurally disjoint", () => {
+    const rules = ruleSetV1();
+
+    // A KNOWN, DELIBERATE PROPERTY OF D-2a's FIRST-VISIT SEMANTICS — recorded
+    // here the way O-004 recorded `funnelMinDropoffSessions` being structurally
+    // unreachable, rather than left as prose nobody can fail.
+    //
+    // `D(O)` is built by `transitionsOf` from the corpus's OWN walks, so the
+    // surface immediately following the first visit to `O` in ANY walk is by
+    // construction a member of `D(O)`. `dropped(O)` therefore reduces to
+    // "the walk ENDS at the session's first visit to `O`" — so every dropped
+    // session visited `O` EXACTLY ONCE, and a session that revisited (and can
+    // therefore reach `struggleRepeatedAttemptMin`) is never dropped.
+    //
+    // THE PRODUCT CONSEQUENCE, stated so a renderer author cannot miss it: a
+    // "people kept coming back here" clause and a "people left here" clause are
+    // about DIFFERENT PEOPLE. They may be composed about the same SURFACE; they
+    // may never be composed about the same COHORT.
+    //
+    // The fixture makes the disjointness OBSERVABLE rather than merely
+    // plausible: EVERY continuing session revisits at the minimum, so the
+    // dropped cohort and the struggling cohort together PARTITION `atOrigin`.
+    // If a single dropped session were also counted as struggling, the
+    // struggling count would exceed the continuing cohort's size and the exact
+    // equality below would fail.
+    const corpus = struggleFixture([
+      {
+        count: STRUGGLE_ALL_REVISITING,
+        visits: rules.struggleRepeatedAttemptMin,
+        detour: STRUGGLE_DETOUR,
+      },
+    ]);
+
+    expect(corpus.basis.kept).toBe(STRUGGLE_AT_ORIGIN);
+
+    const result = detectFunnelDropoff(corpus, rules);
+
+    // NON-VACUITY: one candidate, carrying a struggle signal. Both cohorts are
+    // live in this one corpus, which is the only way disjointness is testable.
+    expect(result.candidates).toHaveLength(1);
+    const candidate = result.candidates[0];
+    const struggles = struggleSignalsOf(result);
+    expect(struggles).toHaveLength(1);
+
+    const atOrigin = candidate.counts[0].numerator;
+    const dropped = candidate.counts[1].numerator;
+    const struggling = struggles[0].strugglingSessions.numerator;
+
+    expect(atOrigin).toBe(STRUGGLE_AT_ORIGIN);
+    expect(dropped).toBe(STRUGGLE_DROPPED);
+    // Every session that did NOT drop revisited at the minimum, and the count
+    // says so exactly — no dropped session leaked into it.
+    expect(struggling).toBe(STRUGGLE_ALL_REVISITING);
+    // THE DISJOINTNESS, ASSERTED: the two cohorts partition the origin cohort.
+    // Any overlap would make this sum exceed `atOrigin`.
+    expect(dropped + struggling).toBe(atOrigin);
+  });
+
+  test("D-2b — the self-transition filter is unreachable while pathWalk collapses consecutive repeats", () => {
+    const rules = ruleSetV1();
+
+    // WHAT MAKES THE FILTER INERT, AND WHAT DOES NOT.
+    //
+    // The emission loop removes the origin from its own raw destination set.
+    // That filter can never change an outcome, and the reason is `pathWalk`
+    // ALONE: it pushes a path only when `path !== previous`, so no walk carries
+    // two adjacent equal entries, and `transitionsOf` pairs only ADJACENT
+    // entries — so an origin is never its own immediate successor and never
+    // enters its own raw destination set.
+    //
+    // THIS HAS NOTHING TO DO WITH D-2a. `dropped`'s measurement point sits
+    // downstream of the destination set and cannot make a self-successor
+    // appear; the filter is equally inert under `indexOf` and `lastIndexOf`.
+    // The name says "while" deliberately: relax the collapse and
+    // `origin -> origin` becomes expressible, at which point this filter stops
+    // being inert and starts being load-bearing. That is what this test
+    // guards — a change to the collapse fails here rather than silently
+    // promoting a dead filter into a live one.
+    //
+    // The fixture deliberately carries BOTH shapes that could produce a
+    // self-transition: a `origin -> detour -> origin` return, and a
+    // consecutive run of three raw events on the origin.
+    const withRepeats = detectFunnelDropoff(selfTransitionCorpus(false), rules);
+    const preCollapsed = detectFunnelDropoff(selfTransitionCorpus(true), rules);
+
+    // NON-VACUITY: the repeat-laden corpus really does produce transitions and
+    // fire, so the assertions below compare candidates and not empty lists.
+    expect(withRepeats.candidates).toHaveLength(1);
+    expect(withRepeats.candidates[0].surface).toBe(D2B_ORIGIN);
+    expect(withRepeats.candidates[0].counts[0].numerator).toBe(
+      D2B_CONVERTED + D2B_REVISITING + D2B_DROPPED,
+    );
+    expect(withRepeats.candidates[0].counts[1].numerator).toBe(D2B_DROPPED);
+
+    // (a) THE COLLAPSE, OBSERVED DIRECTLY. The dropped cohort emits THREE
+    // consecutive raw events on the origin, and the revisiting cohort emits two
+    // more consecutive runs. A `pathWalk` without the collapse would read those
+    // as separate visits, reach `struggleRepeatedAttemptMin`, and emit a
+    // struggle signal. Silence here IS the collapse — and a walk with no
+    // adjacent duplicates cannot put the origin in its own destination set.
+    expect(struggleSignalsOf(withRepeats)).toEqual([]);
+
+    // (b) INDISTINGUISHABLE FROM THE HAND-COLLAPSED CORPUS, field for field.
+    // The two corpora differ ONLY in consecutive repeats, so nothing the raw
+    // repeats could have contributed — a self-transition above all — survived
+    // into `transitionsOf`. The filter has nothing to remove: unreachable, not
+    // merely unexercised by this fixture.
+    expect(withRepeats).toEqual(preCollapsed);
+  });
+});
+
+// ===========================================================================
 // FR-22 / FR-9 — `funnelMinDropoffSessions`, the one threshold in this file
 // whose fail direction no test NAME stated (Wave 7).
 //
@@ -1182,13 +1428,38 @@ const FLOOR_DESTINATION = "/t1flr/checkout";
 const FLOOR_AT_ORIGIN = 20;
 const FLOOR_DROPPED = 10;
 
-/** Varies exactly ONE member. `version: 2` because this is honestly not v1 —
- * v1 is a shipped, immutable decision and nothing here edits it. */
+/**
+ * A version number NO SHIPPED RULE SET CAN EVER CARRY, and that is the whole
+ * requirement it has to meet.
+ *
+ * Registered versions are POSITIVE and assigned in increasing order
+ * (`THRESHOLD_RULE_SETS` holds 1 and 2 today), so a NEGATIVE version collides
+ * with none of them — not with `RULE_SET_V2`, and not with the v3 somebody
+ * ships next. It also reads, at a glance, as what it is: a test-local variant,
+ * never a decision this product made. `-1` is the sentinel; the assertion in
+ * the test below pins that `THRESHOLD_RULE_SETS` does not resolve it.
+ *
+ * WHY NOT `version: 2`, WHICH THIS SAID BEFORE. That was written when no v2
+ * existed and "honestly not v1" was the entire point. O-005 SHIPPED v2
+ * (`funnelMinDropoffSessions: 5`, registered at `THRESHOLD_RULE_SETS.get(2)`),
+ * and this helper is called twice with different floors — so stamping `2` made
+ * THREE distinct rule sets all claim to be version 2. The moment anything
+ * persists a `thresholdRuleSetVersion`, a replay through
+ * `THRESHOLD_RULE_SETS.get(2)` reproduces a decision these numbers never made:
+ * the D12 identity fork the v2 bump was made to PREVENT, reintroduced by a
+ * fixture. No persistence path exists today, which is exactly why it is cheap
+ * to fix now.
+ */
+const SYNTHETIC_RULE_SET_VERSION = -1;
+
+/** Varies exactly ONE member, and stamps a version that is deliberately not a
+ * registered rule set (above). v1 and v2 are shipped, immutable decisions and
+ * nothing here edits either of them. */
 function withMinDropoffSessions(
   rules: ThresholdRuleSet,
   funnelMinDropoffSessions: number,
 ): ThresholdRuleSet {
-  return { ...rules, version: 2, funnelMinDropoffSessions };
+  return { ...rules, version: SYNTHETIC_RULE_SET_VERSION, funnelMinDropoffSessions };
 }
 
 function floorCorpus(): DetectorCorpus {
@@ -1217,6 +1488,18 @@ function floorCorpus(): DetectorCorpus {
 describe("detectFunnelDropoff — funnelMinDropoffSessions (FR-9, FR-22)", () => {
   test("should not fire below funnelMinDropoffSessions", () => {
     const v1 = ruleSetV1();
+
+    // THE SENTINEL IS UNREGISTERED, ASSERTED RATHER THAN ASSUMED. The two
+    // variants below are test-local and must never be mistakable for a shipped
+    // decision: if a rule set ever ships under this version, a replay by
+    // version would reproduce these fixture magnitudes instead of the real
+    // ones (D12). Registering it is what this line makes impossible to do
+    // quietly.
+    expect(THRESHOLD_RULE_SETS.has(SYNTHETIC_RULE_SET_VERSION)).toBe(false);
+    expect(THRESHOLD_RULE_SETS.get(SYNTHETIC_RULE_SET_VERSION)).toBeUndefined();
+    // Non-vacuity: the map really does resolve the versions that DO exist, so
+    // the `false` above is this sentinel's absence and not an empty registry.
+    expect(THRESHOLD_RULE_SETS.has(v1.version)).toBe(true);
 
     // THE v1 REDUNDANCY, ASSERTED RATHER THAN CLAIMED. The largest drop-off the
     // floor can block is `funnelMinDropoffSessions - 1`; the thinnest origin
@@ -1409,26 +1692,54 @@ describe("detectFunnelDropoff — surfaceNormalisationVersion (PL ruling 28)", (
 });
 
 // ---------------------------------------------------------------------------
-// ESC-9 — one origin, many destinations: N candidates, ONE identity
+// ESC-9, RESOLVED — one origin, many destinations: ONE candidate, ONE identity
 // ---------------------------------------------------------------------------
 //
-// WHY THIS BLOCK EXISTS. The emission model was never asserted: every
-// `toHaveLength` in this file is `1`, so nothing pinned what happens when one
-// origin leaks to SEVERAL destinations above threshold. That left a real
-// contract question invisible — the candidates are distinct, but their
-// `evidence_shape`s are byte-identical, because the destination is computed
-// and then discarded (see the ESC-9 comment at the emission site).
+// WHY THIS BLOCK EXISTS, AND WHAT IT NOW PINS. The emission model had never
+// been asserted: every `toHaveLength` elsewhere in this file is `1` because
+// every other fixture has a single destination, so nothing pinned what happens
+// when one origin leaks to SEVERAL destinations. That invisibility was ESC-9,
+// and it had two halves:
 //
-// These tests pin the CURRENT behaviour deliberately. They are not an
-// endorsement of it: ESC-9 carries the decision, and whichever way it lands —
-// carry the destination into a v2 shape, or aggregate to one candidate per
-// origin — THESE TESTS MUST CHANGE. That is the point. A silent contract shift
-// under O-005 and O-006 is what this block exists to make impossible.
+//   - RATE INFLATION — "did not reach THIS destination" was emitted once per
+//     destination and would read to a founder as "dropped here", which it is
+//     not. A healthy hub that splits traffic three ways produced THREE
+//     candidates, each claiming "20 of 30 dropped".
+//   - IDENTITY COLLISION — those candidates were distinct claims carrying
+//     byte-identical `evidence_shape`s, because the destination was computed
+//     and then discarded. O-006's signature ledger hashes `evidence_shape`;
+//     one surface minting three colliding identities voids every guarantee it
+//     offers.
+//
+// O-005 D-2 TAKES ESC-9 FIX (b): the detector emits AT MOST ONE candidate per
+// ORIGIN, aggregating across destinations, and `counts[1]` now means "left the
+// origin without going anywhere it could have gone". Both halves close at once.
+//
+// THIS BLOCK NOW PINS THE RESOLUTION, NOT THE DEFECT. It is deliberately still
+// named for ESC-9, because the regression it guards against is the emission
+// model silently reverting to per-destination under O-005 and O-006. A green
+// suite here means RESOLVED.
+//
+// Four fixtures, because fix (b) has four separable claims:
+//   - the FIRING HUB      — one qualifying origin emits exactly ONE candidate;
+//   - the HEALTHY HUB     — a hub nobody is stuck on emits ZERO;
+//   - the TERMINAL SURFACE— an origin with an empty `D(O)` emits nothing (D-2c);
+//   - and over the firing hub, exactly ONE `evidence_shape`.
 
-const FORK_ORIGIN = "/pricing";
-const FORK_DESTINATIONS = ["/checkout", "/help", "/faq"] as const;
+// LANE: every id and path in this block is `esc9f`-prefixed, matching its two
+// siblings (`esc9h`, `esc9t`) and colliding with nothing above. The predecessor
+// used the file's top-level `/pricing` and `/checkout` VALUES — no functional
+// collision, since each test builds its own corpus, but it defeated the
+// grep-by-lane discipline every other fixture block here follows.
+const FORK_ORIGIN = "/esc9f/pricing";
+const FORK_DESTINATIONS = ["/esc9f/checkout", "/esc9f/help", "/esc9f/faq"] as const;
+/** 4 + 6 + 8 reach a destination; the remaining 12 leave the origin outright.
+ * 12 of 30 is exactly the 40% rate gate, so the ONE aggregated candidate fires
+ * at the boundary rather than comfortably over it. */
+const FORK_AT_ORIGIN = 30;
+const FORK_DROPPED = 12;
 
-/** 30 kept sessions all reach `/pricing`; each destination is reached by a
+/** 30 kept sessions all reach `/esc9f/pricing`; each destination is reached by a
  * different small slice, so EVERY transition clears both the absolute floor
  * and the 40% rate gate. */
 function multiDestinationCorpus(): DetectorCorpus {
@@ -1439,7 +1750,7 @@ function multiDestinationCorpus(): DetectorCorpus {
     for (let n = 0; n < count; n += 1) {
       sessions.push(
         sessionTimeline({
-          sessionId: `fork-${String(index).padStart(3, "0")}`,
+          sessionId: `esc9f-${String(index).padStart(3, "0")}`,
           startedAt: new Date(cohortStart(0).getTime() + index * SESSION_STRIDE_MS),
           paths,
           exclusionReason: "none",
@@ -1450,45 +1761,231 @@ function multiDestinationCorpus(): DetectorCorpus {
     }
   };
 
-  // A DIFFERENT slice reaches each destination (4 / 6 / 8), so the three
-  // transitions carry three DIFFERENT drop-off magnitudes (26 / 24 / 22 of
-  // 30). That difference is what makes them distinct claims — and therefore
-  // what makes one shared identity a collision rather than a tidy dedup.
+  // A DIFFERENT slice reaches each destination (4 / 6 / 8).
+  //
+  // BEFORE FIX (b), THIS EXACT FIXTURE PRODUCED THREE CANDIDATES, at
+  // 26 / 24 / 22 of 30 — one per (origin, destination) pair, each counting
+  // "did not reach THIS destination" and each rendering to a founder as
+  // "dropped at /esc9f/pricing". Three near-identical claims about one page, three
+  // different numbers, one shared `evidence_shape`. Recorded here so the
+  // regression stays legible to a reader who never saw the old loop.
+  //
+  // After fix (b) it produces ONE candidate whose `dropped` is 12: the
+  // sessions that left `/esc9f/pricing` without reaching ANY of the three.
   const REACHED = [4, 6, 8] as const;
   FORK_DESTINATIONS.forEach((destination, slot) => {
     push([FORK_ORIGIN, destination], REACHED[slot]);
   });
   // The remainder leave from the origin outright, taking the corpus to 30.
-  push([FORK_ORIGIN], 30 - REACHED.reduce((sum, n) => sum + n, 0));
+  push([FORK_ORIGIN], FORK_AT_ORIGIN - REACHED.reduce((sum, n) => sum + n, 0));
 
   return corpusOf({ sessions, connectionState: CONNECTED_RECEIVING, truncated: false });
 }
 
+// --- FR-2a-healthy: the hub nobody is stuck on -----------------------------
+
+const HEALTHY_HUB_ORIGIN = "/esc9h/pricing";
+const HEALTHY_HUB_DESTINATIONS = ["/esc9h/checkout", "/esc9h/help", "/esc9h/faq"] as const;
+/** 3 x 10 = 30 sessions at the origin, splitting evenly. Comfortably above
+ * `funnelMinSessionsAtOrigin`, so a zero here is never a thin denominator. */
+const HEALTHY_HUB_PER_DESTINATION = 10;
+const HEALTHY_HUB_AT_ORIGIN = HEALTHY_HUB_PER_DESTINATION * HEALTHY_HUB_DESTINATIONS.length;
+/** The WITNESS cohort (see `healthyHubWithDroppersCorpus`). 20 of 50 is exactly
+ * the 40% rate gate, so the witness fires. */
+const HEALTHY_HUB_WITNESS_DROPPED = 20;
+
+function healthyHubSessions(): readonly SessionTimeline[] {
+  const sessions: SessionTimeline[] = [];
+  HEALTHY_HUB_DESTINATIONS.forEach((destination, slot) => {
+    sessions.push(
+      ...cohort({
+        idPrefix: `esc9h-${String(slot)}`,
+        count: HEALTHY_HUB_PER_DESTINATION,
+        paths: [HEALTHY_HUB_ORIGIN, destination],
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(slot),
+      }),
+    );
+  });
+  return sessions;
+}
+
+/** Thirty sessions reach `/esc9h/pricing` and every one of them goes somewhere
+ * it could have gone. Nobody is stuck. */
+function healthyHubCorpus(): DetectorCorpus {
+  return corpusOf({
+    sessions: healthyHubSessions(),
+    connectionState: CONNECTED_RECEIVING,
+    truncated: false,
+  });
+}
+
+/**
+ * THE NON-VACUITY WITNESS for the healthy hub: the SAME thirty sessions, with a
+ * cohort whose walks END at the origin bolted on and nothing else changed. A
+ * candidate here proves the origin is a live origin in the transition map with
+ * a non-empty `D(O)` — so the healthy hub's zero is the drop-off gates
+ * speaking, not an inert fixture the detector never looked at.
+ */
+function healthyHubWithDroppersCorpus(): DetectorCorpus {
+  return corpusOf({
+    sessions: [
+      ...healthyHubSessions(),
+      ...cohort({
+        idPrefix: "esc9h-dropped",
+        count: HEALTHY_HUB_WITNESS_DROPPED,
+        paths: [HEALTHY_HUB_ORIGIN],
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(HEALTHY_HUB_DESTINATIONS.length),
+      }),
+    ],
+    connectionState: CONNECTED_RECEIVING,
+    truncated: false,
+  });
+}
+
+// --- FR-2c: an origin with nowhere to go -----------------------------------
+
+const TERMINAL_LANDING = "/esc9t/landing";
+/** Reached by more than `funnelMinSessionsAtOrigin` sessions and followed by
+ * NOTHING — the last page of every walk that gets there. `D(exit)` is empty. */
+const TERMINAL_EXIT = "/esc9t/exit";
+const TERMINAL_REACHED_EXIT = 25;
+/** 17 of 42 is 40.4% — over the rate gate, so the LANDING fires and the exit's
+ * silence is demonstrably the D-2c rule rather than an inert corpus. */
+const TERMINAL_DROPPED_AT_LANDING = 17;
+
+function terminalSurfaceCorpus(): DetectorCorpus {
+  return corpusOf({
+    sessions: [
+      ...cohort({
+        idPrefix: "esc9t-continued",
+        count: TERMINAL_REACHED_EXIT,
+        paths: [TERMINAL_LANDING, TERMINAL_EXIT],
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(0),
+      }),
+      ...cohort({
+        idPrefix: "esc9t-dropped",
+        count: TERMINAL_DROPPED_AT_LANDING,
+        paths: [TERMINAL_LANDING],
+        exclusionReason: "none",
+        firstStartedAt: cohortStart(1),
+      }),
+    ],
+    connectionState: CONNECTED_RECEIVING,
+    truncated: false,
+  });
+}
+
 describe("detectFunnelDropoff — one origin with several destinations (ESC-9)", () => {
-  test("should emit one candidate per qualifying transition, all sharing the origin as surface", () => {
+  test("ESC-9 fix (b) — a firing hub emits exactly one candidate for the origin", () => {
+    const rules = ruleSetV1();
     const corpus = multiDestinationCorpus();
-    const result = detectFunnelDropoff(corpus, ruleSetV1());
 
-    // NON-VACUITY: the fixture must actually clear every gate, or "3" below
-    // could be produced by a fixture that fires for some other reason.
-    expect(corpus.basis.kept).toBe(30);
-    expect(result.candidates.length).toBeGreaterThan(1);
-    expect(result.candidates).toHaveLength(FORK_DESTINATIONS.length);
+    // NON-VACUITY FIRST. The fixture must be shown to clear every gate, or a
+    // count of 1 could be produced by a fixture that barely fires at all.
+    expect(corpus.basis.kept).toBe(FORK_AT_ORIGIN);
+    expect(FORK_AT_ORIGIN).toBeGreaterThanOrEqual(rules.funnelMinSessionsAtOrigin);
+    expect(FORK_DROPPED).toBeGreaterThanOrEqual(rules.funnelMinDropoffSessions);
+    // Exact integer arithmetic (PL ruling 1): 12 * 100 === 40 * 30, the
+    // inclusive boundary with no rounding on either side.
+    expect(FORK_DROPPED * 100).toBe(rules.funnelDropoffRateThresholdPercent * FORK_AT_ORIGIN);
 
-    // Ruling 14 holds for every one of them: the surface is the ORIGIN.
-    for (const candidate of result.candidates) {
-      expect(candidate.surface).toBe(FORK_ORIGIN);
-      expect(candidate.claimedClass).toBe("confusing");
-    }
+    const result = detectFunnelDropoff(corpus, rules);
 
-    // The candidates are genuinely DIFFERENT claims — each carries its own
-    // drop-off magnitude — which is exactly why collapsing their identity is
-    // the problem ESC-9 names.
-    const dropped = result.candidates.map((candidate) => candidate.counts[1]?.numerator);
-    expect(new Set(dropped).size).toBeGreaterThan(1);
+    // A LITERAL ONE, ASSERTED — never `FORK_DESTINATIONS.length`, never
+    // `toBeGreaterThan`, and never merely iterated over. Three destinations,
+    // one stuck surface, ONE problem, ONE candidate (O-005 D-2, fix (b)).
+    expect(result.candidates).toHaveLength(1);
+
+    const candidate = result.candidates[0];
+    // PL ruling 14: the surface is the ORIGIN — where the user got stuck.
+    expect(candidate.surface).toBe(FORK_ORIGIN);
+    expect(candidate.claimedClass).toBe("confusing");
+
+    // PL ruling 15's declared order, with `counts[1]`'s POST-FIX meaning: the
+    // sessions that left the origin without reaching ANY member of `D(O)`.
+    expect(candidate.counts[0].numerator).toBe(FORK_AT_ORIGIN);
+    expect(candidate.counts[1].numerator).toBe(FORK_DROPPED);
+    expect(candidate.counts[1].denominator).toBe(corpus.basis.kept);
   });
 
-  test("should collapse every one of those candidates to a single evidence_shape (ESC-9, currently unresolved)", () => {
+  test("every funnel candidate names its origin as the surface, with claimSubject surface", () => {
+    const result = detectFunnelDropoff(multiDestinationCorpus(), ruleSetV1());
+
+    // Non-vacuity: an empty candidate list would satisfy the loop below by
+    // asserting nothing at all.
+    expect(result.candidates.length).toBeGreaterThan(0);
+
+    // OVER EVERY CANDIDATE, not the first. FR-3b / ESC-6: `claimSubject` states
+    // in the TYPE what `surface` is a claim ABOUT, rather than leaving it
+    // implied by the field being non-optional.
+    for (const candidate of result.candidates) {
+      expect(candidate.surface).toBe(FORK_ORIGIN);
+      expect(candidate.surface.length).toBeGreaterThan(0);
+      expect(candidate.claimSubject).toBe("surface");
+    }
+  });
+
+  test("ESC-9 fix (b) — a healthy hub that splits traffic three ways emits no candidate", () => {
+    const rules = ruleSetV1();
+    const corpus = healthyHubCorpus();
+
+    // BEFORE FIX (b) THIS FIXTURE PRODUCED THREE CANDIDATES, each claiming
+    // "20 of 30 dropped" — because "did not reach THIS destination" was
+    // emitted once per destination, and 20 of the 30 never claimed any given
+    // one of the three. That is ESC-9's rate-inflation half, and it is what
+    // this test regression-guards.
+    //
+    // SILENCE IS THE CORRECT OUTPUT. A pricing page that splits traffic three
+    // ways is doing its job; nobody is stuck on it, so there is nothing to tell
+    // a founder. Note that the ADD's "one candidate with `dropped = 0 of 30`"
+    // is UNACHIEVABLE and has been overruled: a `dropped = 0` origin is
+    // filtered twice over, by the absolute floor and then by the rate gate.
+    // ZERO, not one — and zero is right.
+    expect(corpus.basis.kept).toBe(HEALTHY_HUB_AT_ORIGIN);
+    expect(HEALTHY_HUB_AT_ORIGIN).toBeGreaterThanOrEqual(rules.funnelMinSessionsAtOrigin);
+
+    const result = detectFunnelDropoff(corpus, rules);
+
+    expect(result.candidates).toHaveLength(0);
+
+    // NON-VACUITY, AND THE WHOLE POINT: the origin IS a live origin with a
+    // non-empty `D(O)`. The SAME thirty sessions, plus a cohort whose walks
+    // END at the origin and nothing else changed, DO produce a candidate for
+    // it. So the zero above is the drop-off gates speaking about a surface the
+    // detector genuinely examined — never a thin denominator, and never an
+    // origin the transition map never held.
+    const witness = detectFunnelDropoff(healthyHubWithDroppersCorpus(), rules);
+    expect(witness.candidates).toHaveLength(1);
+    expect(witness.candidates[0].surface).toBe(HEALTHY_HUB_ORIGIN);
+    expect(witness.candidates[0].counts[1].numerator).toBe(HEALTHY_HUB_WITNESS_DROPPED);
+  });
+
+  test("D-2c — an origin whose destination set is empty emits no candidate", () => {
+    const rules = ruleSetV1();
+    const corpus = terminalSurfaceCorpus();
+
+    // `/esc9t/exit` is reached by more sessions than `funnelMinSessionsAtOrigin`
+    // and is followed by NOTHING. With nowhere reachable, "did not go anywhere
+    // it could have gone" is VACUOUS — asserting it would claim a 100%
+    // drop-off on every exit page in the product.
+    expect(TERMINAL_REACHED_EXIT).toBeGreaterThanOrEqual(rules.funnelMinSessionsAtOrigin);
+
+    const result = detectFunnelDropoff(corpus, rules);
+
+    expect(result.candidates.map((candidate) => candidate.surface)).not.toContain(TERMINAL_EXIT);
+
+    // NON-VACUITY: the SAME corpus fires for a DIFFERENT origin, so the exit's
+    // silence is the D-2c rule and not an inert fixture the detector skipped
+    // for some unrelated reason.
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].surface).toBe(TERMINAL_LANDING);
+    expect(result.candidates[0].counts[1].numerator).toBe(TERMINAL_DROPPED_AT_LANDING);
+  });
+
+  test("ESC-9 fix (b) — one origin mints exactly one evidence_shape", () => {
     const result = detectFunnelDropoff(multiDestinationCorpus(), ruleSetV1());
 
     const shapes = result.candidates.map((candidate) =>
@@ -1506,12 +2003,18 @@ describe("detectFunnelDropoff — one origin with several destinations (ESC-9)",
       ),
     );
 
-    expect(shapes).toHaveLength(FORK_DESTINATIONS.length);
-
-    // THE COLLISION, ASSERTED. Three distinct findings, one identity. When
-    // ESC-9 is resolved this assertion MUST flip to `toBe(shapes.length)` (fix
-    // a) or the candidate count above must become 1 (fix b). A green suite
-    // here means the question is still open — never that it is fine.
+    // BOTH ASSERTIONS, AND THE PAIRING IS THE POINT. `size === 1` alone passes
+    // VACUOUSLY on a one-element array — which is exactly what made the
+    // predecessor assertion misleading: it read as "three claims collapsed to
+    // one identity" while being satisfiable by "there is one claim". Pinning
+    // the length as well is what makes this a statement about the emission
+    // model rather than about set arithmetic.
+    expect(shapes).toHaveLength(1);
     expect(new Set(shapes).size).toBe(1);
+
+    // A GREEN RESULT HERE MEANS RESOLVED. ESC-9's identity half is closed by
+    // fix (b): one origin, one candidate, one `evidence_shape` — so O-006's
+    // signature ledger can hash this without a surface minting three colliding
+    // identities on arrival.
   });
 });

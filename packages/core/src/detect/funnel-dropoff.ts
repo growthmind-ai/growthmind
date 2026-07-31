@@ -28,6 +28,20 @@ import { orderTimeline } from "./order";
 import type { DetectorCandidate, DetectorCorpus, DetectorResult, SessionTimeline } from "./types";
 
 /**
+ * The step from a walk position to the position IMMEDIATELY AFTER it — where
+ * "anywhere after the first visit to the origin" begins (D-2a, below).
+ *
+ * A position offset, not a magnitude and not a threshold; every magnitude this
+ * detector compares against still arrives on the rule-set parameter. It has a
+ * NAME, and a home outside every function body, for the same reason
+ * `PERCENT_SCALE` has one at `src/counts/percent.ts` (FR-8, PL ruling 26):
+ * `purity.test.ts` scans function regions only, and counts a bare offset or
+ * index inside one as the same offence as a bare threshold — precisely so no
+ * number in a detector body goes unexplained.
+ */
+const AFTER_FIRST_VISIT_OFFSET = 1;
+
+/**
  * A session's ordered path walk: `null`-path events removed, consecutive
  * repeats of one path collapsed.
  *
@@ -102,15 +116,17 @@ function surfaceVersionOf(sessions: readonly SessionTimeline[], surface: string)
 }
 
 /**
- * Emits, per observed path transition, the sessions that reached the origin
- * path and did not reach the destination, as a `MeasuredCount` over SESSIONS.
+ * Emits, per ORIGIN (O-005 D-2 — this ONCE emitted per `(origin, destination)`
+ * TRANSITION; see the resolution record below), the sessions that reached
+ * that origin and left it without going anywhere they could have gone, as a
+ * `MeasuredCount` over SESSIONS.
  *
  * Contract:
  * - the rule set arrives as a PARAMETER; nothing here reads `CURRENT_*` (D-14);
  * - the denominator is `corpus.basis.kept` — sessions with
  *   `exclusion_reason = 'none'` (D-7, FR-7). A set-aside session reaches no
  *   numerator and inflates no denominator;
- * - boundaries are INCLUSIVE: a transition fires at
+ * - boundaries are INCLUSIVE: an origin fires at
  *   `dropped * 100 >= ruleSet.funnelDropoffRateThresholdPercent * reachedOrigin`,
  *   and only when `reachedOrigin >= ruleSet.funnelMinSessionsAtOrigin` and
  *   `dropped >= ruleSet.funnelMinDropoffSessions` (D-6, FR-9);
@@ -159,190 +175,247 @@ export function detectFunnelDropoff(
 
   const candidates: DetectorCandidate[] = [];
 
-  for (const [origin, destinations] of transitionsOf(walks)) {
+  // ── ESC-9 RESOLUTION RECORD (O-005 D-2). ────────────────────────────────
+  //
+  // ESC-9 asked which of two fixes to take: (a) carry `destination` into the
+  // candidate and a v2 serialiser — N destinations are N problems; or (b)
+  // emit ONE candidate per origin, aggregating across destinations — one
+  // stuck surface is one problem. O-005 D-2 TAKES FIX (b), and this loop now
+  // emits AT MOST ONE candidate per origin. `DetectorCandidate` carries no
+  // destination, and none is needed: fix (b) resolves BOTH of ESC-9's
+  // halves at once — one identity (one `evidence_shape` per origin, closing
+  // the O-006 collision), and one count whose MEANING is now "left the
+  // origin without going anywhere it could have gone" rather than "did not
+  // reach THIS destination" (which is what produced ESC-9's rate-inflation
+  // half — a healthy branching hub reporting "20 of 30 did not reach here"
+  // three times over, once per destination it never claimed).
+  //
+  // THREE SUB-RULES THE PRD LEFT OPEN, each DECIDED here and each PINNED by a
+  // test that NAMES it, so a reader can grep the rule and land on its proof.
+  // In `funnel-dropoff.test.ts`, verbatim:
+  //
+  //   `D-2a — the dropped and struggling cohorts are structurally disjoint`
+  //   `D-2b — the self-transition filter is unreachable while pathWalk collapses consecutive repeats`
+  //   `D-2c — an origin whose destination set is empty emits no candidate`
+  //
+  // D-2a's test pins a CONSEQUENCE of the first-visit choice rather than the
+  // choice itself — under first-visit semantics a dropped session visited the
+  // origin exactly once, so the dropped and struggling cohorts can never
+  // overlap. Reverse D-2a and that test is what fails.
+  //
+  //   D-2a — a session's visit to the origin is its FIRST occurrence in the
+  //   ordered walk. Maximises the window in which a session can be seen to
+  //   continue, so it maximises `continued` and minimises `dropped`.
+  //   FAIL DIRECTION: UNDER-DETECT — the house direction, and the direction
+  //   every member of `ThresholdRuleSet` is documented in.
+  //
+  //   WHAT D-2a REDUCES `dropped` TO, AND WHY `destinations` CANNOT MOVE THE
+  //   NUMBER. `D(O)` is not supplied from outside: `transitionsOf` builds it
+  //   from THESE SAME KEPT WALKS. So take any walk holding the origin and look
+  //   at the slice after its first visit:
+  //     - if that slice is NON-EMPTY, its first entry is by construction an
+  //       immediate successor of the origin IN THIS VERY WALK, hence a member
+  //       of `rawDestinations`; and it differs from the origin, because
+  //       `pathWalk` collapses consecutive repeats — so it survives the D-2b
+  //       filter and is a member of `destinations`. The `.some(...)` below
+  //       therefore succeeds at the FIRST element it tests, whatever else the
+  //       set holds;
+  //     - if that slice is EMPTY, `.some(...)` is false, whatever the set
+  //       holds.
+  //   `dropped` therefore reduces EXACTLY to "the walk ENDS at the session's
+  //   first visit to the origin" (`walk.indexOf(origin) === walk.length - 1`),
+  //   and the CONTENTS of `destinations` cannot change one session's verdict:
+  //   enlarge the set or shrink it, the count is identical. Read the filter
+  //   expression below as the reduction, not as a lookup whose answer depends
+  //   on the set — "reaches a member of `destinations`" is true but reads as
+  //   though the destination set moves the number, and it does not. Both
+  //   `purity.test.ts` and `funnel-dropoff.test.ts` state this reduction where
+  //   they justify their three-cohort fixtures; it is recorded HERE because
+  //   this is where a maintainer reads the loop.
+  //
+  //   WHAT `destinations` IS STILL FOR, then: the D-2c emptiness gate below,
+  //   and nothing in the count. Note that gate is INERT AS CODE for the same
+  //   reason the D-2b filter above it is — `transitionsOf` only ever KEYS an
+  //   origin that had a successor, so `rawDestinations` is never empty, and no
+  //   walk carries adjacent repeats, so it never contains the origin and the
+  //   filter can never empty it. A terminal surface emits nothing because it
+  //   is never a KEY of the transition map, not because the `continue` runs.
+  //   The D-2c test pins that OUTCOME, which is what a reader should rely on;
+  //   the gate, like the D-2b filter, states the meaning decision in code and
+  //   becomes load-bearing the moment either of those two properties changes.
+  //
+  //   D-2b — the origin is NOT a member of its own destination set. As a
+  //   statement of MEANING this is a real decision: counting a return to the
+  //   origin as "going somewhere it could have gone" would be false to the
+  //   sentence FR-2 owes a non-technical reader, "left this page without
+  //   going anywhere it could have gone".
+  //
+  //   AS CODE, THE FILTER BELOW IS INERT — say that plainly rather than
+  //   dress it up, and note that it is inert under ANY visit-selection
+  //   semantics, not merely D-2a's. `pathWalk` pushes a path only when it
+  //   differs from the previous one, so no walk carries two adjacent equal
+  //   entries; `transitionsOf` pairs only ADJACENT entries. An origin can
+  //   therefore never be its own immediate successor, the filter removes
+  //   nothing, and no candidate, count or fail direction changes. It is not
+  //   over-detect relative to D-2a; it has no detect direction at all. The
+  //   test named above pins exactly this, on a fixture carrying BOTH shapes
+  //   that could produce a self-transition — an `origin → detour → origin`
+  //   return, and a consecutive run of raw events on the origin.
+  //
+  //   THE PROPERTY BELONGS TO `pathWalk`'s COLLAPSE (`pathWalk`, above) AND
+  //   TO NOTHING ELSE — in particular NOT to where `dropped` is measured
+  //   from. (ESC-16, whether `dropped` runs from the origin's FIRST visit as
+  //   D-2a implements via `walk.indexOf` or from its LAST, is open; it does
+  //   not bear on this filter, which is inert either way. An earlier draft of
+  //   this comment claimed ESC-16 was the reason to keep the filter. It was
+  //   wrong, and it is recorded here so the claim is not re-derived.)
+  //
+  //   IT IS KEPT ANYWAY, FOR TWO REASONS:
+  //     - it states the D-2b MEANING decision in code, where it is read and
+  //       reviewed, instead of leaving it implicit in a property of
+  //       `pathWalk` that a future edit could remove without anyone noticing
+  //       this detector was relying on it;
+  //     - it is the guard that BECOMES load-bearing if that collapse changes.
+  //       Relax the collapse and `origin → origin` becomes expressible, at
+  //       which point this filter is the only thing stopping a return to the
+  //       origin from counting as somewhere the user "could have gone".
+  //
+  //   D-2c — an origin whose destination set is empty emits no candidate.
+  //   With nowhere reachable, "did not go anywhere it could have gone" is
+  //   VACUOUS, and asserting it would claim a drop-off on every exit page in
+  //   the product.
+  //
+  // CONTAINMENT WARNING, CARRIED FORWARD (PM Ruling 1, ADD D-2): before this
+  // fix, the hub defect was contained ONLY by ruling 13's designed silence
+  // (`struggleMinStrugglingSessions`) — a healthy hub still produced THREE
+  // rate-inflated candidates, and it was only because none carried a
+  // qualifying `struggle` signal that the GATE silently downgraded and
+  // dropped them. That containment was never about the count being right.
+  // After this aggregation, the count IS right — a healthy hub now emits at
+  // most ONE candidate whose `dropped` count is honest — and that is pinned by
+  // a hub fixture asserting a LITERAL `toHaveLength(1)`, never merely iterated
+  // over, rather than left to the gate's luck. Grep `funnel-dropoff.test.ts`
+  // for the test
+  // `ESC-9 fix (b) — a firing hub emits exactly one candidate for the origin`.
+  for (const [origin, rawDestinations] of transitionsOf(walks)) {
+    // D-2b, enforced explicitly though inert while `pathWalk` collapses
+    // consecutive repeats (resolution record above): it states the meaning
+    // decision in code, and it is the guard if that collapse ever changes.
+    const destinations = new Set(
+      [...rawDestinations].filter((destination) => destination !== origin),
+    );
+
+    // D-2c: nowhere reachable from this origin, so nothing to assert.
+    if (!destinations.size) continue;
+
     const atOrigin = walks.filter((walk) => walk.includes(origin));
 
     // UNDER-DETECT (FR-9): a denominator this thin cannot support a rate claim
-    // to a founder, however extreme the ratio looks. Checked per origin, so it
-    // silences every destination reached from it.
+    // to a founder, however extreme the ratio looks.
     if (atOrigin.length < ruleSet.funnelMinSessionsAtOrigin) continue;
 
-    for (const destination of destinations) {
-      // "Did not reach the destination anywhere in the session" — the
-      // conservative reading. A session that saw the destination before the
-      // origin is not counted as having dropped out of it.
-      const dropped = atOrigin.filter((walk) => !walk.includes(destination));
+    // D-2a: measured from the walk's FIRST occurrence of the origin. A
+    // session "continues" if, anywhere after that first occurrence, it
+    // reaches a member of `destinations` — never checked from a LATER
+    // occurrence, which would shrink the window and manufacture drop-offs
+    // out of sessions that plainly went somewhere.
+    const dropped = atOrigin.filter((walk) => {
+      const firstVisit = walk.indexOf(origin);
+      return !walk
+        .slice(firstVisit + AFTER_FIRST_VISIT_OFFSET)
+        .some((path) => destinations.has(path));
+    });
 
-      // UNDER-DETECT (FR-9): the absolute floor beneath the rate.
-      if (dropped.length < ruleSet.funnelMinDropoffSessions) continue;
+    // UNDER-DETECT (FR-9): the absolute floor beneath the rate.
+    if (dropped.length < ruleSet.funnelMinDropoffSessions) continue;
 
-      // D-6, INCLUSIVE, in exact integer arithmetic (PL rulings 1 and 15): the
-      // comparison is between the two NUMERATORS, so the rate means the step
-      // attrition FR-9's magnitude was calibrated against.
-      if (
-        dropped.length * PERCENT_SCALE <
-        ruleSet.funnelDropoffRateThresholdPercent * atOrigin.length
-      ) {
-        continue;
-      }
+    // D-6, INCLUSIVE, in exact integer arithmetic (PL rulings 1 and 15): the
+    // comparison is between the two NUMERATORS, so the rate means the step
+    // attrition FR-9's magnitude was calibrated against.
+    if (
+      dropped.length * PERCENT_SCALE <
+      ruleSet.funnelDropoffRateThresholdPercent * atOrigin.length
+    ) {
+      continue;
+    }
 
-      const countOf = (numerator: number) =>
-        measuredCount({
-          numerator,
-          // D-7: kept sessions, on BOTH counts, so O-007 can render
-          // "5 of 28 sessions" from either one.
-          denominator: corpus.basis.kept,
-          unit: "sessions",
-          timeframe: corpus.window,
-          basis: corpus.basis,
-        });
-
-      // PL ruling 18: `repeated_attempt` ONLY, gated inclusively on the
-      // rule set's minimum. `backtrack` has NO producer this sprint and must
-      // not gain one here: users navigate back constantly, so a single
-      // back-navigation fires on a superset of its target — the D10
-      // conflation this sprint exists to prevent. PL ruling 36 closed the same
-      // door on the CONSUMING side — `backtrack` is not admissible proof of
-      // anything — so "no producer" is no longer the only guard.
-      //
-      // TWO MAGNITUDES, AND THEY ARE NOT INTERCHANGEABLE.
-      //
-      //  - `attempts` is PER-SESSION (PL ruling 31): the greatest number of
-      //    separate visits any ONE kept session made to this surface. That is
-      //    what the rule-set comment "two visits is navigation; three is a
-      //    pattern" is a statement about.
-      //  - `strugglingSessions` is the COHORT: how many kept sessions at this
-      //    origin individually reached that per-session minimum, over
-      //    `basis.kept`.
-      //
-      // The signal carries both because the maximum ALONE is a claim about the
-      // corpus SIZE rather than about the surface: it only ever rises as more
-      // sessions are read, so at `DETECTOR_CORPUS_MAX_SESSIONS` one outlier
-      // would speak for five hundred. The proof predicate gates on the cohort
-      // (`struggleMinStrugglingSessions`); `attempts` stays the number a
-      // founder reads, and is honest because the signal now only exists when a
-      // real cohort struggled.
-      const originVisits = atOrigin.map((walk) => walk.filter((path) => path === origin).length);
-      const attempts = Math.max(...originVisits);
-      const strugglingSessions = originVisits.filter(
-        (visits) => visits >= ruleSet.struggleRepeatedAttemptMin,
-      ).length;
-
-      const signals: EvidenceSignal[] = [];
-      if (attempts >= ruleSet.struggleRepeatedAttemptMin) {
-        signals.push({
-          kind: "struggle",
-          subkind: "repeated_attempt",
-          surface: origin,
-          attempts,
-          // D-7 / §10: the one number the gate's only reachable pass turns on
-          // travels WITH its denominator, like every other count here.
-          strugglingSessions: countOf(strugglingSessions),
-        });
-      }
-
-      // ── OPEN CONTRACT QUESTION (label: ESC-9). READ BEFORE CONSUMING THIS. ─
-      //
-      // STATED IN FULL HERE. This comment and the matching block in
-      // `funnel-dropoff.test.ts` ARE the record — `ESC-9` is a label for
-      // cross-referencing the two, not a pointer to a register that resolves
-      // it elsewhere. Nothing below depends on reading another document.
-      //
-      // This loop emits ONE CANDIDATE PER `(origin, destination)` TRANSITION,
-      // and `DetectorCandidate` CARRIES NO DESTINATION. `destination` is used
-      // to compute `dropped` and is then discarded.
-      //
-      // ESC-9 HAS TWO HALVES, AND ONLY ONE OF THEM IS THE IDENTITY COLLISION.
-      // Stated here because the write-up below described the collision alone
-      // and thereby understated what is being deferred.
-      //
-      // HALF ONE — IDENTITY COLLISION (the paragraphs below): N candidates from
-      // one origin serialise to ONE `evidence_shape`.
-      //
-      // HALF TWO — RATE INFLATION, a defect in the NUMBER and not only in its
-      // identity. `dropped` is "did not reach THIS destination anywhere in the
-      // session", so a session that went somewhere ELSE from the origin counts
-      // as having dropped out of every destination it did not take. A healthy
-      // branching hub is the worst case: `/pricing` with 30 sessions splitting
-      // evenly to `/checkout`, `/help` and `/faq` — nobody stuck, nobody
-      // confused — yields THREE candidates each claiming "20 of 30 did not
-      // reach here". The arithmetic is right and the sentence is misleading,
-      // which is worse than a wrong number because it survives review.
-      //
-      // WHY IT IS NOT SHIPPING TODAY, precisely: a branching hub with no
-      // cohort-level struggle produces no `struggle` signal — and it is the
-      // COHORT gate (`struggleMinStrugglingSessions`) that makes that true,
-      // since the per-session maximum alone would have let one outlier speak
-      // for the hub — so all three candidates fail `confusing`, hit the FR-13B
-      // floor, and drop. Ruling 13's designed silence is what contains this,
-      // NOT the count being right.
-      //
-      // WHICH FIX RESOLVES WHICH HALF — the part this write-up owes its reader:
-      //   - fix (b) (one candidate per origin, aggregating across
-      //     destinations) resolves BOTH: one identity, and one count meaning
-      //     "left the origin without going anywhere it could have gone";
-      //   - fix (a) (carry `destination` into the candidate and a v2
-      //     serialiser) resolves ONLY the identity half. The three candidates
-      //     become three distinct identities, each still carrying an inflated
-      //     "20 of 30" — so fix (a) SHIPS RATE INFLATION, in triplicate, with
-      //     nothing left to suppress it. Whoever takes fix (a) owes half two a
-      //     separate answer.
-      //
-      // The consequence, stated plainly because it is invisible from the type:
-      // every candidate from one origin serialises to a BYTE-IDENTICAL
-      // `evidence_shape`. `serialiseV1` reads `{v, detector, surface,
-      // surfaceNormalisationVersion, signalKinds, symptomClass}` — all six are
-      // fixed by the origin, and magnitudes are excluded from identity by
-      // design (D-12). So an origin leaking to three destinations above
-      // threshold yields THREE CANDIDATES AND ONE IDENTITY.
-      //
-      // That is harmless TODAY for one reason only, stated here rather than
-      // referenced: NOTHING CONSUMES THESE CANDIDATES YET. The detector→gate
-      // pipeline has no production caller this sprint — neither `apps/web` nor
-      // `worker` depends on `@growthmind/core` — so no ledger, no delivery and
-      // no stored finding reads an `evidence_shape`. Wiring that caller is
-      // O-005's job, and O-005 must resolve the question below BEFORE it does.
-      //
-      // It becomes a defect the moment O-006 hashes `evidence_shape` into its
-      // signature: the ledger either suppresses N−1 real findings as
-      // duplicates, or a founder sees N visually identical findings differing
-      // only by a number they cannot attribute to anything.
-      //
-      // IT IS DELIBERATELY NOT RESOLVED HERE, because the two fixes encode
-      // different products and both change a contract O-005 and O-006 build
-      // against:
-      //   (a) carry `destination` into the candidate and into a v2 serialiser
-      //       — N destinations are N problems; or
-      //   (b) emit ONE candidate per origin, aggregating across destinations —
-      //       one stuck surface is one problem, which is what ruling 14's
-      //       "the surface a fix targets" points at, but which makes ruling
-      //       15's second count ("did not reach the destination") ambiguous.
-      //
-      // Guessing here would lock three downstream outcomes to the wrong shape,
-      // so the decision is OPEN and this comment is where it is recorded —
-      // there is no register elsewhere holding a resolution. It is owed by
-      // whoever first consumes a candidate (O-005) or first hashes an
-      // `evidence_shape` (O-006), whichever lands sooner.
-      // `funnel-dropoff.test.ts` pins the CURRENT behaviour so whichever way it
-      // lands is a visible, failing-test change rather than a silent one.
-      candidates.push({
-        detector: "funnel_dropoff",
-        claimedClass: "confusing",
-        // PL ruling 14: the ORIGIN path — where the user got stuck, and the
-        // surface a fix targets.
-        surface: origin,
-        surfaceNormalisationVersion: surfaceVersionOf(kept, origin),
-        signals,
-        // PL ruling 15, declared order: [0] reached the origin,
-        // [1] did not reach the destination.
-        counts: [countOf(atOrigin.length), countOf(dropped.length)],
+    const countOf = (numerator: number) =>
+      measuredCount({
+        numerator,
+        // D-7: kept sessions, on BOTH counts, so O-007 can render
+        // "5 of 28 sessions" from either one.
+        denominator: corpus.basis.kept,
+        unit: "sessions",
         timeframe: corpus.window,
-        // D-3: the run's coverage travels WITH the claim, not beside it in a
-        // log — O-003's CR-1 was a silent truncation that read as "no more
-        // events".
-        coverage,
+        basis: corpus.basis,
+      });
+
+    // PL ruling 18: `repeated_attempt` ONLY, gated inclusively on the
+    // rule set's minimum. `backtrack` has NO producer this sprint and must
+    // not gain one here: users navigate back constantly, so a single
+    // back-navigation fires on a superset of its target — the D10
+    // conflation this sprint exists to prevent. PL ruling 36 closed the same
+    // door on the CONSUMING side — `backtrack` is not admissible proof of
+    // anything — so "no producer" is no longer the only guard.
+    //
+    // TWO MAGNITUDES, AND THEY ARE NOT INTERCHANGEABLE.
+    //
+    //  - `attempts` is PER-SESSION (PL ruling 31): the greatest number of
+    //    separate visits any ONE kept session made to this surface. That is
+    //    what the rule-set comment "two visits is navigation; three is a
+    //    pattern" is a statement about.
+    //  - `strugglingSessions` is the COHORT: how many kept sessions at this
+    //    origin individually reached that per-session minimum, over
+    //    `basis.kept`.
+    //
+    // The signal carries both because the maximum ALONE is a claim about the
+    // corpus SIZE rather than about the surface: it only ever rises as more
+    // sessions are read, so at `DETECTOR_CORPUS_MAX_SESSIONS` one outlier
+    // would speak for five hundred. The proof predicate gates on the cohort
+    // (`struggleMinStrugglingSessions`); `attempts` stays the number a
+    // founder reads, and is honest because the signal now only exists when a
+    // real cohort struggled.
+    const originVisits = atOrigin.map((walk) => walk.filter((path) => path === origin).length);
+    const attempts = Math.max(...originVisits);
+    const strugglingSessions = originVisits.filter(
+      (visits) => visits >= ruleSet.struggleRepeatedAttemptMin,
+    ).length;
+
+    const signals: EvidenceSignal[] = [];
+    if (attempts >= ruleSet.struggleRepeatedAttemptMin) {
+      signals.push({
+        kind: "struggle",
+        subkind: "repeated_attempt",
+        surface: origin,
+        attempts,
+        // D-7 / §10: the one number the gate's only reachable pass turns on
+        // travels WITH its denominator, like every other count here.
+        strugglingSessions: countOf(strugglingSessions),
       });
     }
+
+    candidates.push({
+      detector: "funnel_dropoff",
+      claimedClass: "confusing",
+      // O-005 D-5, ESC-6: stated in the type, not only implied by `surface`
+      // being non-optional.
+      claimSubject: "surface",
+      // PL ruling 14: the ORIGIN path — where the user got stuck, and the
+      // surface a fix targets.
+      surface: origin,
+      surfaceNormalisationVersion: surfaceVersionOf(kept, origin),
+      signals,
+      // PL ruling 15, declared order: [0] reached the origin, [1] left it
+      // without going anywhere it could have gone (O-005 D-2 — this used to
+      // read "did not reach the destination"; the ORDER survives, only the
+      // SECOND count's meaning changed).
+      counts: [countOf(atOrigin.length), countOf(dropped.length)],
+      timeframe: corpus.window,
+      // D-3: the run's coverage travels WITH the claim, not beside it in a
+      // log — O-003's CR-1 was a silent truncation that read as "no more
+      // events".
+      coverage,
+    });
   }
 
   return {

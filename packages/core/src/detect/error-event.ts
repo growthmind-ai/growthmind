@@ -291,6 +291,10 @@ function candidateOf(
   return {
     detector: DETECTOR,
     claimedClass: CLAIMED_CLASS,
+    // O-005 D-5, ESC-6: this detector's claim is about a surface too — the
+    // one-member union names it rather than leaving it implicit in `surface`
+    // being non-optional.
+    claimSubject: "surface",
     surface,
     surfaceNormalisationVersion: unanimousVersion(group.normalisationVersions),
     signals: group.signals.map((draft) =>
