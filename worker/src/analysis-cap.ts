@@ -31,6 +31,22 @@
  * an edit here, and changing the WINDOW is an edit to the count predicate in
  * `createAnalysisRunsRepo.claimModelCall` — two places, both named.
  *
+ * ── TWELVE CLAIMS IS TWELVE BILLABLE REQUESTS ──────────────────────────────
+ * The number below counts CLAIM ROWS, and a claim is only a true cost ceiling
+ * if a claim can buy exactly one upstream request. It can:
+ * `packages/adapters/src/anthropic/constants.ts:MODEL_CALL_MAX_RETRIES` is `0`,
+ * stated at the `generateObject` call site rather than inherited, and
+ * `packages/adapters/__tests__/anthropic/summariser.test.ts` A6 asserts a
+ * retryable failure invokes the model exactly once. So the worst case a reader
+ * has to compute is the number itself — no retry multiplier, no correction
+ * factor. (Left unset, the AI SDK retries twice by default, which would have
+ * made one claim worth up to three requests and this cap a 3× estimate.)
+ *
+ * The other half of the same arithmetic is time, not money:
+ * `MODEL_REQUEST_TIMEOUT_MS` beside it bounds a single call, and the tick
+ * renders candidates one at a time, so this cap also bounds how long a wholly
+ * unresponsive upstream can hold a project's run row open.
+ *
  * ── EXHAUSTION IS A NAMED STATE, NEVER SILENCE ─────────────────────────────
  * Reaching this limit does not drop candidates. Every candidate past it is
  * still persisted, under `floor_cap_exhausted`, and the run records
