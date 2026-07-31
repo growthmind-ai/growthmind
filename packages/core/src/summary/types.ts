@@ -1,11 +1,15 @@
 // The floor summary's own shapes (O-005 D-1, D-10, FR-F1).
 //
-// NOTHING IN THIS DIRECTORY IS CALLED IN PRODUCTION. There is no worker task,
-// no persistence, no model call, no per-project cap and no delivery path
-// anywhere in this repository; `packages/shared/src/summary/types.ts:26-45`
-// still states that the lane's run table is not built, and that remains true.
-// These types describe the value a renderer returns, and nothing yet asks a
-// renderer for one.
+// THIS DIRECTORY IS CALLED IN PRODUCTION AS OF O-011. The analysis tick calls
+// `renderFloorSummary`, persists what it returns, and reaches the model lane
+// only above that floor — so `source` below is a value a real caller decides
+// and a real row records, not a parameter nobody passes. The run table exists
+// (`packages/db/src/schema/analysis-runs.ts`), the per-project cap is enforced,
+// and a model call happens when a key is configured.
+//
+// WHAT IS STILL TRUE OF THESE TYPES: they describe what a MODEL-FREE render
+// produces. `model_rendered` remains unconstructible here, and the floor
+// remains the destination of every degradation above it.
 //
 // PURE: no clock, no randomness, no I/O, no node builtin — the package-wide
 // property `__tests__/detect/purity.test.ts` asserts over all of `src/`.

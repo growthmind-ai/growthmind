@@ -180,16 +180,15 @@ export type SummaryUsage = z.infer<typeof summaryUsageSchema>;
  * own headers document the same rule: null iff no call was attempted at all
  * for that scope — never merely because a call was attempted and failed.
  *
- * `findings.resolved_model_id` does not hold that rule today. When the
- * summariser port throws instead of returning
- * (`worker/src/tasks/analysis-tick.ts`, the catch arm around the render
- * call), the candidate still reaches the floor with `attempted: true` and
- * `resolvedModelId: null` — the one path where null does not mean "no call
- * was attempted". Three states — no call attempted, a call attempted and
- * failed with a known model id, a call attempted and failed with the model
- * id lost to the throw — collapse into the same stored NULL. Treat a null
- * `findings.resolved_model_id` as ambiguous, not as proof no call was made,
- * until that gap closes.
+ * BOTH COLUMNS HOLD THAT RULE ON EVERY PATH, including the one that has no
+ * result to read an id off. The port is contracted never to throw, but
+ * `worker/src/tasks/analysis-tick.ts` catches a throw anyway, and that
+ * defensive arm attributes the attempt to the model id the composition root
+ * resolved and handed over BESIDE the port (`ConfiguredSummariser`) rather
+ * than writing a null. Its `CallAttribution` is a discriminated union whose
+ * `attempted: true` arm has no room for a null id, so the rule is a compile
+ * property of the lane rather than a claim in a comment. A null on either
+ * column therefore means what it says: no call was attempted for that scope.
  *
  * `analysis_model_calls` (`packages/db/src/schema/analysis-model-calls.ts`)
  * is neither of these rows and carries no `resolved_model_id` column at

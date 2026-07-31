@@ -15,10 +15,23 @@
  *
  * ── ONE GATE STANDS BEFORE THE LADDER, AND IT IS NOT A RUNG ─────────────────
  * A candidate whose `surface` is not already in its normalised form is REFUSED
- * before anything is claimed, sent or written (security audit M-1). It is not a
- * degradation — there is no rung for it, no `floor_*` sentence, and no finding
- * row — because the hazard it answers is not "we could not write this up" but
- * "this value may not leave the process at all". See `surfaceIsSafeToSend`.
+ * before anything is claimed, sent, written or HASHED (security audit M-1). It
+ * is not a degradation — there is no rung for it, no `floor_*` sentence, and no
+ * finding row — because the hazard it answers is not "we could not write this
+ * up" but "this value may not leave the process at all". See
+ * `surfaceIsSafeToSend`.
+ *
+ * ── THE IDENTITY IS DERIVED HERE, ONCE, BEFORE THE CLAIM (ADD v2 AD-20) ─────
+ * Immediately after that gate and before rung 1, `identityFor` calls
+ * `computeFindingSignature` — the product's ONE producer of a signature — and
+ * the value it returns is what the cap claim, the reuse read and the persist
+ * all key on. Content-derived, so the same problem is the same identity across
+ * ticks, across reorderings and across processes; a positional or
+ * tick-prefixed handle would fork every hour and quietly turn a lifetime cap
+ * into a per-tick one. Nothing in `worker/` hashes anything: a second
+ * composition of `signatureTuple` and `sha256Hex` is the D12 fork this
+ * arrangement exists to make impossible. A derivation that throws refuses ONE
+ * candidate and never the run (AD-20.5).
  *
  * ── THE LADDER, IN EXACTLY THIS ORDER (ADD AD-9) ────────────────────────────
  *
@@ -65,7 +78,19 @@
  * silently, forever. Every path out of an opened run therefore closes it:
  * the ordinary end, a spent cap, a candidate the floor refused, a thrown port,
  * and a store that stopped answering. The only path that can leave a `running`
- * row is a close that itself fails, and that one is logged loudly.
+ * row is a close that itself fails; that one is logged loudly, and the
+ * repository's lease (`ANALYSIS_RUN_LEASE_MS`) hands the lane back to a later
+ * tick rather than leaving it jammed.
+ *
+ * ── A CANDIDATE THAT PRODUCED NO FINDING IS A FACT THE RUN ROW CARRIES ──────
+ * Two candidates leave the walk with nothing written: one the surface gate
+ * refused to transmit, one the floor could not phrase. Both are COUNTED ONTO
+ * THE RUN (`candidates_refused`, `candidates_unrenderable`) and not merely into
+ * this process's memory. A run in which every candidate fell out would
+ * otherwise close `completed` / `produced_findings` / `ran_to_completion` over
+ * zero rows — "we lost some" decaying into "we checked everything", SAC-10's
+ * own shape one level down. No floor sentence is invented for them: nothing
+ * honest could be written, so the count is what is stored.
  *
  * ── THE CAP'S EXHAUSTION IS A NAMED STATE, NEVER SILENCE (SAC-10) ───────────
  * Past the cap, candidates are still persisted — under `floor_cap_exhausted` —
@@ -73,12 +98,21 @@
  * "we stopped early" indistinguishable from "there was nothing more to find",
  * which would tell a founder their product is quieter than it is.
  *
+ * "The cap" is TWO ceilings (ADD v2 AD-23) — per project, and per organisation
+ * across all its projects — checked in the one claim statement and refusing
+ * with the one answer. This file therefore has no branch for the difference:
+ * both land on rung 3, both render the same sentence, and both close the run
+ * `cap_exhausted`. See `../analysis-cap.ts` for why one sentence covers two
+ * causes.
+ *
  * ── IDEMPOTENCY IS STRUCTURAL, NOT REMEMBERED (D4/D6) ───────────────────────
  * Two mechanisms, neither of which is a check-then-write: `claimModelCall` is
- * one conditional insert against a unique `(org, project, candidate_key)`, and
+ * one conditional insert against a unique `(org, project, signature)`, and
  * `persist` is one insert against the same tuple on `findings`. A Graphile
  * Worker replay of this task therefore conflicts on both and re-calls no model
- * and mints no second finding.
+ * and mints no second finding — and because the signature is derived from the
+ * candidate's content rather than from its position or the tick's instant, so
+ * does a LATER TICK looking at the same problem.
  *
  * ── THERE IS NO PAYLOAD, AND THAT IS THE VALIDATION ─────────────────────────
  * The task is cron-triggered. `runAnalysisTick` takes dependencies and reads no
@@ -103,6 +137,7 @@ import {
   joinSentences,
   modelSummaryOutputSchema,
   renderFloorSummary,
+  SIGNATURE_TUPLE_VERSION,
   splitSentences,
 } from "@growthmind/core";
 import type {
@@ -112,6 +147,7 @@ import type {
   MeasuredCountRow,
   SignatureLedgerService,
 } from "@growthmind/db";
+import { computeFindingSignature } from "@growthmind/db";
 import type {
   AnalysisOutcome,
   AnalysisStopReason,
@@ -159,28 +195,23 @@ export const ANALYSIS_ACTOR_ID = "system:analysis-tick";
 export const ANALYSIS_ACTOR_ROLE = "system";
 
 /**
- * One gate-passed candidate, with the lane's own handle on it.
- *
- * `candidateKey` is SUPPLIED BY THE LANE and computed nowhere in this sprint
- * (AD-13, D12). It is a retry/dedup handle scoped to
- * `(organization_id, project_id)` — it carries none of the never-deliver-twice
- * or dismissed-forever guarantees, all of which live on O-006's signature
- * ledger. Deriving one here would mint a second computed identity whose inputs
- * nobody keeps stable, which is the exact fork D12 exists to prevent.
- */
-export type AnalysisCandidate = {
-  readonly candidateKey: string;
-  readonly candidate: CandidateFinding;
-};
-
-/**
  * One project's analysis lane, as the source read it.
+ *
+ * THE LANE CARRIES CANDIDATES AND NOTHING ELSE (ADD v2 AD-21). There is no
+ * wrapper and no hand-passed key: this walker DERIVES the identity it consumes,
+ * from the candidate's own content, through the one producer
+ * (`identityFor` below). D11's rule — "when surface A computes a value for
+ * surface B, the single most reliable wiring is B derives it itself" — applied
+ * literally: with the producer of this port still unbuilt, a field it was
+ * supposed to fill would be a wire nobody could prove was connected.
  *
  * `candidates` is in the source's DETERMINISTIC ORDER and is processed in that
  * order, one at a time. Cap exhaustion is only reproducible because it is: a
  * lane that spent its budget on whichever candidates a `Promise.all` happened
  * to resolve first would give a different answer on every run for the same
- * input (ADD §7.5, pinned by W7).
+ * input (ADD §7.5, pinned by W7). Order decides WHICH candidates get the
+ * budget; it decides nothing about their identity, which is content-derived and
+ * therefore survives a reordering unchanged (D12).
  *
  * `sessionsConsidered` exists so a ZERO is never guessed at. An empty
  * `candidates` with sessions considered means "we looked and nothing was solid
@@ -193,7 +224,7 @@ export type AnalysisLane = {
   readonly organizationId: string;
   readonly organizationName: string;
   readonly projectId: string;
-  readonly candidates: readonly AnalysisCandidate[];
+  readonly candidates: readonly CandidateFinding[];
   readonly sessionsConsidered: number;
 };
 
@@ -238,20 +269,59 @@ export type FindingsRepoFor = (ctx: TenantContext) => FindingsRepo;
 export type AnalysisRunsRepoFor = (ctx: TenantContext) => AnalysisRunsRepo;
 export type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
 
+/**
+ * The written-explanation capability, as the composition root configured it:
+ * the port, AND the id of the model it addresses.
+ *
+ * ONE VALUE, NOT TWO FIELDS THAT MUST AGREE. The id is not decoration — it is
+ * what keeps `resolved_model_id`'s documented rule true on EVERY path. The port
+ * is contracted never to throw and carries `resolvedModelId` on both arms of
+ * its result, but a port somebody breaks anyway lands in this file's defensive
+ * catch, and until this pairing existed that path wrote `attempted: true` with
+ * a null id — collapsing three states (no call, a failed call whose model we
+ * know, a failed call whose model we lost) into one stored NULL, on both
+ * `findings.resolved_model_id` and, through the run tally, on
+ * `analysis_runs.resolved_model_id`.
+ *
+ * Pairing them structurally rather than passing a second nullable field is the
+ * D11 answer: there is no arrangement of these dependencies in which a port
+ * exists and the id it addresses does not, so no wire can be left unconnected.
+ * `worker/src/index.ts` already resolves the id (`GROWTHMIND_COLDSTART_MODEL ??
+ * DEFAULT_COLDSTART_MODEL`) to build the provider — it hands over the same
+ * value it gave the SDK, so the id a row names is the id the call addressed.
+ */
+export type ConfiguredSummariser = {
+  readonly port: SessionSummariser;
+  readonly resolvedModelId: string;
+};
+
 export interface AnalysisTickDeps {
   lanes: AnalysisLaneSource;
   /** `null` ⇒ no written-explanation capability is configured on this
    * installation. THE BRANCH, selected at the composition root (AD-15) — this
    * file reads no environment variable by any route, and a null here is a
    * decision rather than a caught failure. */
-  summariser: SessionSummariser | null;
+  summariser: ConfiguredSummariser | null;
   findingsFor: FindingsRepoFor;
   runsFor: AnalysisRunsRepoFor;
   ledgerFor: SignatureLedgerFor;
-  /** The per-project first-check limit on written explanations. Passed in from
-   * `./analysis-cap.ts` by the composition root; policy never leaks into
-   * `packages/db`, whose claim takes `cap` as a parameter. */
-  cap: number;
+  /** The per-project first-check limit on written explanations
+   * (`COLDSTART_MODEL_CALL_CAP`). Passed in from `../analysis-cap.ts` by the
+   * composition root; policy never leaks into `packages/db`, whose claim takes
+   * both ceilings as parameters. */
+  projectCap: number;
+  /**
+   * The organisation-wide limit on written explanations, summed across every
+   * project the organisation has (`ORG_MODEL_CALL_CAP`, ADD AD-23).
+   *
+   * A SECOND CEILING, NOT A SECOND RUNG. It is handed to the same
+   * `claimModelCall` as `projectCap` and refused by the same `cap_exhausted`
+   * answer, so the ladder below has no branch for it and the customer reads the
+   * same `floor_cap_exhausted` sentence either way. Without it the per-project
+   * cap bounds nothing in aggregate: no limit exists on how many projects an
+   * organisation creates.
+   */
+  organizationCap: number;
   /** The only way this handler reads time. A fake clock in a test is therefore
    * total: nothing here calls `Date.now()` or `new Date()` by any other route,
    * so the same lane renders and records identically forever. */
@@ -276,13 +346,17 @@ export interface AnalysisTickSummary {
   findingsPersisted: number;
   /** Candidates the floor itself refused to render, so nothing was written for
    * them. Counted separately because it is neither a finding nor a fault of the
-   * model lane — see `floorTextFor`. */
+   * model lane — see `floorTextFor`. Also persisted per run on
+   * `analysis_runs.candidates_unrenderable`: this number is the tick's own
+   * report, and a number that lives only here dies with the process. */
   candidatesUnrenderable: number;
   /** Candidates refused BEFORE the ladder because their surface was not in its
    * normalised form (security audit M-1). Counted apart from every other number
    * here: nothing was claimed, nothing was sent and nothing was written for
    * them, and folding them into `candidatesUnrenderable` would read as "the
-   * floor could not phrase it" when the truth is "we would not transmit it". */
+   * floor could not phrase it" when the truth is "we would not transmit it".
+   * Persisted per run on `analysis_runs.candidates_refused`, kept apart there
+   * for the same reason. */
   candidatesRefused: number;
   /** Model calls this tick actually made. */
   modelCallsAttempted: number;
@@ -297,18 +371,39 @@ type LaneOutcome = "completed" | "failed" | "already_running";
  *
  * A FAILED call still addressed a model and still consumed the cap, so
  * `resolvedModelId` travels on both arms (`shared/src/summary/types.ts:173-182`)
- * and `usage` may be reported on either. `attempted` is the field that decides
- * whether a `null` model id means "no call was made" or "a call was made and
- * the port could not tell us which model it reached".
+ * and `usage` may be reported on either.
+ *
+ * A DISCRIMINATED UNION, so `attempted ⇒ a model id` is a COMPILE rule rather
+ * than a comment. `findings.resolved_model_id` and `analysis_runs.
+ * resolved_model_id` both document "null iff no call was attempted", and this
+ * type is what makes that documentation true: there is no value of this type
+ * carrying `attempted: true` and a null id, so no branch below — including the
+ * defensive catch around a port contracted never to throw — can write the
+ * ambiguous NULL by forgetting to. The alternative fix, weakening the two
+ * columns' headers to "null is ambiguous", would have made a stored fact
+ * unreadable forever to save one field on a dependency.
  */
-type CallAttribution = {
-  readonly attempted: boolean;
-  readonly resolvedModelId: string | null;
-  readonly usage: SummaryUsage;
-};
+type CallAttribution =
+  | { readonly attempted: false; readonly resolvedModelId: null; readonly usage: SummaryUsage }
+  | { readonly attempted: true; readonly resolvedModelId: string; readonly usage: SummaryUsage };
 
 /** No call was made at all: the no-key rung, and the cap-refused rung. */
 const NO_CALL: CallAttribution = { attempted: false, resolvedModelId: null, usage: {} };
+
+/**
+ * ONE CANDIDATE'S IDENTITY, derived once per candidate and used by all three
+ * sites that key on it — the cap claim, the reuse read, and the persist
+ * (ADD v2 AD-20).
+ *
+ * Carried as a value from the derivation site rather than recomputed at each
+ * site: three calls could not disagree today, but a value computed once and
+ * passed is the shape in which they can never disagree tomorrow. Nothing here
+ * hashes anything — see `identityFor`.
+ */
+type CandidateIdentity = {
+  readonly signature: string;
+  readonly signatureVersion: number;
+};
 
 /** Everything one candidate contributes to its finding row and to the run. */
 type RenderedSummary = {
@@ -328,13 +423,20 @@ type RenderedSummary = {
  * distinct member is what keeps a replay from looking like a fresh success.
  */
 type CandidateAction =
-  | { readonly kind: "persist"; readonly summary: RenderedSummary }
+  | {
+      readonly kind: "persist";
+      /** The identity this row is written under — the SAME value the claim
+       * above it was taken on, carried rather than re-derived. */
+      readonly identity: CandidateIdentity;
+      readonly summary: RenderedSummary;
+    }
   | { readonly kind: "reuse" }
   | { readonly kind: "unrenderable" }
-  /** The surface gate refused this candidate before the ladder began. A member
-   * of its own, never `unrenderable`: the two are told apart by a reader of the
-   * logs and of the tick summary, and collapsing them would hide a transmission
-   * refusal inside a rendering complaint. */
+  /** The surface gate refused this candidate before the ladder began — or its
+   * identity could not be derived at all (AD-20.5). A member of its own, never
+   * `unrenderable`: the two are told apart by a reader of the logs and of the
+   * tick summary, and collapsing them would hide a transmission refusal inside
+   * a rendering complaint. */
   | { readonly kind: "refused" };
 
 /**
@@ -438,12 +540,12 @@ function summariseInputFor(candidate: CandidateFinding): SummariseInput {
  * notices in the log is the honest answer, and it is the direction the floor
  * itself already chose for every refusal above.
  *
- * THE MESSAGE NAMES THE CANDIDATE KEY AND THE CAUSE, NEVER THE CANDIDATE. A
+ * THE MESSAGE NAMES THE SIGNATURE AND THE CAUSE, NEVER THE CANDIDATE. A
  * refusal's own text can name a page path or a count, and neither is a fact
  * about this codebase — the same discipline as `floor.ts:126-129`.
  */
 function floorTextFor(
-  candidateKey: string,
+  signature: string,
   candidate: CandidateFinding,
   source: FloorSummarySource,
   logger: AnalysisLogger,
@@ -452,7 +554,7 @@ function floorTextFor(
     return renderFloorSummary({ candidate, source });
   } catch (error) {
     logger.error(
-      `analysis tick: candidate ${candidateKey} could not be written up even without a model, so nothing was recorded for it — ${describeError(error)}`,
+      `analysis tick: candidate ${signature} could not be written up even without a model, so nothing was recorded for it — ${describeError(error)}`,
     );
     return null;
   }
@@ -490,29 +592,98 @@ function floorTextFor(
  * candidate the gate refused must not cost this project every other candidate
  * (D8 isolation). It is counted, so the refusal is visible rather than silent.
  *
- * THE MESSAGE NAMES THE CANDIDATE KEY AND THE CAUSE, NEVER THE SURFACE. The
+ * THE MESSAGE NAMES THE POSITION AND THE CAUSE, NEVER THE SURFACE. The
  * offending value IS the suspected secret, and a log line is a third place it
- * would then live. Same discipline as `floorTextFor` above and
- * `core/src/summary/output-schema.ts:28-32`.
+ * would then live. It cannot name a signature either: this gate stands BEFORE
+ * the derivation, precisely because deriving an identity from a surface that
+ * may be a secret is one of the two egress points it exists to prevent
+ * (`identityFor` hashes it into a permanent value). The candidate's position in
+ * the lane is what remains — enough to tell two refusals in one tick apart, and
+ * a fact about this walk rather than about somebody's product. Same discipline
+ * as `floorTextFor` above and `core/src/summary/output-schema.ts:28-32`.
  */
 function surfaceIsSafeToSend(
-  candidateKey: string,
+  position: number,
+  projectId: string,
   candidate: CandidateFinding,
   logger: AnalysisLogger,
 ): boolean {
   if (isNormalisedUrlPath(candidate.surface)) return true;
 
   logger.error(
-    `analysis tick: candidate ${candidateKey} arrived with a page path that is not in the form this product stores, so it was not sent to a model, not written down, and nothing was recorded for it`,
+    `analysis tick: candidate ${String(position)} of project ${projectId} arrived with a page path that is not in the form this product stores, so it was not sent to a model, not written down, and nothing was recorded for it`,
   );
   return false;
 }
 
+/**
+ * THE FINDING'S IDENTITY, DERIVED ONCE PER CANDIDATE (ADD v2 AD-20). `null`
+ * refuses the candidate.
+ *
+ * NO NEW HASHING. `computeFindingSignature` (`@growthmind/db`, which composes
+ * `signatureTuple` from `@growthmind/core` and `sha256Hex`) is the ONE producer
+ * of a signature in this product, and this function does nothing but call it
+ * and pair the answer with the tuple version that produced it. A second
+ * composition of those two pieces — here or anywhere — would be a second home
+ * for identity, and two homes for one identity is the D12 fork every guarantee
+ * in this lane hangs off avoiding.
+ *
+ * WHY THE WALKER DERIVES IT RATHER THAN RECEIVING IT (D11, AD-21). The walker
+ * is the CONSUMER: it claims the cap on this value, reads back a prior finding
+ * on this value, and persists on this value. A key handed in by the lane source
+ * would be a wire between an unbuilt producer and three consumers, and a wire
+ * nobody can drive end to end is a wire that is already broken. Deriving it
+ * here leaves nothing to sever.
+ *
+ * WHY IT IS DERIVED FROM CONTENT AND NOT FROM POSITION. An ordinal, or a
+ * tick-instant prefix, mints a fresh identity on every tick: the cap's unique
+ * index would match nothing and a lifetime ceiling would silently become a
+ * per-tick one, while `findBySignature`'s reuse rung never hit. Content
+ * derivation is what makes "one claim per distinct problem, for the lifetime of
+ * this project" a property of the schema rather than of a comment.
+ *
+ * FAIL DIRECTION: REFUSE THIS CANDIDATE, NEVER ABORT THE RUN (AD-20.5, D8).
+ * `computeFindingSignature` throws on a surface that is not already its own
+ * normalised form. `surfaceIsSafeToSend` refuses exactly those candidates one
+ * step earlier, so this throw is UNREACHABLE today — it is caught anyway,
+ * because a per-candidate fault that travels as a throw is a fault that costs
+ * this project every candidate after it. The message names the cause and the
+ * position, never the surface, for `surfaceIsSafeToSend`'s reason.
+ */
+function identityFor(
+  position: number,
+  projectId: string,
+  candidate: CandidateFinding,
+  logger: AnalysisLogger,
+): CandidateIdentity | null {
+  try {
+    return {
+      signature: computeFindingSignature({
+        projectId,
+        surface: candidate.surface,
+        symptomClass: candidate.finalClass,
+        evidenceShape: candidate.evidenceShape,
+      }),
+      signatureVersion: SIGNATURE_TUPLE_VERSION,
+    };
+  } catch (error) {
+    logger.error(
+      `analysis tick: candidate ${String(position)} of project ${projectId} could not be given a permanent identity, so nothing was claimed, sent or written for it — ${describeError(error)}`,
+    );
+    return null;
+  }
+}
+
 /** One floor rung, assembled. `floor.source` is carried through exactly as the
  * renderer returned it — this never re-states the cause it asked for. */
-function floorAction(floor: FloorSummary, attribution: CallAttribution): CandidateAction {
+function floorAction(
+  floor: FloorSummary,
+  attribution: CallAttribution,
+  identity: CandidateIdentity,
+): CandidateAction {
   return {
     kind: "persist",
+    identity,
     summary: {
       summarySource: floor.source,
       headline: floor.headline,
@@ -537,18 +708,29 @@ async function planCandidate(
   runs: AnalysisRunsRepo,
   findings: FindingsRepo,
   run: AnalysisRunRecord,
-  item: AnalysisCandidate,
+  candidate: CandidateFinding,
+  position: number,
   tickAt: Date,
 ): Promise<CandidatePlan> {
-  const { candidate, candidateKey } = item;
-
   // ── GATE 0: THE SURFACE. NOT A RUNG — it stands before the whole ladder, and
   //    before rung 1 rather than beside it, because the no-key lane persists a
-  //    finding too and `persist` is an egress point in its own right. Refusing
-  //    here is the only position from which zero claims, zero calls and zero
-  //    rows are all guaranteed by construction rather than by every branch below
-  //    remembering to check. See `surfaceIsSafeToSend`.
-  if (!surfaceIsSafeToSend(candidateKey, candidate, deps.logger)) {
+  //    finding too and `persist` is an egress point in its own right. It also
+  //    stands before the IDENTITY DERIVATION below, which hashes the surface
+  //    into a permanent value and is therefore an egress point of the same kind.
+  //    Refusing here is the only position from which zero claims, zero calls,
+  //    zero rows and zero signatures are all guaranteed by construction rather
+  //    than by every branch below remembering to check. See
+  //    `surfaceIsSafeToSend`.
+  if (!surfaceIsSafeToSend(position, lane.projectId, candidate, deps.logger)) {
+    return { capExhausted: false, action: { kind: "refused" } };
+  }
+
+  // ── THE IDENTITY, DERIVED ONCE AND BEFORE THE CLAIM (AD-20). Every site below
+  //    that keys on this candidate — the cap claim, the reuse read, the
+  //    persist — names THIS value, so the three can never disagree. A refusal
+  //    here is a per-candidate refusal and never a run abort (AD-20.5).
+  const identity = identityFor(position, lane.projectId, candidate, deps.logger);
+  if (identity === null) {
     return { capExhausted: false, action: { kind: "refused" } };
   }
 
@@ -557,10 +739,11 @@ async function planCandidate(
     attribution: CallAttribution,
     capExhausted = false,
   ): CandidatePlan => {
-    const floor = floorTextFor(candidateKey, candidate, source, deps.logger);
+    const floor = floorTextFor(identity.signature, candidate, source, deps.logger);
     return {
       capExhausted,
-      action: floor === null ? { kind: "unrenderable" } : floorAction(floor, attribution),
+      action:
+        floor === null ? { kind: "unrenderable" } : floorAction(floor, attribution, identity),
     };
   };
 
@@ -571,15 +754,29 @@ async function planCandidate(
     return floorPlanFor("floor_no_key_configured", NO_CALL);
   }
 
-  // ── RUNG 2: THE CAP CLAIM. One conditional insert, NO prior read (D6). The
-  //    count predicate and the unique index are evaluated together, so two
+  // The port AND the id it addresses, taken together and once. Every branch
+  // below that records an attempt attributes it to THIS id — see
+  // `ConfiguredSummariser`.
+  const summariser = deps.summariser;
+
+  // ── RUNG 2: THE CAP CLAIM. One conditional insert, NO prior read (D6). Both
+  //    count predicates and the unique index are evaluated together, so two
   //    overlapping runs cannot both conclude there is budget, and its three
   //    answers stay distinguishable without a check-then-write window.
+  //
+  //    TWO CEILINGS, ONE RUNG (AD-23). The per-project limit and the
+  //    organisation-wide one are handed over together and refuse with the same
+  //    answer, so there is no fourth rung and no second sentence: which ceiling
+  //    stopped a candidate is not a distinction the shipped vocabulary can
+  //    express, and inventing one here would author a customer-facing string
+  //    outside `@growthmind/shared`.
   const claim = await runs.claimModelCall({
     projectId: lane.projectId,
     runId: run.id,
-    candidateKey,
-    cap: deps.cap,
+    signature: identity.signature,
+    signatureVersion: identity.signatureVersion,
+    projectCap: deps.projectCap,
+    organizationCap: deps.organizationCap,
     at: tickAt,
   });
 
@@ -593,11 +790,14 @@ async function planCandidate(
     // ── RUNG 4: ALREADY CLAIMED. A previous run — or a Graphile Worker replay
     //    of this very job — owns this candidate's budget. Calling again would
     //    be billed twice and would overwrite text a customer may already have
-    //    read, so this rung makes NO call under any circumstance.
-    const existing = await findings.findByCandidateKey(lane.projectId, candidateKey);
+    //    read, so this rung makes NO call under any circumstance. With a
+    //    content-derived identity this is also the rung that makes "one finding
+    //    per problem per project" hold across TICKS and not merely across a
+    //    replay: a later tick re-deriving the same signature lands here.
+    const existing = await findings.findBySignature(lane.projectId, identity.signature);
     if (existing !== null) {
       deps.logger.info(
-        `analysis tick: candidate ${candidateKey} was already written up by an earlier run, so this tick left it alone`,
+        `analysis tick: candidate ${identity.signature} was already written up by an earlier run, so this tick left it alone`,
       );
       return { capExhausted: false, action: { kind: "reuse" } };
     }
@@ -609,7 +809,7 @@ async function planCandidate(
     // model id is unknown to us — the attempt was another run's, and inventing
     // an id would attribute text to a model nobody can vouch for.
     deps.logger.error(
-      `analysis tick: candidate ${candidateKey} was claimed by an earlier run that recorded no finding, so it is being written up without one`,
+      `analysis tick: candidate ${identity.signature} was claimed by an earlier run that recorded no finding, so it is being written up without one`,
     );
     return floorPlanFor("floor_model_call_failed", NO_CALL);
   }
@@ -617,7 +817,7 @@ async function planCandidate(
   // ── RUNG 5: THE CALL. The claim is spent from here on, whatever happens.
   let result: SummaryRenderResult;
   try {
-    result = await deps.summariser.render(summariseInputFor(candidate));
+    result = await summariser.port.render(summariseInputFor(candidate));
   } catch (error) {
     // The port is CONTRACTED never to throw — it degrades by return value. A
     // port somebody breaks anyway must not become a run stuck `running`, and
@@ -625,14 +825,17 @@ async function planCandidate(
     // returned `call_failed` would. The thrown text is OURS to log and never
     // the customer's to read.
     deps.logger.error(
-      `analysis tick: candidate ${candidateKey} threw while being written up — ${describeError(error)}`,
+      `analysis tick: candidate ${identity.signature} threw while being written up — ${describeError(error)}`,
     );
     return floorPlanFor("floor_model_call_failed", {
       attempted: true,
-      // No result means no model id. This is the ONE path where `null` does not
-      // mean "no call was attempted"; the attempt itself is recorded on the
-      // claim row in `analysis_model_calls`, which is its home.
-      resolvedModelId: null,
+      // ATTRIBUTED, even here. A throw loses the RESULT, not the knowledge of
+      // which model was addressed — the composition root resolved that id and
+      // handed it over beside the port, so this path records the same id every
+      // other attempt does. Writing `null` instead would make an attempted call
+      // indistinguishable from one that was never made, on two columns whose
+      // headers promise otherwise (AD-5).
+      resolvedModelId: summariser.resolvedModelId,
       usage: {},
     });
   }
@@ -650,7 +853,7 @@ async function planCandidate(
     const source: FloorSummarySource =
       result.code === "output_invalid" ? "floor_model_output_invalid" : "floor_model_call_failed";
     deps.logger.info(
-      `analysis tick: candidate ${candidateKey} has no written explanation — ${result.message}`,
+      `analysis tick: candidate ${identity.signature} has no written explanation — ${result.message}`,
     );
     return floorPlanFor(source, attribution);
   }
@@ -665,7 +868,7 @@ async function planCandidate(
   });
   if (!parsed.success) {
     deps.logger.info(
-      `analysis tick: candidate ${candidateKey} came back in a shape that could not be read as a written explanation`,
+      `analysis tick: candidate ${identity.signature} came back in a shape that could not be read as a written explanation`,
     );
     return floorPlanFor("floor_model_output_invalid", attribution);
   }
@@ -678,7 +881,7 @@ async function planCandidate(
   const sentences = splitSentences(parsed.data.context);
   if (sentences === null) {
     deps.logger.info(
-      `analysis tick: candidate ${candidateKey} came back as prose that could not be checked one sentence at a time, so it was left out`,
+      `analysis tick: candidate ${identity.signature} came back as prose that could not be checked one sentence at a time, so it was left out`,
     );
     return floorPlanFor("floor_model_text_rejected", attribution);
   }
@@ -697,7 +900,7 @@ async function planCandidate(
       .map((offence) => `${offence.sac}@${String(offence.element)}`)
       .join(", ");
     deps.logger.info(
-      `analysis tick: candidate ${candidateKey} had a written explanation that did not pass the accuracy check (${verdict.refusal}${offences === "" ? "" : `: ${offences}`}), so it was left out`,
+      `analysis tick: candidate ${identity.signature} had a written explanation that did not pass the accuracy check (${verdict.refusal}${offences === "" ? "" : `: ${offences}`}), so it was left out`,
     );
     return floorPlanFor("floor_model_text_rejected", attribution);
   }
@@ -708,6 +911,7 @@ async function planCandidate(
     capExhausted: false,
     action: {
       kind: "persist",
+      identity,
       summary: {
         summarySource: "model_rendered",
         headline: parsed.data.headline,
@@ -726,22 +930,28 @@ async function planCandidate(
  * identity that may be delivered again — recoverable — where a propagated
  * failure would cost the run every candidate after this one.
  *
- * `recordSignature` is the ONLY ledger entry point this lane may call, and the
- * ONLY producer of a signature (FR-I(e)). Nothing here hashes anything: the
- * service composes `signatureTuple` and `sha256Hex` itself, and a second
- * implementation of that composition is exactly the fork D12 names.
+ * `recordSignature` is the ONLY ledger entry point this lane may call, and it
+ * shares the signature's ONE producer with `identityFor` above — the service
+ * composes `signatureTuple` and `sha256Hex` itself, `identityFor` calls that
+ * same `computeFindingSignature`, and neither re-implements the hash. The row
+ * this lane just persisted and the ledger row written here therefore carry the
+ * SAME signature by construction rather than by two derivations agreeing.
+ *
+ * `signature` is passed in only so the log line can name the identity the
+ * failure is about — nothing here derives it a second time.
  */
 async function recordIdentity(
   ledger: SignatureLedgerService,
   lane: AnalysisLane,
-  item: AnalysisCandidate,
+  candidate: CandidateFinding,
+  signature: string,
   logger: AnalysisLogger,
 ): Promise<void> {
   try {
-    await ledger.recordSignature(lane.projectId, item.candidate);
+    await ledger.recordSignature(lane.projectId, candidate);
   } catch (error) {
     logger.error(
-      `analysis tick: candidate ${item.candidateKey} was recorded as a finding but its identity could not be filed — ${describeError(error)}`,
+      `analysis tick: candidate ${signature} was recorded as a finding but its identity could not be filed — ${describeError(error)}`,
     );
   }
 }
@@ -786,7 +996,10 @@ function applyAttribution(tally: RunTally, attribution: CallAttribution): void {
   tally.modelCallsAttempted += 1;
   // The first model actually addressed. `null` on a closed run therefore means
   // no call was attempted AT ALL — never that one was attempted and failed
-  // (AD-5, `shared/src/summary/types.ts:173-182`).
+  // (AD-5, `shared/src/summary/types.ts:173-182`). That holds because
+  // `CallAttribution`'s `attempted: true` arm cannot carry a null id: this
+  // aggregate is only as true as its inputs, and a run whose every call threw
+  // used to close with `modelCallsAttempted > 0` beside a null model id.
   tally.resolvedModelId ??= attribution.resolvedModelId;
   tally.tokensIn = addReported(tally.tokensIn, attribution.usage.inputTokens);
   tally.tokensOut = addReported(tally.tokensOut, attribution.usage.outputTokens);
@@ -835,6 +1048,15 @@ async function closeRun(
       stopReason,
       finishedAt: deps.now(),
       modelCallsAttempted: tally.modelCallsAttempted,
+      // THE CANDIDATES THAT PRODUCED NO FINDING, MADE DURABLE. Counted in
+      // memory during the walk and written here, because a tally that dies with
+      // the process leaves a run reporting `produced_findings` /
+      // `ran_to_completion` over zero rows — "we lost some" decaying into "we
+      // checked everything", which is SAC-10's shape one level down. No floor
+      // sentence is invented for them: the count is the fact, and the refusal
+      // to phrase what could not honestly be phrased stands.
+      candidatesUnrenderable: tally.unrenderable,
+      candidatesRefused: tally.refused,
       resolvedModelId: tally.resolvedModelId,
       tokensIn: tally.tokensIn,
       tokensOut: tally.tokensOut,
@@ -843,8 +1065,15 @@ async function closeRun(
       failureReason: status === "failed" ? CHECK_DID_NOT_FINISH : null,
     });
   } catch (error) {
+    // NOT "this may block the next check" — that was true before the lease
+    // landed. `analysis_runs` now hands a `running` row back to the next tick
+    // once it is older than `ANALYSIS_RUN_LEASE_MS` (45 minutes, deliberately
+    // shorter than this task's hourly cron), which closes it `failed` and
+    // reopens the lane. So the cost of this fault is bounded and known: this
+    // run's own verdict is lost, and the row reads as an abandoned run rather
+    // than as what actually happened.
     deps.logger.error(
-      `analysis tick: project ${lane.projectId} finished but its run could not be closed, so it may block the next check — ${describeError(error)}`,
+      `analysis tick: project ${lane.projectId} finished but its run could not be closed, so this check's own record of what it did is lost and a later check will reclaim the run as abandoned — ${describeError(error)}`,
     );
   }
 }
@@ -890,8 +1119,23 @@ async function runLane(
     // ONE AT A TIME, IN THE SOURCE'S ORDER. Never `Promise.all`: the cap is
     // spent in order, and a lane whose budget went to whichever candidate
     // resolved first would answer differently on every run for one input.
-    for (const item of lane.candidates) {
-      const plan = await planCandidate(deps, lane, runs, findings, run, item, tickAt);
+    //
+    // The position is carried for LOG LINES ONLY (see `surfaceIsSafeToSend`) —
+    // it names which candidate of this walk a refusal is about, at a point where
+    // no safe stable identifier exists yet, and it is 1-based because a person
+    // reads it. Nothing keys on it: a candidate's position is exactly the churny
+    // input AD-20 removed from its identity.
+    for (const [index, candidate] of lane.candidates.entries()) {
+      const plan = await planCandidate(
+        deps,
+        lane,
+        runs,
+        findings,
+        run,
+        candidate,
+        index + 1,
+        tickAt,
+      );
 
       // RECORDED BEFORE ANYTHING ELSE CAN GO WRONG. A spent cap is a fact about
       // the claim, and it must survive a floor refusal, a store failure, or
@@ -905,10 +1149,11 @@ async function runLane(
       }
 
       if (plan.action.kind === "refused") {
-        // Already logged by `surfaceIsSafeToSend`. Counted, never silent — and
-        // it does NOT fail the run: one candidate the gate refused must not
-        // cost this project every other candidate (D8 isolation). Kept apart
-        // from `unrenderable` all the way to the tick summary.
+        // Already logged by `surfaceIsSafeToSend` or by `identityFor`. Counted,
+        // never silent — and it does NOT fail the run: one candidate the gate
+        // refused, or one whose identity could not be minted, must not cost this
+        // project every other candidate (D8 isolation). Kept apart from
+        // `unrenderable` all the way to the tick summary.
         tally.refused += 1;
         continue;
       }
@@ -922,28 +1167,39 @@ async function runLane(
       }
 
       const rendered = plan.action.summary;
+      const identity = plan.action.identity;
       applyAttribution(tally, rendered.attribution);
 
-      // ONE INSERT AGAINST THE UNIQUE `(org, project, candidate_key)` — never a
+      // ONE INSERT AGAINST THE UNIQUE `(org, project, signature)` — never a
       // check-then-write. A replay conflicts and reads back the row it already
       // wrote, which is what makes retry safety a property of this statement
-      // rather than of the order the candidates happened to arrive in (D4).
+      // rather than of the order the candidates happened to arrive in (D4). The
+      // signature is the one the claim above was taken on, carried on the plan
+      // and not re-derived here.
       await findings.persist({
         projectId: lane.projectId,
         runId: run.id,
-        candidateKey: item.candidateKey,
+        signature: identity.signature,
+        signatureVersion: identity.signatureVersion,
         summarySource: rendered.summarySource,
         headline: rendered.headline,
         context: rendered.context,
-        finalClass: item.candidate.finalClass,
-        surface: item.candidate.surface,
-        surfaceNormalisationVersion: surfaceNormalisationVersionFor(item, deps.logger),
-        counts: toCountRows(item.candidate),
-        confidenceBasis: item.candidate.ranking.confidenceBasis,
-        windowStart: item.candidate.timeframe.start,
-        windowEnd: item.candidate.timeframe.end,
-        evidenceShape: item.candidate.evidenceShape,
-        evidenceShapeVersion: item.candidate.evidenceShapeVersion,
+        finalClass: candidate.finalClass,
+        surface: candidate.surface,
+        // COPIED, NOT SUBSTITUTED. The column is nullable and the candidate's
+        // own `null` means "no normaliser version was recorded" — a fact, and
+        // one this file must not overwrite. It previously wrote `0` there,
+        // which the candidate contract allows a producer to emit as a REAL
+        // version (`core/src/findings/candidate.ts:93` is `.nullable()` and not
+        // `.positive()`), so absence and v0 became one stored value on a column
+        // that feeds D12 identity comparisons.
+        surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
+        counts: toCountRows(candidate),
+        confidenceBasis: candidate.ranking.confidenceBasis,
+        windowStart: candidate.timeframe.start,
+        windowEnd: candidate.timeframe.end,
+        evidenceShape: candidate.evidenceShape,
+        evidenceShapeVersion: candidate.evidenceShapeVersion,
         resolvedModelId: rendered.attribution.resolvedModelId,
         // `?? null` — NEVER `?? 0`. A candidate the model touched but did not
         // meter must not look identical to one that cost nothing (FR-M9).
@@ -954,7 +1210,7 @@ async function runLane(
       tally.findingsPersisted += 1;
 
       // AFTER the finding is durable, and isolated from it (AD-1, D8).
-      await recordIdentity(ledger, lane, item, deps.logger);
+      await recordIdentity(ledger, lane, candidate, identity.signature, deps.logger);
     }
   } catch (error) {
     // A candidate's write, a claim, or a reuse read failed mid-run. The work
@@ -990,35 +1246,6 @@ async function runLane(
   summary.candidatesRefused += tally.refused;
   summary.modelCallsAttempted += tally.modelCallsAttempted;
   return "completed";
-}
-
-/**
- * `findings.surface_normalisation_version` is NOT NULL, while a candidate may
- * carry `null` there — "a row written before versions were recorded"
- * (`core/src/findings/candidate.ts:92`). The two cannot both be honoured, so
- * this states which and why, in one place.
- *
- * `0` is the persisted spelling of "no normaliser version was recorded". It is
- * deliberately NOT `URL_PATH_NORMALISATION_VERSION`: claiming the current
- * normaliser produced a surface nobody recorded a version for would assert a
- * fact this code cannot establish, and that assertion would then be baked into
- * every later comparison a version exists to make possible (D12). Dropping the
- * finding instead was the other option and is worse — the version is provenance
- * about the surface, not part of the claim, and no finding should be lost over
- * it.
- *
- * TODO(the corpus-reader heir of ADD AD-0): make the column nullable and delete
- * this function. The heir is the first producer that can actually emit a null,
- * and it is the migration's natural owner.
- */
-function surfaceNormalisationVersionFor(item: AnalysisCandidate, logger: AnalysisLogger): number {
-  const version = item.candidate.surfaceNormalisationVersion;
-  if (version !== null) return version;
-
-  logger.info(
-    `analysis tick: candidate ${item.candidateKey} carries no record of which path normaliser produced its surface`,
-  );
-  return 0;
 }
 
 /**
@@ -1078,7 +1305,11 @@ export async function runAnalysisTick(deps: AnalysisTickDeps): Promise<AnalysisT
   }
 
   deps.logger.info(
-    `analysis tick: lanes ${String(summary.lanesConsidered)}, checked ${String(summary.lanesRun)} (${String(summary.lanesFailed)} did not finish), already running ${String(summary.lanesAlreadyRunning)}, errored ${String(summary.lanesErrored)}, findings ${String(summary.findingsPersisted)}, written up ${String(summary.modelCallsAttempted)}, not written up at all ${String(summary.candidatesUnrenderable)}, turned away before we looked at them ${String(summary.candidatesRefused)}`,
+    // `modelCallsAttempted` counts ATTEMPTS, not successes: a call that failed,
+    // came back unreadable or was refused by the accuracy check is counted here
+    // and was not written up. Labelling it "written up" overstated every one of
+    // those, on the one line a reader uses to see what a tick did.
+    `analysis tick: lanes ${String(summary.lanesConsidered)}, checked ${String(summary.lanesRun)} (${String(summary.lanesFailed)} did not finish), already running ${String(summary.lanesAlreadyRunning)}, errored ${String(summary.lanesErrored)}, findings ${String(summary.findingsPersisted)}, asked a model to write up ${String(summary.modelCallsAttempted)}, not written up at all ${String(summary.candidatesUnrenderable)}, turned away before we looked at them ${String(summary.candidatesRefused)}`,
   );
 
   return summary;

@@ -180,6 +180,25 @@ export {
   type FloorSummarySource,
 } from "./summary/types";
 
+// --- O-011: the model lane's output shape, sentence join, and SAC guard ------
+//
+// The three functions are exported because the model lane's callers live
+// outside this package: `worker` renders through the port and must judge what
+// comes back before persisting it. Each has its mirroring
+// `__tests__/summary/output-schema.test.ts` and is called there by name, which
+// is what `coverage.test.ts` requires of every barrel-exported function.
+export {
+  modelSummaryOutputSchema,
+  splitSentences,
+  joinSentences,
+  guardModelText,
+  type ModelSummaryOutput,
+  type GuardedSacId,
+  type GuardRefusal,
+  type GuardVerdict,
+  type SacOffence,
+} from "./summary/output-schema";
+
 // --- O-007 -------------------------------------------------------------------
 export {
   scanResidualPii,

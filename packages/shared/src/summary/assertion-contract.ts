@@ -29,11 +29,17 @@
 // enforced, and a row with no enforcing test cannot be written at all — the
 // tuple type below requires at least one citation.
 //
-// NO ROW MAY FABRICATE A CITATION. Two rows honestly cannot cite a test:
-// SAC-9 has no generated text to make a claim about, and SAC-10 has no cap.
-// Forcing a citation on either would manufacture a false claim inside the one
-// module whose entire purpose is eliminating false claims — so they live in
-// `SAC_NOT_YET_ENFORCED`, each naming why and who inherits it.
+// NO ROW MAY FABRICATE A CITATION. ONE row honestly cannot cite a test: SAC-9
+// has no scanned generated text to make a claim about. Forcing a citation on it
+// would manufacture a false claim inside the one module whose entire purpose is
+// eliminating false claims — so it lives in `SAC_NOT_YET_ENFORCED`, naming why
+// and who inherits it.
+//
+// SAC-10 MOVED, and the move is the point of the partition. O-011 builds the
+// per-project cap and the analysis tick that exhausts it, so the row that could
+// not cite a test in O-005 now cites the two that enforce it. A row leaves
+// `SAC_NOT_YET_ENFORCED` when its enforcing test exists — never before, and
+// never by rewording the reason it could not.
 
 /** Every row id in the contract. */
 export type SacId =
@@ -85,6 +91,7 @@ export type EnforcedSacId =
   | "SAC-6"
   | "SAC-7"
   | "SAC-8"
+  | "SAC-10"
   | "SAC-11"
   | "SAC-12";
 
@@ -112,6 +119,7 @@ export type UnenforcedSacRow = {
 const FLOOR_TESTS = "packages/core/__tests__/summary/floor.test.ts";
 const GUARD_TESTS = "packages/core/__tests__/summary/guards.test.ts";
 const FUNNEL_TESTS = "packages/core/__tests__/detect/funnel-dropoff.test.ts";
+const ANALYSIS_TICK_TESTS = "worker/__tests__/tasks/analysis-tick.test.ts";
 
 /**
  * The structural proof SAC-11 rests on.
@@ -259,6 +267,23 @@ export const SAC_CONTRACT: Record<EnforcedSacId, EnforcedSacRow> = {
     ],
   },
 
+  "SAC-10": {
+    id: "SAC-10",
+    mayAssert: "The stop reason, when the run stopped early.",
+    mayNotAssert:
+      "That the run was complete when a limit truncated it, or that nothing was found when the limit stopped the looking.",
+    enforcedBy: [
+      {
+        test: "cap exhaustion records stop_reason cap_exhausted and never presents as ran_to_completion",
+        file: ANALYSIS_TICK_TESTS,
+      },
+      {
+        test: "with cap N and N plus one eligible candidates exactly N model calls occur in deterministic order",
+        file: ANALYSIS_TICK_TESTS,
+      },
+    ],
+  },
+
   "SAC-11": {
     id: "SAC-11",
     mayAssert:
@@ -303,17 +328,7 @@ export const SAC_NOT_YET_ENFORCED: Record<UnenforcedSacId, UnenforcedSacRow> = {
     mayNotAssert:
       "That generated text has been scanned for residual personal data. No such claim may appear in code, comment, doc, or string.",
     notEnforcedBecause:
-      "No model call exists in this repository, so no generated text exists for such a claim to be made about. A test asserting the absence of a claim nothing could make would pass vacuously and would read as coverage.",
+      "O-011 built the model call, so generated text now exists — the reason this row gave before (that there was nothing to scan) is spent, and the row stays here for a narrower one. `scanResidualPii` is NOT run over model text before persistence. Promoting SAC-9 needs a ruling on which `summary_source` a dirty scan takes, and inventing one would author a customer-facing sentence in the same sprint that committed to authoring none. The guard that DOES run (`guardModelText`) checks assertions, not residual personal data, so nothing here may be read as that scan having happened.",
     inheritedBy: "O-007 — the residual scanner ships with delivery.",
-  },
-
-  "SAC-10": {
-    id: "SAC-10",
-    mayAssert: "The stop reason, when the run stopped early.",
-    mayNotAssert:
-      "That the run was complete when a limit truncated it, or that nothing was found when the limit stopped the looking.",
-    notEnforcedBecause:
-      "No per-project limit on written explanations exists in this repository in any form. The value a caller may pass naming an exhausted limit is a parameter, not evidence that a limit is enforced anywhere.",
-    inheritedBy: "O-005 follow-on — the sprint that builds the model call and its cap.",
   },
 };

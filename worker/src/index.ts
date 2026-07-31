@@ -1,6 +1,5 @@
 import type { TaskList } from "graphile-worker";
 
-import type { SessionSummariser } from "@growthmind/adapters";
 import {
   DEFAULT_COLDSTART_MODEL,
   createAnthropicModel,
@@ -18,9 +17,9 @@ import {
 import type { DeliveryPoster, ServerEnv } from "@growthmind/shared";
 import { parseServerEnv } from "@growthmind/shared";
 
-import { COLDSTART_MODEL_CALL_CAP } from "./analysis-cap";
+import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { TASK } from "./task-names";
-import type { AnalysisLaneSource } from "./tasks/analysis-tick";
+import type { AnalysisLaneSource, ConfiguredSummariser } from "./tasks/analysis-tick";
 import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource } from "./tasks/delivery-tick";
 import { runDeliveryTick } from "./tasks/delivery-tick";
@@ -101,7 +100,7 @@ type AnalysisComposition = {
    * before it claims anything, and therefore makes ZERO model calls — see the
    * header below for why the branch has to live at this end of the wire.
    */
-  summariser: SessionSummariser | null;
+  summariser: ConfiguredSummariser | null;
   lanes: AnalysisLaneSource;
 };
 
@@ -139,14 +138,19 @@ type AnalysisComposition = {
  *
  * The model id is RESOLVED here and hardcoded nowhere (AD-3): configuration
  * first, then the one default that lives beside the adapter that speaks to the
- * vendor. The same resolved id goes to the provider and to the port, so the id a
- * run row names is always the id the call addressed.
+ * vendor. The same resolved id goes to the provider, to the port, AND to the
+ * lane beside the port, so the id a run row names is always the id the call
+ * addressed — on every path, including the defensive one where the port throws
+ * and no result comes back to read an id off. Returning the port alone is what
+ * used to leave that path writing a null `resolved_model_id` beside a non-zero
+ * `model_calls_attempted`, contradicting both columns' documented rule; the
+ * pairing is `ConfiguredSummariser` and it exists so the two cannot separate.
  *
  * `outputSchema` is core's, injected (AD-16). `packages/adapters` may never
  * import `packages/core`, so the anti-invention shape keeps one home and this is
  * the seam where the two meet.
  */
-function resolveSummariser(env: ServerEnv): SessionSummariser | null {
+function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined) {
     return null;
@@ -154,11 +158,14 @@ function resolveSummariser(env: ServerEnv): SessionSummariser | null {
 
   const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
 
-  return createAnthropicSessionSummariser({
-    model: createAnthropicModel({ apiKey, resolvedModelId }),
+  return {
+    port: createAnthropicSessionSummariser({
+      model: createAnthropicModel({ apiKey, resolvedModelId }),
+      resolvedModelId,
+      outputSchema: modelSummaryOutputSchema,
+    }),
     resolvedModelId,
-    outputSchema: modelSummaryOutputSchema,
-  });
+  };
 }
 
 /**
@@ -318,10 +325,14 @@ export const taskList: TaskList = {
       findingsFor: (ctx) => createFindingsRepo(db, ctx),
       runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
       ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
-      // Policy, injected. The cap is a property of the lane that spends, so it
-      // travels from ./analysis-cap.ts through here and never leaks into
-      // `packages/db`, whose claim takes it as a parameter.
-      cap: COLDSTART_MODEL_CALL_CAP,
+      // Policy, injected — BOTH ceilings (AD-23). A spend limit is a property
+      // of the lane that spends, so both travel from ./analysis-cap.ts through
+      // here and neither leaks into `packages/db`, whose claim takes them as
+      // parameters. The organisation-wide one is what supplies the N the
+      // per-project one is missing: nothing limits how many projects an
+      // organisation creates.
+      projectCap: COLDSTART_MODEL_CALL_CAP,
+      organizationCap: ORG_MODEL_CALL_CAP,
       now: () => new Date(),
       logger: helpers.logger,
     });

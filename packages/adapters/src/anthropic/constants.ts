@@ -31,7 +31,7 @@ export const DEFAULT_COLDSTART_MODEL = "claude-sonnet-5";
  * the working range; thirty is headroom, not a target, so a merely slow model
  * still lands its answer rather than burning a cap claim for nothing.
  *
- * It is also chosen for how it COMPOSES. `../../../worker/src/tasks/analysis-tick.ts`
+ * It is also chosen for how it COMPOSES. `../../../../worker/src/tasks/analysis-tick.ts`
  * renders candidates one at a time, so the ceiling on how long a wholly
  * unresponsive upstream can hold one project's run row is
  * `COLDSTART_MODEL_CALL_CAP × MODEL_REQUEST_TIMEOUT_MS` — six minutes at
@@ -51,7 +51,7 @@ export const MODEL_REQUEST_TIMEOUT_MS = 30_000;
  * The AI SDK's `generateObject` defaults to `maxRetries: 2`, so an unset option
  * means ONE cap claim can issue THREE billable upstream requests — and does so
  * precisely when an account is rate-limited or 5xx-ing, the worst moment to
- * triple the request rate. `../../../worker/src/analysis-cap.ts` calls its
+ * triple the request rate. `../../../../worker/src/analysis-cap.ts` calls its
  * limit a hard per-project cap; under the default that claim is off by 3×.
  *
  * Zero makes the cap's arithmetic true rather than approximate: one claim is at
@@ -69,3 +69,39 @@ export const MODEL_REQUEST_TIMEOUT_MS = 30_000;
  * design is the wrong trade.
  */
 export const MODEL_CALL_MAX_RETRIES = 0;
+
+/**
+ * THE FENCE AROUND CANDIDATE-DERIVED DATA IN THE PROMPT (AD-24).
+ *
+ * `SummariseInput.surface` is a normalised URL path taken from customer
+ * traffic, and every other string on that input is derived from the same
+ * traffic. That is attacker-influenceable data arriving in a model prompt. The
+ * worker's `surfaceIsSafeToSend` gate (`../../../../worker/src/tasks/analysis-tick.ts`)
+ * guards SHAPE — normalisation, and no personal data — which is a different
+ * property entirely: a perfectly normalised path is still a perfectly good
+ * injection vector.
+ *
+ * ── ONE TOKEN, BOTH ENDS ────────────────────────────────────────────────────
+ * Open and close are the SAME string rather than a matched pair. That is the
+ * point: there is exactly ONE sequence to strip out of a candidate value, so
+ * there is no half of the fence a future edit can forget to remove. A pair
+ * would double the surface and halve the guarantee.
+ *
+ * ── WHY A CANDIDATE CANNOT CLOSE IT ─────────────────────────────────────────
+ * Not because this string is hard to guess — it is written down right here —
+ * but because `./summariser.ts`'s `delimitCandidateValue` removes every
+ * occurrence of it from a value BEFORE wrapping, repeating until none remains.
+ * Stripping to a fixpoint rather than in one pass is load-bearing: deleting an
+ * inner occurrence can join its neighbours into a fresh one.
+ *
+ * The characters are chosen so no normalised URL path, symptom class, or unit
+ * could ever produce it by accident, which keeps the stripping a no-op on every
+ * honest input.
+ *
+ * ── FAIL DIRECTION IS UNCHANGED, AND WAS ALREADY SAFE ───────────────────────
+ * This is defence in depth, not a new gate. Text that ignores the fence still
+ * has to satisfy the injected `z.strictObject` output schema and then every
+ * `guardModelText` scanner, and any rejection lands the candidate on the
+ * deterministic floor with its numbers untouched.
+ */
+export const CANDIDATE_DATA_DELIMITER = "<<<GROWTHMIND_CANDIDATE_DATA>>>";

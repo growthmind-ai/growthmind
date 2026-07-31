@@ -20,7 +20,8 @@
     "@growthmind/core": "workspace:*",
     "@growthmind/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
