@@ -1182,10 +1182,7 @@ describe("detectErrorEvent — counts (PL ruling 25, D-7, D-8, FR-10)", () => {
     expect(corpus.basis.kept).toBe(affected + quiet);
     expect(affected).not.toBe(corpus.basis.kept);
 
-    const candidate = candidateForSurface(
-      detectErrorEvent(corpus, ruleSet),
-      T1CNT_SURFACE,
-    );
+    const candidate = candidateForSurface(detectErrorEvent(corpus, ruleSet), T1CNT_SURFACE);
 
     // (1) RULING 25: EXACTLY ONE ENTRY. Not zero — an empty array strips the
     // detector of its only magnitude — and not two, which would silently

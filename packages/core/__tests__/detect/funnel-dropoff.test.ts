@@ -35,7 +35,7 @@ import { EXCLUSION_REASON_LABELS } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import type { CountBasis, SetAsideBasis } from "../../src/counts/measured-count";
-import { isMeasuredCount } from "../../src/counts/measured-count";
+import { isMeasuredCount, measuredCount } from "../../src/counts/measured-count";
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
 import type {
   DetectorCorpus,
@@ -1117,6 +1117,18 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
         subkind: "backtrack",
         surface: STRUGGLE_ORIGIN,
         attempts: rules.struggleRepeatedAttemptMin,
+        // Required since strugglingSessions landed: the schema rejects a bare
+        // number here ("a count must be built by measuredCount(), with its
+        // denominator"), which is the §10 denominator rule enforced at
+        // runtime. Constructed, not produced — that is the point of this
+        // assertion.
+        strugglingSessions: measuredCount({
+          numerator: 1,
+          denominator: 1,
+          unit: "sessions",
+          timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
+          basis: { totalInWindow: 1, kept: 1, setAside: [] },
+        }),
       }),
     ).toMatchObject({ kind: "struggle", subkind: "backtrack" });
   });

@@ -37,20 +37,22 @@ function existsPackageJson(dir: string): boolean {
   }
 }
 
-test.each(DOCKERFILES)("%s copies every workspace package manifest", (dockerfile) => {
-  const contents = readFileSync(path.join(REPO_ROOT, dockerfile), "utf-8");
-  const missing = workspacePackages().filter(
-    (pkg) => !contents.includes(`packages/${pkg}/package.json`),
-  );
+for (const dockerfile of DOCKERFILES) {
+  test(`${dockerfile} copies every workspace package manifest`, () => {
+    const contents = readFileSync(path.join(REPO_ROOT, dockerfile), "utf-8");
+    const missing = workspacePackages().filter(
+      (pkg) => !contents.includes(`packages/${pkg}/package.json`),
+    );
 
-  expect(
-    missing,
-    `${dockerfile} is missing COPY lines for: ${missing.join(", ")}. ` +
-      `Without them bun install cannot resolve the workspace:* link and ` +
-      `\`docker compose up\` from a clean clone fails. Add: ` +
-      missing.map((pkg) => `COPY packages/${pkg}/package.json packages/${pkg}/`).join(" ; "),
-  ).toEqual([]);
-});
+    expect(
+      missing,
+      `${dockerfile} is missing COPY lines for: ${missing.join(", ")}. ` +
+        `Without them bun install cannot resolve the workspace:* link and ` +
+        `\`docker compose up\` from a clean clone fails. Add: ` +
+        missing.map((pkg) => `COPY packages/${pkg}/package.json packages/${pkg}/`).join(" ; "),
+    ).toEqual([]);
+  });
+}
 
 test("the guard itself is not vacuous — it sees the real packages", () => {
   const packages = workspacePackages();

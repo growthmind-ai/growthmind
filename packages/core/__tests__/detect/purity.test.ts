@@ -909,12 +909,22 @@ describe("detector purity and coverage (FR-5, FR-8, D-13)", () => {
       // maximum — not twelve signals, not one per visit, and not 36 attempts.
       const struggles = candidate.signals.filter((signal) => signal.kind === "struggle");
       expect(struggles).toHaveLength(1);
-      expect(struggles[0]).toEqual({
+      expect(struggles[0]).toMatchObject({
         kind: "struggle",
         subkind: "repeated_attempt",
         surface: T1PUR_ORIGIN,
         attempts: ORIGIN_VISITS_PER_DROPPER,
       });
+
+      // The COHORT half of the same claim, and the number the gate actually
+      // turns on: twelve DISTINCT sessions each reached the threshold, over the
+      // 25 kept. `attempts` above is one session's visit depth and says nothing
+      // about how many people struggled — asserting only it would leave the
+      // deciding number unchecked.
+      const struggle = struggles[0];
+      if (struggle?.kind !== "struggle") throw new Error("expected a struggle signal");
+      expect(struggle.strugglingSessions.numerator).toBe(DROPPERS);
+      expect(struggle.strugglingSessions.denominator).toBe(struggle.strugglingSessions.basis.kept);
     }
 
     // The two transitions are distinct claims about the same origin, and their

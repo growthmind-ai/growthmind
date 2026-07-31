@@ -62,13 +62,22 @@ const IMMUTABILITY_MESSAGE =
  * The rule set really did change, so the hash really did change, and the
  * assertion below was NOT relaxed to accommodate it.
  *
+ * It moved a SECOND time, under the same rule, when `struggleMinStrugglingSessions`
+ * was added — the cohort floor that pairs with the `strugglingSessions`
+ * MeasuredCount on the struggle signal. Legitimacy checked before re-pinning,
+ * not assumed: `packages/core` does not exist on `origin/main`, so v1 has
+ * never shipped and NO judgement is on record under the previous value. The
+ * guard's premise ("every judgement on record was made under the old value")
+ * is simply not true yet. It becomes true the moment this branch merges, and
+ * from then on the only legitimate change is a version 2.
+ *
  * Once v1 ships, a change here is only legitimate as a deliberate VERSION 2 —
  * a new entry in `THRESHOLD_RULE_SETS` with its own golden beside this one,
  * never a re-pin of this line. Re-pinning it to silence a red test you did not
  * intend is precisely the failure `IMMUTABILITY_MESSAGE` describes, and it
  * silently reinterprets every judgement already stamped with version 1.
  */
-const V1_CONTENT_HASH: string = "5a68567ee8f8578fd70b333088629dee4c2455c2ee71443150c8fdf9901d5184";
+const V1_CONTENT_HASH: string = "b9b126dab1204165e45b8234fc3db81ff6decb8318fa23d0b4d9c0f712937a78";
 
 /** Fail direction is a property of a MAGNITUDE. Names and the version have none. */
 type FailDirection = "under_detect" | "not_a_magnitude";
@@ -137,7 +146,7 @@ const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote
   struggleMinStrugglingSessions: {
     direction: "under_detect",
     because:
-      "the per-session maximum is a maximum over the whole cohort, so it only rises as the corpus grows — three separate sessions must have come back before the sentence a founder reads on a satisfied confusing rung (\"People hesitated, went back, or tried the same thing more than once here\") is true of the surface rather than of one outlier",
+      'the per-session maximum is a maximum over the whole cohort, so it only rises as the corpus grows — three separate sessions must have come back before the sentence a founder reads on a satisfied confusing rung ("People hesitated, went back, or tried the same thing more than once here") is true of the surface rather than of one outlier',
   },
   instrumentationDropRatioPercent: {
     direction: "under_detect",

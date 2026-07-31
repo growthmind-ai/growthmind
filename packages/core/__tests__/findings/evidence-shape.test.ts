@@ -126,7 +126,15 @@ function withSurface(surface: string): EvidenceShapeInput {
     detector: "funnel_dropoff",
     surface,
     surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
-    signals: [{ kind: "struggle", subkind: "repeated_attempt", surface, attempts: 3 }],
+    signals: [
+      struggleSignal({
+        subkind: "repeated_attempt",
+        surface,
+        attempts: 3,
+        strugglingSessions: 3,
+        kept: 10,
+      }),
+    ],
     symptomClass: "confusing",
   };
 }
@@ -147,7 +155,13 @@ describe("evidenceShape — identity across a churn event (FR-16, D12)", () => {
           precedingActionName: "checkout_submit",
           correlationWindowMs: 30_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 3 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       symptomClass: "broken",
     };
@@ -162,7 +176,13 @@ describe("evidenceShape — identity across a churn event (FR-16, D12)", () => {
     const afterTheChurn: InputWithIgnoredFields = {
       symptomClass: "broken",
       signals: [
-        { kind: "struggle", subkind: "backtrack", surface: "/checkout", attempts: 7 },
+        struggleSignal({
+          subkind: "backtrack",
+          surface: "/checkout",
+          attempts: 7,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
         {
           kind: "failure_correlated",
           eventName: "$exception",
@@ -170,7 +190,13 @@ describe("evidenceShape — identity across a churn event (FR-16, D12)", () => {
           precedingActionName: "checkout_submit",
           correlationWindowMs: 30_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 3 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
       surface: normalisedSurface("/Checkout/"),
@@ -218,7 +244,13 @@ describe("evidenceShape — magnitudes and instants are excluded (D-12)", () => 
           precedingActionName: "checkout_submit",
           correlationWindowMs: 30_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 3 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       symptomClass: "broken",
     };
@@ -238,7 +270,13 @@ describe("evidenceShape — magnitudes and instants are excluded (D-12)", () => 
           precedingActionName: "checkout_submit",
           correlationWindowMs: 45_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 41 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 41,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       symptomClass: "broken",
       // The magnitudes and the window travel BESIDE the shape on the candidate,
@@ -284,7 +322,13 @@ describe("evidenceShape — versioning forks deliberately (FR-16)", () => {
           precedingActionName: "checkout_submit",
           correlationWindowMs: 30_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 3 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       symptomClass: "broken",
     };
@@ -410,7 +454,13 @@ describe("evidenceShape — surfaceNormalisationVersion is part of identity (D-1
           precedingActionName: "checkout_submit",
           correlationWindowMs: 30_000,
         },
-        { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts: 3 },
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
       ],
       symptomClass: "broken",
     });
