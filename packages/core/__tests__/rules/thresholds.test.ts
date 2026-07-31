@@ -194,6 +194,20 @@ const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote
   },
 };
 
+/**
+ * The floor the funnel detector's RATE gate imposes on `dropped`, evaluated at
+ * the smallest denominator its origin gate will admit.
+ *
+ * `Math.ceil` because sessions are whole: at `atOrigin =
+ * funnelMinSessionsAtOrigin`, this is the least integer `dropped` satisfying
+ * `dropped * 100 >= funnelDropoffRateThresholdPercent * atOrigin`.
+ *
+ * Module scope rather than inside the test that uses it: it captures nothing
+ * from the enclosing scope, taking the rule set as its only input.
+ */
+const rateImpliedFloor = (rules: ThresholdRuleSet): number =>
+  Math.ceil((rules.funnelDropoffRateThresholdPercent * rules.funnelMinSessionsAtOrigin) / 100);
+
 describe("THRESHOLD_RULE_SETS (D-14, FR-8, FR-9, FR-11)", () => {
   // ADD §7 item 1 (FR-8). The literal below is the pin: fetching v1 by version
   // must keep reproducing THIS decision byte for byte after v2 lands. It is
@@ -370,5 +384,52 @@ describe("THRESHOLD_RULE_SETS (D-14, FR-8, FR-9, FR-11)", () => {
 
     expect(THRESHOLD_RULE_SETS.size).toBe(2);
     expect(CURRENT_THRESHOLD_RULE_SET).toBe(v2);
+  });
+
+  // ESC-17 (O-005). THE PROPERTY A FALSE COMMENT ONCE CLAIMED HAD CHANGED.
+  //
+  // An earlier `RULE_SET_V2` comment argued that D-2's per-origin aggregation
+  // made `funnelMinDropoffSessions` newly REACHABLE, and offered that as a
+  // second, independent justification for the version bump. It is false, and
+  // this test is the reason nobody has to take that on trust again.
+  //
+  // The funnel detector applies three gates in order
+  // (`../../src/detect/funnel-dropoff.ts`):
+  //   1. `atOrigin >= funnelMinSessionsAtOrigin`
+  //   2. `dropped   >= funnelMinDropoffSessions`
+  //   3. `dropped * 100 >= funnelDropoffRateThresholdPercent * atOrigin`
+  // Gate 1 pins the SMALLEST legal denominator, and at that denominator gate 3
+  // implies its own floor on `dropped`. Whenever that rate-implied floor is at
+  // least `funnelMinDropoffSessions`, gate 2 can never be the binding
+  // constraint — gate 3 subsumes it — so deleting gate 2 would change no
+  // outcome. Aggregation moves the numerator and the denominator together and
+  // cannot disturb that.
+  //
+  // DERIVED FROM THE RULE SET'S OWN VALUES, never from hardcoded numbers: the
+  // point of the test is that a future threshold edit which makes the floor
+  // genuinely reachable FAILS HERE and forces the comment on `RULE_SET_V2` to
+  // be rewritten honestly, rather than the comment quietly going stale again.
+  // Asserted for v1 as well as v2, because "unreachable under v1 too" is the
+  // whole finding.
+  test("funnelMinDropoffSessions remains structurally unreachable under v2 aggregation", () => {
+    for (const [version, rules] of THRESHOLD_RULE_SETS) {
+      const floor = rateImpliedFloor(rules);
+
+      if (floor < rules.funnelMinDropoffSessions) {
+        throw new Error(
+          `Rule set v${version}: funnelMinDropoffSessions (${rules.funnelMinDropoffSessions}) is now REACHABLE — ` +
+            `the rate gate only implies dropped >= ${floor} at the smallest legal denominator ` +
+            `(funnelDropoffRateThresholdPercent ${rules.funnelDropoffRateThresholdPercent} x funnelMinSessionsAtOrigin ${rules.funnelMinSessionsAtOrigin} / 100). ` +
+            `That is a real behaviour change, and the comment on RULE_SET_V2 currently states the opposite. ` +
+            `Rewrite that comment to match this arithmetic — do not delete this test.`,
+        );
+      }
+
+      expect(floor).toBeGreaterThanOrEqual(rules.funnelMinDropoffSessions);
+    }
+
+    // Both shipped rule sets are covered, so neither version can be quietly
+    // dropped from the map to make this pass.
+    expect([...THRESHOLD_RULE_SETS.keys()]).toEqual([1, 2]);
   });
 });

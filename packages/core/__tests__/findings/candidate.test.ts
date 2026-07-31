@@ -30,7 +30,8 @@ import { describe, expect, test } from "bun:test";
 
 import { isMeasuredCount, measuredCount } from "../../src/counts/measured-count";
 import type { MeasuredCount } from "../../src/counts/measured-count";
-import type { AnalysisWindow } from "../../src/detect/types";
+import { claimSubjectSchema } from "../../src/detect/types";
+import type { AnalysisWindow, DetectorCandidate } from "../../src/detect/types";
 import { isReachableClass } from "../../src/evidence/gate";
 import { PROOF_PREDICATE_VERSION } from "../../src/evidence/predicates";
 import { GATE_REASON_MESSAGES } from "../../src/evidence/trace";
@@ -134,6 +135,9 @@ function candidateFixture(now: Date, overrides: CandidateFixture = {}): Candidat
     trace: brokenDowngradedToConfusingTrace(),
     counts: [keptSessionCount(now)],
     timeframe: windowEndingAt(now),
+    // What `surface` is a claim ABOUT (FR-3c, ESC-6). Every T1 detector sets
+    // it; the contract now requires it, so no fixture may omit it.
+    claimSubject: "surface",
     surface: "/checkout/payment",
     surfaceNormalisationVersion: 1,
     evidenceShape:
@@ -156,6 +160,7 @@ const REQUIRED_FIELDS = [
   "trace",
   "counts",
   "timeframe",
+  "claimSubject",
   "surface",
   "surfaceNormalisationVersion",
   "evidenceShape",
@@ -283,6 +288,123 @@ describe("candidateFindingSchema — what the contract carries (FR-17)", () => {
         rejected: true,
       });
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FR-3c / ESC-6 — the claim subject is WIRED, not merely typed (D11, D9).
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// THE DEFECT THESE TWO TESTS CLOSE. `claimSubject` was declared on
+// `DetectorCandidate` and SET by both T1 detectors — `detect/funnel-dropoff.ts`
+// and `detect/error-event.ts` each write `claimSubject: "surface"` — while
+// `candidateFindingSchema` had no such field. Produced by two writers, read by
+// nobody: a value computed and dropped on the floor, which is the edge-case
+// taxonomy's D11 exactly. The type-level half looked complete, and O-006 would
+// have hashed an identity whose subject was an assumption.
+//
+// A field's PRESENCE proves nothing here. What proves the wire is (a) a parse
+// that REFUSES a candidate without it, and (b) one test that carries the value
+// across the producer/consumer boundary rather than a producer test beside a
+// consumer test.
+
+describe("candidateFindingSchema — the claim subject discriminator (FR-3c, ESC-6, D11)", () => {
+  test("should reject a candidate finding that omits claimSubject, or claims a subject that is not a surface", () => {
+    // (a) THE LOAD-BEARING REFUSAL. Adding the field without this assertion
+    //     would leave the same dead wire behind a nicer type: a field only the
+    //     producer writes and nothing refuses is not wired.
+    const omitted = candidateFixture(FIXTURE_NOW);
+    delete omitted.claimSubject;
+    expect(rejectionPaths(omitted)).toContain("claimSubject");
+
+    // ...and it is NOT quietly defaulted to the only value it can hold. A
+    // `.default("surface")` would satisfy every presence check in this file
+    // while asserting nothing about what the detector actually claimed.
+    expect(rejectionPaths(candidateFixture(FIXTURE_NOW, { claimSubject: undefined }))).toContain(
+      "claimSubject",
+    );
+
+    // (b) D9, the runtime half. Inside TypeScript a wrong subject is a COMPILE
+    //     error — `DetectorCandidate.claimSubject` is typed `ClaimSubject` and
+    //     the schema is a `z.literal`, so `claimSubject: "segment"` on a typed
+    //     producer fails `bun run typecheck` before any test runs. This covers
+    //     the same line for a value arriving from outside the type system (a
+    //     persisted row, a JSON payload), where a wrong string would otherwise
+    //     be a silent overload of the surface field.
+    for (const wrongSubject of ["segment", "feature_flag", "Surface", "surfaces", ""]) {
+      expect(
+        rejectionPaths(candidateFixture(FIXTURE_NOW, { claimSubject: wrongSubject })),
+      ).toContain("claimSubject");
+      // The refusal comes from `claimSubjectSchema` itself — the single source
+      // of truth (D9). Nothing here reads "surface" out of a comment.
+      expect(claimSubjectSchema.safeParse(wrongSubject).success).toBe(false);
+    }
+
+    // NON-VACUITY: the same fixture with a real subject parses, so every
+    // rejection above is attributable to `claimSubject` and not to the fixture.
+    expect(candidateFindingSchema.safeParse(candidateFixture(FIXTURE_NOW)).success).toBe(true);
+  });
+
+  test("should carry claimSubject from a detector-produced DetectorCandidate through to a parsed CandidateFinding", () => {
+    // THE WIRE, IN ONE TEST. A producer test plus a consumer test do not prove
+    // the wire between them (D11), so this crosses the boundary in a single
+    // assertion path: `DetectorCandidate` — what `detect/error-event.ts:291-297`
+    // builds — into `candidateFindingSchema.parse`, which is the real consumer
+    // entry point this package has today. (There is deliberately no `src/`
+    // composition function yet; inventing one here would be a follow-on
+    // sprint's shape, and this test would then prove the wire into a module
+    // nothing else calls.)
+    //
+    // The producer half is a TYPED `DetectorCandidate`, not a loose record, so
+    // the compiler binds every field to the detectors' own contract and this
+    // literal cannot drift from what they emit without failing typecheck. It is
+    // a typed value rather than a live `detectErrorEvent` run on purpose: this
+    // file's subject is the candidate CONTRACT, and coupling it to a detector's
+    // firing thresholds would make a threshold change read as a contract
+    // failure.
+    const produced: DetectorCandidate = {
+      detector: "error_event",
+      claimedClass: "broken",
+      // The one line under test, and the only place this string is written on
+      // the producer side.
+      claimSubject: "surface",
+      surface: "/checkout/payment",
+      surfaceNormalisationVersion: 1,
+      signals: [],
+      counts: [keptSessionCount(FIXTURE_NOW)],
+      timeframe: windowEndingAt(FIXTURE_NOW),
+      coverage: { truncated: false, eventsWithoutUrlPath: 0 },
+    };
+
+    // EVERY consumer field is READ OFF the produced candidate — nothing below
+    // re-types a value the producer already decided. That is what makes a
+    // severed wire fail here rather than a fixture that happens to agree.
+    const parsed = candidateFindingSchema.parse(
+      candidateFixture(FIXTURE_NOW, {
+        detector: produced.detector,
+        claimedClass: produced.claimedClass,
+        claimSubject: produced.claimSubject,
+        surface: produced.surface,
+        surfaceNormalisationVersion: produced.surfaceNormalisationVersion,
+        counts: [...produced.counts],
+        timeframe: produced.timeframe,
+        coverage: produced.coverage,
+      }),
+    );
+
+    // The value ARRIVED, and it is the producer's value.
+    expect(parsed.claimSubject).toBe(produced.claimSubject);
+    expect(parsed.claimSubject).toBe("surface");
+    // ...beside the surface it discriminates, so the pair travels together.
+    expect(parsed.surface).toBe(produced.surface);
+    expect(parsed.detector).toBe("error_event");
+
+    // NON-VACUITY, the D11 leg: strip the value at the boundary and the parse
+    // fails. Without this, the assertions above would still pass against a
+    // schema that ignored the field entirely.
+    const severed = candidateFixture(FIXTURE_NOW, { surface: produced.surface });
+    delete severed.claimSubject;
+    expect(rejectionPaths(severed)).toContain("claimSubject");
   });
 });
 

@@ -208,16 +208,30 @@ const RULE_SET_V1: ThresholdRuleSet = {
  * stamp exactly, so a rule change is a migratable event rather than a silent
  * fork").
  *
- * SECOND REASON, from the O-004 retro: at v1, `funnelMinDropoffSessions: 5`
- * was STRUCTURALLY UNREACHABLE. With `funnelMinSessionsAtOrigin: 20` and a
- * 40% rate gate, the smallest qualifying PER-PAIR drop-off was 8 sessions
- * (`20 * 40 / 100 = 8 > 5`) — the floor could never be the binding
- * constraint; the rate gate always bound first. Aggregating per origin
- * changes that arithmetic: one origin can now accumulate drop-offs across
- * every destination it feeds before the rate is evaluated, so the same floor
- * can bind where it structurally could not before. A rule set whose
- * REACHABILITY changed is a different rule set, even printing the same three
- * numbers.
+ * NO SECOND REASON — AND THE ARITHMETIC SAYS SO. An earlier draft of this
+ * comment argued that aggregation made `funnelMinDropoffSessions: 5` newly
+ * REACHABLE, and offered that as an independent justification for the bump.
+ * It is false. The floor was structurally unreachable under v1 and REMAINS
+ * structurally unreachable under v2: a candidate must clear all three gates
+ * in order (`../detect/funnel-dropoff.ts`), and gate 1 forces
+ * `atOrigin >= funnelMinSessionsAtOrigin` (20), so gate 3
+ * (`dropped * 100 >= funnelDropoffRateThresholdPercent * atOrigin`) demands
+ * `dropped >= 40 * 20 / 100 = 8`. Eight subsumes five, so deleting the
+ * `funnelMinDropoffSessions` check would change no outcome — under v2 exactly
+ * as under v1. Aggregation raises the numerator (`dropped`) and the
+ * denominator (`atOrigin`) together; it cannot move a floor that the rate gate
+ * already dominates at the smallest legal denominator.
+ *
+ * Following the O-004 precedent, that property is PINNED BY A NAMED TEST
+ * rather than left as prose a reader has to re-derive — grep
+ * `thresholds.test.ts` for `funnelMinDropoffSessions remains structurally
+ * unreachable under v2 aggregation`. It derives the rate-implied floor from
+ * the rule set's own three values, so a future threshold edit that makes the
+ * floor genuinely reachable fails that test and forces this paragraph to be
+ * rewritten honestly.
+ *
+ * The bump therefore stands on the SEMANTIC change above, alone — which is
+ * sufficient on its own.
  *
  * TRADE-OFF ACCEPTED (ADD §8.4): a reader diffing RULE_SET_V1 against
  * RULE_SET_V2 sees identical numbers and must read this comment to learn

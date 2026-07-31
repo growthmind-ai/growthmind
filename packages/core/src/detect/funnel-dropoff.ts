@@ -28,6 +28,20 @@ import { orderTimeline } from "./order";
 import type { DetectorCandidate, DetectorCorpus, DetectorResult, SessionTimeline } from "./types";
 
 /**
+ * The step from a walk position to the position IMMEDIATELY AFTER it — where
+ * "anywhere after the first visit to the origin" begins (D-2a, below).
+ *
+ * A position offset, not a magnitude and not a threshold; every magnitude this
+ * detector compares against still arrives on the rule-set parameter. It has a
+ * NAME, and a home outside every function body, for the same reason
+ * `PERCENT_SCALE` has one at `src/counts/percent.ts` (FR-8, PL ruling 26):
+ * `purity.test.ts` scans function regions only, and counts a bare offset or
+ * index inside one as the same offence as a bare threshold — precisely so no
+ * number in a detector body goes unexplained.
+ */
+const AFTER_FIRST_VISIT_OFFSET = 1;
+
+/**
  * A session's ordered path walk: `null`-path events removed, consecutive
  * repeats of one path collapsed.
  *
@@ -176,8 +190,18 @@ export function detectFunnelDropoff(
   // half — a healthy branching hub reporting "20 of 30 did not reach here"
   // three times over, once per destination it never claimed).
   //
-  // THREE SUB-RULES THE PRD LEFT OPEN, each decided and each tested
-  // (`funnel-dropoff.test.ts`):
+  // THREE SUB-RULES THE PRD LEFT OPEN, each DECIDED here and each PINNED by a
+  // test that NAMES it, so a reader can grep the rule and land on its proof.
+  // In `funnel-dropoff.test.ts`, verbatim:
+  //
+  //   `D-2a — the dropped and struggling cohorts are structurally disjoint`
+  //   `D-2b — the self-transition filter is unreachable while pathWalk collapses consecutive repeats`
+  //   `D-2c — an origin whose destination set is empty emits no candidate`
+  //
+  // D-2a's test pins a CONSEQUENCE of the first-visit choice rather than the
+  // choice itself — under first-visit semantics a dropped session visited the
+  // origin exactly once, so the dropped and struggling cohorts can never
+  // overlap. Reverse D-2a and that test is what fails.
   //
   //   D-2a — a session's visit to the origin is its FIRST occurrence in the
   //   ordered walk. Maximises the window in which a session can be seen to
@@ -185,22 +209,41 @@ export function detectFunnelDropoff(
   //   FAIL DIRECTION: UNDER-DETECT — the house direction, and the direction
   //   every member of `ThresholdRuleSet` is documented in.
   //
-  //   D-2b — the origin is NOT a member of its own destination set.
-  //   `pathWalk` already collapses consecutive repeats, so a self-transition
-  //   can only arise from `origin → detour → origin`, and the destination
-  //   set built from `transitionsOf` structurally can never contain the
-  //   origin as its own immediate successor. The filter below is kept
-  //   EXPLICIT anyway, and this is stated rather than left implicit: D-2b is
-  //   a decision about MEANING — counting a return to the origin as "going
-  //   somewhere it could have gone" is false to the sentence FR-2 gives P-2,
-  //   "left this page without going anywhere it could have gone" — a page
-  //   people bounce off and back onto is exactly the surface a founder wants
-  //   named, once it independently qualifies as its OWN origin. IT DOES NOT
-  //   SHARE D-2a's FAIL DIRECTION: where D-2a under-detects, excluding the
-  //   origin from its own destinations is OVER-DETECT relative to D-2a, and
-  //   it is taken on TRUTHFULNESS grounds, not fail-direction grounds. This
-  //   is stated out loud, deliberately, rather than smoothed over as if both
-  //   rules pointed the same way (ADD §8.6).
+  //   D-2b — the origin is NOT a member of its own destination set. As a
+  //   statement of MEANING this is a real decision: counting a return to the
+  //   origin as "going somewhere it could have gone" would be false to the
+  //   sentence FR-2 gives P-2, "left this page without going anywhere it
+  //   could have gone".
+  //
+  //   AS CODE, THE FILTER BELOW IS INERT — say that plainly rather than
+  //   dress it up, and note that it is inert under ANY visit-selection
+  //   semantics, not merely D-2a's. `pathWalk` pushes a path only when it
+  //   differs from the previous one, so no walk carries two adjacent equal
+  //   entries; `transitionsOf` pairs only ADJACENT entries. An origin can
+  //   therefore never be its own immediate successor, the filter removes
+  //   nothing, and no candidate, count or fail direction changes. It is not
+  //   over-detect relative to D-2a; it has no detect direction at all. The
+  //   test named above pins exactly this, on a fixture carrying BOTH shapes
+  //   that could produce a self-transition — an `origin → detour → origin`
+  //   return, and a consecutive run of raw events on the origin.
+  //
+  //   THE PROPERTY BELONGS TO `pathWalk`'s COLLAPSE (`pathWalk`, above) AND
+  //   TO NOTHING ELSE — in particular NOT to where `dropped` is measured
+  //   from. (ESC-16, whether `dropped` runs from the origin's FIRST visit as
+  //   D-2a implements via `walk.indexOf` or from its LAST, is open; it does
+  //   not bear on this filter, which is inert either way. An earlier draft of
+  //   this comment claimed ESC-16 was the reason to keep the filter. It was
+  //   wrong, and it is recorded here so the claim is not re-derived.)
+  //
+  //   IT IS KEPT ANYWAY, FOR TWO REASONS:
+  //     - it states the D-2b MEANING decision in code, where it is read and
+  //       reviewed, instead of leaving it implicit in a property of
+  //       `pathWalk` that a future edit could remove without anyone noticing
+  //       this detector was relying on it;
+  //     - it is the guard that BECOMES load-bearing if that collapse changes.
+  //       Relax the collapse and `origin → origin` becomes expressible, at
+  //       which point this filter is the only thing stopping a return to the
+  //       origin from counting as somewhere the user "could have gone".
   //
   //   D-2c — an origin whose destination set is empty emits no candidate.
   //   With nowhere reachable, "did not go anywhere it could have gone" is
@@ -214,17 +257,21 @@ export function detectFunnelDropoff(
   // qualifying `struggle` signal that the GATE silently downgraded and
   // dropped them. That containment was never about the count being right.
   // After this aggregation, the count IS right — a healthy hub now emits at
-  // most ONE candidate whose `dropped` count is honest — and the hub fixture
-  // in `funnel-dropoff.test.ts` asserts `candidates.length === 1` (not merely
-  // iterates) to prove it, rather than continuing to rely on the gate's luck.
+  // most ONE candidate whose `dropped` count is honest — and that is pinned by
+  // a hub fixture asserting a LITERAL `toHaveLength(1)`, never merely iterated
+  // over, rather than left to the gate's luck. Grep `funnel-dropoff.test.ts`
+  // for the test
+  // `ESC-9 fix (b) — a firing hub emits exactly one candidate for the origin`.
   for (const [origin, rawDestinations] of transitionsOf(walks)) {
-    // D-2b, enforced explicitly (see the resolution record above).
+    // D-2b, enforced explicitly though inert while `pathWalk` collapses
+    // consecutive repeats (resolution record above): it states the meaning
+    // decision in code, and it is the guard if that collapse ever changes.
     const destinations = new Set(
       [...rawDestinations].filter((destination) => destination !== origin),
     );
 
     // D-2c: nowhere reachable from this origin, so nothing to assert.
-    if (destinations.size === 0) continue;
+    if (!destinations.size) continue;
 
     const atOrigin = walks.filter((walk) => walk.includes(origin));
 
@@ -239,7 +286,9 @@ export function detectFunnelDropoff(
     // out of sessions that plainly went somewhere.
     const dropped = atOrigin.filter((walk) => {
       const firstVisit = walk.indexOf(origin);
-      return !walk.slice(firstVisit + 1).some((path) => destinations.has(path));
+      return !walk
+        .slice(firstVisit + AFTER_FIRST_VISIT_OFFSET)
+        .some((path) => destinations.has(path));
     });
 
     // UNDER-DETECT (FR-9): the absolute floor beneath the rate.

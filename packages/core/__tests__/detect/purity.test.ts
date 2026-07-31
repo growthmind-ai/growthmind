@@ -400,20 +400,40 @@ const T1PUR_NORMALISATION_VERSION = 1;
 /**
  * Fixture magnitudes, chosen so BOTH detectors fire on one corpus.
  *
- * 25 kept sessions reach the origin (>= `funnelMinSessionsAtOrigin` 20); 12
- * never reach the destination (>= `funnelMinDropoffSessions` 5, and
- * 12 * 100 >= 40 * 25); 4 sessions carry the exception (>=
- * `errorMinAffectedSessions` 3); each dropper visits the origin 3 times (>=
- * `struggleRepeatedAttemptMin` 3). Three set-aside sessions sit in the corpus
- * alongside them, so a silent FR-7 leak moves the numbers test 6 names.
+ * THREE KEPT COHORTS, AND THE THIRD IS FORCED BY THE CONTRACT. Under per-origin
+ * aggregation `D(O)` is built from the corpus's OWN walks, so anything a session
+ * reaches after its first visit to the origin is by construction a member of
+ * `D(O)` — which means "dropped at `O`" reduces to "the walk ENDS at the
+ * session's first visit to `O`". A dropped session therefore visits the origin
+ * EXACTLY ONCE and can never also be a repeated-attempt struggler: the dropped
+ * and struggling cohorts are structurally disjoint. The previous fixture asked
+ * one cohort to be both — its droppers walked `[origin, detour, origin, detour,
+ * origin]` — and under aggregation the detour is a member of `D(origin)`, so
+ * every one of them CONTINUED, `dropped` was 0, and no candidate fired at all.
+ *
+ * So the corpus splits the two roles apart:
+ *
+ *  - 12 DROPPERS whose walk ends at the origin (>= `funnelMinDropoffSessions`
+ *    5, and 12 * 100 >= 40 * 25 clears the rate gate);
+ *  -  5 STRUGGLERS who visit the origin 3 times (>= `struggleRepeatedAttemptMin`
+ *    3) and then go on to the destination, so they struggle without dropping;
+ *  -  8 CONVERTERS who step straight through to the destination.
+ *
+ * Together 25 kept sessions reach the origin (>= `funnelMinSessionsAtOrigin`
+ * 20). 4 of the droppers carry the exception (>= `errorMinAffectedSessions` 3).
+ * The detour is reached by the 5 strugglers alone — far below the origin floor —
+ * so it opens no candidate of its own and the origin stays the only one. Three
+ * set-aside sessions sit in the corpus alongside them, so a silent FR-7 leak
+ * moves the numbers test 6 names.
  */
 const KEPT_AT_ORIGIN = 25;
 const DROPPERS = 12;
-const CONVERTERS = KEPT_AT_ORIGIN - DROPPERS;
+const STRUGGLERS = 5;
+const CONVERTERS = KEPT_AT_ORIGIN - DROPPERS - STRUGGLERS;
 const SET_ASIDE = 3;
 const SESSIONS_WITH_EXCEPTIONS = 4;
 const EXCEPTIONS_PER_SESSION = 2;
-const ORIGIN_VISITS_PER_DROPPER = 3;
+const ORIGIN_VISITS_PER_STRUGGLER = 3;
 
 /** PL ruling 15: `funnel_dropoff.counts` is exactly two entries. PL ruling 25:
  * `error_event.counts` is exactly one. */
@@ -421,13 +441,20 @@ const FUNNEL_DECLARED_COUNTS = 2;
 const ERROR_DECLARED_COUNTS = 1;
 
 /**
- * PL ruling 15 / the transitions this corpus observes:
- *   `/t1pur/pricing` -> `/t1pur/checkout` (the 12 droppers never arrive), and
- *   `/t1pur/pricing` -> `/t1pur/support`  (the 13 converters never detour).
- * `/t1pur/support` is reached by only 12 sessions, below the origin floor, so
- * it opens no candidate of its own.
+ * O-005 D-2 / ESC-9 fix (b): AT MOST ONE candidate per qualifying ORIGIN,
+ * aggregating across destinations — never one per `(origin, destination)` pair.
+ *
+ * This corpus observes two origins. `/t1pur/pricing` qualifies: 25 kept
+ * sessions reach it, 12 leave without going anywhere they could have gone. It
+ * feeds TWO destinations (`/t1pur/checkout` and `/t1pur/support`) and that
+ * multiplicity is exactly what no longer multiplies — one stuck surface is one
+ * problem, one count, one `evidence_shape`. `/t1pur/support` is reached by only
+ * the 5 strugglers, below `funnelMinSessionsAtOrigin`, so it opens no candidate
+ * of its own.
+ *
+ * This constant read 2 before fix (b), one per transition out of the origin.
  */
-const FUNNEL_DECLARED_CANDIDATES = 2;
+const FUNNEL_DECLARED_CANDIDATES = 1;
 /** Every exception lands on ONE surface, so `error_event` declares one
  * candidate however many exceptions each session carries. */
 const ERROR_DECLARED_CANDIDATES = 1;
@@ -518,14 +545,30 @@ function cohort(input: {
   );
 }
 
-/** The dropper's walk: three separate visits to the origin, and the
- * destination never reached. */
-const DROPPER_PATHS: readonly string[] = [
+/**
+ * The dropper's walk: it ENDS at the origin. That is what "dropped" means under
+ * per-origin aggregation — not "did not reach one particular destination", but
+ * "left without going anywhere it could have gone", and `D(origin)` is built
+ * from this corpus's own walks, so anything after the first visit would be a
+ * member of it.
+ */
+const DROPPER_PATHS: readonly string[] = [T1PUR_ORIGIN];
+
+/**
+ * The struggler's walk: three separate visits to the origin, bouncing off the
+ * detour between them, and then onward to the destination.
+ *
+ * `repeated_attempt` is measured over the sessions AT the origin, never over
+ * the dropped ones, so a struggler proves the struggle half of the corpus while
+ * plainly continuing — which is the only way both halves can be true at once.
+ */
+const STRUGGLER_PATHS: readonly string[] = [
   T1PUR_ORIGIN,
   T1PUR_DETOUR,
   T1PUR_ORIGIN,
   T1PUR_DETOUR,
   T1PUR_ORIGIN,
+  T1PUR_DESTINATION,
 ];
 
 function basisOf(sessions: readonly SessionTimeline[]): CountBasis {
@@ -576,6 +619,17 @@ function multiSignalCorpus(ruleSet: ThresholdRuleSet): DetectorCorpus {
       exceptionName: ruleSet.exceptionEventName,
       exclusionReason: "none",
       firstStartedAt: new Date(T1PUR_FIRST_SESSION_AT.getTime() + 3_600_000),
+    }),
+    ...cohort({
+      // The struggle half, held apart from the dropped half because the two
+      // cohorts are structurally disjoint (see the magnitudes docblock above).
+      idPrefix: "t1pur-struggled",
+      count: STRUGGLERS,
+      paths: STRUGGLER_PATHS,
+      exceptionCountFor: () => 0,
+      exceptionName: ruleSet.exceptionEventName,
+      exclusionReason: "none",
+      firstStartedAt: new Date(T1PUR_FIRST_SESSION_AT.getTime() + 5_400_000),
     }),
     ...cohort({
       idPrefix: "t1pur-setaside",
@@ -884,53 +938,55 @@ describe("detector purity and coverage (FR-5, FR-8, D-13)", () => {
     expect(errorCandidate.counts[0].denominator).toBe(KEPT_AT_ORIGIN);
     expect(errorCandidate.counts[0].unit).toBe("sessions");
 
-    // --- funnel_dropoff: three visits to one surface in one session ---------
+    // --- funnel_dropoff: two destinations, three visits, ONE candidate ------
     const funnel = detectFunnelDropoff(corpus, ruleSet);
 
-    // One candidate per observed transition out of a qualifying origin — two —
-    // and not one per visit, per session, or per repeated attempt.
+    // ESC-9 fix (b), asserted rather than iterated: ONE candidate for the
+    // qualifying origin however many destinations it feeds — and not one per
+    // visit, per session, or per repeated attempt either. This asserted 2
+    // before fix (b), once per transition out of the origin.
     expect(funnel.candidates).toHaveLength(FUNNEL_DECLARED_CANDIDATES);
-    expect(funnel.candidates.map((candidate) => candidate.surface)).toEqual([
-      T1PUR_ORIGIN,
-      T1PUR_ORIGIN,
-    ]);
+    const candidate = funnel.candidates[0];
+    expect(candidate.surface).toBe(T1PUR_ORIGIN);
 
-    for (const candidate of funnel.candidates) {
-      // PL ruling 15: exactly two counts, in declared order, both over kept
-      // sessions.
-      expect(candidate.counts).toHaveLength(FUNNEL_DECLARED_COUNTS);
-      expect(candidate.counts[0].numerator).toBe(KEPT_AT_ORIGIN);
-      for (const count of candidate.counts) {
-        expect(count.denominator).toBe(KEPT_AT_ORIGIN);
-      }
-
-      // D3 again, on the other detector: twelve sessions visited the origin
-      // three times apiece. That is ONE struggle signal carrying the per-session
-      // maximum — not twelve signals, not one per visit, and not 36 attempts.
-      const struggles = candidate.signals.filter((signal) => signal.kind === "struggle");
-      expect(struggles).toHaveLength(1);
-      expect(struggles[0]).toMatchObject({
-        kind: "struggle",
-        subkind: "repeated_attempt",
-        surface: T1PUR_ORIGIN,
-        attempts: ORIGIN_VISITS_PER_DROPPER,
-      });
-
-      // The COHORT half of the same claim, and the number the gate actually
-      // turns on: twelve DISTINCT sessions each reached the threshold, over the
-      // 25 kept. `attempts` above is one session's visit depth and says nothing
-      // about how many people struggled — asserting only it would leave the
-      // deciding number unchecked.
-      const struggle = struggles[0];
-      if (struggle?.kind !== "struggle") throw new Error("expected a struggle signal");
-      expect(struggle.strugglingSessions.numerator).toBe(DROPPERS);
-      expect(struggle.strugglingSessions.denominator).toBe(struggle.strugglingSessions.basis.kept);
+    // PL ruling 15: exactly two counts, in declared order, both over kept
+    // sessions.
+    expect(candidate.counts).toHaveLength(FUNNEL_DECLARED_COUNTS);
+    expect(candidate.counts[0].numerator).toBe(KEPT_AT_ORIGIN);
+    for (const count of candidate.counts) {
+      expect(count.denominator).toBe(KEPT_AT_ORIGIN);
     }
 
-    // The two transitions are distinct claims about the same origin, and their
-    // drop-off numerators are the two disjoint cohorts.
-    expect(
-      funnel.candidates.map((candidate) => candidate.counts[1].numerator).toSorted((a, b) => a - b),
-    ).toEqual([DROPPERS, CONVERTERS]);
+    // THE AGGREGATED NUMERATOR, WITH ITS DENOMINATOR. `counts[1]` is a single
+    // claim about the origin — the sessions that left it without going anywhere
+    // they could have gone — not one numerator per destination. Twelve of the
+    // twenty-five kept sessions, and the denominator is asserted against
+    // `corpus.basis.kept` itself so the pair can never drift into "12 of 12".
+    expect(candidate.counts[1].numerator).toBe(DROPPERS);
+    expect(candidate.counts[1].denominator).toBe(corpus.basis.kept);
+
+    // D3 again, on the other detector: five sessions visited the origin three
+    // times apiece. That is ONE struggle signal carrying the per-session
+    // maximum — not five signals, not one per visit, and not 15 attempts.
+    const struggles = candidate.signals.filter((signal) => signal.kind === "struggle");
+    expect(struggles).toHaveLength(1);
+    expect(struggles[0]).toMatchObject({
+      kind: "struggle",
+      subkind: "repeated_attempt",
+      surface: T1PUR_ORIGIN,
+      attempts: ORIGIN_VISITS_PER_STRUGGLER,
+    });
+
+    // The COHORT half of the same claim, and the number the gate actually turns
+    // on: five DISTINCT sessions each reached the threshold, over the 25 kept.
+    // `attempts` above is one session's visit depth and says nothing about how
+    // many people struggled — asserting only it would leave the deciding number
+    // unchecked. Note that this is NOT `DROPPERS`: a dropped walk ends at its
+    // first visit to the origin, so a dropped session visits it exactly once and
+    // is never a struggler.
+    const struggle = struggles[0];
+    if (struggle?.kind !== "struggle") throw new Error("expected a struggle signal");
+    expect(struggle.strugglingSessions.numerator).toBe(STRUGGLERS);
+    expect(struggle.strugglingSessions.denominator).toBe(struggle.strugglingSessions.basis.kept);
   });
 });

@@ -38,7 +38,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^4.0.24",
-        "@growthmind/core": "workspace:*",
         "@growthmind/shared": "workspace:*",
         "ai": "^7.0.42",
         "zod": "^4.4.3",
@@ -93,7 +92,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@growthmind/adapters": "workspace:*",
-        "@growthmind/core": "workspace:*",
         "@growthmind/db": "workspace:*",
         "@growthmind/shared": "workspace:*",
         "graphile-worker": "^0.17.3",

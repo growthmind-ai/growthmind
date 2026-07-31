@@ -19,6 +19,50 @@
 //     member applies. Read `packages/shared/src/gate/messages.ts:58-85`
 //     before touching one of these: the previous incident there is exactly
 //     the shape a positive-observation phrasing here would repeat (SAC-6).
+//
+// ── SAC-11: NEVER IMPLY THE DROPPED SESSIONS ARE THE STRUGGLING ONES ──────
+//
+// THE RULE. No summary sentence may imply that the sessions counted as
+// DROPPED are the sessions counted as STRUGGLING. The two clauses may be
+// about the same SURFACE. They may never be about the same PEOPLE.
+//
+// FORBIDDEN, and this is the whole shape of it: any construction a reader
+// would parse as one cohort — "we saw people struggling here, and 20 of 30
+// dropped", "people kept coming back and then left", "they tried a few
+// times before giving up". Each is two individually TRUE clauses composing
+// into one FALSE claim.
+//
+// WHY IT IS FALSE, not merely unproven. The two cohorts are STRUCTURALLY
+// DISJOINT — provably, not incidentally. A funnel origin's destination set
+// is built from the corpus's own walks, so the surface immediately
+// following a session's FIRST visit to that origin is by construction a
+// member of that set. "Dropped at O" therefore reduces to "the walk ENDS at
+// the session's first visit to O" — so every dropped session visited O
+// exactly ONCE, while a struggling session is by definition one that
+// visited it repeatedly. No session can be in both counts. Pinned by
+// `D-2a — the dropped and struggling cohorts are structurally disjoint` in
+// `packages/core/__tests__/detect/funnel-dropoff.test.ts`.
+//
+// PERMITTED COMPOSITION, stated so a renderer author has a RULE and not a
+// warning: the two clauses may sit in one summary provided each names its
+// own count with its own denominator and neither borrows the other's
+// subject. Say "this page was revisited repeatedly by some sessions" and
+// "20 of 30 sessions left it without going anywhere it could have gone" as
+// two separate observations about the PAGE. Never join them with a pronoun,
+// a "then", or an "and then" that hands one cohort the other's behaviour.
+//
+// WHO THIS PROTECTS. The non-technical reader who repeats the sentence to
+// a third party. They cannot re-derive which cohort a clause referred to,
+// so a conflated sentence does not merely mislead them — it travels.
+//
+// This row ships BEFORE its consumer, deliberately. The renderer that must
+// obey it is the follow-on sprint's; a contract written after the code it
+// governs is a contract nobody applied. Its mechanical guard test lands
+// with that renderer as an inherited obligation.
+//
+// Numbering: this is SAC-11. The requirement arrived labelled "SAC-7",
+// which collides with the existing SAC-7 (no causal connective). SAC-1
+// through SAC-10 are all taken; renumbered rather than overloaded.
 import type {
   AnalysisOutcome,
   AnalysisRunStatus,
