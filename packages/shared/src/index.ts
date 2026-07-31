@@ -244,3 +244,12 @@ export {
   DELIVERY_VOCABULARY,
   ALL_DELIVERY_MESSAGES,
 } from "./delivery/messages";
+export {
+  postFailureCodeSchema,
+  postResultSchema,
+  isRetryablePostFailure,
+  type PostFailureCode,
+  type PostResult,
+  type PostRequest,
+  type DeliveryPoster,
+} from "./delivery/poster";
