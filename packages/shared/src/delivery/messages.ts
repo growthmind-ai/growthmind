@@ -44,6 +44,7 @@
 // `FORBIDDEN_PRODUCT_JARGON` is imported by the AUDITS that scan these strings,
 // not by the strings themselves — and a re-export here would give one list two
 // names in the package barrel, which is how a second list starts.
+import type { PostFailureCode } from "./poster";
 import type {
   DeliveryDecision,
   DeliveryStatus,
@@ -168,6 +169,43 @@ export const NO_RATE_SENTENCE =
   "Every session we looked at was set aside, so there is no share to report.";
 
 /**
+ * What to tell a customer when one POST ATTEMPT failed, keyed by mechanism.
+ *
+ * Distinct from `DELIVERY_STATUS_MESSAGES`, which speaks at ROW level ("we
+ * could not get this into Slack"). These speak at ATTEMPT level — which of four
+ * different things someone has to do about it — which is the whole reason
+ * `postFailureCodeSchema` splits four ways instead of one.
+ *
+ * They live HERE, not beside the Slack adapter that authored them, because this
+ * module is the delivery lane's one home and `ALL_DELIVERY_MESSAGES` below is
+ * the plain-English audit. `signatures/messages.ts` shipped standalone with its
+ * own audit, but explicitly as the FALLBACK for when the aggregate's home was
+ * contested; this one is not contested, so the same precedent says join it. Four
+ * customer-facing sentences sitting outside the aggregate is exactly the drift
+ * the aggregate exists to prevent.
+ *
+ * House rules each obeys, beyond the module header's:
+ *   - Every one says the finding itself is untouched. A delivery failure is a
+ *     fact about Slack, never a fact about what we found — and none of them
+ *     claims the product is fine or that the finding has gone away.
+ *   - Each names a DIFFERENT next step. Two identical sentences would throw
+ *     away the distinction the port paid four codes for.
+ */
+export const POST_FAILURE_MESSAGES: Record<PostFailureCode, string> = {
+  call_failed:
+    "We could not get this into Slack just now. Nothing about what we found has changed, and we will try again.",
+
+  rejected:
+    "Slack would not accept this message as we built it, so it has not arrived. Sending the same thing again would not help. Nothing about what we found has changed.",
+
+  not_authorised:
+    "Slack is no longer letting us post on your behalf, so someone will need to reconnect it before anything can arrive. Nothing about what we found has changed.",
+
+  channel_unavailable:
+    "We could not post to the channel that was chosen — it may have been archived or deleted, or we may no longer be in it. Someone will need to pick another one. Nothing about what we found has changed.",
+};
+
+/**
  * Everything `packages/core`'s Slack renderer needs from this module, bundled
  * so the call site is ONE import rather than four.
  *
@@ -201,6 +239,7 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       ...Object.values(NOTHING_TODAY_REASON_MESSAGES),
       ...Object.values(DELIVERY_STATUS_MESSAGES),
       ...Object.values(RESIDUAL_PII_KIND_MESSAGES),
+      ...Object.values(POST_FAILURE_MESSAGES),
     ].filter((message): message is string => message !== null),
   ),
 ];

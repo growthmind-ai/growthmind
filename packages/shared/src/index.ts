@@ -253,3 +253,4 @@ export {
   type PostRequest,
   type DeliveryPoster,
 } from "./delivery/poster";
+export { POST_FAILURE_MESSAGES } from "./delivery/messages";
