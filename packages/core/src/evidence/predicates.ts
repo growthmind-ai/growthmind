@@ -116,6 +116,99 @@ function anySignalProves(
 }
 
 /**
+ * Which signal kinds the rule set admits as proof of `finalClass` — the same
+ * lists the predicates read, resolved by class. Internal: the one consumer is
+ * `confidenceBasisForPass` below, which must agree with the predicates about
+ * what proved a class, and keeping the resolution in this file is what makes
+ * that agreement a property of one diff rather than of two files staying in
+ * sync (O-012, "one implementation reused").
+ */
+function admittedKindsFor(
+  finalClass: FindingClass,
+  ruleSet: ThresholdRuleSet,
+): readonly EvidenceSignalKind[] {
+  switch (finalClass) {
+    case "broken":
+      return ruleSet.brokenProofSignals;
+    case "confusing":
+      return ruleSet.confusingProofSignals;
+    case "changed_mind":
+      return ruleSet.changedMindProofSignals;
+    case "instrumentation":
+      return ruleSet.instrumentationProofSignals;
+  }
+}
+
+/**
+ * Is this PROVING signal sitting EXACTLY at an inclusive boundary (D-6)?
+ *
+ * Reads the SAME magnitudes `magnitudeSatisfied` gates on, in the same file,
+ * so the two cannot drift apart silently: a threshold added to a predicate
+ * without a boundary case here is visible in one diff. Callers only ever ask
+ * this of a signal `magnitudeSatisfied` already accepted — for a presence-only
+ * kind there is no boundary to sit at, so the answer is `false`.
+ */
+function atInclusiveBoundary(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
+  switch (signal.kind) {
+    case "struggle":
+      if (signal.subkind !== "repeated_attempt") return false;
+      return (
+        signal.attempts === ruleSet.struggleRepeatedAttemptMin ||
+        signal.strugglingSessions.numerator === ruleSet.struggleMinStrugglingSessions
+      );
+    case "failure_correlated":
+      return signal.correlatedSessions.numerator === ruleSet.errorMinAffectedSessions;
+    case "instrumentation_rate_drop":
+      // The same exact-integer comparison `magnitudeSatisfied` makes, at
+      // equality — plus the minimum-baseline boundary, which is inclusive too.
+      return (
+        signal.observed.numerator * PERCENT_SCALE ===
+          ruleSet.instrumentationDropRatioPercent * signal.expected.numerator ||
+        signal.expected.numerator === ruleSet.instrumentationMinExpected
+      );
+    case "failure_uncorrelated":
+    case "clean_exit":
+      return false;
+  }
+}
+
+/**
+ * The confidence basis for a claim the gate PASSED at `finalClass` (O-012).
+ *
+ * `at_threshold` when every signal that proves the class sits exactly at an
+ * inclusive boundary (the D-6 case `confidenceBasisSchema` names so O-006 can
+ * rank it lower); `threshold_met` the moment any proving signal clears its
+ * magnitudes with room. Presence-only proof (a `clean_exit`) has no boundary
+ * to sit at and is therefore `threshold_met`.
+ *
+ * Returns the literal union rather than importing `ConfidenceBasis`: that type
+ * lives in `../findings/candidate.ts`, which imports this package's gate — an
+ * import from here back into findings would be the package-internal cycle the
+ * candidate module's own header warns against. The literals are assignable to
+ * `ConfidenceBasis`, and `candidateFindingSchema.parse` re-checks them at the
+ * assembler's boundary.
+ *
+ * `below_threshold` is NOT produced here, by construction: this function is
+ * only defined for a PASS, and a passed class had at least one proving signal.
+ * That arm of the enum exists for provenance rows other producers may emit.
+ */
+export function confidenceBasisForPass(
+  signals: readonly EvidenceSignal[],
+  finalClass: FindingClass,
+  ruleSet: ThresholdRuleSet,
+): "threshold_met" | "at_threshold" {
+  const admitted = admittedKindsFor(finalClass, ruleSet);
+  const proving = signals.filter(
+    (signal) => admitted.includes(signal.kind) && magnitudeSatisfied(signal, ruleSet),
+  );
+
+  const allAtBoundary =
+    proving.length > 0 && proving.every((signal) => atInclusiveBoundary(signal, ruleSet));
+
+  return allAtBoundary ? "at_threshold" : "threshold_met";
+}
+
+/**
  * The kinds whose mere PRESENCE disqualifies `changed_mind`, at any magnitude.
  *
  * Not a rule-set member, deliberately: every `ThresholdRuleSet` field is an
