@@ -1,7 +1,3 @@
-import path from "node:path";
-
-import { loadEnvConfig } from "@next/env";
-
 /**
  * Next auto-loads `.env` from its own project root (apps/web), but this is a
  * monorepo and the single `.env` lives at the workspace root — the worker and
@@ -29,9 +25,20 @@ import { loadEnvConfig } from "@next/env";
  * Caveat: this cannot cover `NEXT_PUBLIC_*` variables, which the bundler
  * inlines at build time, before any of this runs. Those still need to be set
  * in the build environment.
+ *
+ * The imports are dynamic and live inside the runtime guard on purpose: this
+ * module is compiled for the Edge runtime too, and a top-level `node:path` /
+ * `@next/env` import makes that compilation fail ("A Node.js module is loaded
+ * which is not supported in the Edge Runtime"). Behind the `await import`, the
+ * Edge bundle never reaches them.
  */
-export function register() {
+export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const [{ default: path }, { loadEnvConfig }] = await Promise.all([
+    import("node:path"),
+    import("@next/env"),
+  ]);
 
   loadEnvConfig(path.resolve(process.cwd(), "../.."), process.env.NODE_ENV !== "production");
 }
