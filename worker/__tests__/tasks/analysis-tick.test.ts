@@ -56,6 +56,7 @@ import type {
 } from "@growthmind/db";
 import type { SessionSummariser, SummariseInput } from "@growthmind/adapters";
 import type { SummaryRenderResult, TenantContext } from "@growthmind/shared";
+import { tenantContextSchema } from "@growthmind/shared";
 import { expect, test } from "bun:test";
 
 // THE MODULE UNDER TEST. It does not exist in Wave 0; this import is the
@@ -898,4 +899,158 @@ test("the surfaces every other test in this file drives are accepted by the gate
     CANDIDATE_C.candidate.surface,
   ]);
   expect(h.findings.rows()).toHaveLength(3);
+});
+
+// ---------------------------------------------------------------------------
+// W14 — the ONE path that must not write a terminal state (D6/D8)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long before the tick the incumbent started. Derived from `TICK_AT` like
+ * every other instant here, and deliberately WELL INSIDE the run lease
+ * (`ANALYSIS_RUN_LEASE_MS`, 45 minutes) so the incumbent is unambiguously LIVE:
+ * the fixture's subject is "another worker is holding this project right now",
+ * never "a run old enough that the real repository would reclaim it". It is
+ * also distinct from `TICK_AT`, which is what lets `startedAt` below prove the
+ * row read back is the incumbent's and not a fresh one this tick minted.
+ */
+const INCUMBENT_STARTED_AT = new Date(TICK_AT.getTime() - 5 * 60 * 1000);
+
+/** The other worker, in the same org. Parsed through the SAME context schema
+ * the handler builds its own with — there is one accepted context shape, and a
+ * fixture that skipped it would be seeding a row production could not. */
+const OTHER_WORKER: TenantContext = tenantContextSchema.parse({
+  userId: "system:o11-other-analysis-tick",
+  organizationId: ORG,
+  organizationName: ORG_NAME,
+  role: "system",
+});
+
+test("a project another run already holds is left untouched, terminal write included", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({ summariser });
+
+  // ANOTHER WORKER GOT THERE FIRST — seeded through the repository's OWN open,
+  // so the row is exactly the one the partial unique index on
+  // `(organization_id, project_id) WHERE status = 'running'` will refuse ours
+  // against. Nothing is hand-built.
+  const seeded = await h.runs.repoFor(OTHER_WORKER).open({
+    projectId: PROJECT,
+    tickAt: INCUMBENT_STARTED_AT,
+  });
+  expect(seeded.opened).toBe(true);
+  const incumbent = seeded.run;
+
+  const summary = await runAnalysisTick(h.deps);
+
+  // THE SUBJECT OF THIS TEST: the incumbent row is exactly as its owner left
+  // it. This is the only path in the lane that skips the terminal write, and
+  // the reason is that the write would stamp OUR outcome onto a run somebody
+  // else is still working — so the assertion is on the row's own fields, not
+  // on the absence of other effects.
+  const rows = h.runs.rows();
+  expect(rows).toHaveLength(1);
+  const after = rows[0];
+  expect(after?.id).toBe(incumbent.id);
+  expect(after?.status).toBe("running");
+  expect(after?.startedAt).toEqual(INCUMBENT_STARTED_AT);
+  expect(after?.finishedAt).toBeNull();
+  expect(after?.outcome).toBeNull();
+  expect(after?.stopReason).toBeNull();
+  expect(after?.failureReason).toBeNull();
+  expect(after?.modelCallsAttempted).toBe(0);
+  expect(after?.resolvedModelId).toBeNull();
+
+  // NO CANDIDATE WAS PROCESSED — a count on the counting fake, never an absence
+  // inferred from something else.
+  expect(summariser.calls()).toBe(0);
+  // AND NO BUDGET WAS TOUCHED. Not merely "won no claim": the candidate was
+  // never OFFERED to the claim, which is what keeps the cap's count subquery
+  // resting on a single writer per project (D6).
+  expect(h.runs.claimAttempts()).toEqual([]);
+  expect(h.runs.claimed()).toEqual([]);
+  // Nothing written down, and no identity filed.
+  expect(h.findings.rows()).toEqual([]);
+  expect(h.ledger.recorded()).toEqual([]);
+
+  // NOT A FAILURE — the single-writer guarantee working, counted as its own
+  // thing. This is also the control that rules out the vacuous reading of every
+  // zero above: the lane WAS considered, and it was skipped for this reason.
+  expect(summary.lanesConsidered).toBe(1);
+  expect(summary.lanesAlreadyRunning).toBe(1);
+  expect(summary.lanesRun).toBe(0);
+  expect(summary.lanesFailed).toBe(0);
+  expect(summary.lanesErrored).toBe(0);
+
+  // NON-VACUITY: the identical lane with no incumbent does all of it — one
+  // call, one claim, one finding, one closed run. So every zero above is the
+  // incumbent's doing and not a fixture that could never have produced them.
+  const unheld = cleanSummariser();
+  const free = harness({ summariser: unheld });
+  await runAnalysisTick(free.deps);
+  expect(unheld.calls()).toBe(1);
+  expect(free.runs.claimed()).toEqual([CANDIDATE_A.candidateKey]);
+  expect(sourceFor(free, CANDIDATE_A.candidateKey)).toBe("model_rendered");
+  expect(free.runs.rows()[0]?.status).toBe("completed");
+});
+
+// ---------------------------------------------------------------------------
+// W15 — the two zeros never collapse (SAC-10's sibling, one level up)
+// ---------------------------------------------------------------------------
+
+/** Sessions were looked at; none of them produced anything solid enough. */
+const QUIET_PROJECT = "o11-project-quiet";
+/** There was nothing to look at yet. */
+const UNVISITED_PROJECT = "o11-project-unvisited";
+
+test("a run that found nothing records which nothing it found, and the two zeros never collapse", async () => {
+  const summariser = cleanSummariser();
+  // TWO ZERO-CANDIDATE LANES DIFFERING IN EXACTLY ONE INPUT: `sessionsConsidered`.
+  // Same org, same everything else — so a handler that collapsed the two could
+  // not be excused by any other difference between the fixtures.
+  const h = harness({
+    lanes: [
+      lane({ projectId: QUIET_PROJECT, candidates: [], sessionsConsidered: 42 }),
+      lane({ projectId: UNVISITED_PROJECT, candidates: [], sessionsConsidered: 0 }),
+    ],
+    summariser,
+  });
+
+  const summary = await runAnalysisTick(h.deps);
+
+  const runFor = (projectId: string) => h.runs.rows().find((row) => row.projectId === projectId);
+  const quiet = runFor(QUIET_PROJECT)?.outcome;
+  const unvisited = runFor(UNVISITED_PROJECT)?.outcome;
+
+  // "WE LOOKED AND YOUR PRODUCT WAS QUIET" AND "WE HAVE NOT LOOKED YET" ARE
+  // DIFFERENT FACTS ABOUT A CUSTOMER'S PRODUCT. Asserted as a PAIR, so a future
+  // collapse onto either member fails here loudly rather than silently telling
+  // a founder their product is quieter than it is.
+  expect([quiet, unvisited]).toEqual(["no_candidates_passed_gate", "no_sessions_to_analyse"]);
+  expect(quiet).not.toBe(unvisited);
+  // And neither is the third member: a zero-candidate run has not produced
+  // findings, whichever zero it is.
+  expect(quiet).not.toBe("produced_findings");
+  expect(unvisited).not.toBe("produced_findings");
+
+  // BOTH STILL CLOSE TERMINAL (D8). A run left `running` behind the partial
+  // unique index jams its project's lane forever, and "there was nothing to do"
+  // is not an exemption from the terminal write — it is the case most likely to
+  // look like one.
+  for (const projectId of [QUIET_PROJECT, UNVISITED_PROJECT]) {
+    const run = runFor(projectId);
+    expect(run?.status).toBe("completed");
+    expect(run?.status).not.toBe("running");
+    expect(run?.finishedAt).toEqual(TICK_AT);
+    expect(run?.stopReason).toBe("ran_to_completion");
+    expect(run?.failureReason).toBeNull();
+  }
+
+  // Nothing was written and no model was addressed for either — an empty lane
+  // costs nothing. `lanesRun` is the control: both lanes really did run, so the
+  // zeros here are outcomes rather than a tick that never started.
+  expect(summary.lanesRun).toBe(2);
+  expect(summary.findingsPersisted).toBe(0);
+  expect(h.findings.rows()).toEqual([]);
+  expect(summariser.calls()).toBe(0);
 });
