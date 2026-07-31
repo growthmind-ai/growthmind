@@ -169,6 +169,120 @@ describe("resolveOrganizationForCli", () => {
     ).toHaveLength(1);
   });
 
+  // ── WHICH OWNER (readOwners) ──────────────────────────────────────────────
+  // The three rows below cover `readOwners`' selection rule, which every row
+  // above leaves untested by seeding exactly one owner per organisation. This
+  // is not a cosmetic gap: `ownerUserId` becomes `ctx.userId` in the
+  // `TenantContext` the mint runs under, so a regression here mints a
+  // credential as the WRONG PERSON with nothing failing.
+
+  it("should act as the earliest owner when an organization has more than one", async () => {
+    const organization = await seedOrganization(db, { name: NAMES.orgName("two-owners") });
+    const earlier = await seedUser(db, {
+      name: NAMES.userName("two-owners-earlier"),
+      email: NAMES.email("two-owners-earlier"),
+    });
+    const later = await seedUser(db, {
+      name: NAMES.userName("two-owners-later"),
+      email: NAMES.email("two-owners-later"),
+    });
+
+    // The LATER owner is inserted FIRST, so physical row order cannot be what
+    // answers below — only `member.createdAt` can.
+    await seedMember(db, {
+      organizationId: organization.id,
+      userId: later.id,
+      role: "owner",
+      createdAt: new Date("2026-02-01T00:00:00.000Z"),
+    });
+    await seedMember(db, {
+      organizationId: organization.id,
+      userId: earlier.id,
+      role: "owner",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const resolved = okOrThrow(await resolveOrganizationForCli(db, {}));
+
+    expect(resolved.ownerUserId).toBe(earlier.id);
+    expect(resolved.ownerEmail).toBe(NAMES.email("two-owners-earlier"));
+    // Non-vacuity: the other owner is genuinely an owner of the same
+    // organisation, so this row really did choose between two candidates.
+    expect(resolved.ownerUserId).not.toBe(later.id);
+  });
+
+  it("should break a createdAt tie on member id rather than on row order", async () => {
+    const organization = await seedOrganization(db, { name: NAMES.orgName("tied-owners") });
+    const first = await seedUser(db, {
+      name: NAMES.userName("tied-owners-one"),
+      email: NAMES.email("tied-owners-one"),
+    });
+    const second = await seedUser(db, {
+      name: NAMES.userName("tied-owners-two"),
+      email: NAMES.email("tied-owners-two"),
+    });
+
+    // Identical `createdAt` — the realistic shape when two owners are seeded by
+    // the same migration or the same transaction.
+    const tiedAt = new Date("2026-03-01T00:00:00.000Z");
+    const firstMember = await seedMember(db, {
+      organizationId: organization.id,
+      userId: first.id,
+      role: "owner",
+      createdAt: tiedAt,
+    });
+    const secondMember = await seedMember(db, {
+      organizationId: organization.id,
+      userId: second.id,
+      role: "owner",
+      createdAt: tiedAt,
+    });
+
+    // Whichever member id sorts first is the documented answer. Computed from
+    // the seeded ids rather than hardcoded, because they are random UUIDs —
+    // the point is that the answer is DETERMINED, not that it is any
+    // particular person.
+    const expectedUserId = firstMember.id < secondMember.id ? first.id : second.id;
+
+    const resolved = okOrThrow(await resolveOrganizationForCli(db, {}));
+    expect(resolved.ownerUserId).toBe(expectedUserId);
+
+    // And it is stable: the same database answers the same way twice, so a
+    // re-run never quietly mints as the other person.
+    expect(okOrThrow(await resolveOrganizationForCli(db, {}))).toEqual(resolved);
+  });
+
+  it("should treat an owner with no email as no owner at all", async () => {
+    const organization = await seedOrganization(db, { name: NAMES.orgName("empty-email") });
+    const user = await seedUser(db, { name: NAMES.userName("empty-email"), email: "" });
+    await seedMember(db, {
+      organizationId: organization.id,
+      userId: user.id,
+      role: "owner",
+    });
+
+    const refusal = refusalOrThrow(await resolveOrganizationForCli(db, {}));
+
+    // Same fail direction `creatorEmail()` documents: infer NOTHING rather than
+    // act as somebody who is not really there. A CLI that mints as a
+    // half-present actor is worse than one that refuses.
+    expect(refusal.reason).toBe("no_owner");
+    // The organisation is still named, so the operator can see WHY it refused.
+    const candidate = refusal.candidates.find((row) => row.id === organization.id);
+    expect(candidate).toBeDefined();
+    expect(candidate?.ownerEmail).toBeNull();
+
+    // Non-vacuity: the membership genuinely exists AND genuinely carries the
+    // owner role, so the refusal is the empty-email rule and not a missing or
+    // mis-roled member row.
+    const [member] = await db
+      .select()
+      .from(schema.member)
+      .where(eq(schema.member.organizationId, organization.id));
+    expect(member?.userId).toBe(user.id);
+    expect(member?.role).toBe("owner");
+  });
+
   it("should resolve by slug as well as by id", async () => {
     const target = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("by-slug-target"),

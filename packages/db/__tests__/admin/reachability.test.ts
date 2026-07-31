@@ -251,6 +251,16 @@ describe("CLI purity (D-10)", () => {
       expect(source).not.toMatch(/\.update\(/);
       expect(source).not.toMatch(/["']drizzle-orm(?:\/[^"']*)?["']/);
 
+      // THE KEY IS NEVER WRITTEN TO A FILE (D-10). Both script headers promise
+      // this in prose and both honour it — `process.stdout.write` is the only
+      // output call either one makes — but prose is not a gate, and this is
+      // the single most consequential property of a script whose whole job is
+      // handling raw credential material. A key that lands in a file outlives
+      // the terminal it was printed to, survives into `git status`, and gets
+      // committed by the next `git add .`. One `writeFileSync` for "operator
+      // convenience" is all it would take, and nothing else here would notice.
+      expect(source).not.toMatch(/writeFileSync|writeFile|appendFile|createWriteStream|Bun\.write/);
+
       // The non-vacuity half, built in: the scan really read a script that
       // does the job through the shared seam, not an empty file that passes
       // every negative above.

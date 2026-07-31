@@ -143,6 +143,18 @@ function defaultKeyName(): string {
   return `read credential (${new Date().toISOString().slice(0, 10)})`;
 }
 
+/** The label the operator reads back from `revoke-api-key.ts --list` when they
+ * are deciding which key to kill. `--name` is trimmed, and a request that is
+ * empty or whitespace-only falls back to the default instead of being
+ * persisted: `api_keys.name` is `notNull` text, so `--name ""` would store a
+ * blank string quite happily and `--list` would print a nameless row — which
+ * defeats the column's entire purpose, telling two agents' keys apart. A
+ * default label is always more useful than no label. */
+function resolveKeyName(requested: string | undefined): string {
+  const trimmed = requested?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : defaultKeyName();
+}
+
 async function main(): Promise<number> {
   const args = parseArguments(process.argv.slice(2));
 
@@ -184,7 +196,7 @@ async function main(): Promise<number> {
     });
 
     const minted = await createApiKeysRepo(db, ctx).mint({
-      name: args.name ?? defaultKeyName(),
+      name: resolveKeyName(args.name),
     });
 
     write(`Organisation: ${organisation.name} (${organisation.id})`);
@@ -227,14 +239,26 @@ function describeFailure(error: unknown): string {
     signals.push(`${current.message} ${typeof code === "string" ? code : ""}`);
     current = current.cause;
   }
-  const message = messages[0] ?? String(error);
 
   if (
     /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|terminating connection/i.test(signals.join(" "))
   ) {
     return "Could not reach the database. Start the stack with `docker compose up`, then run this again.";
   }
-  return `Nothing was minted: ${message}`;
+  return `Nothing was minted: ${firstLine(messages[0] ?? String(error))}`;
+}
+
+/** Everything the operator is shown from an unrecognised failure, and no more.
+ * The query layer's message is `"Failed query: <sql>\nparams: <values>"`, so
+ * anything past the first newline is the statement's bound parameters — for a
+ * constraint violation or a pre-migration run that is the organisation id, the
+ * key name, the digest and the display prefix, printed at a terminal nobody
+ * asked to see SQL at. The raw material is never a query parameter, so the
+ * credential itself cannot appear here either way; this keeps the rest of the
+ * row out of the operator's scrollback too. The first line still names the
+ * failure well enough to act on. */
+function firstLine(message: string): string {
+  return message.split("\n")[0] ?? message;
 }
 
 try {

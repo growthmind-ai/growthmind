@@ -21,7 +21,7 @@ import {
   type ApiKeyMetadata,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { apiKeys } from "../schema/api-keys";
 import type { ScopedDb } from "./types";
@@ -80,6 +80,10 @@ export interface ApiKeysRepo {
    * The caller reads that `null` as "nothing was revoked" and exits non-zero;
    * a zero-row write reported as success is the exact class O-006's retro
    * named CRITICAL.
+   *
+   * Revoking an already-revoked key succeeds and returns the row, but PRESERVES
+   * the first revocation's `revokedAt` — two operators racing to kill a leaked
+   * credential must not rewrite the record of when it stopped working.
    */
   revoke(id: string): Promise<ApiKeyMetadata | null>;
 }
@@ -122,7 +126,23 @@ export function createApiKeysRepo(db: ScopedDb, ctx: TenantContext): ApiKeysRepo
     async revoke(id: string): Promise<ApiKeyMetadata | null> {
       const [row] = await db
         .update(apiKeys)
-        .set({ revokedAt: new Date() })
+        // `coalesce`, not `new Date()`: the FIRST revocation's timestamp is the
+        // one audit fact this table holds about a credential, and a second
+        // revoke must not rewrite it. Two operators racing to kill a leaked key
+        // is the ordinary case, not a contrived one — a plain assignment would
+        // move the timestamp forward and the CLI would report the later run as
+        // a fresh revocation, quietly erasing when the key actually stopped
+        // working (D6). Still one atomic `UPDATE … RETURNING`, so the second
+        // call stays honest without becoming an error: the key is revoked, the
+        // caller is told so, and the row comes back carrying the original time.
+        //
+        // This DIVERGES DELIBERATELY from `write-keys.repo.ts:revoke`, which
+        // still assigns `new Date()`. The read family is the one where the
+        // timestamp matters — a read credential is what a person mints, hands
+        // to an agent, and later has to answer "when did we cut this off?"
+        // about. If write keys ever grow the same question, they should move
+        // here rather than this moving back.
+        .set({ revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` })
         .where(and(eq(apiKeys.organizationId, ctx.organizationId), eq(apiKeys.id, id)))
         .returning();
 

@@ -249,14 +249,24 @@ function describeFailure(error: unknown): string {
     signals.push(`${current.message} ${typeof code === "string" ? code : ""}`);
     current = current.cause;
   }
-  const message = messages[0] ?? String(error);
 
   if (
     /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|terminating connection/i.test(signals.join(" "))
   ) {
     return "Could not reach the database. Start the stack with `docker compose up`, then run this again.";
   }
-  return `Nothing was revoked: ${message}`;
+  return `Nothing was revoked: ${firstLine(messages[0] ?? String(error))}`;
+}
+
+/** Everything the operator is shown from an unrecognised failure, and no more.
+ * The query layer's message is `"Failed query: <sql>\nparams: <values>"`, so
+ * anything past the first newline is the statement's bound parameters — the
+ * organisation id and the key id here. Duplicated from `mint-api-key.ts` by the
+ * same decision that duplicates `printCandidates` (ADD D-10): neither script
+ * imports the other. The first line still names the failure well enough to act
+ * on. */
+function firstLine(message: string): string {
+  return message.split("\n")[0] ?? message;
 }
 
 try {

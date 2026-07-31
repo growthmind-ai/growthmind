@@ -158,6 +158,52 @@ describe("api-keys repository and resolver", () => {
     expect(row?.keyHash).toBe(hashApiKeyMaterial(minted.raw));
   });
 
+  it("should keep the first revocation's timestamp when the same key is revoked again", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("double-revoke"),
+      userName: NAMES.userName("double-revoke"),
+      email: NAMES.email("double-revoke"),
+    });
+    const repo = createApiKeysRepo(db, org.ctx);
+    const minted = await repo.mint({ name: "double-revoke agent" });
+
+    const first = await repo.revoke(minted.key.id);
+    const firstAt = first?.revokedAt;
+    expect(firstAt).toBeInstanceOf(Date);
+    if (!(firstAt instanceof Date)) {
+      throw new Error("expected the first revoke to stamp revokedAt");
+    }
+
+    // Real elapsed time between the two calls. Without it two statements
+    // microseconds apart could agree by accident and this row would pass
+    // against the very bug it exists to catch.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const second = await repo.revoke(minted.key.id);
+
+    // Two operators racing to kill a leaked key is the ordinary case. The
+    // second one is still told the key is revoked — that is true, and an error
+    // here would be a worse answer than the truth.
+    expect(second?.id).toBe(minted.key.id);
+    // …but the ONE audit fact this table holds about a leaked credential —
+    // when it stopped working — is not rewritten by the later call.
+    expect(second?.revokedAt?.getTime()).toBe(firstAt.getTime());
+
+    const [row] = await db
+      .select()
+      .from(schema.apiKeys)
+      .where(eq(schema.apiKeys.id, minted.key.id));
+    expect(row?.revokedAt?.getTime()).toBe(firstAt.getTime());
+
+    // Non-vacuity: the clock genuinely moved between the two revokes, so a
+    // plain `revokedAt: new Date()` assignment WOULD have failed both
+    // assertions above rather than passing by coincidence.
+    expect(Date.now() - firstAt.getTime()).toBeGreaterThanOrEqual(25);
+
+    // And the key is still revoked for the only consumer that matters.
+    expect(await resolveApiKeyForRead(db, minted.raw)).toBeNull();
+  });
+
   it("should report nothing revoked for another organization's key id", async () => {
     const orgA = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("foreign-revoke-a"),
