@@ -158,6 +158,23 @@ function countOf(code: string, pattern: RegExp): number {
   return (code.match(pattern) ?? []).length;
 }
 
+/**
+ * EVERY claim row in the ledger, UNFILTERED BY ORGANIZATION — deliberately not
+ * a scoped read.
+ *
+ * A row that landed under the WRONG organization is invisible to a query that
+ * filters by the organization it should have landed under, so the assertion
+ * that catches a dropped org predicate must not itself use one. The caller
+ * filters the returned rows in memory, by org AND by project, so both halves
+ * of a mis-stamped row are visible.
+ */
+async function allClaimRows(
+  db: TestDb,
+): Promise<(typeof schema.analysisModelCalls.$inferSelect)[]> {
+  const rows = await db.select().from(schema.analysisModelCalls);
+  return rows;
+}
+
 describe("the analysis lane's tenant boundary (DB3)", () => {
   let db: TestDb;
   let close: () => Promise<void>;
@@ -329,11 +346,58 @@ describe("the analysis lane's tenant boundary (DB3)", () => {
       // A refusal is acceptable; the read-back below is what decides.
     }
 
-    const bClaims = await db
-      .select()
-      .from(schema.analysisModelCalls)
-      .where(eq(schema.analysisModelCalls.organizationId, orgB.organizationId));
-    expect(bClaims).toHaveLength(0);
+    // READ THE LEDGER FROM BOTH SIDES, AND KEYED ON THE PROJECT. Asking only
+    // "did a row land under org B's organization_id?" CANNOT FAIL on the defect
+    // this leg names. Delete the claim's
+    // `exists (select 1 from projects p … p.organization_id = …)` conjunct and
+    // the forged row lands under ORG A's organization_id while naming ORG B's
+    // project: org B's count is still zero and that assertion still passes.
+    //
+    // Such a row is not harmless. `analysis_model_calls.project_id` is
+    // `ON DELETE cascade`, so org B deleting its own project would silently
+    // delete org A's claim rows and refund budget org A had already spent —
+    // exactly the silent refund `../../src/schema/analysis-model-calls.ts`'s
+    // LIFETIME WINDOW header says must never happen. So the row named BY THE
+    // PROJECT is what decides this leg, and org A's own side is read too.
+    const afterCrossOrgClaim = await allClaimRows(db);
+    expect(afterCrossOrgClaim.filter((row) => row.projectId === orgB.projectId)).toHaveLength(0);
+    expect(
+      afterCrossOrgClaim.filter((row) => row.organizationId === orgA.organizationId),
+    ).toHaveLength(0);
+    expect(
+      afterCrossOrgClaim.filter((row) => row.organizationId === orgB.organizationId),
+    ).toHaveLength(0);
+
+    // THE POSITIVE CONTROL — the same call, differing ONLY in whose project it
+    // names. Without it the three zeroes above are satisfied by a claim that
+    // never lands for anybody, which is a green test proving nothing (the
+    // non-vacuity discipline this file's header states).
+    const runA = await createAnalysisRunsRepo(db, orgA.ctx).open({
+      projectId: orgA.projectId,
+      tickAt: TICK_AT,
+    });
+    expect(
+      await createAnalysisRunsRepo(db, orgA.ctx).claimModelCall({
+        projectId: orgA.projectId,
+        runId: runA.run.id,
+        signature: SIGNATURE_B,
+        signatureVersion: 1,
+        projectCap: 5,
+        organizationCap: 5,
+        at: TICK_AT,
+      }),
+    ).toEqual({ claimed: true });
+
+    const afterOwnClaim = await allClaimRows(db);
+    const aClaims = afterOwnClaim.filter((row) => row.organizationId === orgA.organizationId);
+    expect(aClaims).toHaveLength(1);
+    expect(aClaims[0]?.projectId).toBe(orgA.projectId);
+    // And the org-B side is STILL untouched — one org's legitimate claim never
+    // appears against the other's project.
+    expect(afterOwnClaim.filter((row) => row.projectId === orgB.projectId)).toHaveLength(0);
+    expect(afterOwnClaim.filter((row) => row.organizationId === orgB.organizationId)).toHaveLength(
+      0,
+    );
   });
 
   // --- FR-M14 — a client-supplied id never widens scope --------------------
@@ -470,6 +534,12 @@ describe("no bypass context is reachable from the analysis lane", () => {
     // dropped. The expected count is DERIVED FROM THE SOURCE, so a query added
     // in a later sprint raises the bar automatically instead of arriving
     // uncovered.
+    //
+    // EVERY STATEMENT, NOT EVERY READ. An earlier revision counted only the
+    // builder READS and so covered neither the writes nor the raw-SQL claim —
+    // which is the ADD's named standing hazard, because a widened count
+    // subquery is invisible in the claim's return value. Reads, inserts,
+    // updates and both hand-written aggregations are each counted below.
     const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
     const findingReads = countOf(findingsCode, /\.from\(\s*findings\s*\)/g);
     expect(findingReads).toBeGreaterThan(0);
@@ -477,11 +547,67 @@ describe("no bypass context is reachable from the analysis lane", () => {
       countOf(findingsCode, /eq\(\s*findings\.organizationId\s*,\s*ctx\.organizationId\s*\)/g),
     ).toBe(findingReads);
 
+    // The write. `findings` is stamped, not filtered, on the way in — an insert
+    // that omits the column is the same tenancy hole one statement earlier.
+    const findingWrites = countOf(findingsCode, /\.insert\(\s*findings\s*\)/g);
+    expect(findingWrites).toBeGreaterThan(0);
+    expect(countOf(findingsCode, /organizationId:\s*ctx\.organizationId/g)).toBe(findingWrites);
+
     const runsCode = stripSourceComments(readFileSync(LANE_SOURCES[1] as string, "utf8"));
-    const runReads = countOf(runsCode, /\.from\(\s*analysisRuns\s*\)/g);
-    expect(runReads).toBeGreaterThan(0);
+
+    // THE BUILDER HALF, counted through the HELPER rather than the literal
+    // `eq(...)`. `analysis-runs.repo.ts` hoists its predicate into
+    // `ownedByCallerOrg()`, so counting the literal would compare one read
+    // against one definition and pass by coincidence — and would then FAIL on
+    // correct code the moment a second, correctly scoped statement was added.
+    const runStatements =
+      countOf(runsCode, /\.from\(\s*analysisRuns\s*\)/g) +
+      countOf(runsCode, /\.update\(\s*analysisRuns\s*\)/g);
+    expect(runStatements).toBeGreaterThan(0);
+    expect(countOf(runsCode, /ownedByCallerOrg\(\)/g)).toBe(runStatements);
+
+    const runWrites = countOf(runsCode, /\.insert\(\s*analysisRuns\s*\)/g);
+    expect(runWrites).toBeGreaterThan(0);
+    expect(countOf(runsCode, /organizationId:\s*ctx\.organizationId/g)).toBe(runWrites);
+
+    // The disambiguating read on the claim ledger — a different table, and so
+    // a predicate of its own that no helper covers.
+    const claimReads = countOf(runsCode, /\.from\(\s*analysisModelCalls\s*\)/g);
+    expect(claimReads).toBeGreaterThan(0);
     expect(
-      countOf(runsCode, /eq\(\s*analysisRuns\.organizationId\s*,\s*ctx\.organizationId\s*\)/g),
-    ).toBe(runReads);
+      countOf(
+        runsCode,
+        /eq\(\s*analysisModelCalls\.organizationId\s*,\s*ctx\.organizationId\s*\)/g,
+      ),
+    ).toBe(claimReads);
+
+    // The ownership guard both repositories run against `projects` before a
+    // client-supplied project id is trusted (FR-M14).
+    for (const code of [findingsCode, runsCode]) {
+      const projectReads = countOf(code, /\.from\(\s*projects\s*\)/g);
+      expect(projectReads).toBeGreaterThan(0);
+      expect(countOf(code, /eq\(\s*projects\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
+        projectReads,
+      );
+    }
+
+    // THE RAW-SQL HALF — the cap claim, which the builder counts above cannot
+    // see at all. Its two count subqueries are hand-written aggregations, and
+    // nothing about sitting inside a scoped repository's statement gives a
+    // subquery tenancy (D7): each must name the caller's organization ITSELF,
+    // or the count silently spans every customer's claims.
+    const claimAggregations = countOf(runsCode, /from\s+analysis_model_calls\s+c\b/g);
+    expect(claimAggregations).toBeGreaterThan(0);
+    expect(countOf(runsCode, /c\.organization_id\s*=\s*\$\{ctx\.organizationId\}/g)).toBe(
+      claimAggregations,
+    );
+
+    // And the claim's own project-ownership conjunct, which is what stops a row
+    // landing under one org while naming another's project.
+    const claimProjectGuards = countOf(runsCode, /from\s+projects\s+p\b/g);
+    expect(claimProjectGuards).toBeGreaterThan(0);
+    expect(countOf(runsCode, /p\.organization_id\s*=\s*\$\{ctx\.organizationId\}/g)).toBe(
+      claimProjectGuards,
+    );
   });
 });

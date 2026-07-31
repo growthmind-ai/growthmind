@@ -222,6 +222,61 @@ describe("createAnalysisLaneSource — persisted events to a CandidateFinding (O
     expect(lane.candidates).toEqual([]);
   });
 
+  test("one project's contract violation is contained: the sibling's lane survives and the skip is logged (D8)", async () => {
+    // An UN-NORMALISED surface — uppercase — persisted as if a legacy or
+    // corrupted row. The funnel fires and the gate passes, and then
+    // `evidenceShape` REFUSES the surface before it can enter an identity
+    // (its D12/PII rule). That throw is a contract violation inside one
+    // project's assembly — and it must cost exactly that project this tick.
+    const RAW_ORIGIN = "/PRICING";
+    const poisoned = await seedPollableWorkspace(db, { prefix: "o012e-", now: NOW });
+    await persistCohort(
+      poisoned,
+      3,
+      [RAW_ORIGIN, DETOUR, RAW_ORIGIN, DETOUR, RAW_ORIGIN],
+      IN_WINDOW_AT,
+    );
+    await persistCohort(
+      poisoned,
+      12,
+      [RAW_ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      poisoned,
+      15,
+      [RAW_ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const healthy = await seedPollableWorkspace(db, { prefix: "o012f-", now: NOW });
+    await persistCohort(healthy, 3, [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN], IN_WINDOW_AT);
+    await persistCohort(healthy, 12, [ORIGIN], new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000));
+    await persistCohort(
+      healthy,
+      15,
+      [ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const logger = recordingLogger();
+    const source = createAnalysisLaneSource({ db, logger });
+    const lanes = await source.listDueLanes(NOW);
+
+    // The poisoned project is skipped — no lane, never a crash of the tick.
+    expect(lanes.some((lane) => lane.projectId === poisoned.projectId)).toBe(false);
+    // Its sibling is untouched: the fleet survives one project's fault.
+    const survivor = lanes.find((lane) => lane.projectId === healthy.projectId);
+    expect(survivor?.candidates.length).toBe(1);
+    // The skip is on the record with the project named, so the absence is
+    // debuggable rather than silent.
+    expect(
+      logger.lines.some(
+        (line) => line.includes("skipping project") && line.includes(poisoned.projectId),
+      ),
+    ).toBe(true);
+  });
+
   test("a lane whose sessions all fail the gate yields candidates [] with sessions considered, and logs the rejection", async () => {
     const workspace = await seedPollableWorkspace(db, { prefix: "o012d-", now: NOW });
     // The rate fires the detector — 12 of 30 at the boundary — but nobody
