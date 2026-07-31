@@ -32,6 +32,9 @@ import {
   type CandidateFinding,
 } from "@growthmind/core";
 
+import { and, eq } from "drizzle-orm";
+
+import * as schema from "../../src/schema";
 import {
   computeFindingSignature,
   createSignatureLedgerService,
@@ -382,5 +385,267 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  // ── O-006 security audit, M-2 ──────────────────────────────────────────
+  //
+  // `projectId` is caller-supplied on every entry point and `projects.id` is
+  // FK-enforced but NOT org-enforced. The hazard is integrity, not
+  // confidentiality: all three of this sprint's FKs are `ON DELETE cascade`,
+  // so a ledger/dismissal/ancestry row written by org A under org B's project
+  // id is destroyed when org B deletes that project — silently un-suppressing
+  // every permanent dismissal recorded under it (D12, D7).
+  //
+  // Every case below asserts the ROW COUNT, not just the thrown error: a
+  // rejection that still wrote something would satisfy a return-value
+  // assertion and be exactly the bug.
+  describe("a foreign projectId is rejected by every write entry point (M-2)", () => {
+    it("rejects and writes no row for recordSignature, markSignatureDelivered, recordDismissal, and recordAncestry", async () => {
+      const orgA = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m2-a"),
+        userName: NAMES.userName("m2-a-owner"),
+        email: NAMES.email("m2-a-owner"),
+      });
+      const orgB = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m2-b"),
+        userName: NAMES.userName("m2-b-owner"),
+        email: NAMES.email("m2-b-owner"),
+      });
+
+      // The project org A must NOT be able to write against.
+      const foreignProject = await seedProject(db, {
+        organizationId: orgB.organizationId,
+        name: NAMES.projectName("m2-b"),
+      });
+      // A legitimate project in org A, used only to mint a real signature
+      // through a path that IS allowed.
+      const ownProject = await seedProject(db, {
+        organizationId: orgA.organizationId,
+        name: NAMES.projectName("m2-a"),
+      });
+
+      const serviceA = createSignatureLedgerService(db, orgA.ctx);
+      const candidate = buildCandidate(FIXTURE_NOW);
+      const own = await serviceA.recordSignature(ownProject.id, candidate);
+
+      const rowsFor = async (projectId: string) => ({
+        ledger: (
+          await db
+            .select()
+            .from(schema.findingSignatures)
+            .where(eq(schema.findingSignatures.projectId, projectId))
+        ).length,
+        dismissals: (
+          await db
+            .select()
+            .from(schema.dismissals)
+            .where(eq(schema.dismissals.projectId, projectId))
+        ).length,
+        ancestry: (
+          await db
+            .select()
+            .from(schema.signatureAncestry)
+            .where(eq(schema.signatureAncestry.projectId, projectId))
+        ).length,
+      });
+
+      expect(await rowsFor(foreignProject.id)).toEqual({
+        ledger: 0,
+        dismissals: 0,
+        ancestry: 0,
+      });
+
+      await expect(serviceA.recordSignature(foreignProject.id, candidate)).rejects.toThrow(
+        /does not belong to the caller's organization/,
+      );
+      await expect(
+        serviceA.markSignatureDelivered(foreignProject.id, own.signature),
+      ).rejects.toThrow(/does not belong to the caller's organization/);
+      await expect(
+        serviceA.recordDismissal({
+          projectId: foreignProject.id,
+          findingId: "finding-m2-foreign-001",
+          signature: own.signature,
+          action: "not_useful",
+          dismissedByUserId: orgA.userId,
+        }),
+      ).rejects.toThrow(/does not belong to the caller's organization/);
+      await expect(
+        serviceA.recordAncestry({
+          projectId: foreignProject.id,
+          oldSignature: own.signature,
+          newSignature: computeFindingSignature({
+            projectId: foreignProject.id,
+            surface: "/pay",
+            symptomClass: "broken",
+            evidenceShape: GOLDEN_EVIDENCE_SHAPE,
+          }),
+          reason: "surface_rename",
+        }),
+      ).rejects.toThrow(/does not belong to the caller's organization/);
+
+      // THE ASSERTION THAT MATTERS: not one row landed under org B's project.
+      expect(await rowsFor(foreignProject.id)).toEqual({
+        ledger: 0,
+        dismissals: 0,
+        ancestry: 0,
+      });
+
+      // …and nothing was quietly re-routed onto org A's own project either —
+      // a refusal that "helpfully" wrote somewhere else is still a bug.
+      const ownRows = await rowsFor(ownProject.id);
+      expect(ownRows.ledger).toBe(1);
+      expect(ownRows.dismissals).toBe(0);
+      expect(ownRows.ancestry).toBe(0);
+    });
+
+    // The unknown-project case: same fail direction, no silent no-op.
+    it("rejects a projectId that exists in no organization at all", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m2-unknown"),
+        userName: NAMES.userName("m2-unknown-owner"),
+        email: NAMES.email("m2-unknown-owner"),
+      });
+      const service = createSignatureLedgerService(db, org.ctx);
+
+      await expect(
+        service.recordSignature(
+          "00000000-0000-4000-8000-0000000000ff",
+          buildCandidate(FIXTURE_NOW),
+        ),
+      ).rejects.toThrow(/does not belong to the caller's organization/);
+    });
+  });
+
+  // ── O-006 security audit, M-1 ──────────────────────────────────────────
+  //
+  // `dismissed_by_user_id` FKs `user.id` GLOBALLY, so without a membership
+  // check org A could attribute a permanent, org-wide suppression to an
+  // arbitrary user — including one in org B. Chosen fail direction: REJECT,
+  // not "null the attribution", because nulling would make a forgery attempt
+  // indistinguishable from a legitimate system/backfill dismissal in the very
+  // audit trail the check protects (and it is the column OQ-2's undo/appeal
+  // flow would key on).
+  describe("dismissedByUserId must be a member of the caller's organization (M-1)", () => {
+    it("rejects a non-member author and lands no dismissal with forged attribution", async () => {
+      const orgA = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m1-a"),
+        userName: NAMES.userName("m1-a-owner"),
+        email: NAMES.email("m1-a-owner"),
+      });
+      const orgB = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m1-b"),
+        userName: NAMES.userName("m1-b-owner"),
+        email: NAMES.email("m1-b-owner"),
+      });
+      // A user who is a member of NO organization — the second shape of the
+      // same forgery (a real `user.id` that the FK happily accepts).
+      const orphan = await seedUser(db, {
+        name: NAMES.userName("m1-orphan"),
+        email: NAMES.email("m1-orphan"),
+      });
+
+      const project = await seedProject(db, {
+        organizationId: orgA.organizationId,
+        name: NAMES.projectName("m1-a"),
+      });
+      const service = createSignatureLedgerService(db, orgA.ctx);
+      const recorded = await service.recordSignature(project.id, buildCandidate(FIXTURE_NOW));
+
+      for (const [findingId, forgedAuthor] of [
+        ["finding-m1-cross-org-001", orgB.userId],
+        ["finding-m1-orphan-001", orphan.id],
+      ] as const) {
+        await expect(
+          service.recordDismissal({
+            projectId: project.id,
+            findingId,
+            signature: recorded.signature,
+            action: "not_useful",
+            dismissedByUserId: forgedAuthor,
+          }),
+        ).rejects.toThrow(/not a member of the caller's organization/);
+
+        const landed = await db
+          .select()
+          .from(schema.dismissals)
+          .where(
+            and(
+              eq(schema.dismissals.organizationId, orgA.organizationId),
+              eq(schema.dismissals.findingId, findingId),
+            ),
+          );
+        expect(landed).toEqual([]);
+      }
+
+      // The ledger row must be untouched too — no `dismissed_at` stamp from a
+      // rejected dismissal (the transaction never opened).
+      const [ledgerRow] = await db
+        .select()
+        .from(schema.findingSignatures)
+        .where(
+          and(
+            eq(schema.findingSignatures.organizationId, orgA.organizationId),
+            eq(schema.findingSignatures.signature, recorded.signature),
+          ),
+        );
+      expect(ledgerRow?.dismissedAt ?? null).toBeNull();
+    });
+
+    it("accepts an explicit null author — the documented system/backfill path", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m1-null"),
+        userName: NAMES.userName("m1-null-owner"),
+        email: NAMES.email("m1-null-owner"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("m1-null"),
+      });
+      const service = createSignatureLedgerService(db, org.ctx);
+      const recorded = await service.recordSignature(project.id, buildCandidate(FIXTURE_NOW));
+
+      const dismissal = await service.recordDismissal({
+        projectId: project.id,
+        findingId: "finding-m1-null-001",
+        signature: recorded.signature,
+        action: "not_useful",
+        dismissedByUserId: null,
+      });
+      expect(dismissal.dismissedByUserId).toBeNull();
+    });
+
+    it("accepts a non-owner teammate as the author (D1 — dismissal is org-wide, not owner-only)", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("m1-mate"),
+        userName: NAMES.userName("m1-mate-owner"),
+        email: NAMES.email("m1-mate-owner"),
+      });
+      const teammate = await seedUser(db, {
+        name: NAMES.userName("m1-mate-teammate"),
+        email: NAMES.email("m1-mate-teammate"),
+      });
+      await seedMember(db, {
+        organizationId: org.organizationId,
+        userId: teammate.id,
+        role: "member",
+      });
+
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("m1-mate"),
+      });
+      const service = createSignatureLedgerService(db, org.ctx);
+      const recorded = await service.recordSignature(project.id, buildCandidate(FIXTURE_NOW));
+
+      const dismissal = await service.recordDismissal({
+        projectId: project.id,
+        findingId: "finding-m1-mate-001",
+        signature: recorded.signature,
+        action: "not_useful",
+        dismissedByUserId: teammate.id,
+      });
+      expect(dismissal.dismissedByUserId).toBe(teammate.id);
+    });
   });
 });

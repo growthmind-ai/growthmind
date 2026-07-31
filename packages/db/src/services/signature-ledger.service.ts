@@ -64,6 +64,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 
 import type { DismissalRecord } from "../repositories/dismissals.repo";
+import { createProjectsRepo } from "../repositories/projects.repo";
 import {
   createFindingSignaturesRepo,
   type FindingSignatureRecord,
@@ -73,6 +74,7 @@ import {
   type AncestryRecord,
 } from "../repositories/signature-ancestry.repo";
 import type { ScopedDb } from "../repositories/types";
+import { member } from "../schema/auth";
 import { dismissals } from "../schema/dismissals";
 import { findingSignatures } from "../schema/finding-signatures";
 import { signatureAncestry } from "../schema/signature-ancestry";
@@ -148,6 +150,10 @@ export interface SignatureLedgerService {
    * Caller: the analysis lane, on every candidate (a later outcome).
    * Computes the signature from `candidate` via `computeFindingSignature`
    * (the only producer, FR-I(e)), then `upsertSeen`s the ledger row.
+   *
+   * THROWS when `projectId` does not belong to `ctx.organizationId` (security
+   * audit M-2) — see `assertProjectInOrg` for why every write entry point
+   * rejects loudly rather than returning something success-shaped.
    */
   recordSignature(projectId: string, candidate: CandidateFinding): Promise<RecordSignatureResult>;
   /**
@@ -176,6 +182,9 @@ export interface SignatureLedgerService {
    * `delivered_at` would be a column no write path ever stamps and
    * `already_delivered` would be unreachable in production (ADD D-4's
    * rationale for shipping five entry points, not three).
+   *
+   * THROWS on a foreign `projectId` (M-2). Its `null` return means "no such
+   * ledger row" and never "wrong tenant" — the two must not collapse.
    */
   markSignatureDelivered(projectId: string, signature: SignatureHex): Promise<FindingSignatureRecord | null>;
   /**
@@ -185,6 +194,11 @@ export interface SignatureLedgerService {
    * stamps `dismissed_at = coalesce(dismissed_at, $now)` on the ledger row.
    * Idempotent: a second identical call returns the same result with one
    * row and no error (D4/D6).
+   *
+   * THROWS, before the transaction opens, on a foreign `projectId` (M-2) or a
+   * non-`null` `dismissedByUserId` that is not a member of
+   * `ctx.organizationId` (M-1 — a forged author on a permanent, org-wide
+   * suppression is rejected, never silently nulled).
    */
   recordDismissal(input: RecordDismissalInput): Promise<DismissalRecord>;
   /**
@@ -195,6 +209,8 @@ export interface SignatureLedgerService {
    * (`carryForward`) — this is D12's own named remedy: a dismissal survives
    * a re-key because the ledger row carried it, not because a read path
    * searched for it.
+   *
+   * THROWS, before the transaction opens, on a foreign `projectId` (M-2).
    */
   recordAncestry(input: RecordAncestryInput): Promise<AncestryRecord>;
 }
@@ -221,6 +237,74 @@ export function createSignatureLedgerService(
 ): SignatureLedgerService {
   const ledgerRepo = createFindingSignaturesRepo(db, ctx);
   const ancestryRepo = createSignatureAncestryRepo(db, ctx);
+  const projectsRepo = createProjectsRepo(db, ctx);
+
+  /**
+   * THE TENANCY GUARD FOR EVERY WRITE (O-006 security audit M-2).
+   *
+   * `projectId` is caller-supplied on every entry point, and `projects.id` is
+   * FK-enforced but NOT org-enforced — so without this check org A could write
+   * ledger / dismissal / ancestry rows naming org B's project. Confidentiality
+   * survived that (every read filters org first), but INTEGRITY did not: all
+   * three FKs are `ON DELETE cascade`, so deleting org B's project would
+   * cascade-delete org A's ledger rows and silently un-suppress every
+   * permanent dismissal recorded under that project id — precisely the
+   * guarantee this sprint exists to hold (D12).
+   *
+   * ONE place, called before any write touches the database.
+   * `projectsRepo.findById` is already org-filtered and returns `null` for a
+   * foreign org's project (D-B), so this needs no org-id parameter of its own.
+   *
+   * FAIL DIRECTION — THROW, never a silent no-op. `poll-runs.repo.ts:157-176`
+   * returns `null` for a foreign org's row because it CAN: `null` is inside
+   * its return type and reads as "not yours". These are write entry points
+   * whose return types (`RecordSignatureResult`, `DismissalRecord`,
+   * `AncestryRecord`) cannot express "refused", and a refusal that returns
+   * something success-shaped is the worst outcome available — a caller would
+   * record a dismissal that suppresses nothing and never learn. Throwing is
+   * the only fail direction that cannot be mistaken for success.
+   * `markSignatureDelivered` throws too, for one consistent rule: its `null`
+   * already means "no such ledger row", not "wrong tenant".
+   */
+  async function assertProjectInOrg(projectId: string): Promise<void> {
+    const project = await projectsRepo.findById(projectId);
+    if (!project) {
+      throw new Error(
+        "signature-ledger: project does not belong to the caller's organization",
+      );
+    }
+  }
+
+  /**
+   * M-1's guard. `dismissals.dismissed_by_user_id` FKs `user.id` GLOBALLY, so
+   * without this an arbitrary user id — including one in another org — could
+   * be stamped as the author of a permanent, org-wide suppression. That makes
+   * the audit trail on org A's own permanent record forgeable, and it is the
+   * exact column a future undo/appeal flow (OQ-2) would key on.
+   *
+   * FAIL DIRECTION — REJECT (throw), not "null the attribution". Nulling would
+   * silently rewrite the caller's claim into the documented system/backfill
+   * shape, making a forgery attempt indistinguishable from a legitimate
+   * unattributed dismissal in the very audit trail this protects. A caller
+   * that genuinely has no attributable member passes `null` explicitly, which
+   * is accepted here and skips the lookup.
+   */
+  async function assertDismissedByIsMember(userId: string | null): Promise<void> {
+    if (userId === null) {
+      return;
+    }
+
+    const [row] = await db
+      .select({ id: member.id })
+      .from(member)
+      .where(and(eq(member.organizationId, ctx.organizationId), eq(member.userId, userId)));
+
+    if (!row) {
+      throw new Error(
+        "signature-ledger: dismissedByUserId is not a member of the caller's organization",
+      );
+    }
+  }
 
   /**
    * Resolves `signature` FORWARD through `signature_ancestry` (ADD D-3(b)):
@@ -248,6 +332,8 @@ export function createSignatureLedgerService(
       projectId: string,
       candidate: CandidateFinding,
     ): Promise<RecordSignatureResult> {
+      await assertProjectInOrg(projectId);
+
       // `recordSignature` is the ONLY producer of a signature (FR-I(e)) —
       // every other entry point either accepts one already computed or
       // resolves one forward, never re-derives it.
@@ -271,6 +357,17 @@ export function createSignatureLedgerService(
       projectId: string,
       input: CandidateFinding | SignatureHex,
     ): Promise<SuppressionDecision> {
+      // NO `assertProjectInOrg` HERE — deliberate (M-2). This is the one
+      // READ entry point: it writes nothing, and `ledgerRepo.findBySignature`
+      // already filters on `ctx.organizationId` first, so a foreign project id
+      // finds no row and falls through to the ordinary "never seen" decision.
+      // A guard here would be defence-in-depth, not a correctness fix, and it
+      // would cost every consult an extra round trip on the delivery hot path
+      // while CHANGING the fail direction for a legitimate caller from
+      // "deliver, never seen" to a thrown error. The integrity hazard M-2
+      // names — cascade-deleting another org's ledger rows — is reachable only
+      // through a write, and every write is guarded above.
+      //
       // A bare `SignatureHex` is a `string`; a `CandidateFinding` is not —
       // that alone discriminates the union with no brand check needed.
       const isCandidate = typeof input !== "string";
@@ -328,11 +425,19 @@ export function createSignatureLedgerService(
       projectId: string,
       signature: SignatureHex,
     ): Promise<FindingSignatureRecord | null> {
+      await assertProjectInOrg(projectId);
+
       const resolved = await resolveForward(signature);
       return ledgerRepo.markDelivered(projectId, resolved, new Date());
     },
 
     async recordDismissal(input: RecordDismissalInput): Promise<DismissalRecord> {
+      // BEFORE the transaction opens (M-2, M-1): the transaction below can
+      // never commit with an unvalidated project or a forged author, because
+      // neither guard's failure path reaches `db.transaction` at all.
+      await assertProjectInOrg(input.projectId);
+      await assertDismissedByIsMember(input.dismissedByUserId);
+
       const resolvedSignature = await resolveForward(input.signature);
       const now = new Date();
 
@@ -396,6 +501,11 @@ export function createSignatureLedgerService(
     },
 
     async recordAncestry(input: RecordAncestryInput): Promise<AncestryRecord> {
+      // BEFORE the transaction opens (M-2) — same reasoning as
+      // `recordDismissal`: a rejected project never reaches `db.transaction`,
+      // so no transaction can commit with an unvalidated project.
+      await assertProjectInOrg(input.projectId);
+
       // ONE transaction (ADD D-3a, D-8): the edge insert and the
       // carry-forward upsert succeed together or not at all. The
       // carry-forward half is hand-written here on `tx` — mirroring
