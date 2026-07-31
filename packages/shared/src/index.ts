@@ -303,3 +303,16 @@ export {
   type FindingEvidence,
   type GetFindingOutput,
 } from "./mcp/types";
+
+// --- O-009: the read credential that authenticates against that surface ------
+// Its own family, not a `WriteKeyKind` member: a stolen write key is junk
+// telemetry in one project, a stolen read credential is every finding in the
+// organisation. `gmak_` differs from `gmwk_` at index 2 so neither family's
+// gate can ever fire on the other's material.
+export { apiKeyMetadataSchema, type ApiKeyMetadata } from "./api-keys/types";
+export {
+  API_KEY_PREFIX,
+  API_KEY_DISPLAY_PREFIX_LENGTH,
+  isApiKeyFormat,
+  hashApiKeyMaterial,
+} from "./api-keys/material";

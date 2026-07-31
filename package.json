@@ -16,7 +16,7 @@
     "dev:worker": "bun run --filter @growthmind/worker dev",
     "build": "bun run --filter @growthmind/web build",
     "start": "bun run --filter @growthmind/web start",
-    "typecheck": "bun run --filter '*' typecheck",
+    "typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p tsconfig.scripts.json",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",

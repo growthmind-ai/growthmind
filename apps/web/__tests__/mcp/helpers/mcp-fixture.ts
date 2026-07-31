@@ -21,7 +21,8 @@
 // Lane prefix `mcp` — shared with no other suite.
 import type { CandidateFinding, DetectorCoverage, MeasuredCount } from "@growthmind/core";
 import { candidateFindingSchema, measuredCount, traceEntry } from "@growthmind/core";
-import type { McpMeasuredCount } from "@growthmind/shared";
+import { createApiKeysRepo, type ScopedDb } from "@growthmind/db";
+import type { McpMeasuredCount, TenantContext } from "@growthmind/shared";
 import { mcpMeasuredCountSchema } from "@growthmind/shared";
 
 import type { McpCredential, McpCredentialSource } from "../../../lib/mcp/credentials";
@@ -192,6 +193,38 @@ export function fakeCredentials(byMaterial: Readonly<Record<string, string>>): M
       return Promise.resolve(organizationId === undefined ? null : { organizationId });
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// A real credential, minted the way a person mints one
+// ---------------------------------------------------------------------------
+
+/** What a minted read credential gives a test: the material to present, and the
+ * id to revoke it by. Never the hash — `MintedApiKey.key` carries no secret,
+ * and neither does this. */
+export interface MintedTestApiKey {
+  readonly raw: string;
+  readonly id: string;
+}
+
+/**
+ * Mints a REAL `api_keys` row through the production repository — the same call
+ * `scripts/mint-api-key.ts` makes, against a real database with real
+ * migrations. This is deliberately NOT a fake: the suites that use it are
+ * proving the production resolution path (`isApiKeyFormat`, the hash lookup,
+ * the revocation predicate), which a hand-built row could not exercise.
+ *
+ * `apps/web` has no `drizzle-orm` and no `zod` dependency and must not gain
+ * one, so every seeded credential in this lane goes through `@growthmind/db`'s
+ * factories rather than through a query written here.
+ */
+export async function mintRealApiKey(
+  db: ScopedDb,
+  ctx: TenantContext,
+  name: string,
+): Promise<MintedTestApiKey> {
+  const minted = await createApiKeysRepo(db, ctx).mint({ name });
+  return { raw: minted.raw, id: minted.key.id };
 }
 
 /** A credential source that throws — the "credential store unreachable" path,

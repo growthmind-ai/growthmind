@@ -1,0 +1,40 @@
+{
+  // The repo root is not a workspace package, so `bun run --filter '*' typecheck`
+  // never sees `scripts/` — every package's own tsconfig scopes to its own
+  // directory. That left the two operator CLIs (`mint-api-key.ts`,
+  // `revoke-api-key.ts`) outside every automated check: the CLI-purity gate in
+  // `packages/db/__tests__/admin/reachability.test.ts` scans their SOURCE TEXT
+  // for forbidden constructs, which passes just as happily against a script
+  // that does not compile. A rename in `ApiKeysRepo` or `AdminOrganization`
+  // would break the only path that can create a read credential with a fully
+  // green suite. This config closes that hole — the root `typecheck` script
+  // runs it alongside the per-package filter.
+  //
+  // Same strict flags as everything else (`strict`,
+  // `exactOptionalPropertyTypes`, `verbatimModuleSyntax`) via the base config:
+  // an operator script is not a second-class citizen just because it lives
+  // outside a package.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    // Explicit because automatic @types discovery does not traverse bun's
+    // symlinked (isolated) node_modules layout (packages/shared precedent).
+    // Brings in bun:test and the bundled Node compatibility types.
+    "types": ["bun"]
+  },
+  "include": ["scripts/**/*.ts"],
+
+  // TWO PRE-EXISTING SCRIPTS ARE EXCLUDED, LOUDLY AND TEMPORARILY.
+  // Both predate this config and both fail `exactOptionalPropertyTypes` in the
+  // same trivial way — an object literal assigning `x: string | undefined` to
+  // an optional property that a conditional spread should set instead
+  // (orchestrator.ts:480/539/1939, validate-runtime.ts:311/321/331/339). Seven
+  // errors, none in this sprint's diff, none in the credential path. They are
+  // excluded rather than fixed here so this config can land without an
+  // unrelated refactor riding along in a credential commit; fixing them and
+  // deleting this block is a standalone change and should happen soon, because
+  // an excluded file is exactly the hole this config exists to close.
+  //
+  // The default is INCLUSION: a new script under `scripts/` is typechecked
+  // from the moment it is written, without anyone remembering to add it.
+  "exclude": ["scripts/orchestrator.ts", "scripts/validate-runtime.ts"]
+}

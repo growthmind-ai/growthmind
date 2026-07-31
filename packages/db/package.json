@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
     "./testing": "./src/testing.ts",
-    "./system": "./src/system/index.ts"
+    "./system": "./src/system/index.ts",
+    "./admin": "./src/admin/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

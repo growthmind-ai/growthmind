@@ -141,3 +141,20 @@ export {
   type MarkPostedInput,
   type MarkFailedInput,
 } from "./repositories/deliveries.repo";
+
+// --- O-009 -------------------------------------------------------------------
+// The read credential store. `resolveApiKeyForRead` sits beside the factory
+// exactly as `resolveWriteKeyForIngest` does: it takes no tenant context,
+// because the presented material IS the tenant proof.
+//
+// NOTE: src/admin/* is deliberately absent from this barrel, the same way
+// src/system/* is. It is reachable only through the "./admin" subpath, and a
+// committed test asserts nothing here re-exports it.
+export {
+  createApiKeysRepo,
+  resolveApiKeyForRead,
+  type ApiKeysRepo,
+  type MintedApiKey,
+  type ApiKeyRow,
+  type ResolvedApiKey,
+} from "./repositories/api-keys.repo";
