@@ -63,6 +63,12 @@ export {
   type DetectorResult,
 } from "./detect/types";
 export { orderTimeline } from "./detect/order";
+// FR-7 + D-3 in one call, and the ONE implementation of PL ruling 24. It is
+// exported because a module that decides the denominator BOTH detectors report
+// on must be visible to the FR-22 coverage gate — an unexported one is
+// structurally exempt from the test that proves every pure function is covered,
+// which is exactly how the two detectors diverged here in the first place.
+export { analysedSessions, type AnalysedSessions } from "./detect/analysed";
 export { detectFunnelDropoff } from "./detect/funnel-dropoff";
 export { detectErrorEvent } from "./detect/error-event";
 export { NOT_BUILT_DETECTORS, type NotBuiltDetector } from "./detect/not-built";

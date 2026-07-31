@@ -39,7 +39,31 @@ export type EvidenceSignal =
       readonly kind: "struggle";
       readonly subkind: "repeated_attempt" | "backtrack";
       readonly surface: string;
+      /**
+       * The PER-SESSION magnitude: the greatest number of separate visits to
+       * `surface` made by any ONE kept session (PL ruling 31). It is what the
+       * rule-set comment "two visits is navigation; three is a pattern" is a
+       * statement about, and it is the number a founder reads.
+       *
+       * On its own it says NOTHING about how many people struggled — a maximum
+       * over an unbounded cohort is monotonically increasing in corpus size, so
+       * at `DETECTOR_CORPUS_MAX_SESSIONS` one outlier session would carry the
+       * whole surface. `strugglingSessions` carries that half, and the proof
+       * predicate gates on IT.
+       */
       readonly attempts: number;
+      /**
+       * The COHORT magnitude: how many kept sessions at `surface` individually
+       * reached `struggleRepeatedAttemptMin`, over `basis.kept`.
+       *
+       * A `MeasuredCount` and not a bare number, deliberately (D-7,
+       * product-decisions §10): this is the number the gate's only reachable
+       * pass this sprint turns on, so it is the LAST number that may travel
+       * without its denominator. `attempts` above escapes `MeasuredCount` only
+       * because it is not a count of sessions at all — it is one session's
+       * visit depth — and it is no longer the thing that decides.
+       */
+      readonly strugglingSessions: MeasuredCount;
     }
   | {
       readonly kind: "clean_exit";
@@ -86,6 +110,7 @@ export const evidenceSignalSchema = z.discriminatedUnion("kind", [
     subkind: z.enum(["repeated_attempt", "backtrack"]),
     surface: z.string().min(1),
     attempts: z.number().int().nonnegative(),
+    strugglingSessions: measuredCountSchema,
   }),
   z.object({
     kind: z.literal("clean_exit"),

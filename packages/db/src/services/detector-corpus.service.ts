@@ -71,6 +71,28 @@ export interface DetectorCorpusService {
  */
 const CAP_PROBE_LIMIT = DETECTOR_CORPUS_MAX_SESSIONS + 1;
 
+/**
+ * `coverage.eventsWithoutUrlPath` IS NOT COMPUTED BY THIS READ (PL ruling 24,
+ * edge taxonomy D11).
+ *
+ * The DETECTOR's value is authoritative: `analysedSessions` in
+ * `@growthmind/core` recomputes it over the KEPT sessions it is about to
+ * analyse, and BOTH detectors take it from that one call, so the number is
+ * provably about what was analysed rather than about what this read believed.
+ * Nothing in production ever read the value this service used to compute —
+ * `analysedSessions` propagates `coverage.truncated` and recomputes this one —
+ * so it was a dead wire: harmless only for as long as the two populations
+ * happened to agree, and a silent disagreement the day they stopped.
+ *
+ * `truncated` is the opposite case and is genuinely produced here: it is a fact
+ * about the READ that no amount of looking at the returned sessions can
+ * recover.
+ *
+ * Named rather than inlined so the deadness is legible at the one site anyone
+ * would read it from, instead of looking like a computed zero.
+ */
+const NOT_COMPUTED_BY_THE_READ = 0;
+
 export function createDetectorCorpusService(
   db: ScopedDb,
   ctx: TenantContext,
@@ -215,18 +237,6 @@ export function createDetectorCorpusService(
         countsByReason: sessionsByReason,
       });
 
-      // Counted over KEPT sessions ONLY, because coverage must describe what
-      // was actually ANALYSED and a set-aside session never is. Both
-      // detectors recompute this number on the same denominator; two
-      // denominators would make the value uncomparable between them.
-      let eventsWithoutUrlPath = 0;
-      for (const timeline of timelines) {
-        if (timeline.exclusionReason !== "none") continue;
-        for (const event of timeline.events) {
-          if (event.urlPath === null) eventsWithoutUrlPath += 1;
-        }
-      }
-
       // The connection story, from the ONE `deriveConnectionState` rather
       // than a second copy of its branch order. `hasEvents` is PROJECT-WIDE,
       // not window-scoped, matching `events-counter.service.ts`:
@@ -276,7 +286,7 @@ export function createDetectorCorpusService(
           kept,
           setAside,
         },
-        coverage: { truncated, eventsWithoutUrlPath },
+        coverage: { truncated, eventsWithoutUrlPath: NOT_COMPUTED_BY_THE_READ },
       };
     },
   };

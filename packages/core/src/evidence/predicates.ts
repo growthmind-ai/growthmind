@@ -35,18 +35,49 @@ export const PROOF_PREDICATE_VERSION = 1;
  * Every comparison is INCLUSIVE (D-6) and every fail direction is UNDER-DETECT
  * (FR-9) — the magnitudes themselves live in the rule set, with their
  * rationale, and nothing here hard-codes a number.
+ *
+ * One kind is refused OUTRIGHT rather than gated on a magnitude: the
+ * `backtrack` subkind (PL ruling 36, at the case below). "Not enough of it" and
+ * "not evidence at all" are different verdicts, and this function returns both.
  */
 function magnitudeSatisfied(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
   switch (signal.kind) {
     case "struggle":
-      // PL ruling 18: `struggleRepeatedAttemptMin` gates `repeated_attempt`
-      // ONLY — its name says so. `backtrack` is admitted on kind alone and has
-      // no producer this sprint, because a single back-navigation fires on a
-      // superset of its target (users navigate back constantly) and that is the
-      // D10 conflation this gate exists to prevent.
-      return signal.subkind === "repeated_attempt"
-        ? signal.attempts >= ruleSet.struggleRepeatedAttemptMin
-        : true;
+      // ── PL RULING 36 (binding): `backtrack` IS NOT ADMISSIBLE PROOF. ───────
+      //
+      // It stays in the union, typed and tested against constructed inputs, and
+      // it REMAINS a `changed_mind` disqualifier at any magnitude (ruling 19,
+      // enforced kind-level in `CHANGED_MIND_DISQUALIFYING_KINDS` below, which
+      // never consults this function). What it may no longer do is SATISFY a
+      // class.
+      //
+      // Ruling 18 gave the reason and the previous code then contradicted it:
+      // users navigate back constantly, so a single back-navigation fires on a
+      // SUPERSET of its target — the D10 conflation this gate exists to
+      // prevent — and returning `true` here admitted exactly that, at any
+      // magnitude, including one. The only thing standing between that and a
+      // false `confusing` finding was that no detector emits `backtrack` this
+      // sprint. "No producer" is not a guard: ESC-6 has O-005 attaching a MODEL
+      // to `ProposedClaim`, and a model can emit anything in the union.
+      //
+      // Strictly UNDER-DETECT. When a real producer exists, O-005/O-006 may
+      // admit it DELIBERATELY, with its own calibrated magnitude gate.
+      if (signal.subkind !== "repeated_attempt") return false;
+
+      // TWO magnitudes, both INCLUSIVE (D-6), both UNDER-DETECT (FR-9), both
+      // arriving on the rule-set parameter (D-14):
+      //  - `struggleRepeatedAttemptMin` — one session came back often enough
+      //    for it to be a pattern rather than navigation (PER-SESSION);
+      //  - `struggleMinStrugglingSessions` — enough separate sessions did for
+      //    "people" to be the true word (COHORT).
+      // The first alone is a maximum over an unbounded corpus, so it rises with
+      // corpus size and at 500 sessions one outlier would carry the surface.
+      // The second is what makes this predicate a claim about the SURFACE
+      // rather than about how much data we happened to read.
+      return (
+        signal.attempts >= ruleSet.struggleRepeatedAttemptMin &&
+        signal.strugglingSessions.numerator >= ruleSet.struggleMinStrugglingSessions
+      );
     case "instrumentation_rate_drop":
       // PL ruling 20: compare NUMERATORS, exact integer arithmetic. This is
       // unambiguous by construction — `measuredCount` forces
@@ -123,11 +154,22 @@ export function brokenProofSatisfied(
  * `confusing` — "hesitation, backtracking, or repeated attempts at one
  * decision point".
  *
- * Satisfied by a signal whose kind is in `ruleSet.confusingProofSignals`, with
- * `attempts >= ruleSet.struggleRepeatedAttemptMin` for the repeated-attempt
- * subkind — INCLUSIVE (D-6), fail direction under-detect (FR-9). PL ruling 18:
- * that minimum gates `repeated_attempt` only; `backtrack` is admitted on kind
- * alone and has no producer this sprint.
+ * Satisfied by a signal whose kind is in `ruleSet.confusingProofSignals` and
+ * whose subkind is `repeated_attempt`, carrying BOTH
+ * `attempts >= ruleSet.struggleRepeatedAttemptMin` (one session came back often
+ * enough to be a pattern) and
+ * `strugglingSessions.numerator >= ruleSet.struggleMinStrugglingSessions`
+ * (enough sessions did for "people" to be the true word). Both INCLUSIVE (D-6),
+ * both under-detect (FR-9).
+ *
+ * PL ruling 36: the `backtrack` subkind satisfies this predicate at NO
+ * magnitude. It remains a `changed_mind` disqualifier (ruling 19) — see
+ * `magnitudeSatisfied`.
+ *
+ * THIS IS THE SPRINT'S ONLY REACHABLE PASS. `funnel_dropoff` proposes
+ * `confusing` and nothing else (ruling 13), `struggle` is `confusing`'s only
+ * admitted proof, and a `broken` claim can only reach a founder by descending
+ * here. Every magnitude above is load-bearing on whether this product speaks.
  */
 export function confusingProofSatisfied(
   signals: readonly EvidenceSignal[],

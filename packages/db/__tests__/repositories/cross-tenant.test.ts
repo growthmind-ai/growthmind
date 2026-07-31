@@ -28,6 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DETECTOR_CORPUS_MAX_SESSIONS, type AnalysisWindow } from "@growthmind/core";
 import {
   EXCLUSION_REASON_LABELS,
+  URL_PATH_NORMALISATION_VERSION,
   type CredentialKeyResolution,
   type ExclusionReason,
   type TenantContext,
@@ -486,11 +487,22 @@ async function seedCorpusOrg(
   };
 }
 
+/** The event fixture's default path. Only ever applied when the spec OMITS
+ * `urlPath` — see the `=== undefined` note on the seeder. */
+const CORPUS_DEFAULT_URL_PATH = "/pricing";
+
 interface CorpusEventSpec {
   readonly sourceEventId: string;
   readonly occurredAt: Date;
   readonly name?: string;
+  /** `null` means "this event carries no path" — the ES-4 / BS-4 case the
+   * detector counts into `coverage.eventsWithoutUrlPath`. It must survive the
+   * seeder as `null`; see the `=== undefined` note there. */
   readonly urlPath?: string | null;
+  /** `null` means "written before versions were recorded — redaction status
+   * unknown", and is NEVER coerced to `0` (ES-14). Omit for the current
+   * version, which is what the write path stamps. */
+  readonly urlPathNormalisationVersion?: number | null;
 }
 
 interface CorpusSessionSpec {
@@ -525,6 +537,7 @@ async function seedCorpusSessions(
   for (const spec of specs) {
     const sessionId = randomUUID();
     ids.set(spec.sessionKey, sessionId);
+    const firstUrlPath = spec.events.at(0)?.urlPath;
 
     sessionRows.push({
       id: sessionId,
@@ -536,7 +549,10 @@ async function seedCorpusSessions(
       identityEmailDomain: null,
       identityResolution: "unresolved",
       userAgent: null,
-      entryUrlPath: spec.events.at(0)?.urlPath ?? "/pricing",
+      // `=== undefined`, NOT `??` — the same rule as the event rows below. A
+      // first event that deliberately carries NO path must give the session a
+      // null `entry_url_path`, not the default one.
+      entryUrlPath: firstUrlPath === undefined ? CORPUS_DEFAULT_URL_PATH : firstUrlPath,
       startedAt: spec.startedAt,
       lastEventAt: spec.events.at(-1)?.occurredAt ?? spec.startedAt,
       origin: "real",
@@ -556,8 +572,19 @@ async function seedCorpusSessions(
         sourceEventId: event.sourceEventId,
         name: event.name ?? "$pageview",
         occurredAt: event.occurredAt,
-        urlPath: event.urlPath ?? "/pricing",
-        urlPathNormalisationVersion: 2,
+        // `=== undefined`, NOT `??` — an explicitly seeded `null` is an event
+        // that carries NO path, and `??` would coerce it back to the default
+        // and quietly destroy the only fixture that can exercise ES-4/BS-4's
+        // path-less event through the real read. `helpers/db-lane-fixtures.ts`
+        // was rewritten to this shape for the same reason.
+        urlPath: event.urlPath === undefined ? CORPUS_DEFAULT_URL_PATH : event.urlPath,
+        // From the CONSTANT, never a hardcoded number — a version bump must
+        // not silently invalidate the round-trip assertion below. Same
+        // `=== undefined` rule: an explicit `null` is a pre-versioning row.
+        urlPathNormalisationVersion:
+          event.urlPathNormalisationVersion === undefined
+            ? URL_PATH_NORMALISATION_VERSION
+            : event.urlPathNormalisationVersion,
       });
     }
   }
@@ -1029,6 +1056,86 @@ describe("detector-corpus.service — the T1 corpus read (O-004)", () => {
       (session) => session.sessionId === sessionIdOf(ids, "ph:db-dc-window-at-end"),
     );
     expect(atEnd?.events.map((event) => event.sourceEventId)).toEqual(["db-dc-window-at-end-late"]);
+  });
+
+  // --- corpus semantics: ES-4 / ES-14, the path and its version -------------
+
+  it("detector-corpus.service returns a path-less event as null and never coerces an unknown version to 0", async () => {
+    // WHAT THIS PINS, and why it needs the real read. Two `null`s cross this
+    // boundary and BOTH mean something the detector acts on:
+    //
+    //  - `url_path = null` — the event carries no surface. `error_event`
+    //    attributes it to no surface at all rather than to a guessed one, and
+    //    `analysedSessions` counts it into `coverage.eventsWithoutUrlPath` so
+    //    the omission is REPORTED rather than silent (ES-4, BS-4). A read that
+    //    substituted a default path would manufacture a surface out of nothing
+    //    and hide the coverage loss at the same time.
+    //  - `url_path_normalisation_version = null` — "written before versions
+    //    were recorded, redaction status unknown" (ES-14). It is NEVER coerced
+    //    to `0`, which would claim a normalisation that never ran; ruling 28's
+    //    unanimous-or-null rule is what consumes it.
+    //
+    // Nothing above this line seeds either `null`, because `??` in the fixture
+    // silently replaced both — this is the assertion that keeps the seeder's
+    // `=== undefined` honest.
+    const org = await seedCorpusOrg(db, "nulls");
+    const NULLS_BASE = new Date("2026-07-23T08:00:00.000Z");
+    const ids = await seedCorpusSessions(db, org, [
+      {
+        sessionKey: "ph:db-dc-nulls-1",
+        startedAt: NULLS_BASE,
+        events: [
+          {
+            // No path at all, AND no recorded version — a pre-versioning row.
+            sourceEventId: "db-dc-nulls-pathless",
+            occurredAt: NULLS_BASE,
+            urlPath: null,
+            urlPathNormalisationVersion: null,
+          },
+          {
+            // A path, stamped by the current write path.
+            sourceEventId: "db-dc-nulls-pathed",
+            occurredAt: new Date(NULLS_BASE.getTime() + MINUTE_MS),
+            urlPath: "/checkout",
+          },
+        ],
+      },
+    ]);
+
+    const corpus = await createDetectorCorpusService(db, org.ctx).read(org.projectId, WINDOW);
+
+    const session = corpus.sessions.find(
+      (row) => row.sessionId === sessionIdOf(ids, "ph:db-dc-nulls-1"),
+    );
+    expect(session).toBeDefined();
+
+    const pathless = session?.events.find((e) => e.sourceEventId === "db-dc-nulls-pathless");
+    const pathed = session?.events.find((e) => e.sourceEventId === "db-dc-nulls-pathed");
+
+    // NON-VACUITY: both rows really did come back, so the `null` assertions
+    // below are about the values and not about a missing event.
+    expect(pathless).toBeDefined();
+    expect(pathed).toBeDefined();
+
+    // The path-less event survives as `null` — not as a default, not dropped.
+    expect(pathless?.urlPath).toBeNull();
+    // ...and `null` is NEVER `0` (ES-14). `?? 0` at the mapping in
+    // `detector-corpus.service.ts` would pass a `toBeFalsy` and fail this.
+    expect(pathless?.urlPathNormalisationVersion).toBeNull();
+    expect(pathless?.urlPathNormalisationVersion).not.toBe(0);
+
+    // The CONTROL, from the CONSTANT rather than a hardcoded number: a version
+    // bump changes what the write path stamps, and this assertion must follow
+    // it instead of silently pinning a stale value.
+    expect(pathed?.urlPath).toBe("/checkout");
+    expect(pathed?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
+    // The two rows really do disagree, so neither assertion can be satisfied
+    // by a read that returned one value for every event.
+    expect(pathed?.urlPathNormalisationVersion).not.toBe(pathless?.urlPathNormalisationVersion);
+
+    // The session's own entry path follows the same rule: a first event with
+    // no path gives a null `entry_url_path`, never the fixture's default.
+    expect(session?.entryUrlPath).toBeNull();
   });
 
   // --- ES-1 vs ES-8 ---------------------------------------------------------

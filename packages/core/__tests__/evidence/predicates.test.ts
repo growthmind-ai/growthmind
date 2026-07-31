@@ -73,17 +73,51 @@ function failureUncorrelated(): EvidenceSignal {
   return { kind: "failure_uncorrelated", eventName: "$exception", occurredAt: EXCEPTION_AT };
 }
 
-/** `attempts` is a REQUIRED parameter so no test can accidentally lean on a
- * default that happens to sit on the right side of `struggleRepeatedAttemptMin`. */
-function struggle(attempts: number): EvidenceSignal {
-  return { kind: "struggle", subkind: "repeated_attempt", surface: "/checkout", attempts };
+/** The cohort every struggle fixture is measured over. Comfortably above every
+ * magnitude in play, so a cohort NUMERATOR is the only thing that ever moves. */
+const STRUGGLE_COHORT_KEPT = 40;
+
+/** A cohort that clears `struggleMinStrugglingSessions` without sitting on its
+ * boundary — the boundary itself is walked by its own test below. */
+const STRUGGLING_SESSIONS_ABOVE_MINIMUM = 8;
+
+/**
+ * `attempts` is a REQUIRED parameter so no test can accidentally lean on a
+ * default that happens to sit on the right side of `struggleRepeatedAttemptMin`.
+ *
+ * `strugglingSessions` defaults to a cohort that clears
+ * `struggleMinStrugglingSessions`, so every assertion written before that
+ * magnitude existed still tests the magnitude it was written for. The tests
+ * that are ABOUT the cohort pass it explicitly.
+ */
+function struggle(
+  attempts: number,
+  strugglingSessions: number = STRUGGLING_SESSIONS_ABOVE_MINIMUM,
+): EvidenceSignal {
+  return {
+    kind: "struggle",
+    subkind: "repeated_attempt",
+    surface: "/checkout",
+    attempts,
+    strugglingSessions: sessionsCount(strugglingSessions, STRUGGLE_COHORT_KEPT),
+  };
 }
 
-/** The OTHER struggle subkind. No producer this sprint (ruling 18), admitted
- * on kind alone — so it carries no magnitude gate and must block
- * `changed_mind` at any `attempts`, zero included. */
+/** The OTHER struggle subkind. No producer this sprint (ruling 18) and NOT
+ * admissible proof at any magnitude (ruling 36) — and it must STILL block
+ * `changed_mind` at any `attempts`, zero included (ruling 19, unchanged).
+ *
+ * Its cohort is deliberately above every minimum: an assertion about
+ * `backtrack` must turn on the SUBKIND, never on a fixture that was quietly
+ * too small. */
 function backtrack(attempts: number): EvidenceSignal {
-  return { kind: "struggle", subkind: "backtrack", surface: "/checkout", attempts };
+  return {
+    kind: "struggle",
+    subkind: "backtrack",
+    surface: "/checkout",
+    attempts,
+    strugglingSessions: sessionsCount(STRUGGLING_SESSIONS_ABOVE_MINIMUM, STRUGGLE_COHORT_KEPT),
+  };
 }
 
 function cleanExit(): EvidenceSignal {
@@ -309,6 +343,100 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
     // outright. (PL ruling 18: the minimum gates the `repeated_attempt` subkind
     // only, which is what `struggle()` builds.)
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin)], rules)).toBe(true);
+  });
+
+  // ── THE COHORT HALF (H-1). ────────────────────────────────────────────────
+  //
+  // WHY A SECOND MAGNITUDE EXISTS AT ALL. `attempts` is a PER-SESSION maximum
+  // over every kept session at the surface (PL ruling 31), so as an AGGREGATE
+  // predicate it is monotonically increasing in corpus size: at
+  // `DETECTOR_CORPUS_MAX_SESSIONS` (500), ONE session revisiting a comparison
+  // page three times would set `struggle` for the whole surface. The predicate
+  // would then fire on "at least one session came back" — a SUPERSET of its
+  // target, the D10 conflation this sprint exists to prevent — and it would do
+  // so at the single gate between drop-off arithmetic and a delivered finding,
+  // because `struggle` is `confusing`'s only proof and `confusing` is the only
+  // class a T1 detector can carry through the gate.
+  test("should not satisfy confusing proof below struggleMinStrugglingSessions", () => {
+    const rules = ruleSetV1();
+    const outlier = rules.struggleMinStrugglingSessions - 1;
+
+    // The near miss must be a REAL cohort, or this degenerates into the
+    // no-struggle case and stops testing the boundary at all.
+    expect(outlier).toBeGreaterThanOrEqual(1);
+
+    // THE OUTLIER, at every per-session depth including a dramatic one. The
+    // magnitude a founder reads (`attempts`) may be as loud as we like; the
+    // number of PEOPLE it happened to is not enough, and that is the one that
+    // decides. FAIL DIRECTION: UNDER-DETECT (FR-9) — the claim then hits the
+    // FR-13B floor and is DROPPED. Silence, not a softer claim.
+    expect(
+      confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin, outlier)], rules),
+    ).toBe(false);
+    expect(
+      confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin * 10, outlier)], rules),
+    ).toBe(false);
+
+    // Nor do several sub-threshold cohorts ACCUMULATE into one. Each signal is
+    // its own surface's claim; volume across signals is not a cohort.
+    expect(
+      confusingProofSatisfied(
+        [
+          struggle(rules.struggleRepeatedAttemptMin, outlier),
+          struggle(rules.struggleRepeatedAttemptMin, outlier),
+          struggle(rules.struggleRepeatedAttemptMin, outlier),
+        ],
+        rules,
+      ),
+    ).toBe(false);
+
+    // NON-VACUITY, AND THE INCLUSIVE HALF (D-6): the same predicate, the same
+    // per-session depth, ONE more struggling session, DOES fire. So every
+    // `false` above is this magnitude holding — never a predicate that rejects
+    // struggle signals outright.
+    expect(
+      confusingProofSatisfied(
+        [struggle(rules.struggleRepeatedAttemptMin, rules.struggleMinStrugglingSessions)],
+        rules,
+      ),
+    ).toBe(true);
+  });
+
+  // ── PL RULING 36 (H-2). ───────────────────────────────────────────────────
+  //
+  // `backtrack` used to be admitted on KIND ALONE — no magnitude gate at all —
+  // three lines below a comment explaining why that must not happen. Users
+  // navigate back constantly, so a single back-navigation fires on a superset
+  // of its target, and it was admitted at any magnitude at the one gate between
+  // drop-off arithmetic and a delivered finding. The only thing preventing a
+  // false `confusing` finding was that no detector emits `backtrack` this
+  // sprint (ruling 18); "no producer" is not a guard, and ESC-6 has O-005
+  // attaching a MODEL to `ProposedClaim`.
+  //
+  // Fail direction: UNDER-DETECT. When a real producer exists, O-005/O-006 may
+  // admit it deliberately with its own calibrated magnitude gate.
+  test("should not satisfy confusing proof from a backtrack signal at any magnitude", () => {
+    const rules = ruleSetV1();
+
+    for (const attempts of [0, 1, rules.struggleRepeatedAttemptMin, 99]) {
+      expect(confusingProofSatisfied([backtrack(attempts)], rules)).toBe(false);
+    }
+
+    // Nor by accumulation, and not beside an unrelated signal either.
+    expect(confusingProofSatisfied([backtrack(9), backtrack(9), backtrack(9)], rules)).toBe(false);
+    expect(confusingProofSatisfied([backtrack(9), cleanExit()], rules)).toBe(false);
+
+    // NON-VACUITY: the same kind, the other subkind, at the same cohort, DOES
+    // prove `confusing`. So every `false` above is the subkind being refused —
+    // never a predicate that rejects struggle signals outright.
+    expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin)], rules)).toBe(true);
+
+    // AND RULING 19 IS UNCHANGED — the half that must NOT be weakened.
+    // `backtrack` proves nothing and still DISQUALIFIES `changed_mind`, at any
+    // magnitude, because that class's proof is the absence of everything and a
+    // back-navigation is still something happening. "Proves nothing" and
+    // "shows nothing happened" are different statements.
+    expect(changedMindProofSatisfied([cleanExit(), backtrack(1)], rules)).toBe(false);
   });
 });
 

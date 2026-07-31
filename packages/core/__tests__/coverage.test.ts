@@ -462,6 +462,10 @@ const THRESHOLD_FAIL_DIRECTION_TESTS: Record<ThresholdKey, FailDirectionEvidence
     test: "should not satisfy confusing proof below struggleRepeatedAttemptMin",
     file: "evidence/predicates.test.ts",
   },
+  struggleMinStrugglingSessions: {
+    test: "should not satisfy confusing proof below struggleMinStrugglingSessions",
+    file: "evidence/predicates.test.ts",
+  },
   instrumentationDropRatioPercent: {
     test: "should drop instrumentation when the rate does not cross its threshold",
     file: "evidence/gate.test.ts",

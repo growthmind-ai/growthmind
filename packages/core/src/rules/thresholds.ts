@@ -97,8 +97,40 @@ const RULE_SET_V1: ThresholdRuleSet = {
    * rounding, `numerator / denominator >= 0.4` does. */
   funnelDropoffRateThresholdPercent: 40,
 
-  /** UNDER-DETECT: two visits to a path is navigation; three is a pattern. */
+  /** UNDER-DETECT: two visits to a path is navigation; three is a pattern.
+   *
+   * A PER-SESSION magnitude — one person's visit depth, never a cohort total.
+   * `struggleMinStrugglingSessions` below is the cohort half, and the two are
+   * separate because only one of them survives a bigger corpus. */
   struggleRepeatedAttemptMin: 3,
+
+  /** UNDER-DETECT, and the reason `struggleRepeatedAttemptMin` is safe to read
+   * as a per-session maximum.
+   *
+   * `struggle` is the ONLY producer of `confusing` proof this sprint, and
+   * `confusing` is the only class a T1 detector can carry through the gate — so
+   * this pair is the single gate between drop-off arithmetic and a delivered
+   * finding. The per-session maximum ALONE cannot hold it: a maximum over a
+   * cohort is monotonically increasing in corpus size, so at
+   * `DETECTOR_CORPUS_MAX_SESSIONS` (500) one outlier revisiting a comparison
+   * page three times would set `struggle` for the whole surface — a predicate
+   * firing on a SUPERSET of its target ("at least one session came back"),
+   * which is the D10 conflation this sprint exists to prevent.
+   *
+   * THREE, for the same reason `errorMinAffectedSessions` is three: it is the
+   * smallest number that can carry the word "people", and the sentence a
+   * founder actually reads on a satisfied `confusing` rung says exactly that —
+   * "People hesitated, went back, or tried the same thing more than once here."
+   * One outlier session makes that sentence false in the customer's own words,
+   * which §6's "no verdict beats a wrong verdict" and FR-14 exist to prevent.
+   *
+   * An ABSOLUTE floor rather than a share of the cohort, deliberately: the
+   * denominator a signal can carry is `basis.kept` (the whole analysed corpus),
+   * not the at-origin cohort, so a percentage here would be a rate over the
+   * wrong base — a subtler lie than a floor. The origin cohort is separately
+   * bounded by `funnelMinSessionsAtOrigin`. Tightening this to a share belongs
+   * in a v2 calibrated against a real corpus, not in a guess here. */
+  struggleMinStrugglingSessions: 3,
 
   /** UNDER-DETECT: observed must fall below 20% of expected before the class
    * fires, so ordinary week-to-week traffic variation never reads as an

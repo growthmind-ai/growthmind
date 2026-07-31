@@ -17,6 +17,7 @@
 import { ALL_CUSTOMER_FACING_MESSAGES } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import { measuredCount } from "../../src/counts/measured-count";
 import { evaluate } from "../../src/evidence/gate";
 import type { GateOutcome, ProposedClaim } from "../../src/evidence/gate";
 import { PROOF_PREDICATES, PROOF_PREDICATE_VERSION } from "../../src/evidence/predicates";
@@ -67,12 +68,25 @@ function claim(input: {
   };
 }
 
-/** A struggle signal above `struggleRepeatedAttemptMin` (3 at v1). */
+/**
+ * A struggle signal above BOTH of `confusing`'s magnitudes: four visits by one
+ * session (`struggleRepeatedAttemptMin` is 3 at v1) made by six sessions
+ * (`struggleMinStrugglingSessions` is 3). Both are required for the `confusing`
+ * rung to hold, and this file needs it to hold — the trace it asserts on is the
+ * one produced by a downgrade that LANDS.
+ */
 const REPEATED_ATTEMPTS: EvidenceSignal = {
   kind: "struggle",
   subkind: "repeated_attempt",
   surface: SURFACE,
   attempts: 4,
+  strugglingSessions: measuredCount({
+    numerator: 6,
+    denominator: 30,
+    unit: "sessions",
+    timeframe: { start: WINDOW.start, end: WINDOW.end },
+    basis: { totalInWindow: 30, kept: 30, setAside: [] },
+  }),
 };
 
 /** The one signal kind that proves `broken` at v1. */

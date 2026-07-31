@@ -26,6 +26,8 @@
 import { URL_PATH_NORMALISATION_VERSION, normaliseUrlPath } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import { measuredCount } from "../../src/counts/measured-count";
+import type { EvidenceSignal } from "../../src/evidence/signals";
 import {
   EVIDENCE_SHAPE_SERIALISERS,
   EVIDENCE_SHAPE_VERSION,
@@ -54,6 +56,40 @@ function normalisedSurface(rawPathname: string): string {
     throw new Error(`fixture pathname must normalise to a surface: ${rawPathname}`);
   }
   return surface;
+}
+
+/**
+ * A struggle signal, built where every other fixture in this file writes an
+ * object literal.
+ *
+ * It exists because `struggle` carries a `MeasuredCount` (`strugglingSessions`,
+ * H-1) which only `measuredCount` can construct — and that is itself worth
+ * something here: the cohort is a MAGNITUDE, so a signal that now carries a
+ * whole count with a denominator, a basis and a timeframe inside it must STILL
+ * serialise to the same `GOLDEN_V1`. v1 reads a signal's `kind` and nothing
+ * else, and this is the fixture that proves adding a field to a signal cannot
+ * move an identity already on record.
+ */
+function struggleSignal(input: {
+  readonly subkind: "repeated_attempt" | "backtrack";
+  readonly surface: string;
+  readonly attempts: number;
+  readonly strugglingSessions: number;
+  readonly kept: number;
+}): EvidenceSignal {
+  return {
+    kind: "struggle",
+    subkind: input.subkind,
+    surface: input.surface,
+    attempts: input.attempts,
+    strugglingSessions: measuredCount({
+      numerator: input.strugglingSessions,
+      denominator: input.kept,
+      unit: "sessions",
+      timeframe: { start: FIRST_EXCEPTION_AT, end: LATER_EXCEPTION_AT },
+      basis: { totalInWindow: input.kept, kept: input.kept, setAside: [] },
+    }),
+  };
 }
 
 /**

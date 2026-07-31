@@ -136,12 +136,49 @@ function failureUncorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
   };
 }
 
-function repeatedAttempt(attempts: number): EvidenceSignal {
-  return { kind: "struggle", subkind: "repeated_attempt", surface: SURFACE, attempts };
+/** The cohort every struggle fixture is measured over. Held fixed, so the only
+ * thing that ever moves in these fixtures is a numerator. */
+const STRUGGLE_COHORT_KEPT = 40;
+
+/** Clears `struggleMinStrugglingSessions` without sitting on its boundary —
+ * `predicates.test.ts` walks that boundary; this file is about the ladder. */
+const STRUGGLING_SESSIONS_ABOVE_MINIMUM = 8;
+
+/**
+ * A repeated-attempt struggle carrying BOTH magnitudes the predicate reads: the
+ * per-session depth (`attempts`, PL ruling 31) and the cohort that reached it
+ * (`strugglingSessions`, H-1). The cohort defaults above the minimum, so no
+ * fixture here can pass or fail for a reason this file is not about.
+ */
+function repeatedAttempt(
+  attempts: number,
+  strugglingSessions: number = STRUGGLING_SESSIONS_ABOVE_MINIMUM,
+): EvidenceSignal {
+  return {
+    kind: "struggle",
+    subkind: "repeated_attempt",
+    surface: SURFACE,
+    attempts,
+    strugglingSessions: sessions(strugglingSessions, STRUGGLE_COHORT_KEPT),
+  };
 }
 
+/**
+ * The subkind that is NOT admissible proof (PL ruling 36) and IS still a
+ * `changed_mind` disqualifier (ruling 19).
+ *
+ * `attempts: 1` is the point: a single back-navigation. Its cohort is
+ * deliberately above every minimum, so nothing below can turn on the fixture
+ * being too small — the refusal is the SUBKIND's.
+ */
 function backtrack(): EvidenceSignal {
-  return { kind: "struggle", subkind: "backtrack", surface: SURFACE, attempts: 1 };
+  return {
+    kind: "struggle",
+    subkind: "backtrack",
+    surface: SURFACE,
+    attempts: 1,
+    strugglingSessions: sessions(STRUGGLING_SESSIONS_ABOVE_MINIMUM, STRUGGLE_COHORT_KEPT),
+  };
 }
 
 /** The tempting signal: a user who clicked once and left. */
@@ -215,7 +252,18 @@ describe("evidence gate — direct cells (D-3)", () => {
     // exception must not satisfy `broken` (ES-13) — that is the
     // over-permissive predicate the PRD names as a High risk — so the claim
     // descends one rung and lands on the proof it actually has.
-    const outcome = evaluate(claim("broken", [failureUncorrelated(ruleSet), backtrack()]), ruleSet);
+    //
+    // The struggle signal is a REPEATED ATTEMPT, not a back-navigation: PL
+    // ruling 36 makes `backtrack` inadmissible as proof, so a fixture built
+    // from one would exercise the floor rather than the downgrade this cell is
+    // about. The cell is unchanged; only the evidence that can carry it is.
+    const outcome = evaluate(
+      claim("broken", [
+        failureUncorrelated(ruleSet),
+        repeatedAttempt(ruleSet.struggleRepeatedAttemptMin),
+      ]),
+      ruleSet,
+    );
 
     expect(outcome.kind).toBe("pass");
     if (outcome.kind !== "pass") throw new Error("unreachable — narrowing only");
@@ -225,24 +273,53 @@ describe("evidence gate — direct cells (D-3)", () => {
     expect(outcome.trace[1]?.satisfied).toBe(true);
   });
 
-  test("should pass confusing when hesitation, backtracking, or repeated attempts are present", () => {
+  // ── INVERTED BY PL RULING 36, AND KEPT. ───────────────────────────────────
+  //
+  // This test used to construct `backtrack()` with `attempts: 1` and assert it
+  // PASSED as `confusing`. That was the defect: a single back-navigation is a
+  // superset of its target — users navigate back constantly — admitted at any
+  // magnitude, at the one gate between drop-off arithmetic and a delivered
+  // finding. Ruling 36 makes `backtrack` inadmissible as proof; the test is not
+  // deleted, because it is now the assertion that the ruling HOLDS.
+  //
+  // The ADD's cell is unchanged: `confusing` passes on proof of hesitation or
+  // repeated attempts. What changed is which SIGNAL may carry it this sprint.
+  test("should pass confusing on repeated attempts, and NOT on a back-navigation alone", () => {
     const ruleSet = ruleSetV1();
 
-    const backtracked = evaluate(claim("confusing", [backtrack()]), ruleSet);
     // INCLUSIVE at the boundary (D-6): exactly `struggleRepeatedAttemptMin`
-    // attempts is a struggle. Fail direction is carried by the magnitude,
-    // never by the strictness of the comparison.
+    // attempts, by exactly `struggleMinStrugglingSessions` sessions, is a
+    // struggle. Fail direction is carried by the magnitudes, never by the
+    // strictness of the comparison.
     const repeated = evaluate(
-      claim("confusing", [repeatedAttempt(ruleSet.struggleRepeatedAttemptMin)]),
+      claim("confusing", [
+        repeatedAttempt(ruleSet.struggleRepeatedAttemptMin, ruleSet.struggleMinStrugglingSessions),
+      ]),
       ruleSet,
     );
 
-    for (const outcome of [backtracked, repeated]) {
-      expect(outcome.kind).toBe("pass");
-      if (outcome.kind !== "pass") throw new Error("unreachable — narrowing only");
-      expect(outcome.finalClass).toBe("confusing");
-      expect(visitedClasses(outcome)).toEqual(["confusing"]);
-    }
+    expect(repeated.kind).toBe("pass");
+    if (repeated.kind !== "pass") throw new Error("unreachable — narrowing only");
+    expect(repeated.finalClass).toBe("confusing");
+    expect(visitedClasses(repeated)).toEqual(["confusing"]);
+
+    // AND THE INVERSION (ruling 36). `backtrack` alone proves nothing, so the
+    // claim finds no proof at its own rung, hits FR-13B's floor, and DROPS —
+    // never a softer claim, and never `changed_mind`.
+    const backtracked = evaluate(claim("confusing", [backtrack()]), ruleSet);
+
+    expect(backtracked.kind).toBe("drop");
+    expect(backtracked).not.toHaveProperty("finalClass");
+    expect(visitedClasses(backtracked)).toEqual(["confusing"]);
+    expect(backtracked.trace[0]?.satisfied).toBe(false);
+    expect(JSON.stringify(backtracked)).not.toContain("changed_mind");
+
+    // RULING 19 IS UNCHANGED, and this is the half that must not be weakened:
+    // the same inadmissible signal still DISQUALIFIES `changed_mind`, because
+    // that class's proof is the absence of everything. "Proves nothing" and
+    // "shows nothing happened" are different statements.
+    const flattering = evaluate(claim("changed_mind", [cleanExit(), backtrack()]), ruleSet);
+    expect(flattering.kind).toBe("drop");
   });
 
   test("should downgrade confusing when no struggle signal exists", () => {

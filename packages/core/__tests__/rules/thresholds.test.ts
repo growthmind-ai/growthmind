@@ -132,7 +132,12 @@ const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote
   },
   struggleRepeatedAttemptMin: {
     direction: "under_detect",
-    because: "two visits to a path is navigation; three is a pattern",
+    because: "two visits to a path is navigation; three is a pattern — for ONE session",
+  },
+  struggleMinStrugglingSessions: {
+    direction: "under_detect",
+    because:
+      "the per-session maximum is a maximum over the whole cohort, so it only rises as the corpus grows — three separate sessions must have come back before the sentence a founder reads on a satisfied confusing rung (\"People hesitated, went back, or tried the same thing more than once here\") is true of the surface rather than of one outlier",
   },
   instrumentationDropRatioPercent: {
     direction: "under_detect",
@@ -184,6 +189,7 @@ describe("THRESHOLD_RULE_SETS (D-14, FR-8, FR-9, FR-11)", () => {
       funnelMinDropoffSessions: 5,
       funnelDropoffRateThresholdPercent: 40,
       struggleRepeatedAttemptMin: 3,
+      struggleMinStrugglingSessions: 3,
       instrumentationDropRatioPercent: 20,
       instrumentationMinExpected: 50,
       brokenProofSignals: ["failure_correlated"],

@@ -186,29 +186,6 @@ export function detectFunnelDropoff(
         continue;
       }
 
-      // PL ruling 18: `repeated_attempt` ONLY, gated inclusively on the
-      // rule set's minimum. `backtrack` has NO producer this sprint and must
-      // not gain one here: users navigate back constantly, so a single
-      // back-navigation fires on a superset of its target — the D10
-      // conflation this sprint exists to prevent.
-      //
-      // The magnitude is per-session (the rule-set comment reads "two visits
-      // to a path is navigation; three is a pattern"), aggregated as the
-      // greatest number of separate visits any one kept session made to this
-      // surface.
-      const attempts = Math.max(
-        ...atOrigin.map((walk) => walk.filter((path) => path === origin).length),
-      );
-      const signals: EvidenceSignal[] = [];
-      if (attempts >= ruleSet.struggleRepeatedAttemptMin) {
-        signals.push({
-          kind: "struggle",
-          subkind: "repeated_attempt",
-          surface: origin,
-          attempts,
-        });
-      }
-
       const countOf = (numerator: number) =>
         measuredCount({
           numerator,
@@ -220,6 +197,50 @@ export function detectFunnelDropoff(
           basis: corpus.basis,
         });
 
+      // PL ruling 18: `repeated_attempt` ONLY, gated inclusively on the
+      // rule set's minimum. `backtrack` has NO producer this sprint and must
+      // not gain one here: users navigate back constantly, so a single
+      // back-navigation fires on a superset of its target — the D10
+      // conflation this sprint exists to prevent. PL ruling 36 closed the same
+      // door on the CONSUMING side — `backtrack` is not admissible proof of
+      // anything — so "no producer" is no longer the only guard.
+      //
+      // TWO MAGNITUDES, AND THEY ARE NOT INTERCHANGEABLE.
+      //
+      //  - `attempts` is PER-SESSION (PL ruling 31): the greatest number of
+      //    separate visits any ONE kept session made to this surface. That is
+      //    what the rule-set comment "two visits is navigation; three is a
+      //    pattern" is a statement about.
+      //  - `strugglingSessions` is the COHORT: how many kept sessions at this
+      //    origin individually reached that per-session minimum, over
+      //    `basis.kept`.
+      //
+      // The signal carries both because the maximum ALONE is a claim about the
+      // corpus SIZE rather than about the surface: it only ever rises as more
+      // sessions are read, so at `DETECTOR_CORPUS_MAX_SESSIONS` one outlier
+      // would speak for five hundred. The proof predicate gates on the cohort
+      // (`struggleMinStrugglingSessions`); `attempts` stays the number a
+      // founder reads, and is honest because the signal now only exists when a
+      // real cohort struggled.
+      const originVisits = atOrigin.map((walk) => walk.filter((path) => path === origin).length);
+      const attempts = Math.max(...originVisits);
+      const strugglingSessions = originVisits.filter(
+        (visits) => visits >= ruleSet.struggleRepeatedAttemptMin,
+      ).length;
+
+      const signals: EvidenceSignal[] = [];
+      if (attempts >= ruleSet.struggleRepeatedAttemptMin) {
+        signals.push({
+          kind: "struggle",
+          subkind: "repeated_attempt",
+          surface: origin,
+          attempts,
+          // D-7 / §10: the one number the gate's only reachable pass turns on
+          // travels WITH its denominator, like every other count here.
+          strugglingSessions: countOf(strugglingSessions),
+        });
+      }
+
       // ── OPEN CONTRACT QUESTION (label: ESC-9). READ BEFORE CONSUMING THIS. ─
       //
       // STATED IN FULL HERE. This comment and the matching block in
@@ -230,6 +251,42 @@ export function detectFunnelDropoff(
       // This loop emits ONE CANDIDATE PER `(origin, destination)` TRANSITION,
       // and `DetectorCandidate` CARRIES NO DESTINATION. `destination` is used
       // to compute `dropped` and is then discarded.
+      //
+      // ESC-9 HAS TWO HALVES, AND ONLY ONE OF THEM IS THE IDENTITY COLLISION.
+      // Stated here because the write-up below described the collision alone
+      // and thereby understated what is being deferred.
+      //
+      // HALF ONE — IDENTITY COLLISION (the paragraphs below): N candidates from
+      // one origin serialise to ONE `evidence_shape`.
+      //
+      // HALF TWO — RATE INFLATION, a defect in the NUMBER and not only in its
+      // identity. `dropped` is "did not reach THIS destination anywhere in the
+      // session", so a session that went somewhere ELSE from the origin counts
+      // as having dropped out of every destination it did not take. A healthy
+      // branching hub is the worst case: `/pricing` with 30 sessions splitting
+      // evenly to `/checkout`, `/help` and `/faq` — nobody stuck, nobody
+      // confused — yields THREE candidates each claiming "20 of 30 did not
+      // reach here". The arithmetic is right and the sentence is misleading,
+      // which is worse than a wrong number because it survives review.
+      //
+      // WHY IT IS NOT SHIPPING TODAY, precisely: a branching hub with no
+      // cohort-level struggle produces no `struggle` signal — and it is the
+      // COHORT gate (`struggleMinStrugglingSessions`) that makes that true,
+      // since the per-session maximum alone would have let one outlier speak
+      // for the hub — so all three candidates fail `confusing`, hit the FR-13B
+      // floor, and drop. Ruling 13's designed silence is what contains this,
+      // NOT the count being right.
+      //
+      // WHICH FIX RESOLVES WHICH HALF — the part this write-up owes its reader:
+      //   - fix (b) (one candidate per origin, aggregating across
+      //     destinations) resolves BOTH: one identity, and one count meaning
+      //     "left the origin without going anywhere it could have gone";
+      //   - fix (a) (carry `destination` into the candidate and a v2
+      //     serialiser) resolves ONLY the identity half. The three candidates
+      //     become three distinct identities, each still carrying an inflated
+      //     "20 of 30" — so fix (a) SHIPS RATE INFLATION, in triplicate, with
+      //     nothing left to suppress it. Whoever takes fix (a) owes half two a
+      //     separate answer.
       //
       // The consequence, stated plainly because it is invisible from the type:
       // every candidate from one origin serialises to a BYTE-IDENTICAL
