@@ -11,3 +11,6 @@ export * from "./project-connections";
 export * from "./sessions";
 export * from "./events";
 export * from "./session-source-poll-runs";
+export * from "./finding-signatures";
+export * from "./dismissals";
+export * from "./signature-ancestry";

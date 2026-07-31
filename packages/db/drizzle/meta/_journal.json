@@ -36,6 +36,13 @@
       "when": 1785461038494,
       "tag": "0004_sour_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785481299943,
+      "tag": "0005_fast_living_tribunal",
+      "breakpoints": true
     }
   ]
 }
