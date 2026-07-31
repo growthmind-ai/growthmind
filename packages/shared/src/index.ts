@@ -194,6 +194,8 @@ export {
   ancestryReasonSchema,
   dismissalActionSchema,
   ANCESTRY_RESOLUTION_MAX_HOPS,
+  ANCESTRY_REASONS,
+  DISMISSAL_ACTIONS,
   type SuppressionReasonCode,
   type AncestryReason,
   type DismissalAction,

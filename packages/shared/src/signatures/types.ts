@@ -79,6 +79,21 @@ export const ancestryReasonSchema = z.enum([
 export type AncestryReason = z.infer<typeof ancestryReasonSchema>;
 
 /**
+ * The same vocabulary as a non-empty readonly tuple, for drizzle's
+ * `text("reason", { enum: ANCESTRY_REASONS })` (C-f: `text({ enum })`,
+ * never `pgEnum`). The `satisfies` clause makes the column's value set and
+ * the Zod union the same thing by construction — adding a member to one
+ * without the other is a compile error, not a silent no-op (D9).
+ */
+export const ANCESTRY_REASONS = [
+  "surface_normalisation_version_bump",
+  "evidence_shape_version_bump",
+  "signature_tuple_version_bump",
+  "surface_rename",
+  "surface_derivation_swap",
+] as const satisfies readonly [AncestryReason, ...AncestryReason[]];
+
+/**
  * The dismissal action a customer can take on a finding. Exactly one member
  * at MVP: `not_useful`, the permanent org-wide suppression (ADD D-7, D-8).
  * `get_it_fixed` is O-009's and is deliberately NOT added here
@@ -87,6 +102,16 @@ export type AncestryReason = z.infer<typeof ancestryReasonSchema>;
  */
 export const dismissalActionSchema = z.enum(["not_useful"]);
 export type DismissalAction = z.infer<typeof dismissalActionSchema>;
+
+/**
+ * The dismissal actions as a non-empty readonly tuple, for drizzle's
+ * `text("action", { enum: DISMISSAL_ACTIONS })`. Same construction — and
+ * the same guarantee — as `ANCESTRY_REASONS` above.
+ */
+export const DISMISSAL_ACTIONS = ["not_useful"] as const satisfies readonly [
+  DismissalAction,
+  ...DismissalAction[],
+];
 
 /**
  * The forward-walk hop cap for `signature_ancestry` resolution (ADD D-3(b)).
