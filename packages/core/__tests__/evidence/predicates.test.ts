@@ -33,6 +33,7 @@ import { measuredCount } from "../../src/counts/measured-count";
 import {
   brokenProofSatisfied,
   changedMindProofSatisfied,
+  confidenceBasisForPass,
   confusingProofSatisfied,
   instrumentationProofSatisfied,
 } from "../../src/evidence/predicates";
@@ -638,5 +639,84 @@ describe("D-14 — predicates read the rule-set parameter, never the module cons
 
     // And v1, re-fetched by version, is unchanged by any of it.
     expect(brokenProofSatisfied([failureUncorrelated()], ruleSetV1())).toBe(false);
+  });
+});
+
+// --- confidenceBasisForPass (O-012) -----------------------------------------
+//
+// The assembler's ranking derivation, defined HERE beside the predicate maths
+// it must agree with. These tests pin the D-6 vocabulary: `at_threshold` is
+// "every proving magnitude sits exactly at its inclusive boundary", and one
+// signal clearing with room is enough to say `threshold_met`.
+describe("confidenceBasisForPass", () => {
+  test("reports at_threshold when the proving struggle sits exactly at both minimums", () => {
+    const rules = ruleSetV1();
+    const signal = struggle(rules.struggleRepeatedAttemptMin, rules.struggleMinStrugglingSessions);
+
+    expect(confidenceBasisForPass([signal], "confusing", rules)).toBe("at_threshold");
+  });
+
+  test("reports at_threshold when EITHER struggle magnitude is at its boundary, since one fewer would not fire", () => {
+    const rules = ruleSetV1();
+    // Attempts at the minimum, cohort clear of it: the claim is still
+    // boundary-fragile in one dimension, and O-006 may rank it lower.
+    const attemptsAtBoundary = struggle(
+      rules.struggleRepeatedAttemptMin,
+      STRUGGLING_SESSIONS_ABOVE_MINIMUM,
+    );
+
+    expect(confidenceBasisForPass([attemptsAtBoundary], "confusing", rules)).toBe("at_threshold");
+  });
+
+  test("reports threshold_met when the proving signal clears both minimums with room", () => {
+    const rules = ruleSetV1();
+    const signal = struggle(
+      rules.struggleRepeatedAttemptMin + 1,
+      rules.struggleMinStrugglingSessions + 1,
+    );
+
+    expect(confidenceBasisForPass([signal], "confusing", rules)).toBe("threshold_met");
+  });
+
+  test("reports threshold_met when ANY proving signal clears with room beside one at the boundary", () => {
+    const rules = ruleSetV1();
+    const atBoundary = struggle(
+      rules.struggleRepeatedAttemptMin,
+      rules.struggleMinStrugglingSessions,
+    );
+    const clear = struggle(
+      rules.struggleRepeatedAttemptMin + 2,
+      rules.struggleMinStrugglingSessions + 2,
+    );
+
+    expect(confidenceBasisForPass([atBoundary, clear], "confusing", rules)).toBe("threshold_met");
+  });
+
+  test("reports threshold_met for presence-only proof, which has no boundary to sit at", () => {
+    const rules = ruleSetV1();
+
+    expect(confidenceBasisForPass([cleanExit()], "changed_mind", rules)).toBe("threshold_met");
+  });
+
+  test("reports at_threshold for a broken pass whose correlated cohort is exactly the minimum", () => {
+    const rules = ruleSetV1();
+    // `failureCorrelated()` carries numerator 3 — exactly
+    // `errorMinAffectedSessions` at v1, the audit C-1 cohort gate's boundary.
+    expect(rules.errorMinAffectedSessions).toBe(3);
+
+    expect(confidenceBasisForPass([failureCorrelated()], "broken", rules)).toBe("at_threshold");
+  });
+
+  test("ignores a signal of an unadmitted kind when deriving the basis, as the predicates do", () => {
+    const rules = ruleSetV1();
+    // The struggle proves `confusing` at its boundary; the uncorrelated
+    // failure is not admitted proof of `confusing` and must not move the
+    // basis, exactly as it moves no predicate.
+    const signals = [
+      struggle(rules.struggleRepeatedAttemptMin, rules.struggleMinStrugglingSessions),
+      failureUncorrelated(),
+    ];
+
+    expect(confidenceBasisForPass(signals, "confusing", rules)).toBe("at_threshold");
   });
 });

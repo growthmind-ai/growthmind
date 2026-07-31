@@ -130,6 +130,16 @@ export {
   type EvidenceShapeInput,
   type EvidenceShapeSerialiser,
 } from "./findings/evidence-shape";
+// The candidate assembler (O-012) — the join between the detectors, the gate,
+// and the candidate contract. `confidenceBasisForPass` is exported beside it
+// because the assembler's derivation must be testable against the predicate
+// maths it lives next to.
+export {
+  assembleCandidates,
+  type AssembledCandidates,
+  type RejectedCandidate,
+} from "./findings/assemble";
+export { confidenceBasisForPass } from "./evidence/predicates";
 
 // --- O-006 -------------------------------------------------------------------
 export {
