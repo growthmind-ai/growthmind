@@ -151,10 +151,13 @@ Thinning scope does not thin these:
   absent request, or it degrades to `confusing`.
 - **§7 backpressure:** one finding at a time from the very first user. The MVP
   never posts two.
-- **§5 PII:** PostHog masking config is verified during onboarding step 2, and
-  generated finding text passes the residual scanner before it is pushed or
-  posted. No recording clip ships in the MVP, which shrinks this surface to
-  text.
+- **§5 PII:** PostHog masking config is verified during onboarding step 2.
+  Generated finding text must pass the residual scanner before it is pushed or
+  posted — **a requirement the MVP has not met yet.** O-011 ships the first
+  model-written text and guards it for assertion accuracy, not for residual
+  personal data; wiring `scanResidualPii` over that text is SAC-9's promotion and
+  is owed before delivery goes live. No recording clip ships in the MVP, which
+  shrinks this surface to text.
 - **§10 language:** plain English, no jargon, counts with denominators — in the
   onboarding push and the Slack message equally.
 - **§11 source of truth:** the MVP is _born_ compliant — it runs entirely off a

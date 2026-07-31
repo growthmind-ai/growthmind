@@ -1,5 +1,6 @@
-// The "./system" subpath's entire surface: three read-only exports and their
-// types, and nothing else (O-003 D-10).
+// The "./system" subpath's entire surface: four read-only exports and their
+// types, and nothing else (O-003 D-10; `listAnalysableProjects` added by
+// O-012 under the same rules).
 //
 // Deliberately NOT re-exported from src/index.ts. The subpath boundary is
 // what makes a violating import a single greppable line, and
@@ -12,4 +13,5 @@ export {
   readConnectionCredential,
   type PollableConnection,
 } from "./pollable-connections";
+export { listAnalysableProjects, type AnalysableProject } from "./analysable-projects";
 export { systemTenantContextFor, SYSTEM_ACTOR_ID, SYSTEM_ACTOR_ROLE } from "./system-context";

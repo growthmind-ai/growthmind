@@ -18,6 +18,7 @@ import type { DeliveryPoster, ServerEnv } from "@growthmind/shared";
 import { parseServerEnv } from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
+import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { TASK } from "./task-names";
 import type { AnalysisLaneSource, ConfiguredSummariser } from "./tasks/analysis-tick";
 import { runAnalysisTick } from "./tasks/analysis-tick";
@@ -169,26 +170,30 @@ function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
 }
 
 /**
- * Which projects have gate-passed candidates waiting — NULL ON EVERY
- * INSTALLATION TODAY, deliberately and visibly.
+ * Which projects have candidates to consider — THE WIRE, LANDED (O-012,
+ * closing O-011 ADD AD-0 / R-9's TODO exactly where it said the change would
+ * happen, and nowhere else).
  *
- * `packages/core` ships the detectors, the evidence gate and the candidate
- * contract, but nothing that turns sessions and events into a `DetectorCorpus`,
- * runs every detector and assembles gate-passed candidates — that assembler is a
- * sprint of its own (ADD §3.1 option B, AD-0). Everything else O-011 promised is
- * here and proven: the ladder, the cap, the guard, the floor, the summariser and
- * its provider, the two repositories and the run's terminal writes.
+ * `createAnalysisLaneSource` is the adapter this port waited for: every
+ * project with an active connection, its corpus read over the producer's
+ * trailing window, both T1 detectors run, every proposal through the evidence
+ * gate, and the survivors assembled into one lane per project. From this line
+ * on, the tick's graceful-absence log means "no projects connected" — never
+ * "no producer written".
  *
- * TODO(the corpus-reader heir of ADD AD-0 / R-9): implement `AnalysisLaneSource`
- * as a repository read that assembles gate-passed candidates from sessions and
- * events, and return it from here. THIS FUNCTION IS THE ONLY PLACE THAT CHANGES —
- * `runAnalysisTick` takes the lane source as an injected dependency typed by its
- * port and names no vendor and no table, and its suite already drives the whole
- * ladder through the real entry point with fakes. What lands here is the wire,
- * not the behaviour.
+ * The logger here is the console pair rather than a Graphile helper because
+ * this composition happens once per process, outside any task closure; the
+ * per-tick logger the handler receives still carries every lane-level line.
  */
 function resolveAnalysisLanes(): AnalysisLaneSource | null {
-  return null;
+  const { db } = resolveResources();
+  return createAnalysisLaneSource({
+    db,
+    logger: {
+      info: (message) => console.info(message),
+      error: (message) => console.error(message),
+    },
+  });
 }
 
 /**
