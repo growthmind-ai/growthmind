@@ -51,11 +51,22 @@ type DeliveryComposition = {
  * crash-loops on boot because Slack was never connected would take the analysis
  * pipeline down with it.
  *
- * TODO(O-007 composition): return `{ poster, lanes }` here — this function is
- * the ONLY place that changes, because `runDeliveryTick` takes both as injected
- * dependencies typed by their ports and never names a vendor. Its test suite
- * already drives the full sequence with fakes, so what lands here is the wire,
- * not the behaviour.
+ * TODO(O-008): return `{ poster, lanes }` here — this function is the ONLY place
+ * that changes, because `runDeliveryTick` takes both as injected dependencies
+ * typed by their ports and never names a vendor. Its test suite already drives
+ * the full sequence with fakes, so what lands here is the wire, not the
+ * behaviour. `createSlackDeliveryPoster` (shipped, `@growthmind/adapters`) needs
+ * only a bot token and a `fetch`; the lane source needs a `findings` read that
+ * no table in this branch supports yet.
+ *
+ * BE HONEST ABOUT WHAT THIS MEANS: until that lands, this tick posts nothing on
+ * any installation. O-007's DoD — the scheduler, the renderer's legibility
+ * budget, the residual scanner running before any post, D4 idempotency and D8
+ * failure isolation — is met and proven, but proven against fakes driving the
+ * real entry point, not against production traffic. That is the D11 hazard this
+ * codebase names (a value computed and then dropped on the floor), held open
+ * deliberately and visibly rather than hidden: the absence is logged once per
+ * tick, and this comment is the reason it is not a silent no-op.
  */
 function resolveDeliveryComposition(): DeliveryComposition | null {
   return null;
