@@ -57,6 +57,19 @@ import {
   seedUser,
 } from "../helpers/fixtures";
 
+// --- O-006: the signature ledger's cross-tenant matrix ----------------------
+// New imports for the appended describe block at the end of this file. Kept
+// as a separate import group (rather than merged into the blocks above) to
+// minimise the merge-collision surface on this file's existing import lines
+// — a concurrent sprint (O-005) is also appending to this file.
+import { createHash } from "node:crypto";
+
+import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
+import { createFindingSignaturesRepo } from "../../src/repositories/finding-signatures.repo";
+import { createSignatureAncestryRepo } from "../../src/repositories/signature-ancestry.repo";
+import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
+import type { SignatureHex } from "../../src/signatures/hex";
+
 const NAMES = laneNames("xt");
 
 const SESSION_KEY_A = "ph:db-xt-org-a-session";
@@ -1165,5 +1178,312 @@ describe("detector-corpus.service — the T1 corpus read (O-004)", () => {
     expect(polledCorpus.connectionState.status).toBe("connected_no_events_yet");
     expect(neverCorpus.connectionState.status).toBe("connected_never_polled");
     expect(polledCorpus.connectionState.status).not.toBe(neverCorpus.connectionState.status);
+  });
+});
+
+// ===========================================================================
+// O-006 · cross-tenant boundary on the signature ledger tables
+// (`finding_signatures`, `dismissals`, `signature_ancestry`).
+//
+// ADD tasks/signature-ledger/add.md §7 "Cross-tenant + scope" (T-XT-1..5),
+// §2 D-10, §6 Multi-tenancy. Appended per this file's own collision-surface
+// note (C-6 in the O-006 ADD) — append only, never reorder the O-003/O-004
+// blocks above.
+//
+// Every read-back goes through the public repository/service contract, the
+// same discipline the O-003 block above already established — reading rows
+// directly would prove nothing about scoping.
+//
+// Every repository/service method body under test here is a Wave 0B typed
+// stub that throws "not implemented" (see `packages/db/src/repositories/
+// finding-signatures.repo.ts`, `dismissals.repo.ts`,
+// `signature-ancestry.repo.ts`, and `services/signature-ledger.service.ts`).
+// Every test below MUST fail for that reason today, never a compile error —
+// the assertions are written against the FINAL contract so they need no
+// rewrite once Waves 4-5 land.
+// ===========================================================================
+
+/**
+ * Builds a syntactically valid `SignatureHex` for fixture purposes only.
+ * `signatureHex`/`sha256Hex` (`../../src/signatures/hex`) are themselves
+ * Wave 0B stubs that throw "not implemented", so nothing in this file can
+ * mint a REAL digest yet — a real sha256 hex digest of an arbitrary label is
+ * used only because it is guaranteed to be 64 lowercase hex characters and
+ * distinct per label, never because this file is testing `sha256Hex` itself
+ * (that is `signatures/hex.test.ts`'s job).
+ */
+function fakeSignature(label: string): SignatureHex {
+  return createHash("sha256").update(label).digest("hex") as unknown as SignatureHex;
+}
+
+interface SignatureLedgerFixture {
+  ownerCtx: TenantContext;
+  teammateCtx: TenantContext;
+  foreignCtx: TenantContext;
+  projectId: string;
+  foreignProjectId: string;
+  findingId: string;
+  signature: SignatureHex;
+}
+
+/**
+ * Org A (owner + a NON-OWNER teammate) with a ledger row already recorded via
+ * the real write path (`upsertSeen`), plus org B with its own project. Every
+ * new describe block below calls this with a distinct `label` so the `xt`
+ * lane's fixture names never collide across tests.
+ */
+async function seedSignatureLedgerMatrix(
+  db: TestDb,
+  label: string,
+): Promise<SignatureLedgerFixture> {
+  const orgA = await seedOrgWithOwner(db, {
+    orgName: NAMES.orgName(`${label}-a`),
+    userName: NAMES.userName(`${label}-a-owner`),
+    email: NAMES.email(`${label}-a-owner`),
+  });
+  const orgB = await seedOrgWithOwner(db, {
+    orgName: NAMES.orgName(`${label}-b`),
+    userName: NAMES.userName(`${label}-b-owner`),
+    email: NAMES.email(`${label}-b-owner`),
+  });
+
+  const teammate = await seedUser(db, {
+    name: NAMES.userName(`${label}-a-teammate`),
+    email: NAMES.email(`${label}-a-teammate`),
+  });
+  await seedMember(db, {
+    organizationId: orgA.organizationId,
+    userId: teammate.id,
+    role: "member",
+  });
+
+  const projectA = await seedProject(db, {
+    organizationId: orgA.organizationId,
+    name: NAMES.projectName(`${label}-a`),
+  });
+  const projectB = await seedProject(db, {
+    organizationId: orgB.organizationId,
+    name: NAMES.projectName(`${label}-b`),
+  });
+
+  const signature = fakeSignature(`db-sig-${label}-a`);
+
+  await createFindingSignaturesRepo(db, orgA.ctx).upsertSeen({
+    projectId: projectA.id,
+    signature,
+    symptomClass: "broken",
+    surface: "/checkout",
+    signatureTupleVersion: 1,
+    evidenceShapeVersion: 1,
+    surfaceNormalisationVersion: 2,
+    seenAt: new Date("2026-07-30T12:00:00.000Z"),
+  });
+
+  return {
+    ownerCtx: orgA.ctx,
+    teammateCtx: makeTenantContext({
+      userId: teammate.id,
+      organizationId: orgA.organizationId,
+      organizationName: orgA.organizationName,
+      role: "member",
+    }),
+    foreignCtx: orgB.ctx,
+    projectId: projectA.id,
+    foreignProjectId: projectB.id,
+    findingId: `db-sig-${label}-finding-0001`,
+    signature,
+  };
+}
+
+describe("cross-tenant boundary on the O-006 signature ledger tables", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  // --- T-XT-1 ---------------------------------------------------------------
+  it("org B reads nothing of org A's ledger, dismissals, or ancestry", async () => {
+    const fx = await seedSignatureLedgerMatrix(db, "sig-read");
+    const newSignature = fakeSignature("sig-read-a-new");
+
+    // Real data for org A on all three tables, so org B's reads have
+    // something genuine to fail to see — an empty table proves nothing about
+    // tenancy.
+    await createSignatureLedgerService(db, fx.ownerCtx).recordAncestry({
+      projectId: fx.projectId,
+      oldSignature: fx.signature,
+      newSignature,
+      reason: "surface_rename",
+    });
+    await createSignatureLedgerService(db, fx.ownerCtx).recordDismissal({
+      projectId: fx.projectId,
+      findingId: fx.findingId,
+      signature: fx.signature,
+      action: "not_useful",
+      dismissedByUserId: fx.ownerCtx.userId,
+    });
+
+    const ledgerB = createFindingSignaturesRepo(db, fx.foreignCtx);
+    expect(await ledgerB.findBySignature(fx.projectId, fx.signature)).toBeNull();
+
+    const dismissalsB = createDismissalsRepo(db, fx.foreignCtx);
+    expect(await dismissalsB.findFor(fx.findingId, "not_useful")).toBeNull();
+    expect(await dismissalsB.findLatestForSignature(fx.projectId, fx.signature)).toBeNull();
+
+    const ancestryB = createSignatureAncestryRepo(db, fx.foreignCtx);
+    expect(await ancestryB.forwardEdge(fx.signature)).toBeNull();
+    // Org B has no edge of its own, so the walk degrades cleanly to the
+    // input signature at zero hops — the same empty-table behaviour T-DB-9
+    // pins, here proved from the OTHER org's vantage point.
+    expect(await ancestryB.resolve(fx.signature)).toEqual({
+      resolution: "resolved",
+      signature: fx.signature,
+      hops: 0,
+    });
+  });
+
+  // --- T-XT-2 ---------------------------------------------------------------
+  it("org B mutates nothing of org A's — markDelivered, dismissal, and carry-forward all return null or no rows, never a silent success", async () => {
+    const fx = await seedSignatureLedgerMatrix(db, "sig-mutate");
+    const newSignature = fakeSignature("sig-mutate-a-new");
+
+    const deliveredByB = await createFindingSignaturesRepo(db, fx.foreignCtx).markDelivered(
+      fx.projectId,
+      fx.signature,
+      new Date("2026-07-30T13:00:00.000Z"),
+    );
+    expect(deliveredByB).toBeNull();
+
+    // Either a refusal or a no-op that creates nothing under org A is
+    // acceptable — a SILENT SUCCESS that mutates org A's row is not, and
+    // that is what the read-back below proves. Same idiom as the hostile
+    // session upsert above (item 80).
+    try {
+      await createFindingSignaturesRepo(db, fx.foreignCtx).carryForward({
+        projectId: fx.projectId,
+        oldSignature: fx.signature,
+        newSignature,
+      });
+    } catch {
+      // acceptable — see comment above
+    }
+
+    try {
+      await createSignatureLedgerService(db, fx.foreignCtx).recordDismissal({
+        projectId: fx.projectId,
+        findingId: fx.findingId,
+        signature: fx.signature,
+        action: "not_useful",
+        dismissedByUserId: null,
+      });
+    } catch {
+      // acceptable — see comment above
+    }
+
+    // The read-back, under ORG A's OWN context, proves nothing changed.
+    const served = await createFindingSignaturesRepo(db, fx.ownerCtx).findBySignature(
+      fx.projectId,
+      fx.signature,
+    );
+    expect(served?.deliveredAt ?? null).toBeNull();
+    expect(served?.dismissedAt ?? null).toBeNull();
+
+    expect(
+      await createDismissalsRepo(db, fx.ownerCtx).findFor(fx.findingId, "not_useful"),
+    ).toBeNull();
+    expect(
+      await createSignatureAncestryRepo(db, fx.ownerCtx).forwardEdge(fx.signature),
+    ).toBeNull();
+  });
+
+  // --- T-XT-3 (D1 FLAGSHIP — the single most important row in this file) ----
+  it("org A's non-owner teammate CAN read the ledger, CAN dismiss, and their dismissal suppresses for the owner", async () => {
+    const fx = await seedSignatureLedgerMatrix(db, "sig-teammate");
+    expect(fx.teammateCtx.role).toBe("member");
+    expect(fx.teammateCtx.userId).not.toBe(fx.ownerCtx.userId);
+
+    // CAN READ, as the teammate — never routed through the owner's context.
+    const ledgerRow = await createFindingSignaturesRepo(db, fx.teammateCtx).findBySignature(
+      fx.projectId,
+      fx.signature,
+    );
+    expect(ledgerRow?.signature).toBe(fx.signature);
+
+    // CAN DISMISS, as the teammate. A dismissal is an org-scoped effect one
+    // member triggers on behalf of everyone — never gated to whoever set the
+    // product up (architecture.md:528-529).
+    const dismissal = await createSignatureLedgerService(db, fx.teammateCtx).recordDismissal({
+      projectId: fx.projectId,
+      findingId: fx.findingId,
+      signature: fx.signature,
+      action: "not_useful",
+      dismissedByUserId: fx.teammateCtx.userId,
+    });
+    expect(dismissal.dismissedByUserId).toBe(fx.teammateCtx.userId);
+
+    // …AND SUPPRESSES FOR THE OWNER. The classic D1 miss is narrowing an
+    // org-wide effect to whoever triggered it — asserted here, never assumed.
+    const decision = await createSignatureLedgerService(db, fx.ownerCtx).consultSignature(
+      fx.projectId,
+      fx.signature,
+    );
+    expect(decision).toEqual({ decision: "suppress", reason: "dismissed" });
+  });
+
+  // --- T-XT-4 (the reverse direction) ---------------------------------------
+  it("the owner's dismissal suppresses for the non-owner teammate", async () => {
+    const fx = await seedSignatureLedgerMatrix(db, "sig-teammate-reverse");
+
+    await createSignatureLedgerService(db, fx.ownerCtx).recordDismissal({
+      projectId: fx.projectId,
+      findingId: fx.findingId,
+      signature: fx.signature,
+      action: "not_useful",
+      dismissedByUserId: fx.ownerCtx.userId,
+    });
+
+    const decision = await createSignatureLedgerService(db, fx.teammateCtx).consultSignature(
+      fx.projectId,
+      fx.signature,
+    );
+    expect(decision).toEqual({ decision: "suppress", reason: "dismissed" });
+  });
+
+  // --- T-XT-5 -----------------------------------------------------------------
+  it("a client-supplied foreign project id widens nothing through any of the three repositories or the service", async () => {
+    const fx = await seedSignatureLedgerMatrix(db, "sig-foreign-project");
+
+    // Org A naming org B's project id against org A's OWN signature. The
+    // failure this guards against is not a cross-org read: it is a project
+    // predicate that gets dropped, which would hand org A its own ledger row
+    // back under someone else's project id.
+    expect(
+      await createFindingSignaturesRepo(db, fx.ownerCtx).findBySignature(
+        fx.foreignProjectId,
+        fx.signature,
+      ),
+    ).toBeNull();
+
+    expect(
+      await createDismissalsRepo(db, fx.ownerCtx).findLatestForSignature(
+        fx.foreignProjectId,
+        fx.signature,
+      ),
+    ).toBeNull();
+
+    const decision = await createSignatureLedgerService(db, fx.ownerCtx).consultSignature(
+      fx.foreignProjectId,
+      fx.signature,
+    );
+    // A foreign project id must never widen the read to org A's OWN
+    // signature recorded against its real project — the honest answer is
+    // "never seen on this project", not org A's real ledger state.
+    expect(decision).toEqual({ decision: "deliver", reason: "not_seen_before" });
   });
 });

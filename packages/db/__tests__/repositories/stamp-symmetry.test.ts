@@ -35,6 +35,18 @@ import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../helpers/db-lane-fixtures";
 import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
 
+// --- O-006: the signature ledger's stamp/filter round trips -----------------
+// New imports for the appended describe block at the end of this file. Kept
+// separate from the group above to minimise the merge-collision surface on
+// this file's existing import lines.
+import { createHash } from "node:crypto";
+
+import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
+import { createFindingSignaturesRepo } from "../../src/repositories/finding-signatures.repo";
+import { createSignatureAncestryRepo } from "../../src/repositories/signature-ancestry.repo";
+import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
+import type { SignatureHex } from "../../src/signatures/hex";
+
 const NAMES = laneNames("sym");
 
 const NOW = new Date("2026-07-30T12:00:00.000Z");
@@ -311,5 +323,167 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(aggregate.runsCompleted).toBe(1);
     expect(aggregate.runsFailed).toBe(0);
     expect(aggregate.lastSuccessfulFinishedAt).not.toBeNull();
+  });
+});
+
+// ===========================================================================
+// O-006 · stamp/filter symmetry — the signature ledger tables
+// (`finding_signatures`, `dismissals`, `signature_ancestry`).
+//
+// ADD tasks/signature-ledger/add.md §7 "Stamp/filter symmetry" (T-SS-1..3 /
+// T-DB-8), §2 D-10. THREE new hand-written round trips — the fifth, sixth,
+// and seventh in this file — appended per the file's own header note that
+// NOTHING here is automatic: each writes through the write path under one
+// context, then reads back through the SAME scoped read a real consumer
+// uses, under a request context belonging to an org member.
+//
+// Unlike the O-003 blocks above, there is no worker/system context split
+// here — O-006's writes are member-triggered directly (a candidate is
+// recorded, a dismissal is clicked), so one org-member `TenantContext` plays
+// both roles. The symmetry question is unchanged: did the write path stamp
+// every column the scoped read filters by?
+//
+// Every repository/service method body under test is a Wave 0B typed stub
+// that throws "not implemented" — every test below MUST fail for that
+// reason today, never a compile error.
+// ===========================================================================
+
+/**
+ * Builds a syntactically valid `SignatureHex` for fixture purposes only —
+ * see the identical helper's comment in `cross-tenant.test.ts`. `hex.ts`'s
+ * own constructors are themselves Wave 0B stubs, so nothing here can mint a
+ * real digest yet; this file does not test `sha256Hex` itself.
+ */
+function fakeSignature(label: string): SignatureHex {
+  return createHash("sha256").update(label).digest("hex") as unknown as SignatureHex;
+}
+
+describe("stamp/filter symmetry — the O-006 signature ledger tables", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  // --- T-SS-1 (block 5) ------------------------------------------------------
+  it("returns a ledger row the record path wrote from the request-scoped consult read", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("sig-ledger"),
+      userName: NAMES.userName("sig-ledger"),
+      email: NAMES.email("sig-ledger"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("sig-ledger"),
+    });
+    const signature = fakeSignature("sig-ledger-symmetry");
+
+    // The write path (D-9's atomic upsert).
+    await createFindingSignaturesRepo(db, org.ctx).upsertSeen({
+      projectId: project.id,
+      signature,
+      symptomClass: "broken",
+      surface: "/checkout",
+      signatureTupleVersion: 1,
+      evidenceShapeVersion: 1,
+      surfaceNormalisationVersion: 2,
+      seenAt: new Date("2026-07-30T12:00:00.000Z"),
+    });
+
+    // The SAME scoped read `consultSignature` uses, under a request context
+    // belonging to an org member — never a direct row read.
+    const served = await createFindingSignaturesRepo(db, org.ctx).findBySignature(
+      project.id,
+      signature,
+    );
+
+    expect(served).not.toBeNull();
+    // Every column the scoped read filters by (organization_id, project_id,
+    // signature — D-10's row 1) must have been stamped by the write path, or
+    // this comes back null and reads as "no data" rather than an error.
+    expect(served?.organizationId).toBe(org.organizationId);
+    expect(served?.projectId).toBe(project.id);
+    expect(served?.signature).toBe(signature);
+  });
+
+  // --- T-SS-2 (block 6) ------------------------------------------------------
+  it("returns a dismissal the write path stamped from the request-scoped suppression read", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("sig-dismissal"),
+      userName: NAMES.userName("sig-dismissal"),
+      email: NAMES.email("sig-dismissal"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("sig-dismissal"),
+    });
+    const signature = fakeSignature("sig-dismissal-symmetry");
+    const findingId = "db-sym-sig-dismissal-finding-0001";
+
+    // The write path — `recordDismissal`'s transaction (D-8).
+    await createSignatureLedgerService(db, org.ctx).recordDismissal({
+      projectId: project.id,
+      findingId,
+      signature,
+      action: "not_useful",
+      dismissedByUserId: org.userId,
+    });
+
+    // The SAME scoped read `consultSignature`'s suppression check uses.
+    const served = await createDismissalsRepo(db, org.ctx).findFor(findingId, "not_useful");
+
+    expect(served).not.toBeNull();
+    // D-10's row 2: organization_id, finding_id, and action are FILTERED on;
+    // project_id and signature are stamped but declared exempt from the
+    // filter (kept for future per-project reads / the later FK). All five
+    // must still be stamped by the write path.
+    expect(served?.organizationId).toBe(org.organizationId);
+    expect(served?.projectId).toBe(project.id);
+    expect(served?.findingId).toBe(findingId);
+    expect(served?.signature).toBe(signature);
+    expect(served?.action).toBe("not_useful");
+  });
+
+  // --- T-SS-3 / T-DB-8 (block 7 — D-10's declared exemption) -----------------
+  it("resolves through an ancestry row the record path wrote, and asserts project_id was stamped despite never being filtered", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("sig-ancestry"),
+      userName: NAMES.userName("sig-ancestry"),
+      email: NAMES.email("sig-ancestry"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("sig-ancestry"),
+    });
+    const oldSignature = fakeSignature("sig-ancestry-old");
+    const newSignature = fakeSignature("sig-ancestry-new");
+
+    // The write path — `recordAncestry`'s transaction (D-3a, D-8).
+    await createSignatureLedgerService(db, org.ctx).recordAncestry({
+      projectId: project.id,
+      oldSignature,
+      newSignature,
+      reason: "surface_rename",
+    });
+
+    // The SAME scoped read the forward walk uses — filtered by
+    // (organization_id, old_signature) ONLY, never project_id (D-10's
+    // declared exemption: project_id is already inside the hash, so one
+    // old_signature cannot legitimately span two projects).
+    const edge = await createSignatureAncestryRepo(db, org.ctx).forwardEdge(oldSignature);
+    expect(edge).not.toBeNull();
+    expect(edge?.newSignature).toBe(newSignature);
+
+    // THE EXEMPTION'S REGRESSION TEST: project_id was stamped by the write
+    // path even though the read above never named it as a filter.
+    expect(edge?.projectId).toBe(project.id);
+
+    const resolved = await createSignatureAncestryRepo(db, org.ctx).resolve(oldSignature);
+    expect(resolved).toEqual({ resolution: "resolved", signature: newSignature, hops: 1 });
   });
 });

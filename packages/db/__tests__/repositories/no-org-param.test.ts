@@ -211,4 +211,24 @@ describe("repository contract — no organization id parameter (FR-19)", () => {
     expect(owners).toContain("ProjectConnectionsRepo.getActiveForProject");
     expect(owners).toContain("ProjectConnectionsRepo.advanceWatermark");
   });
+
+  // ANTI-VACUITY for the O-006 signature ledger (ADD tasks/signature-ledger/
+  // add.md §7 "Cross-tenant + scope" T-XT-7, FR-K). This invariant's main
+  // assertion above already covers these three files automatically — the
+  // `readdirSync` scan sees every `.ts` file in `repositories/`, new ones
+  // included, with no per-file allowlist. Naming them explicitly here, in the
+  // same style as the "covers the four O-003 repositories" block above,
+  // means a future refactor that moves one of these three files OUT of
+  // `repositories/` fails HERE — on a named, specific assertion — rather
+  // than silently shrinking the invariant's coverage with no test noticing.
+  it("covers the three O-006 repositories, so the invariant cannot pass by scanning nothing", () => {
+    const files = readdirSync(REPOSITORIES_DIR);
+    for (const expected of [
+      "finding-signatures.repo.ts",
+      "dismissals.repo.ts",
+      "signature-ancestry.repo.ts",
+    ]) {
+      expect(files).toContain(expected);
+    }
+  });
 });
