@@ -110,8 +110,26 @@ export const SUPPRESSION_POLICIES: ReadonlyMap<number, SuppressionPolicy> = new 
  * body in against the failing tests a later wave writes.
  */
 function policyV1(state: ResolvedLedgerState): SuppressionDecision {
-  void state;
-  throw new Error("not implemented");
+  if (state.resolution === "unresolvable_ancestry") {
+    return { decision: "suppress", reason: "unresolvable_ancestry" };
+  }
+  if (state.resolution === "unknown_shape_version") {
+    return { decision: "suppress", reason: "unknown_shape_version" };
+  }
+
+  const { row } = state;
+
+  if (row !== null) {
+    if (row.dismissedAt !== null) {
+      return { decision: "suppress", reason: "dismissed" };
+    }
+    if (row.deliveredAt !== null) {
+      return { decision: "suppress", reason: "already_delivered" };
+    }
+    return { decision: "deliver", reason: "seen_not_delivered" };
+  }
+
+  return { decision: "deliver", reason: "not_seen_before" };
 }
 
 /**
