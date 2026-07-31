@@ -15,8 +15,9 @@
 // "not implemented"; a later wave fills them in against the failing tests a
 // later wave writes.
 import type { DismissalAction, TenantContext } from "@growthmind/shared";
+import { and, desc, eq } from "drizzle-orm";
 
-import type { dismissals } from "../schema/dismissals";
+import { dismissals } from "../schema/dismissals";
 import type { SignatureHex } from "../signatures/hex";
 import type { ScopedDb } from "./types";
 
@@ -35,23 +36,48 @@ export interface DismissalsRepo {
 }
 
 export function createDismissalsRepo(db: ScopedDb, ctx: TenantContext): DismissalsRepo {
-  void db;
-  void ctx;
-
   return {
     async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {
-      void findingId;
-      void action;
-      throw new Error("not implemented");
+      // Keyed on the same tuple the unique index conflicts on
+      // (organization_id, finding_id, action) — D-10 row 2.
+      const [row] = await db
+        .select()
+        .from(dismissals)
+        .where(
+          and(
+            eq(dismissals.organizationId, ctx.organizationId),
+            eq(dismissals.findingId, findingId),
+            eq(dismissals.action, action),
+          ),
+        );
+
+      return row ?? null;
     },
 
     async findLatestForSignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<DismissalRecord | null> {
+      // `project_id` is stamped but declared exempt from the filter
+      // (D-10 row 2) — deliberately NOT named here; the read is scoped by
+      // organization_id + signature only. `projectId` is accepted as a
+      // parameter for call-site symmetry with the rest of this repo's
+      // methods, not because it narrows this query.
       void projectId;
-      void signature;
-      throw new Error("not implemented");
+
+      const [row] = await db
+        .select()
+        .from(dismissals)
+        .where(
+          and(
+            eq(dismissals.organizationId, ctx.organizationId),
+            eq(dismissals.signature, signature),
+          ),
+        )
+        .orderBy(desc(dismissals.dismissedAt))
+        .limit(1);
+
+      return row ?? null;
     },
   };
 }

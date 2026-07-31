@@ -10,9 +10,10 @@
 // the factory's signature are FINAL. Every method body throws
 // "not implemented"; a later wave fills them in against the failing tests a
 // later wave writes.
-import type { TenantContext } from "@growthmind/shared";
+import { ANCESTRY_RESOLUTION_MAX_HOPS, type TenantContext } from "@growthmind/shared";
+import { and, eq } from "drizzle-orm";
 
-import type { signatureAncestry } from "../schema/signature-ancestry";
+import { signatureAncestry } from "../schema/signature-ancestry";
 import type { SignatureHex } from "../signatures/hex";
 import type { ScopedDb } from "./types";
 
@@ -51,18 +52,74 @@ export function createSignatureAncestryRepo(
   db: ScopedDb,
   ctx: TenantContext,
 ): SignatureAncestryRepo {
-  void db;
-  void ctx;
-
   return {
     async forwardEdge(oldSignature: SignatureHex): Promise<AncestryRecord | null> {
-      void oldSignature;
-      throw new Error("not implemented");
+      // Scoped by (organization_id, old_signature) ONLY — D-10's declared
+      // exemption: project_id is stamped for auditability but never
+      // filtered here, because project_id is already inside the hash
+      // (D-5), so one old_signature cannot legitimately span two projects.
+      const [row] = await db
+        .select()
+        .from(signatureAncestry)
+        .where(
+          and(
+            eq(signatureAncestry.organizationId, ctx.organizationId),
+            eq(signatureAncestry.oldSignature, oldSignature),
+          ),
+        );
+
+      return row ?? null;
     },
 
     async resolve(signature: SignatureHex): Promise<AncestryResolution> {
-      void signature;
-      throw new Error("not implemented");
+      // Forward walk (ADD D-3(b)): up to ANCESTRY_RESOLUTION_MAX_HOPS
+      // iterations, each reading the single forward edge for the current
+      // signature. The unique index on (organization_id, old_signature)
+      // makes each step single-valued and the walk terminating; `visited`
+      // is belt-and-braces so a cycle is DETECTED rather than merely
+      // capped. Zero edges (the empty-table / no-edge case) resolves to
+      // the input signature at zero hops — never an error (T-DB-9).
+      const visited = new Set<SignatureHex>([signature]);
+      let current = signature;
+
+      for (let hops = 0; hops <= ANCESTRY_RESOLUTION_MAX_HOPS; hops += 1) {
+        // Each hop's query depends on the PREVIOUS hop's result (the walk
+        // follows the edge it just read); the reads cannot be
+        // parallelised with Promise.all.
+        // eslint-disable-next-line no-await-in-loop
+        const [row] = await db
+          .select()
+          .from(signatureAncestry)
+          .where(
+            and(
+              eq(signatureAncestry.organizationId, ctx.organizationId),
+              eq(signatureAncestry.oldSignature, current),
+            ),
+          );
+
+        if (!row) {
+          return { resolution: "resolved", signature: current, hops };
+        }
+
+        const next = row.newSignature as SignatureHex;
+
+        if (visited.has(next)) {
+          return { resolution: "unresolvable", cause: "cycle" };
+        }
+
+        if (hops === ANCESTRY_RESOLUTION_MAX_HOPS) {
+          // An edge still exists after the cap — one hop past the last
+          // permitted iteration (T-DB-12).
+          return { resolution: "unresolvable", cause: "depth_cap" };
+        }
+
+        visited.add(next);
+        current = next;
+      }
+
+      // Unreachable — the loop above always returns by the final
+      // iteration (hops === ANCESTRY_RESOLUTION_MAX_HOPS forces a return).
+      return { resolution: "unresolvable", cause: "depth_cap" };
     },
   };
 }
