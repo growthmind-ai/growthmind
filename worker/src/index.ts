@@ -1,11 +1,21 @@
 import type { TaskList } from "graphile-worker";
 
+import type { SessionSummariser } from "@growthmind/adapters";
 import type { ScopedDb } from "@growthmind/db";
-import { createDb, createDeliveriesRepo } from "@growthmind/db";
+import {
+  createAnalysisRunsRepo,
+  createDb,
+  createDeliveriesRepo,
+  createFindingsRepo,
+  createSignatureLedgerService,
+} from "@growthmind/db";
 import type { DeliveryPoster, ServerEnv } from "@growthmind/shared";
 import { parseServerEnv } from "@growthmind/shared";
 
+import { COLDSTART_MODEL_CALL_CAP } from "./analysis-cap";
 import { TASK } from "./task-names";
+import type { AnalysisLaneSource } from "./tasks/analysis-tick";
+import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource } from "./tasks/delivery-tick";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
@@ -73,6 +83,94 @@ function resolveDeliveryComposition(): DeliveryComposition | null {
 }
 
 /**
+ * The two effects the analysis tick cannot construct for itself: which projects
+ * have gate-passed candidates waiting, and — only if this installation
+ * configured one — the port that writes them up in plain English.
+ */
+type AnalysisComposition = {
+  /**
+   * `null` ⇒ NO WRITTEN-EXPLANATION CAPABILITY IS CONFIGURED HERE, and that is
+   * a decision this function takes rather than a failure anything catches
+   * (AD-15). `runAnalysisTick` accepts the null, selects `floor_no_key_configured`
+   * before it claims anything, and therefore makes ZERO model calls — see the
+   * header below for why the branch has to live at this end of the wire.
+   */
+  summariser: SessionSummariser | null;
+  lanes: AnalysisLaneSource;
+};
+
+/**
+ * The analysis lane's runtime composition — NULL ON THIS INSTALLATION TODAY,
+ * deliberately and visibly, exactly like `resolveDeliveryComposition` above.
+ *
+ * ── WHAT IS MISSING, AND WHAT IS NOT ────────────────────────────────────────
+ * `lanes` is the gap. `packages/core` ships the detectors, the evidence gate and
+ * the candidate contract, but nothing that turns sessions and events into a
+ * `DetectorCorpus`, runs every detector and assembles gate-passed candidates —
+ * that assembler is a sprint of its own (ADD §3.1 option B, AD-0). Everything
+ * else O-011 promised is here and proven: the ladder, the cap, the guard, the
+ * floor, the two repositories and the run's terminal writes.
+ *
+ * TODO(the corpus-reader heir of ADD AD-0 / R-9): implement `AnalysisLaneSource`
+ * as a repository read that assembles gate-passed candidates from sessions and
+ * events, and return `{ summariser, lanes }` from here. THIS FUNCTION IS THE
+ * ONLY PLACE THAT CHANGES — `runAnalysisTick` takes both as injected
+ * dependencies typed by their ports and names no vendor and no table, and its
+ * suite already drives the whole ladder through the real entry point with fakes.
+ * What lands here is the wire, not the behaviour.
+ *
+ * ── THE NO-KEY BRANCH LIVES AT THIS END, AND NOWHERE ELSE (AD-15, FR-M12) ───
+ * When this returns a value, `summariser` is `null` IFF `env.ANTHROPIC_API_KEY`
+ * is absent. That branch SELECTS the lane; it never tries a port and swallows
+ * the failure. With no key there is no provider constructed and no port passed,
+ * so a candidate reaches `floor_no_key_configured` BEFORE the cap is claimed and
+ * the count of model calls attempted is structurally zero — not zero because an
+ * error was caught, zero because nothing was ever called. `probe.test.ts:181-203`
+ * is why it has to be this way round: `createAnthropic({})` does NOT throw
+ * without a key, and neither does obtaining a model from it, so the absence
+ * would otherwise surface as a failed call at the network edge — billed as a
+ * cap claim, reported as `floor_model_call_failed`, and telling a self-hoster
+ * their model call broke when in truth they simply never configured one.
+ *
+ * This is the self-host promise `packages/shared/src/env.ts:31-39` and
+ * `.env.example:36-41` already made in writing: `docker compose up` from a clean
+ * clone, with no key anywhere, must reach a working pipeline. Every finding
+ * still ships, carrying its numbers, with no written explanation attached. A
+ * worker that crash-looped because no model key was configured would take the
+ * whole analysis pipeline down over an optional feature.
+ *
+ * THE API KEY IS READ ONLY HERE. It is never logged, never persisted, never
+ * echoed into an error message and never handed to the task body, which reads no
+ * environment variable by any route. What reaches a run row is the resolved
+ * MODEL ID, which is configuration, not a credential.
+ *
+ * TODO(the corpus-reader heir of ADD AD-0): the with-key arm is
+ * `createAnthropicSessionSummariser({ model, resolvedModelId, outputSchema })` —
+ * `resolvedModelId` = `env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL`
+ * (never a model id written at a call site, AD-3), `outputSchema` =
+ * `modelSummaryOutputSchema` from `@growthmind/core` (AD-16, one home for the
+ * anti-invention contract). The one piece that has no home yet is `model`
+ * itself: building it means `createAnthropic({ apiKey })`, and `@ai-sdk/anthropic`
+ * is declared in `packages/adapters` alone — NO file under `worker/` may import
+ * the SDK (ADD §9, task 4.1). So the arm lands together with a model factory
+ * exported from `@growthmind/adapters`, beside the summariser it feeds, and the
+ * key travels one function call rather than into this package's dependencies.
+ *
+ * ── BE HONEST ABOUT WHAT THIS MEANS ─────────────────────────────────────────
+ * Until the heir lands, this tick analyses nothing on any installation: it logs
+ * one graceful-absence line per hour and persists no finding and no run. O-011's
+ * DoD — the ladder's fixed order, the cap's named exhaustion, the guard over the
+ * text as persisted, `summary_source` on every row, every exit path terminal —
+ * is met and proven, but proven against fakes driving the real entry point, not
+ * against production traffic. That is the D11 hazard this codebase names, held
+ * open deliberately and visibly rather than hidden: the absence is logged once
+ * per tick, and this comment is the reason it is not a silent no-op.
+ */
+function resolveAnalysisComposition(): AnalysisComposition | null {
+  return null;
+}
+
+/**
  * The task registry — the only place task names meet handlers. Handlers stay
  * queue-agnostic (plain functions in ./tasks); the thin closures here adapt
  * them to Graphile Worker's signature. worker/src/registry.test.ts asserts
@@ -135,6 +233,50 @@ export const taskList: TaskList = {
       logger: helpers.logger,
     });
   },
+  // THE ONLY QUEUE-AWARE LINE IN THE ANALYSIS PATH, and the only place a model
+  // vendor could ever be named. `runAnalysisTick` takes the lane source and the
+  // summariser as ports and imports neither `ai` nor `@ai-sdk/anthropic` — the
+  // whole SDK surface is reachable from `@growthmind/adapters` alone.
+  //
+  // There is no payload: the task is cron-triggered, and the handler reads none
+  // by any route — a stronger guarantee than parsing a value cron never sends,
+  // and the same shape both ticks above use. Each lane's tenant scope comes from
+  // the lane ROW the source read (D7), never from anything a caller supplies.
+  [TASK.ANALYSIS_TICK]: async (_payload, helpers) => {
+    const composed = resolveAnalysisComposition();
+
+    if (composed === null) {
+      // Graceful absence, said out loud once per tick rather than swallowed. A
+      // silent return here would be indistinguishable from a tick that ran and
+      // found no project due — the one distinction this lane's whole vocabulary
+      // exists to keep.
+      helpers.logger.info(
+        "analysis tick: no analysis lane is wired on this installation, so there is nothing to check",
+      );
+      return;
+    }
+
+    const { db } = resolveResources();
+
+    await runAnalysisTick({
+      lanes: composed.lanes,
+      // `null` ⇒ the no-key lane, decided above. The task body never learns
+      // whether a key exists; it learns only whether it was handed a port.
+      summariser: composed.summariser,
+      // The two repositories and the ledger, org-scoped PER LANE from the
+      // context the handler builds out of the lane row — never from a payload.
+      // The one call to each `create*` lives here, beside the pool it needs.
+      findingsFor: (ctx) => createFindingsRepo(db, ctx),
+      runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
+      ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
+      // Policy, injected. The cap is a property of the lane that spends, so it
+      // travels from ./analysis-cap.ts through here and never leaks into
+      // `packages/db`, whose claim takes it as a parameter.
+      cap: COLDSTART_MODEL_CALL_CAP,
+      now: () => new Date(),
+      logger: helpers.logger,
+    });
+  },
 };
 
 /**
@@ -168,8 +310,25 @@ export const taskList: TaskList = {
  * which is the product behaviour §7's backpressure is for, rather than a queue
  * that drains on a timetable.
  */
+/**
+ * The analysis tick carries NO `?fill`, and here the reason stops being about
+ * tidiness and starts being about money: A BACKFILLED BURST OF ANALYSIS TICKS IS
+ * A BURST OF MODEL CALLS. Twelve hours of downtime would queue twelve ticks that
+ * all fire at once, each one free to spend a project's whole cap, and the bill
+ * for a worker restart is not a thing anybody should be able to run up by
+ * accident. The per-project cap and the run row's single-writer index would
+ * collapse most of that — but a spend ceiling that only holds because something
+ * downstream collapsed a burst is not a ceiling, it is a coincidence, and it is
+ * one bug away from being a real invoice.
+ *
+ * Hourly, not every fifteen minutes: a check that reads a window of sessions has
+ * nothing new to say four times an hour, and every tick that finds nothing still
+ * opens and closes a run. A tick missed while the worker was down means a
+ * project is checked an hour late, which costs a founder nothing observable.
+ */
 export const crontab = [
   `*/15 * * * * ${TASK.HEARTBEAT} ?fill=1d`,
   `* * * * * ${TASK.SESSION_SOURCE_POLL_SCHEDULE}`,
   `*/15 * * * * ${TASK.DELIVERY_TICK}`,
+  `0 * * * * ${TASK.ANALYSIS_TICK}`,
 ].join("\n");
