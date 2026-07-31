@@ -91,10 +91,7 @@ export function placeholdersIn(template: string): readonly string[] {
  * an unresolved token it is not, sending a reader of the failure to the wrong
  * file.
  */
-export function substitute(
-  template: string,
-  values: Partial<Record<FloorToken, string>>,
-): string {
+export function substitute(template: string, values: Partial<Record<FloorToken, string>>): string {
   const unresolved = placeholdersIn(template).filter(
     (token) => !isFloorToken(token) || values[token] === undefined,
   );

@@ -373,9 +373,7 @@ const FLOOR_TEMPLATE_PATTERNS: readonly RegExp[] = ALL_FLOOR_TEMPLATES.map(templ
 
 /** The `CountRole`s any detector actually declares — derived from the table,
  * never restated beside it. */
-const DECLARED_COUNT_ROLES: readonly CountRole[] = [
-  ...new Set(Object.values(COUNT_ROLES).flat()),
-];
+const DECLARED_COUNT_ROLES: readonly CountRole[] = [...new Set(Object.values(COUNT_ROLES).flat())];
 
 // ---------------------------------------------------------------------------
 
@@ -587,9 +585,7 @@ describe("renderFloorSummary", () => {
       basis: {
         totalInWindow: setAsideTotal,
         kept: 0,
-        setAside: [
-          { reason: "internal_domain", count: setAsideTotal, label: "internal traffic" },
-        ],
+        setAside: [{ reason: "internal_domain", count: setAsideTotal, label: "internal traffic" }],
       },
     });
 
@@ -714,9 +710,9 @@ describe("renderFloorSummary", () => {
 
       // Its own provenance sentence, and no other member's.
       const own = SUMMARY_SOURCE_MESSAGES[source];
-      const ownSentences = own.split(". ").map((part, index, all) =>
-        index === all.length - 1 ? part : `${part}.`,
-      );
+      const ownSentences = own
+        .split(". ")
+        .map((part, index, all) => (index === all.length - 1 ? part : `${part}.`));
       for (const sentence of ownSentences) {
         expect(summary.context).toContain(sentence);
       }

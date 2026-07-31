@@ -130,11 +130,7 @@ function sentencesOf(text: string): readonly string[] {
 function oneSentenceOrRefuse(element: string, position: number): string {
   const trimmed = element.trim();
 
-  if (
-    trimmed.length === 0 ||
-    !trimmed.endsWith(FULL_STOP) ||
-    trimmed.includes(SENTENCE_BOUNDARY)
-  ) {
+  if (trimmed.length === 0 || !trimmed.endsWith(FULL_STOP) || trimmed.includes(SENTENCE_BOUNDARY)) {
     throw new Error(`floor_element_not_one_sentence: ${String(position)}`);
   }
 
