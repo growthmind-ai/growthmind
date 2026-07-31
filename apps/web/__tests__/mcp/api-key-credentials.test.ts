@@ -42,7 +42,12 @@ import {
   signUpTestUser,
   type AuthTestContext,
 } from "../tenancy/helpers/auth-fixture";
-import { fingerprint, toolCallRequest } from "./helpers/mcp-fixture";
+import {
+  fingerprint,
+  mintRealApiKey,
+  toolCallRequest,
+  type MintedTestApiKey,
+} from "./helpers/mcp-fixture";
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
 const MCP_URL = "http://localhost:3000/api/mcp";
@@ -97,9 +102,8 @@ afterAll(async () => {
   await authCtx.close();
 });
 
-async function mintApiKey(name: string): Promise<{ raw: string; id: string }> {
-  const minted = await createApiKeysRepo(authCtx.db, ownerCtx).mint({ name });
-  return { raw: minted.raw, id: minted.key.id };
+async function mintApiKey(name: string): Promise<MintedTestApiKey> {
+  return mintRealApiKey(authCtx.db, ownerCtx, name);
 }
 
 /** `GET` is the catalogue, and it is authenticated like everything else — so it

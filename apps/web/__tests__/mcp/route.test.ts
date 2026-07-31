@@ -324,7 +324,7 @@ describe("what a tool answers when there is something to answer with", () => {
 describe("this surface reads and does nothing else", () => {
   test("the route mounts no method that could write", () => {
     const exported = Object.keys(mcpRoute).toSorted();
-    expect(exported).toEqual(["GET", "POST", "dynamic"]);
+    expect(exported).toEqual(["GET", "POST", "dynamic", "resolveMcpDeps"]);
     for (const verb of ["PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
       expect(exported).not.toContain(verb);
     }

@@ -2,7 +2,7 @@
 //
 // ===========================================================================
 // THE DECISION: AN MCP READ USES A DIFFERENT KIND OF CREDENTIAL FROM EVENT
-// INGEST, AND THIS BRANCH HAS NONE, SO THIS SURFACE ADMITS NOBODY YET.
+// INGEST, AND THAT CREDENTIAL IS AN `api_keys` ROW
 // ===========================================================================
 //
 // The question the route had to settle is whether a `write_keys` row — the
@@ -35,55 +35,46 @@
 // "a person deliberately handed this to an agent". Both are carried by a
 // website's own code.
 //
-// The credential this surface actually wants already has a name in the data
-// model: `api_keys`, listed beside `write_keys` in `docs/architecture.md` §6
-// as a separate table precisely because it is a separate thing. It does not
-// exist in this branch's schema.
+// That argument is why this file exists, and it does not expire now that the
+// other family is built. It is the standing reason `api_keys` is a SEPARATE
+// TABLE — listed beside `write_keys` in `docs/architecture.md` §6 precisely
+// because it is a separate thing, minted by a person and handed to one agent,
+// never published anywhere.
 //
 // ---------------------------------------------------------------------------
-// SO WHAT THIS FILE DOES: FAIL CLOSED, VISIBLY, WITH THE GATE REAL
+// SO WHAT THIS FILE DOES: RESOLVES THE READ FAMILY, AND FAILS CLOSED
 // ---------------------------------------------------------------------------
 //
-// `MCP_ADMISSIBLE_WRITE_KEY_KINDS` is the list of write-key kinds this surface
-// accepts. It is EMPTY, and it is the honest length: there is no member of
-// `WriteKeyKind` that a person hands to a coding agent.
+// `createApiKeyMcpCredentials` resolves a presented string through
+// `resolveApiKeyForRead` (`packages/db/src/repositories/api-keys.repo.ts`): the
+// format check first, then the hash lookup with the revocation filter in the
+// SAME predicate, then an organization id or nothing. Unknown, malformed,
+// revoked and wrong-family all come back `null`, and the caller turns every
+// `null` into one frozen refusal.
 //
-// The gate around it is real and runs for real. `createWriteKeyMcpCredentials`
-// resolves the presented string exactly as ingest does — `isWriteKeyFormat`
-// first so a malformed string never reaches the database, then the hash lookup,
-// then the revocation filter, all inside `resolveWriteKeyForIngest` — and only
-// then asks whether the KIND is admissible here. It does not short-circuit on
-// the empty list, and that is deliberate: a short-circuit would make the kind
-// check unreachable, and the named test that proves a genuine, unrevoked,
-// correctly-formatted `standard` key is refused would then be proving nothing.
-// The test mints a real key against a real database and asserts the refusal is
-// byte-identical to presenting no key at all, and separately asserts that the
-// same key DOES resolve through `resolveWriteKeyForIngest` — so the refusal is
-// demonstrably this gate, and not a broken fixture.
+// THE REFUSAL OF AN INGEST KEY IS NOW EARLIER AND STRICTER than the kind gate
+// it replaces. `gmak_` and `gmwk_` differ at index 2, so `isApiKeyFormat`
+// refuses a genuine write key BEFORE ANY DATABASE ACCESS — a write key is not
+// merely inadmissible here, it cannot even be looked up. The named tests in
+// `apps/web/__tests__/mcp/credentials.test.ts` still mint genuine, unrevoked
+// keys of EVERY `WriteKeyKind` against a real database, assert the refusal is
+// byte-identical to presenting no key at all, and separately assert the same
+// keys DO resolve through `resolveWriteKeyForIngest` — so each refusal is
+// demonstrably this gate rather than a broken fixture.
 //
-// WHAT THIS MEANS TODAY, SAID OUT LOUD: no credential in this branch can call
-// this surface. Every request is refused. That is the same graceful-absence
-// shape `resolveDeliveryComposition` in `worker/src/index.ts` holds open for
-// the delivery lane — the behaviour is built, proven through the real entry
-// point with fakes, and not yet reachable in production because a table it
-// needs has not been built. It is stated here rather than hidden, because the
-// alternative — admitting `standard` keys so the endpoint "works" — is the
-// single worst thing this outcome could ship.
+// NO TRY/CATCH LIVES IN THIS FILE, AND THAT IS A REQUIREMENT (ADD D-8).
+// `./server.ts`'s `authenticate()` already wraps `resolve()`, logs the failure
+// and refuses. A second catch here would swallow the error before the one place
+// that logs it, making an unreachable credential store indistinguishable from a
+// clean miss in the log.
 //
-// WHAT UNBLOCKS IT: an `api_keys` table (`docs/architecture.md` §6) with a
-// repository resolving a presented key to its organization, fail-closed on
-// unknown/revoked exactly as `resolveWriteKeyForIngest` is. That becomes a
-// second implementation of `McpCredentialSource` and `resolveMcpDeps` in
-// `../../app/api/mcp/route.ts` returns it instead. Nothing else in this
-// directory changes, because everything downstream of here reads only
-// `credential.organizationId`.
-//
-// IF SOMEBODY LATER ADDS AN AGENT-FACING KIND TO `writeKeyKindSchema`, adding
-// it to the list below is a deliberate, reviewable, one-line act — and the
-// named test `admits no kind of key that a website's own code carries` fails
-// the moment an ingest kind is added to it.
-import { resolveWriteKeyForIngest, type ScopedDb } from "@growthmind/db";
-import type { WriteKeyKind } from "@growthmind/shared";
+// NO CACHE LIVES IN THIS FILE EITHER, AND THAT IS ALSO A REQUIREMENT (ADD
+// D-11). The store is reached on every well-formed presentation: one lookup on
+// a unique index, and it is what makes revocation live on the very next
+// request. A process-level memo would break revocation silently — the named
+// test `refuses a credential revoked between two requests` is what fails if
+// anyone adds one.
+import { resolveApiKeyForRead, type ScopedDb } from "@growthmind/db";
 
 /**
  * What authentication produces, and the ONLY thing it produces.
@@ -93,7 +84,8 @@ import type { WriteKeyKind } from "@growthmind/shared";
  * could accidentally prefer over it. The project id the presented credential
  * may also carry is deliberately NOT here: `list_open_fixes` takes an optional
  * `projectId` argument, and a credential-borne project would silently either
- * override or contradict it.
+ * override or contradict it. (`api_keys` carries no project at all, for exactly
+ * this reason — see that table's schema header.)
  */
 export interface McpCredential {
   readonly organizationId: string;
@@ -102,13 +94,13 @@ export interface McpCredential {
 /**
  * Turning a presented string into an organization, or into nothing.
  *
- * A PORT, for the same reason `DeliveryLaneSource` is one: the store this
- * surface's real credentials will live in does not exist in this branch, and
- * naming the seam keeps the gap one line wide and visible instead of inlining
- * a query that would have to be unpicked later.
+ * A PORT, for the same reason `DeliveryLaneSource` is one: it names the seam
+ * between "the request presented some bytes" and "those bytes belong to one
+ * organization", so the store behind it is one line wide and swappable rather
+ * than a query inlined into a route.
  *
  * CONTRACT — every implementation must be fail-closed. Unknown, malformed,
- * revoked, wrong-kind and unreadable all resolve to `null`. Never a default
+ * revoked, wrong-family and unreadable all resolve to `null`. Never a default
  * organization, never a best-effort match, and never a distinguishable
  * refusal: the caller turns every `null` into one frozen answer
  * (`UNAUTHENTICATED`), so an implementation that threw a describable error
@@ -120,40 +112,23 @@ export interface McpCredentialSource {
 }
 
 /**
- * The write-key kinds admissible on the read surface. EMPTY, and see the header
- * for why — every value of `WriteKeyKind` is a credential a website's own code
- * carries in public.
+ * The credential source this surface runs on: the `api_keys` store, resolved
+ * by the repository that owns the table.
  *
- * Typed `readonly WriteKeyKind[]` rather than `[] as const` so adding a kind is
- * a compile-checked act against the union `@growthmind/shared` owns, not a free
- * string.
+ * Ten lines and no decisions of its own — the format gate, the hash lookup and
+ * the revocation filter all live inside `resolveApiKeyForRead`, which is
+ * context-free by design (the presented material IS the tenant proof; that
+ * function's docblock carries the D7 argument). All this adapter does is narrow
+ * the resolved row to the one field `McpCredential` has.
+ *
+ * No try/catch and no cache — see the header; both are requirements, not
+ * omissions.
  */
-export const MCP_ADMISSIBLE_WRITE_KEY_KINDS: readonly WriteKeyKind[] = [];
-
-/**
- * The credential source backed by the only credential store this branch has.
- *
- * It reaches the database on every well-formed presentation, and that is
- * correct rather than wasteful: it is one lookup on a unique index, it is what
- * the real thing will do, and skipping it because the admissible list happens
- * to be empty today would make this gate untestable (see the header).
- *
- * A malformed presentation never reaches the database at all —
- * `resolveWriteKeyForIngest` runs `isWriteKeyFormat` first.
- */
-export function createWriteKeyMcpCredentials(db: ScopedDb): McpCredentialSource {
+export function createApiKeyMcpCredentials(db: ScopedDb): McpCredentialSource {
   return {
     async resolve(presented: string): Promise<McpCredential | null> {
-      const resolved = await resolveWriteKeyForIngest(db, presented);
+      const resolved = await resolveApiKeyForRead(db, presented);
       if (resolved === null) {
-        return null;
-      }
-
-      // THE KIND GATE. Reached only by a genuine, unrevoked key — and it
-      // refuses every one of them, because no ingest kind is a read
-      // credential. The organization id is read only past this line, so a
-      // refused kind never scopes anything.
-      if (!MCP_ADMISSIBLE_WRITE_KEY_KINDS.includes(resolved.kind)) {
         return null;
       }
 
