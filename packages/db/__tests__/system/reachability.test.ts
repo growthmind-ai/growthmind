@@ -21,7 +21,7 @@ import {
   claimDuePollableConnections,
   readConnectionCredential,
   systemTenantContextFor,
-  SYSTEM_ACTOR_ID,
+  SYSTEM_ACTOR,
   type PollableConnection,
 } from "../../src/system";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -99,7 +99,22 @@ describe("system subpath unreachability (FR-23)", () => {
   });
 
   // --- item 84 -------------------------------------------------------------
-  it("names SYSTEM_ACTOR_ID only under the db system module, the worker, and tests", () => {
+  //
+  // The scheduled-actor vocabulary is guarded as a SET, not as one symbol.
+  // `systemContextFor` is the sharp one: it mints a tenant context for an
+  // arbitrary organization with no user present, which is exactly the
+  // capability the request path exists to withhold. `SYSTEM_ACTOR` is guarded
+  // beside it because naming an actor is the only input that call needs.
+  //
+  // Guarding the set rather than a single name is deliberate. This assertion
+  // previously named `SYSTEM_ACTOR_ID` alone; when that constant was folded
+  // into the `SYSTEM_ACTOR` union the test would have kept passing while
+  // checking for a symbol that no longer existed anywhere — a green gate over
+  // an unguarded boundary. Anything added to `system-actor.ts` that can mint or
+  // name a system scope belongs in this list on the same commit.
+  const ACTOR_VOCABULARY = [/\bsystemContextFor\b/, /\bSYSTEM_ACTOR\b/, /\bSYSTEM_ACTOR_ROLE\b/];
+
+  it("names the scheduled-actor vocabulary only under the db system module, the worker, and tests", () => {
     const roots = ["apps", "packages", "worker", "scripts"].map((dir) => path.join(REPO_ROOT, dir));
     const files = roots.flatMap((root) => listSourceFiles(root));
     expect(files.length).toBeGreaterThan(0);
@@ -115,11 +130,28 @@ describe("system subpath unreachability (FR-23)", () => {
       );
     };
 
-    const offenders = files.filter(
-      (file) => !allowed(file) && /\bSYSTEM_ACTOR_ID\b/.test(readFileSync(file, "utf8")),
-    );
+    const offenders = files.filter((file) => {
+      if (allowed(file)) return false;
+      const source = readFileSync(file, "utf8");
+      return ACTOR_VOCABULARY.some((pattern) => pattern.test(source));
+    });
 
     expect(offenders.map(relative)).toEqual([]);
+  });
+
+  // Not vacuous: the guard above only means anything if the vocabulary it
+  // scans for is actually present somewhere it IS allowed. If a rename ever
+  // empties `system-actor.ts` of these names, this fails rather than letting
+  // the containment assertion pass over nothing.
+  it("finds the guarded vocabulary in the module it is meant to contain", () => {
+    const source = readFileSync(
+      path.join(REPO_ROOT, "packages", "db", "src", "system", "system-actor.ts"),
+      "utf8",
+    );
+
+    for (const pattern of ACTOR_VOCABULARY) {
+      expect(source).toMatch(pattern);
+    }
   });
 
   // --- item 85 -------------------------------------------------------------
@@ -130,7 +162,8 @@ describe("system subpath unreachability (FR-23)", () => {
     expect(exported).not.toContain("readConnectionCredential");
     expect(exported).not.toContain("systemTenantContextFor");
     expect(exported).not.toContain("listAnalysableProjects");
-    expect(exported).not.toContain("SYSTEM_ACTOR_ID");
+    expect(exported).not.toContain("SYSTEM_ACTOR");
+    expect(exported).not.toContain("systemContextFor");
 
     // Not vacuous: the barrel really is loaded and really does export the
     // scoped repositories.
@@ -217,7 +250,7 @@ describe("system reads carry no credential and no id-only path", () => {
 
     // The sentinel context is derived from the claimed row, not a payload.
     const ctx = systemTenantContextFor(mine as PollableConnection);
-    expect(ctx.userId).toBe(SYSTEM_ACTOR_ID);
+    expect(ctx.userId).toBe(SYSTEM_ACTOR.SESSION_SOURCE_POLL);
     expect(ctx.organizationId).toBe(org.organizationId);
   });
 

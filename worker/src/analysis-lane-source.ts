@@ -22,13 +22,11 @@ import {
 import type { ThresholdRuleSet } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import { createDetectorCorpusService } from "@growthmind/db";
-import { listAnalysableProjects } from "@growthmind/db/system";
-import { tenantContextSchema } from "@growthmind/shared";
+import { SYSTEM_ACTOR, listAnalysableProjects, systemContextFor } from "@growthmind/db/system";
+import { describeError } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import {
-  ANALYSIS_ACTOR_ID,
-  ANALYSIS_ACTOR_ROLE,
   type AnalysisLane,
   type AnalysisLaneSource,
   type AnalysisLogger,
@@ -79,12 +77,7 @@ function contextFor(project: {
   readonly organizationId: string;
   readonly organizationName: string;
 }): TenantContext {
-  return tenantContextSchema.parse({
-    userId: ANALYSIS_ACTOR_ID,
-    organizationId: project.organizationId,
-    organizationName: project.organizationName,
-    role: ANALYSIS_ACTOR_ROLE,
-  });
+  return systemContextFor(SYSTEM_ACTOR.ANALYSIS_TICK, project);
 }
 
 export interface AnalysisLaneSourceDeps {
@@ -165,9 +158,7 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
           // isolation covers everything after this point.
           deps.logger.error(
             `analysis lane source: skipping project ${project.projectId} (org ` +
-              `${project.organizationId}) this tick: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+              `${project.organizationId}) this tick: ${describeError(error)}`,
           );
         }
       }

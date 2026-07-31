@@ -1,42 +1,36 @@
-// The worker's tenant scope (O-003 D-10, FR-23).
+// The session-source poll's tenant scope (D-10, FR-23).
 //
 // The scope is derived from the connection ROW being processed — never from a
 // payload and never from a caller-supplied id. There is no payload: the task
 // is cron-triggered.
 //
-import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+// ── THE ACTOR VOCABULARY MOVED, AND WHY ─────────────────────────────────────
+// This file used to own `SYSTEM_ACTOR_ID`, `SYSTEM_ACTOR_ROLE` and the
+// `tenantContextSchema.parse(...)` call itself. It owns none of them now: they
+// live in `./system-actor`, beside the actors for every other scheduled writer
+// — still inside `src/system/`, so the reachability boundary is unchanged.
+//
+// The move was not about the four duplicated lines. `SYSTEM_ACTOR_ID` was a
+// fully generic name holding the entirely specific value
+// `"system:session-source-poll"`. Any later background writer that reached for
+// the obvious constant would have stamped every audit row it wrote as the
+// session-source poller — correctly typed, silently wrong (D9). The shared
+// module replaces the loose string with a closed `SystemActor` union, so naming
+// the wrong actor is now a compile error rather than a mislabelled row.
+import type { TenantContext } from "@growthmind/shared";
 
 import type { PollableConnection } from "./pollable-connections";
-
-/**
- * A NAMESPACED SENTINEL, not a fake user id. It cannot collide with a Better
- * Auth user id (a UUID), and it is self-describing in any log line or future
- * audit row — "who did this?" answers itself.
- *
- * No change to `tenantContextSchema` is needed for it: `userId` and `role`
- * are plain strings there, so the shipped tenancy code is untouched and every
- * repository still takes exactly one context type. There is no second
- * accepted context shape anywhere in this package.
- */
-export const SYSTEM_ACTOR_ID = "system:session-source-poll";
-
-/** The role stamped on a system context, so a future audit surface can tell
- * a scheduled write from a human one without parsing the actor id. */
-export const SYSTEM_ACTOR_ROLE = "system";
+import { SYSTEM_ACTOR, systemContextFor } from "./system-actor";
 
 /**
  * Builds the `TenantContext` the poll runs as, from the claimed row itself.
  * Every repository the handler then constructs is org-scoped exactly as a
  * request-scoped one would be.
+ *
+ * Kept as a named wrapper rather than inlining `systemContextFor` at the call
+ * site: this is the one place that decides the poll's actor, and a caller that
+ * had to name the actor itself could name a different one.
  */
 export function systemTenantContextFor(connection: PollableConnection): TenantContext {
-  // Parsed through the SAME schema a request-derived context is, rather than
-  // returned as a bare object literal: there is exactly one accepted context
-  // shape in this package, and the scheduled path is held to it too.
-  return tenantContextSchema.parse({
-    userId: SYSTEM_ACTOR_ID,
-    organizationId: connection.organizationId,
-    organizationName: connection.organizationName,
-    role: SYSTEM_ACTOR_ROLE,
-  });
+  return systemContextFor(SYSTEM_ACTOR.SESSION_SOURCE_POLL, connection);
 }

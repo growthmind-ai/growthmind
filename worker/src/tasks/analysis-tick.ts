@@ -148,6 +148,7 @@ import type {
   SignatureLedgerService,
 } from "@growthmind/db";
 import { computeFindingSignature } from "@growthmind/db";
+import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type {
   AnalysisOutcome,
   AnalysisStopReason,
@@ -158,8 +159,8 @@ import type {
 } from "@growthmind/shared";
 import {
   ANALYSIS_RUN_STATUS_MESSAGES,
+  describeError,
   isNormalisedUrlPath,
-  tenantContextSchema,
 } from "@growthmind/shared";
 
 /**
@@ -183,16 +184,14 @@ export interface AnalysisLogger {
 }
 
 /**
- * A NAMESPACED SENTINEL, not a fake user id — the device
- * `packages/db/src/system/system-context.ts` and `./delivery-tick.ts` both use.
- * It cannot collide with a Better Auth user id, and it says who acted in any
- * log line or future audit row without anyone having to look it up.
+ * This lane's scheduled actor, re-exported for the lane source and the tests
+ * that assert who wrote a row.
+ *
+ * The value and the `TenantContext` built from it live in
+ * `@growthmind/db/system` — one home for every background writer's identity,
+ * behind the boundary that keeps `apps/` from minting a system scope at all.
  */
-export const ANALYSIS_ACTOR_ID = "system:analysis-tick";
-
-/** The role stamped on a system context, so a future audit surface can tell a
- * scheduled write from a human one without parsing the actor id. */
-export const ANALYSIS_ACTOR_ROLE = "system";
+export const ANALYSIS_ACTOR_ID = SYSTEM_ACTOR.ANALYSIS_TICK;
 
 /**
  * One project's analysis lane, as the source read it.
@@ -454,23 +453,15 @@ type CandidatePlan = {
   readonly action: CandidateAction;
 };
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Builds the `TenantContext` this lane's writes run as, from the lane row
- * itself. Parsed through the SAME schema a request-derived context is, rather
- * than returned as a bare literal: there is one accepted context shape, and the
- * scheduled path is held to it too (D7).
+ * itself — never from a payload, never from a caller-supplied id (D7).
+ *
+ * The parse and the actor both live in `@growthmind/db/system`; this names
+ * WHICH actor and nothing else.
  */
 function tenantContextFor(lane: AnalysisLane): TenantContext {
-  return tenantContextSchema.parse({
-    userId: ANALYSIS_ACTOR_ID,
-    organizationId: lane.organizationId,
-    organizationName: lane.organizationName,
-    role: ANALYSIS_ACTOR_ROLE,
-  });
+  return systemContextFor(SYSTEM_ACTOR.ANALYSIS_TICK, lane);
 }
 
 /**
