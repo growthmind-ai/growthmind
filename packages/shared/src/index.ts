@@ -141,7 +141,11 @@ export {
   SESSION_BUCKET_MS,
   type SessionKeyInput,
 } from "./sessions/grouping";
-export { normaliseUrlPath, URL_PATH_NORMALISATION_VERSION } from "./sessions/url-path";
+export {
+  normaliseUrlPath,
+  isNormalisedUrlPath,
+  URL_PATH_NORMALISATION_VERSION,
+} from "./sessions/url-path";
 export {
   hashIdentityKey,
   deriveIdentityHmacKey,
@@ -180,11 +184,22 @@ export {
   type SummaryUsage,
   type SummaryRenderResult,
 } from "./summary/types";
+// The three `FLOOR_*` tables are re-exported as DATA and their three key unions
+// are NOT. `packages/shared/src/summary/messages.ts` restates `FindingClass`,
+// `ConfidenceBasis` and `CountRole` locally because `shared` may not import
+// `core`; a consumer importing a restatement instead of the real union would
+// defeat the compile error that reconciles the two (D-3), so the restatements
+// stay module-local and `core` annotates its own import with its own union.
 export {
   ANALYSIS_RUN_STATUS_MESSAGES,
   ANALYSIS_OUTCOME_MESSAGES,
   ANALYSIS_STOP_REASON_MESSAGES,
   SUMMARY_SOURCE_MESSAGES,
+  FLOOR_OBSERVATION_TEMPLATES,
+  FLOOR_COUNT_TEMPLATES,
+  FLOOR_CONFIDENCE_TEMPLATES,
+  FLOOR_TIMEFRAME_TEMPLATE,
+  FLOOR_NO_RATE_TEMPLATE,
   ALL_CUSTOMER_FACING_MESSAGES as SUMMARY_ALL_CUSTOMER_FACING_MESSAGES,
 } from "./summary/messages";
 

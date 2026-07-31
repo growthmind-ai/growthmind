@@ -7,7 +7,11 @@
 // ordinary campaign link.
 import { describe, expect, test } from "bun:test";
 
-import { URL_PATH_NORMALISATION_VERSION, normaliseUrlPath } from "../../src/sessions/url-path";
+import {
+  URL_PATH_NORMALISATION_VERSION,
+  isNormalisedUrlPath,
+  normaliseUrlPath,
+} from "../../src/sessions/url-path";
 
 const CAMPAIGN_URL = "https://probe.example.invalid/app/step/11?utm_source=probe&q=11";
 const OTHER_CAMPAIGN_URL = "https://probe.example.invalid/app/step/11?utm_source=newsletter";
@@ -137,5 +141,47 @@ describe("normaliseUrlPath redacts identifier-shaped path segments", () => {
         "https://app.example.invalid/reset-password/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c",
       ),
     ).toBe("/reset-password/:id");
+  });
+});
+
+// The "already normalised" predicate, extracted here as the single home of the
+// rule (ESC-21). Both cases below are required: the refusal AND the near-miss
+// control that proves "refuse on doubt" has not degraded into "refuse on
+// everything".
+describe("isNormalisedUrlPath", () => {
+  test("isNormalisedUrlPath refuses a path carrying a query string, mixed case, a trailing slash, or a raw token segment", () => {
+    // One campaign parameter is what forks a surface, so a path still carrying
+    // one has not been through the normaliser.
+    expect(isNormalisedUrlPath("/app/step/11?utm_source=probe")).toBe(false);
+    expect(isNormalisedUrlPath("/pricing#faq")).toBe(false);
+
+    expect(isNormalisedUrlPath("/App/Step")).toBe(false);
+    expect(isNormalisedUrlPath("/pricing/")).toBe(false);
+
+    // The H-2 hazard this predicate exists to keep out of anything a person
+    // reads: a live token or an email address surviving in a raw segment.
+    expect(isNormalisedUrlPath("/reset-password/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c")).toBe(false);
+    expect(isNormalisedUrlPath("/u/jane.doe@acme.example.invalid/settings")).toBe(false);
+    expect(isNormalisedUrlPath("/orders/550e8400-e29b-41d4-a716-446655440000")).toBe(false);
+
+    // A value that yields no usable path at all is not normalised either — the
+    // normaliser answers null, which is never the string that went in.
+    expect(isNormalisedUrlPath("")).toBe(false);
+  });
+
+  test("isNormalisedUrlPath accepts an already-normalised path", () => {
+    // The near-miss control. Each of these is a fixture the normaliser leaves
+    // alone above, so a predicate that refused them would be refusing ordinary
+    // product paths.
+    expect(isNormalisedUrlPath("/pricing")).toBe(true);
+    expect(isNormalisedUrlPath("/")).toBe(true);
+    expect(isNormalisedUrlPath("/app/step/11")).toBe(true);
+    expect(isNormalisedUrlPath("/blog/how-we-scaled-to-1m")).toBe(true);
+    expect(isNormalisedUrlPath("/orders/42")).toBe(true);
+    expect(isNormalisedUrlPath("/blog/2024/my-post")).toBe(true);
+
+    // The output of a redaction is itself normalised — a redacted path must be
+    // renderable, or every surface carrying an id becomes unspeakable.
+    expect(isNormalisedUrlPath("/reset-password/:id")).toBe(true);
   });
 });

@@ -148,3 +148,34 @@ export {
   type SuppressionDecision,
   type SuppressionPolicy,
 } from "./findings/suppression-policy";
+
+// --- O-005: the deterministic floor renderer ---------------------------------
+//
+// EXACTLY FOUR VALUES AND FOUR TYPES, and the shortness of this list is the
+// decision rather than an oversight. `coverage.test.ts:164` makes every
+// barrel-exported FUNCTION owe a mirroring `__tests__/<specifier>.test.ts` and
+// a call by name — so `renderFloorSummary` and `resolveCounts` are exported
+// precisely because `__tests__/summary/floor.test.ts` and
+// `__tests__/summary/count-roles.test.ts` exist and call them.
+//
+// DELIBERATELY NOT EXPORTED: `substitute`, `placeholdersIn`, and all four
+// scanners. Each would owe its own mirror file and would become a production
+// surface with no production caller — the D11 dead wire this sprint exists not
+// to add to. `substitute` has one caller inside the package and is asserted
+// through the renderer's own suite; the scanners are test-local by design.
+//
+// NOTHING HERE IS CALLED IN PRODUCTION YET. No worker task, no service and no
+// route invokes `renderFloorSummary`; exporting it is what lets the sprint that
+// wires the lane import it without reopening this file.
+export {
+  COUNT_ROLES,
+  resolveCounts,
+  type CountRole,
+  type ResolvedCounts,
+} from "./summary/count-roles";
+export { renderFloorSummary } from "./summary/floor";
+export {
+  floorSummarySourceSchema,
+  type FloorSummary,
+  type FloorSummarySource,
+} from "./summary/types";

@@ -162,6 +162,36 @@ function pathOfUrl(currentUrl: string | null): string | null {
   }
 }
 
+/**
+ * True when `surface` is already in its normalised form under the CURRENT
+ * rules — i.e. putting it through `normaliseUrlPath` changes nothing.
+ *
+ * THIS IS THE SINGLE HOME OF THE "ALREADY NORMALISED" PREDICATE. It is defined
+ * beside `normaliseUrlPath` on purpose: the predicate is only ever "the
+ * normaliser is a no-op on this value", so it inherits every rule that
+ * function has and every rule it later gains, instead of a second copy of them
+ * somewhere else that would drift and then disagree about what a surface is.
+ *
+ * `packages/core/src/findings/evidence-shape.ts:104` currently repeats this
+ * privately as `assertNormalisedSurface`, and that file is not editable in this
+ * change. It should adopt this function when it is next edited (ESC-21). Until
+ * it does, the rule has two implementations and this one is the home the other
+ * is expected to collapse into — not two rules, one rule written twice.
+ *
+ * A value that does not normalise to a path at all (an empty string, a value
+ * with no usable path in it) is NOT normalised: `normaliseUrlPath` returns
+ * `null` for it, which is never equal to the string that went in.
+ *
+ * FAIL DIRECTION: this answers `false` on any doubt, because every caller uses
+ * it to refuse. The bound on that is the identity case — an already-normalised
+ * path is a no-op through the normaliser, so "refuse on doubt" cannot degrade
+ * into "refuse on everything". The near-miss control in
+ * `packages/shared/__tests__/sessions/url-path.test.ts` pins it.
+ */
+export function isNormalisedUrlPath(surface: string): boolean {
+  return normaliseUrlPath(surface, null) === surface;
+}
+
 function normalisePath(raw: string | null): string | null {
   if (raw === null) return null;
 
