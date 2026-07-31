@@ -31,10 +31,7 @@
 import { summarySourceSchema } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
-import {
-  createFindingsRepo,
-  type PersistFindingInput,
-} from "../../src/repositories/findings.repo";
+import { createFindingsRepo, type PersistFindingInput } from "../../src/repositories/findings.repo";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../helpers/fixtures";

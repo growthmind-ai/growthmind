@@ -39,11 +39,7 @@
 import { NoObjectGeneratedError } from "ai";
 
 import { summaryFailureCodeSchema } from "@growthmind/shared";
-import type {
-  SummaryFailureCode,
-  SummaryRenderResult,
-  SummaryUsage,
-} from "@growthmind/shared";
+import type { SummaryFailureCode, SummaryRenderResult, SummaryUsage } from "@growthmind/shared";
 
 /**
  * The sentences. One per member of the closed union, total by construction —
@@ -130,9 +126,7 @@ export function summaryFailure(
   args: SummaryFailureArgs,
 ): Extract<SummaryRenderResult, { ok: false }> {
   const parsed = summaryFailureCodeSchema.safeParse(args.code);
-  const code: SummaryFailureCode = parsed.success
-    ? parsed.data
-    : UNCLASSIFIED_SUMMARY_ERROR_CODE;
+  const code: SummaryFailureCode = parsed.success ? parsed.data : UNCLASSIFIED_SUMMARY_ERROR_CODE;
 
   return {
     ok: false,

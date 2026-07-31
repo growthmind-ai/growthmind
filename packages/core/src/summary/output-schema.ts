@@ -162,14 +162,7 @@ export function joinSentences(sentences: readonly string[]): string {
  * SAC-1, SAC-6 and SAC-9 are structural or belong to other lanes.
  */
 export type GuardedSacId =
-  | "SAC-2"
-  | "SAC-3"
-  | "SAC-4"
-  | "SAC-5"
-  | "SAC-7"
-  | "SAC-8"
-  | "SAC-11"
-  | "SAC-12";
+  "SAC-2" | "SAC-3" | "SAC-4" | "SAC-5" | "SAC-7" | "SAC-8" | "SAC-11" | "SAC-12";
 
 /**
  * One rule broken at one position.

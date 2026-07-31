@@ -53,10 +53,7 @@ import {
   type AnalysisRunsRepo,
   type CloseRunInput,
 } from "../../src/repositories/analysis-runs.repo";
-import {
-  createFindingsRepo,
-  type PersistFindingInput,
-} from "../../src/repositories/findings.repo";
+import { createFindingsRepo, type PersistFindingInput } from "../../src/repositories/findings.repo";
 import { analysisModelCalls } from "../../src/schema/analysis-model-calls";
 import { analysisRuns } from "../../src/schema/analysis-runs";
 import { sha256Hex } from "../../src/signatures/hex";

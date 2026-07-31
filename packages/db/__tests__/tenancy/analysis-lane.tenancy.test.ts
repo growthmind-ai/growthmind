@@ -229,7 +229,8 @@ describe("the analysis lane's tenant boundary (DB3)", () => {
     // SILENT SUCCESS under org B is not — and only the read-back can tell the
     // difference, so the read-back is what decides this leg.
     let persistError: unknown;
-    let persisted: Awaited<ReturnType<ReturnType<typeof createFindingsRepo>["persist"]>> | undefined;
+    let persisted:
+      Awaited<ReturnType<ReturnType<typeof createFindingsRepo>["persist"]>> | undefined;
     try {
       persisted = await createFindingsRepo(db, orgA.ctx).persist(
         findingInput({
@@ -266,13 +267,14 @@ describe("the analysis lane's tenant boundary (DB3)", () => {
     expect(
       await createFindingsRepo(db, orgA.ctx).findBySignature(orgB.projectId, SIGNATURE_B),
     ).toBeNull();
-    expect(await createFindingsRepo(db, orgA.ctx).listForProject(orgB.projectId, { limit: 50 })).toEqual(
-      [],
-    );
+    expect(
+      await createFindingsRepo(db, orgA.ctx).listForProject(orgB.projectId, { limit: 50 }),
+    ).toEqual([]);
 
     // --- LEG 3 — org A cannot WRITE an analysis run into org B --------------
     let openError: unknown;
-    let openedByA: Awaited<ReturnType<ReturnType<typeof createAnalysisRunsRepo>["open"]>> | undefined;
+    let openedByA:
+      Awaited<ReturnType<ReturnType<typeof createAnalysisRunsRepo>["open"]>> | undefined;
     try {
       openedByA = await createAnalysisRunsRepo(db, orgA.ctx).open({
         projectId: orgB.projectId,

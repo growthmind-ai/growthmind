@@ -279,9 +279,7 @@ describe("A7 — the whole error map (AD-17)", () => {
       },
       {
         label: "rate limit",
-        error: plantedVendorErrorWith(
-          "429 rate_limit_error (request req_01PLANTEDREQUESTID9999)",
-        ),
+        error: plantedVendorErrorWith("429 rate_limit_error (request req_01PLANTEDREQUESTID9999)"),
       },
       {
         label: "timeout",

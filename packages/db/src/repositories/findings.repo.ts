@@ -291,10 +291,7 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
         .select()
         .from(findings)
         .where(
-          and(
-            eq(findings.organizationId, ctx.organizationId),
-            eq(findings.projectId, projectId),
-          ),
+          and(eq(findings.organizationId, ctx.organizationId), eq(findings.projectId, projectId)),
         )
         .orderBy(desc(findings.createdAt))
         .limit(options.limit);
