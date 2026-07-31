@@ -18,24 +18,21 @@
 // package that owns the tuple string. The one real hex digest this sprint
 // pins is T-DB-6, in `packages/db/__tests__/services/signature-ledger.service.test.ts`.
 //
-// ── WAVE 0 TDD STATUS ────────────────────────────────────────────────────
+// ── WAVE 1 IMPLEMENTATION STATUS ─────────────────────────────────────────
 //
-// `signatureTuple`'s v1 serialiser body throws `not implemented`
-// (`packages/core/src/findings/signature-tuple.ts`). Every test below is
-// EXPECTED TO FAIL (red) until a later wave fills that body in. This is
-// intentional — see `.claude/agents` test-execution-agent scope: Wave 0
-// writes failing tests against the FINAL exported contract, never against a
-// stub's current (throwing) behaviour.
+// `signatureTuple`'s v1 serialiser body is now implemented
+// (`packages/core/src/findings/signature-tuple.ts`), and every test below is
+// GREEN. `GOLDEN_V1_TUPLE_BASELINE` was pinned by actually running
+// `signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION)` once and
+// capturing its exact output (the W0-5 discipline, `probes.md`) — never
+// guessed, never derived by hand from `canonicalJson` in this file.
 //
 // Two kinds of assertion appear below (the ADD's own split):
 //   (1) RELATIONAL fork / no-fork assertions — the real D12 content, and
 //       independent of any literal. These compare two outputs of the SAME
 //       real `signatureTuple` call to each other.
-//   (2) One ABSOLUTE GOLDEN LITERAL — `GOLDEN_V1_TUPLE_BASELINE`, a
-//       placeholder token `PIN_IN_IMPLEMENTATION_WAVE`. The real value MUST
-//       be obtained by actually running `signatureTuple` once, after it is
-//       implemented — never guessed, never derived by hand from
-//       `canonicalJson` in this file (the W0-5 discipline, `probes.md`).
+//   (2) One ABSOLUTE GOLDEN LITERAL — `GOLDEN_V1_TUPLE_BASELINE`, pinned to
+//       the byte-string actually produced by `signatureTuple`.
 //
 // Every fixture surface/name below is synthetic (`/checkout`, `/pay`,
 // `acme.example`-style placeholders never appear) — this repository is
@@ -141,17 +138,18 @@ const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
 /**
  * (h) THE ONE ABSOLUTE GOLDEN LITERAL THIS FILE PINS.
  *
- * PIN_IN_IMPLEMENTATION_WAVE — a deliberate placeholder, not a guess. Once
- * `serialiseV1` in `signature-tuple.ts` is implemented, run
- * `signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION)` ONCE and
- * paste its real output here (same discipline as W0-5's evidence-shape
- * literal in `probes.md`) — never derive it by hand from `canonicalJson` in
+ * Pinned in the implementation wave by actually running
+ * `signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION)` once
+ * (`serialiseV1` is now implemented in `signature-tuple.ts`) and pasting the
+ * exact captured output here (same discipline as W0-5's evidence-shape
+ * literal in `probes.md`) — never derived by hand from `canonicalJson` in
  * this file, even though the algorithm is knowable: the whole point of a
  * committed literal is that a change to the real serialiser fails HERE,
  * against an independently-obtained value, rather than silently agreeing
  * with itself.
  */
-const GOLDEN_V1_TUPLE_BASELINE = "PIN_IN_IMPLEMENTATION_WAVE";
+const GOLDEN_V1_TUPLE_BASELINE =
+  "{\"evidenceShape\":\"{\\\"detector\\\":\\\"funnel_dropoff\\\",\\\"signalKinds\\\":[\\\"failure_uncorrelated\\\",\\\"struggle\\\"],\\\"surface\\\":\\\"/checkout\\\",\\\"surfaceNormalisationVersion\\\":2,\\\"symptomClass\\\":\\\"broken\\\",\\\"v\\\":1}\",\"projectId\":\"11111111-1111-4111-8111-111111111111\",\"surfaceId\":\"/checkout\",\"symptomClass\":\"broken\",\"v\":1}";
 
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
@@ -162,9 +160,9 @@ describe("signature-churn — baseline golden fixtures (W0-5 pin + the one commi
     expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V1);
   });
 
-  test("pins the v1 signature tuple string for the baseline fixture (golden literal, PIN_IN_IMPLEMENTATION_WAVE)", () => {
-    // RED until `serialiseV1` is implemented AND this literal is pinned by
-    // actually running the function once — both conditions, not either.
+  test("pins the v1 signature tuple string for the baseline fixture (golden literal, pinned)", () => {
+    // GREEN: `serialiseV1` is implemented and this literal was pinned by
+    // actually running the function once.
     expect(signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION)).toBe(
       GOLDEN_V1_TUPLE_BASELINE,
     );

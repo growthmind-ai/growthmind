@@ -48,16 +48,12 @@
 // v1-shaped string for a v2 caller and silently detach every guarantee
 // hanging off the signature (same reasoning as `evidence-shape.ts:160-172`).
 //
-// Implemented in a later wave against this scaffold's final signatures —
-// every function body below throws `not implemented`. Only the exported
-// names, types, the map, and the constants are real (this is a Wave 2 TDD
-// contract task, not an implementation task).
+// Implemented (Wave 1) against this scaffold's final signatures.
 import type { FindingClass } from "../rules/types";
 // `canonicalJson` is the ONE canonical-string producer this module must call
-// from `serialiseV1` — never re-implemented (D-13). Not imported yet: this
-// file is a Wave 2 TDD contract (every exported name/type/map is real; only
-// the serialiser BODY throws), and an implementation-only import would be
-// unused until a later wave fills the body in.
+// from `serialiseV1` — never re-implemented (D-13).
+import { canonicalJson } from "../serialise/canonical-json";
+import type { CanonicalObject } from "../serialise/canonical-json";
 
 /** The version new tuples are serialised under. */
 export const SIGNATURE_TUPLE_VERSION = 1;
@@ -118,13 +114,17 @@ export const SIGNATURE_TUPLE_SERIALISERS: ReadonlyMap<number, SignatureTupleSeri
  * Key order and set semantics are `canonicalJson`'s, not this function's —
  * called, never re-implemented, so no second definition of "canonical"
  * exists anywhere in this codebase.
- *
- * NOT IMPLEMENTED — this is a Wave 2 TDD contract. A later wave fills this
- * body in against the failing tests a later wave writes.
  */
 function serialiseV1(input: SignatureTupleInput): string {
-  void input;
-  throw new Error("not implemented");
+  const tuple: CanonicalObject = {
+    v: 1,
+    projectId: input.projectId,
+    surfaceId: input.surfaceId,
+    symptomClass: input.symptomClass,
+    evidenceShape: input.evidenceShape,
+  };
+
+  return canonicalJson(tuple);
 }
 
 /**
@@ -138,9 +138,6 @@ function serialiseV1(input: SignatureTupleInput): string {
  * back to the current serialiser — a silent fallback would mint a
  * `v${SIGNATURE_TUPLE_VERSION}`-shaped string for a different version's row
  * and silently detach every guarantee hanging off its signature.
- *
- * NOT IMPLEMENTED — this is a Wave 2 TDD contract. A later wave fills this
- * body in against the failing tests a later wave writes.
  */
 export function signatureTuple(input: SignatureTupleInput, version: number): string {
   const serialiser = SIGNATURE_TUPLE_SERIALISERS.get(version);
@@ -153,6 +150,5 @@ export function signatureTuple(input: SignatureTupleInput, version: number): str
     );
   }
 
-  // NOT IMPLEMENTED — dispatch itself is real; the serialiser body throws.
   return serialiser(input);
 }
