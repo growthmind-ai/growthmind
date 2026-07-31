@@ -24,13 +24,33 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "bun:test";
 
-const REPOSITORIES_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "src",
-  "repositories",
-);
+const SRC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "src");
+
+const REPOSITORIES_DIR = path.join(SRC_DIR, "repositories");
+
+/**
+ * WHY `services` IS SCANNED TOO (O-004 security audit, M-1).
+ *
+ * This invariant was written for `repositories/`, but the D7 incident class it
+ * exists to prevent lives in `services/` — that is where the HAND-WRITTEN
+ * aggregations are, and hand-written queries are exactly what the repository
+ * layer's org auto-injection does not cover. `ScopedDb` is a raw driver union,
+ * so nothing injects an org filter on a service's behalf; every service query
+ * names `ctx.organizationId` itself or it leaks.
+ *
+ * `detector-corpus.service.ts` (O-004) joins `events` to `sessions` by hand.
+ * All five of its reads name the org filter literally today, but until this
+ * change the invariant could not see the file: a future
+ * `read(projectId, organizationId, window)` would have passed a green suite.
+ * Scanning only the layer that is already structurally safe is the vacuous
+ * half of this guard.
+ */
+const SERVICES_DIR = path.join(SRC_DIR, "services");
+
+const SCANNED_DIRS: readonly { readonly label: string; readonly dir: string }[] = [
+  { label: "repositories", dir: REPOSITORIES_DIR },
+  { label: "services", dir: SERVICES_DIR },
+];
 
 const ORG_ID_PARAM = /\b(organizationId|organisationId|orgId|organization_id)\b/;
 
@@ -124,20 +144,26 @@ function collectDeclaredParams(source: string): DeclaredParams[] {
 }
 
 describe("repository contract — no organization id parameter (FR-19)", () => {
-  it("declares no organization id parameter on any repository function or interface method", () => {
-    const files = readdirSync(REPOSITORIES_DIR).filter((name) => name.endsWith(".ts"));
-    expect(files.length).toBeGreaterThan(0);
-
+  it("declares no organization id parameter on any repository or service function or interface method", () => {
     const offenders: string[] = [];
-    for (const file of files) {
-      const source = readFileSync(path.join(REPOSITORIES_DIR, file), "utf8");
-      for (const declared of collectDeclaredParams(source)) {
-        if (ORG_ID_PARAM.test(declared.params)) {
-          offenders.push(`${file} :: ${declared.owner}(${declared.params.trim()})`);
+    let scanned = 0;
+
+    for (const { label, dir } of SCANNED_DIRS) {
+      const files = readdirSync(dir).filter((name) => name.endsWith(".ts"));
+      expect(files.length).toBeGreaterThan(0);
+
+      for (const file of files) {
+        scanned += 1;
+        const source = readFileSync(path.join(dir, file), "utf8");
+        for (const declared of collectDeclaredParams(source)) {
+          if (ORG_ID_PARAM.test(declared.params)) {
+            offenders.push(`${label}/${file} :: ${declared.owner}(${declared.params.trim()})`);
+          }
         }
       }
     }
 
+    expect(scanned).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
 
@@ -151,6 +177,27 @@ describe("repository contract — no organization id parameter (FR-19)", () => {
     ]) {
       expect(files).toContain(expected);
     }
+  });
+
+  // ANTI-VACUITY for the widened scope (M-1). Naming the two hand-written
+  // aggregations explicitly, so a future refactor that moves or renames them
+  // out of the scan fails HERE rather than silently shrinking the invariant.
+  it("covers the hand-written aggregation services, where the D7 incident class lives", () => {
+    const files = readdirSync(SERVICES_DIR);
+    for (const expected of ["detector-corpus.service.ts", "events-counter.service.ts"]) {
+      expect(files).toContain(expected);
+    }
+  });
+
+  it("finds the parameter lists it claims to check in a service, not only a repository", () => {
+    const source = readFileSync(path.join(SERVICES_DIR, "detector-corpus.service.ts"), "utf8");
+    const owners = collectDeclaredParams(source).map((entry) => entry.owner);
+
+    // The collector must actually resolve BOTH shapes a service uses — the
+    // top-level factory and the interface method — or the widened scan above
+    // would be vacuously green on exactly the file it was widened for.
+    expect(owners).toContain("createDetectorCorpusService");
+    expect(owners).toContain("DetectorCorpusService.read");
   });
 
   it("finds the parameter lists it claims to check", () => {

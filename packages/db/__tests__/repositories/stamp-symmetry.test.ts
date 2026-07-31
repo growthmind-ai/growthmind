@@ -18,6 +18,7 @@
 // fail on "not implemented".
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
+import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import type { SessionSourcePullResult, TenantContext } from "@growthmind/shared";
 
 import { createEventsRepo } from "../../src/repositories/events.repo";
@@ -87,6 +88,29 @@ async function claimAsWorker(db: TestDb, label: string): Promise<WorkerScope> {
   };
 }
 
+/** The second event in every pull result below — the one with no `urlPath`. */
+function noPathSourceEventId(sourceEventId: string): string {
+  return `${sourceEventId}-nopath`;
+}
+
+/**
+ * ADD §D-15 edit (i), in the only form the port type permits.
+ *
+ * The ADD asked for `urlPathNormalisationVersion` on this event literal. It
+ * cannot go here and it must not: `SourceEvent` (`packages/shared/src/
+ * session-source/types.ts`) carries no such field, because the version is
+ * stamped by `intake.service.ts` — the write path — not carried across the
+ * adapter port. Putting it in the fixture would also make the round-trip
+ * assertion below tautological: it would prove pass-through, not the stamp.
+ *
+ * What the fixture DOES carry, and what makes the stamp assertion mean
+ * something, is a second event with `urlPath: null`. The stamp is applied
+ * UNCONDITIONALLY, so that row must come back carrying the version too —
+ * otherwise `NULL` in the column would mean two different things ("written
+ * before versions were recorded" AND "had no path"), and the §5 remediation
+ * query `WHERE url_path_normalisation_version IS NULL` could no longer tell a
+ * pre-versioning row from a post-versioning one.
+ */
 function makePullResult(sessionKey: string, sourceEventId: string): SessionSourcePullResult {
   return {
     ok: true,
@@ -110,6 +134,16 @@ function makePullResult(sessionKey: string, sourceEventId: string): SessionSourc
         occurredAt: EVENT_AT,
         urlPath: "/pricing",
       },
+      // The unconditional-stamp case. A real pull carries plenty of these —
+      // `$identify`, `$exception` and anything else PostHog emits without a
+      // `$current_url`.
+      {
+        sourceEventId: noPathSourceEventId(sourceEventId),
+        sessionKey,
+        name: "$identify",
+        occurredAt: EVENT_AT,
+        urlPath: null,
+      },
     ],
     newestObservedAt: EVENT_AT,
     contiguous: true,
@@ -117,7 +151,7 @@ function makePullResult(sessionKey: string, sourceEventId: string): SessionSourc
     pagesFetched: 1,
     droppedMalformed: 0,
     identityLookupsUsed: 0,
-    eventsReceived: 1,
+    eventsReceived: 2,
   };
 }
 
@@ -201,7 +235,7 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
       },
       result: makePullResult(sessionKey, sourceEventId),
     });
-    expect(counts.eventsPersisted).toBe(1);
+    expect(counts.eventsPersisted).toBe(2);
 
     const eventsRepo = createEventsRepo(db, scope.requestCtx);
     const listed = await eventsRepo.listForProject(scope.projectId, { limit: 50 });
@@ -209,6 +243,25 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(served).toBeDefined();
     expect(served?.organizationId).toBe(scope.requestCtx.organizationId);
     expect(served?.projectId).toBe(scope.projectId);
+
+    // ---- ADD §D-15 edit (ii) ------------------------------------------------
+    // This suite does not enumerate columns, so no gate would have caught the
+    // column going unstamped — the row would simply carry `NULL`, and `NULL`
+    // is a legitimate value meaning "written before versions were recorded".
+    // A silently unstamped write is therefore indistinguishable from a legacy
+    // row, which is exactly the unclassifiable-rows problem the column exists
+    // to prevent. Nothing but this line asserts it.
+    expect(served?.urlPath).toBe("/pricing");
+    expect(served?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
+
+    // And unconditionally — a row with no path still carries the version, so
+    // `NULL` in this column keeps meaning exactly one thing (PL ruling).
+    const noPath = listed.find(
+      (event) => event.sourceEventId === noPathSourceEventId(sourceEventId),
+    );
+    expect(noPath).toBeDefined();
+    expect(noPath?.urlPath).toBeNull();
+    expect(noPath?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
 
     // And through the per-session read the evidence view will use.
     const sessionRow = await createSessionsRepo(db, scope.requestCtx).findByKey(

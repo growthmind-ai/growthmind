@@ -86,3 +86,9 @@ export {
   createEventsCounterService,
   type EventsCounterService,
 } from "./services/events-counter.service";
+
+// --- O-004 -----------------------------------------------------------------
+export {
+  createDetectorCorpusService,
+  type DetectorCorpusService,
+} from "./services/detector-corpus.service";

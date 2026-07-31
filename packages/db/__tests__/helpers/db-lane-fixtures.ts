@@ -17,6 +17,7 @@
 // repository contract, or the test would prove nothing about scoping.
 import { randomUUID } from "node:crypto";
 
+import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import type {
   ExclusionReason,
   IdentityResolution,
@@ -125,6 +126,18 @@ export async function seedEvent(
     name?: string;
     occurredAt?: Date;
     urlPath?: string | null;
+    /**
+     * ADD §D-15 edit (iii). This seeder writes drizzle values DIRECTLY rather
+     * than through `EventInsertRow`, so adding the column to that interface did
+     * not break it at typecheck — which is precisely why the edit is easy to
+     * miss and why the ADD names the file.
+     *
+     * Defaults to the current version so a seeded row looks like one the write
+     * path produced. Pass `null` explicitly to seed a pre-versioning row —
+     * `null` means "written before versions were recorded, redaction status
+     * unknown" and is never coerced to `0` (ES-14).
+     */
+    urlPathNormalisationVersion?: number | null;
   },
 ): Promise<SeededEvent> {
   const [row] = await db
@@ -139,6 +152,14 @@ export async function seedEvent(
       name: params.name ?? "$pageview",
       occurredAt: params.occurredAt ?? new Date("2026-07-30T10:00:00.000Z"),
       urlPath: params.urlPath ?? "/pricing",
+      // `=== undefined`, NOT `??` — an explicitly seeded `null` is a
+      // pre-versioning row and must survive as `null`. `??` would coerce it
+      // back to the current version and quietly destroy the only fixture that
+      // can stand in for the rows a §5 remediation migration has to find.
+      urlPathNormalisationVersion:
+        params.urlPathNormalisationVersion === undefined
+          ? URL_PATH_NORMALISATION_VERSION
+          : params.urlPathNormalisationVersion,
     })
     .returning();
 

@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "url_path_normalisation_version" integer;

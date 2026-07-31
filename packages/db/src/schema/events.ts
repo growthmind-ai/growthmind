@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
 import { projectConnections } from "./project-connections";
@@ -72,6 +72,24 @@ export const events = pgTable(
      * stripped and normalised. NEVER the raw url — one campaign parameter
      * would fork the surface and every signature hanging off it (D12). */
     urlPath: text("url_path"),
+    /**
+     * Which `normaliseUrlPath` rules produced `url_path` above.
+     *
+     * NULLABLE, and `null` is NOT `0`. A row written before this column
+     * existed reads back `null`, meaning "written before versions were
+     * recorded — redaction status unknown". Coercing that to `0` would assert
+     * a version we never wrote.
+     *
+     * This is a product-decisions §5 privacy-remediability requirement before
+     * it is a D12 one. `url-path.ts` documents that a stored v1 path may still
+     * carry a live reset token or an email address; the constant is already at
+     * 2. This column is the ONLY field that could ever identify those rows —
+     * `events` keeps no `properties` jsonb and no raw `$current_url` to
+     * re-derive from — so a later remediation migration finds its work with
+     * `WHERE url_path_normalisation_version IS NULL` (or `< N`), and `null`
+     * is precisely the class it must be able to select.
+     */
+    urlPathNormalisationVersion: integer("url_path_normalisation_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

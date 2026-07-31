@@ -44,10 +44,22 @@
         "@types/bun": "^1.3.14",
       },
     },
+    "packages/core": {
+      "name": "@growthmind/core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@growthmind/shared": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+      },
+    },
     "packages/db": {
       "name": "@growthmind/db",
       "version": "0.0.0",
       "dependencies": {
+        "@growthmind/core": "workspace:*",
         "@growthmind/shared": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "pg": "^8.22.0",
@@ -197,6 +209,8 @@
     "@graphile/logger": ["@graphile/logger@0.2.0", "", {}, "sha512-jjcWBokl9eb1gVJ85QmoaQ73CQ52xAaOCF29ukRbYNl6lY+ts0ErTaDYOBlejcbUs2OpaiqYLO5uDhyLFzWw4w=="],
 
     "@growthmind/adapters": ["@growthmind/adapters@workspace:packages/adapters"],
+
+    "@growthmind/core": ["@growthmind/core@workspace:packages/core"],
 
     "@growthmind/db": ["@growthmind/db@workspace:packages/db"],
 

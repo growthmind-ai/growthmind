@@ -10,6 +10,7 @@
 //
 // `createEventsRepo` is a typed-stub throw today, so every test fails on
 // "not implemented".
+import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { createEventsRepo, type EventInsertRow } from "../../src/repositories/events.repo";
@@ -33,6 +34,7 @@ function makeEventRow(
     name: "$pageview",
     occurredAt: OCCURRED_AT,
     urlPath: "/pricing",
+    urlPathNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
     ...overrides,
   };
 }
@@ -240,5 +242,61 @@ describe("events repository", () => {
 
     const forSessionOne = await repo.listForSession(sessionOne.id, { limit: 50 });
     expect(forSessionOne.map((event) => event.sourceEventId)).toEqual(["db-ev-per-session-0001"]);
+  });
+
+  // --- ES-14 / ADD §D-15 ---------------------------------------------------
+  // `url_path_normalisation_version` is nullable AND NEVER COERCED. `null`
+  // carries a specific claim — "written before versions were recorded, so the
+  // redaction status of this row's `url_path` is unknown" — which is not the
+  // same claim as version `0`. A `.default(0)` on the column, a `?? 0` in the
+  // repository's insert value map, or a `?? 0` on the read would each silently
+  // assert a version we never wrote, and would erase the only signal a §5
+  // remediation migration has: `WHERE url_path_normalisation_version IS NULL`.
+  //
+  // The stamped sibling in the same batch is the control. Without it, a read
+  // path that returned `null` for EVERY row would pass the null half of this
+  // test while proving nothing.
+  it("reads back a null normalisation version as null, never coerced to a version", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("norm-version"),
+      userName: NAMES.userName("norm-version"),
+      email: NAMES.email("norm-version"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("norm-version"),
+    });
+    const connection = await seedConnection(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+    });
+    const session = await seedSession(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      connectionId: connection.id,
+      sessionKey: "ph:db-ev-norm-version",
+    });
+
+    const repo = createEventsRepo(db, org.ctx);
+    const base = {
+      projectId: project.id,
+      connectionId: connection.id,
+      sessionId: session.id,
+      sourceEventId: "db-ev-norm-version-legacy",
+    };
+
+    expect(
+      await repo.insertManyIgnoringDuplicates([
+        makeEventRow(base, { urlPathNormalisationVersion: null }),
+        makeEventRow({ ...base, sourceEventId: "db-ev-norm-version-stamped" }),
+      ]),
+    ).toBe(2);
+
+    const listed = await repo.listForSession(session.id, { limit: 50 });
+    const legacy = listed.find((event) => event.sourceEventId === "db-ev-norm-version-legacy");
+    const stamped = listed.find((event) => event.sourceEventId === "db-ev-norm-version-stamped");
+
+    expect(legacy?.urlPathNormalisationVersion).toBeNull();
+    expect(stamped?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
   });
 });

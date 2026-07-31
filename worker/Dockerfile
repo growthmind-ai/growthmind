@@ -10,6 +10,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
 COPY packages/sdk-js/package.json packages/sdk-js/
 COPY packages/adapters/package.json packages/adapters/
+COPY packages/core/package.json packages/core/
 COPY worker/package.json worker/
 RUN bun install --frozen-lockfile
 

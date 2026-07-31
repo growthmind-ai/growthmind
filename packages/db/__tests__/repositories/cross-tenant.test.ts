@@ -18,19 +18,33 @@
 //
 // Every read-back goes through the public repository/service contract. Reading
 // rows directly would prove nothing about scoping, which is the entire subject.
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
-import type { CredentialKeyResolution, TenantContext } from "@growthmind/shared";
+import { DETECTOR_CORPUS_MAX_SESSIONS, type AnalysisWindow } from "@growthmind/core";
+import {
+  EXCLUSION_REASON_LABELS,
+  URL_PATH_NORMALISATION_VERSION,
+  type CredentialKeyResolution,
+  type ExclusionReason,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import { createEventsRepo } from "../../src/repositories/events.repo";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createProjectConnectionsRepo } from "../../src/repositories/project-connections.repo";
 import { createProjectsRepo } from "../../src/repositories/projects.repo";
 import { createSessionsRepo, type SessionUpsertRow } from "../../src/repositories/sessions.repo";
+import * as schema from "../../src/schema";
 import {
   createConnectionsService,
   type ConnectionsServiceDeps,
 } from "../../src/services/connections.service";
+import { createDetectorCorpusService } from "../../src/services/detector-corpus.service";
 import { createEventsCounterService } from "../../src/services/events-counter.service";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames, seedEvent, seedPollRun, seedSession } from "../helpers/db-lane-fixtures";
@@ -343,5 +357,813 @@ describe("cross-tenant boundary on the O-003 tables", () => {
     expect(counter.totalReceived).toBe(0);
     expect(counter.kept).toBe(0);
     expect(counter.droppedUnreadable).toBe(0);
+  });
+});
+
+// ===========================================================================
+// O-004 · `detector-corpus.service` — the T1 corpus read.
+//
+// ADD docs/adds/t1-detectors-evidence-gate.md §7 "Integration — `packages/db`",
+// written RED against Wave 1's final signature and BEFORE the Wave 5 body
+// exists. That order is deliberate: this is a tenancy boundary, and a test
+// written after an implementation is shaped by the implementation rather than
+// by the contract.
+//
+// Every test below must fail with "not implemented" — the scaffold's throw —
+// except the SOURCE assertion, which fails on its missing pattern because the
+// queries it inspects have not been written yet. Neither may ever fail on a
+// fixture collision or a compile error; both prior sprint retros name that as
+// the red state that isn't.
+//
+// Its own lane prefix, `db-dc-`: no other suite in this package uses it, so no
+// org name, user email, project name, or session key here can collide with the
+// `xt` / `ev` / `pc` / `se` / `sym` / `claim` / `sys` lanes.
+//
+// Every instant is a FIXTURE CONSTANT. Nothing in this block reads a clock —
+// `Date.now()` in a time column is what made 18 worker tests fail
+// time-of-day-flaky for a whole sprint run (ADD §6.5).
+// ===========================================================================
+
+const CORPUS_NAMES = laneNames("dc");
+
+const CORPUS_SERVICE_SOURCE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "src",
+  "services",
+  "detector-corpus.service.ts",
+);
+
+/** The injected analysis window. Never derived from a clock (FR-5, D-4). */
+const WINDOW: AnalysisWindow = {
+  start: new Date("2026-07-20T00:00:00.000Z"),
+  end: new Date("2026-07-30T23:59:59.999Z"),
+};
+
+const CONNECTED_AT = new Date("2026-07-19T09:00:00.000Z");
+const NEXT_POLL_AT = new Date("2026-07-31T00:00:00.000Z");
+const POLL_STARTED_AT = new Date("2026-07-30T23:00:00.000Z");
+const POLL_FINISHED_AT = new Date("2026-07-30T23:00:05.000Z");
+const MEMBER_CREATED_AT = new Date("2026-07-19T08:00:00.000Z");
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+interface CorpusOrg {
+  /** The org owner — the person who set the connection up. */
+  ctx: TenantContext;
+  /** A NON-OWNER member of the same org. The D1/D2 audience cell. */
+  teammateCtx: TenantContext;
+  organizationId: string;
+  projectId: string;
+  connectionId: string;
+}
+
+/**
+ * One org, one project, one healthy attachment, one non-owner teammate, and —
+ * unless the caller asks for the never-polled shape — one completed poll run.
+ *
+ * The teammate is seeded ALWAYS, not only for the test that reads as them, so
+ * the org's shape is identical across every test here and the teammate read is
+ * the only variable.
+ */
+async function seedCorpusOrg(
+  db: TestDb,
+  label: string,
+  options: { withCompletedPoll?: boolean } = {},
+): Promise<CorpusOrg> {
+  const org = await seedOrgWithOwner(db, {
+    orgName: CORPUS_NAMES.orgName(label),
+    userName: CORPUS_NAMES.userName(`${label}-owner`),
+    email: CORPUS_NAMES.email(`${label}-owner`),
+  });
+
+  const teammate = await seedUser(db, {
+    name: CORPUS_NAMES.userName(`${label}-teammate`),
+    email: CORPUS_NAMES.email(`${label}-teammate`),
+  });
+  await seedMember(db, {
+    organizationId: org.organizationId,
+    userId: teammate.id,
+    role: "member",
+    createdAt: MEMBER_CREATED_AT,
+  });
+
+  const project = await seedProject(db, {
+    organizationId: org.organizationId,
+    name: CORPUS_NAMES.projectName(label),
+  });
+  const connection = await seedConnection(db, {
+    organizationId: org.organizationId,
+    projectId: project.id,
+    watermarkAt: POLL_FINISHED_AT,
+    connectedAt: CONNECTED_AT,
+    nextPollAt: NEXT_POLL_AT,
+  });
+
+  if (options.withCompletedPoll ?? true) {
+    await seedPollRun(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      connectionId: connection.id,
+      startedAt: POLL_STARTED_AT,
+      finishedAt: POLL_FINISHED_AT,
+      watermarkAdvancedTo: POLL_FINISHED_AT,
+    });
+  }
+
+  return {
+    ctx: org.ctx,
+    teammateCtx: makeTenantContext({
+      userId: teammate.id,
+      organizationId: org.organizationId,
+      organizationName: org.organizationName,
+      role: "member",
+    }),
+    organizationId: org.organizationId,
+    projectId: project.id,
+    connectionId: connection.id,
+  };
+}
+
+/** The event fixture's default path. Only ever applied when the spec OMITS
+ * `urlPath` — see the `=== undefined` note on the seeder. */
+const CORPUS_DEFAULT_URL_PATH = "/pricing";
+
+interface CorpusEventSpec {
+  readonly sourceEventId: string;
+  readonly occurredAt: Date;
+  readonly name?: string;
+  /** `null` means "this event carries no path" — the ES-4 / BS-4 case the
+   * detector counts into `coverage.eventsWithoutUrlPath`. It must survive the
+   * seeder as `null`; see the `=== undefined` note there. */
+  readonly urlPath?: string | null;
+  /** `null` means "written before versions were recorded — redaction status
+   * unknown", and is NEVER coerced to `0` (ES-14). Omit for the current
+   * version, which is what the write path stamps. */
+  readonly urlPathNormalisationVersion?: number | null;
+}
+
+interface CorpusSessionSpec {
+  readonly sessionKey: string;
+  readonly startedAt: Date;
+  readonly exclusionReason?: ExclusionReason;
+  readonly events: readonly CorpusEventSpec[];
+}
+
+/**
+ * Bulk arrange step. Writes sessions and their events in two statements
+ * because the cap test needs 501 sessions and a per-row seeder would dominate
+ * the suite's runtime.
+ *
+ * Local to this file rather than added to `helpers/db-lane-fixtures.ts`: that
+ * module is a shared surface, and the row shapes here (a per-session event
+ * list, explicit `started_at` and `occurred_at` on every row) exist only to
+ * express D-3's cap and D-4's window boundary.
+ *
+ * Returns `sessionKey → session id`, because `SessionTimeline` identifies a
+ * session by its id and the specs identify it by its key.
+ */
+async function seedCorpusSessions(
+  db: TestDb,
+  org: CorpusOrg,
+  specs: readonly CorpusSessionSpec[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = new Map<string, string>();
+  const sessionRows: (typeof schema.sessions.$inferInsert)[] = [];
+  const eventRows: (typeof schema.events.$inferInsert)[] = [];
+
+  for (const spec of specs) {
+    const sessionId = randomUUID();
+    ids.set(spec.sessionKey, sessionId);
+    const firstUrlPath = spec.events.at(0)?.urlPath;
+
+    sessionRows.push({
+      id: sessionId,
+      organizationId: org.organizationId,
+      projectId: org.projectId,
+      connectionId: org.connectionId,
+      sessionKey: spec.sessionKey,
+      identityKey: null,
+      identityEmailDomain: null,
+      identityResolution: "unresolved",
+      userAgent: null,
+      // `=== undefined`, NOT `??` — the same rule as the event rows below. A
+      // first event that deliberately carries NO path must give the session a
+      // null `entry_url_path`, not the default one.
+      entryUrlPath: firstUrlPath === undefined ? CORPUS_DEFAULT_URL_PATH : firstUrlPath,
+      startedAt: spec.startedAt,
+      lastEventAt: spec.events.at(-1)?.occurredAt ?? spec.startedAt,
+      origin: "real",
+      exclusionReason: spec.exclusionReason ?? "none",
+      internalDomainAtStamp: null,
+      exclusionRuleSetVersion: 1,
+      groupingVersion: 1,
+    });
+
+    for (const event of spec.events) {
+      eventRows.push({
+        id: randomUUID(),
+        organizationId: org.organizationId,
+        projectId: org.projectId,
+        connectionId: org.connectionId,
+        sessionId,
+        sourceEventId: event.sourceEventId,
+        name: event.name ?? "$pageview",
+        occurredAt: event.occurredAt,
+        // `=== undefined`, NOT `??` — an explicitly seeded `null` is an event
+        // that carries NO path, and `??` would coerce it back to the default
+        // and quietly destroy the only fixture that can exercise ES-4/BS-4's
+        // path-less event through the real read. `helpers/db-lane-fixtures.ts`
+        // was rewritten to this shape for the same reason.
+        urlPath: event.urlPath === undefined ? CORPUS_DEFAULT_URL_PATH : event.urlPath,
+        // From the CONSTANT, never a hardcoded number — a version bump must
+        // not silently invalidate the round-trip assertion below. Same
+        // `=== undefined` rule: an explicit `null` is a pre-versioning row.
+        urlPathNormalisationVersion:
+          event.urlPathNormalisationVersion === undefined
+            ? URL_PATH_NORMALISATION_VERSION
+            : event.urlPathNormalisationVersion,
+      });
+    }
+  }
+
+  if (sessionRows.length > 0) {
+    await db.insert(schema.sessions).values(sessionRows);
+  }
+  if (eventRows.length > 0) {
+    await db.insert(schema.events).values(eventRows);
+  }
+
+  return ids;
+}
+
+/** Throws rather than returning `undefined`, so a mis-keyed lookup is a loud
+ * fixture bug instead of a silent `expect(undefined)`. */
+function sessionIdOf(ids: ReadonlyMap<string, string>, sessionKey: string): string {
+  const id = ids.get(sessionKey);
+  if (id === undefined) {
+    throw new Error(`seedCorpusSessions: no session id seeded for "${sessionKey}"`);
+  }
+  return id;
+}
+
+/** Session `i` of the cap fixture starts `i` minutes after `CAP_BASE`, so
+ * `i = 0` is the OLDEST and is exactly the one a `started_at DESC` cap must
+ * drop. */
+function capSessionKey(index: number): string {
+  return `ph:db-dc-cap-${index}`;
+}
+
+/** Removes block and line comments, so the header prose promising
+ * `ctx.organizationId` can never satisfy a source assertion about the code. */
+function stripSourceComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+
+describe("detector-corpus.service — the T1 corpus read (O-004)", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  // --- tenancy: D7 / D2 / FR-20 --------------------------------------------
+
+  it("detector-corpus.service returns nothing to org B for org A's project", async () => {
+    const orgA = await seedCorpusOrg(db, "tenancy-a");
+    const orgB = await seedCorpusOrg(db, "tenancy-b");
+    const ids = await seedCorpusSessions(db, orgA, [
+      {
+        sessionKey: "ph:db-dc-tenancy-a-1",
+        startedAt: new Date("2026-07-25T10:00:00.000Z"),
+        events: [
+          {
+            sourceEventId: "db-dc-tenancy-a-evt-1",
+            occurredAt: new Date("2026-07-25T10:00:01.000Z"),
+          },
+        ],
+      },
+    ]);
+
+    const corpus = await createDetectorCorpusService(db, orgB.ctx).read(orgA.projectId, WINDOW);
+
+    // An EMPTY corpus, not org A's. The return type has no `null` arm, so the
+    // only way this read can be wrong is by being populated.
+    expect(corpus.sessions).toEqual([]);
+    expect(corpus.basis.totalInWindow).toBe(0);
+    expect(corpus.basis.kept).toBe(0);
+    expect(corpus.basis.setAside).toEqual([]);
+    // Org B cannot even learn that org A has an attachment.
+    expect(corpus.connectionState.status).toBe("not_connected");
+
+    // Nothing of org A's leaks through any field, including ones a later
+    // change might add — the serialised form is checked, not just `sessions`.
+    const serialised = JSON.stringify(corpus);
+    expect(serialised).not.toContain(sessionIdOf(ids, "ph:db-dc-tenancy-a-1"));
+    expect(serialised).not.toContain("db-dc-tenancy-a-evt-1");
+    expect(serialised).not.toContain(orgA.connectionId);
+  });
+
+  it("detector-corpus.service returns everything to org A's non-owner teammate", async () => {
+    // THE flagship cell (D1/D2). An org-scoped corpus that only the person who
+    // connected the source can read is the single most-missed failure in the
+    // whole edge-case taxonomy: the feature works for its author and is
+    // silently empty for their whole team.
+    const orgA = await seedCorpusOrg(db, "teammate");
+    const ids = await seedCorpusSessions(db, orgA, [
+      {
+        sessionKey: "ph:db-dc-teammate-1",
+        startedAt: new Date("2026-07-25T10:00:00.000Z"),
+        events: [
+          {
+            sourceEventId: "db-dc-teammate-evt-1",
+            occurredAt: new Date("2026-07-25T10:00:01.000Z"),
+            urlPath: "/pricing",
+          },
+          {
+            sourceEventId: "db-dc-teammate-evt-2",
+            occurredAt: new Date("2026-07-25T10:00:09.000Z"),
+            urlPath: "/checkout",
+          },
+        ],
+      },
+    ]);
+
+    expect(orgA.teammateCtx.role).toBe("member");
+    expect(orgA.teammateCtx.userId).not.toBe(orgA.ctx.userId);
+
+    const corpus = await createDetectorCorpusService(db, orgA.teammateCtx).read(
+      orgA.projectId,
+      WINDOW,
+    );
+
+    expect(corpus.projectId).toBe(orgA.projectId);
+    expect(corpus.sessions.map((session) => session.sessionId)).toEqual([
+      sessionIdOf(ids, "ph:db-dc-teammate-1"),
+    ]);
+    expect(
+      corpus.sessions.flatMap((session) => session.events).map((e) => e.sourceEventId),
+    ).toEqual(["db-dc-teammate-evt-1", "db-dc-teammate-evt-2"]);
+    expect(corpus.basis.totalInWindow).toBe(1);
+    expect(corpus.basis.kept).toBe(1);
+    // The teammate sees the same connection story the owner does.
+    expect(corpus.connectionState.status).toBe("connected_receiving");
+  });
+
+  it("detector-corpus.service widens nothing when a foreign project id is supplied", async () => {
+    const orgA = await seedCorpusOrg(db, "foreign-a");
+    const orgB = await seedCorpusOrg(db, "foreign-b");
+
+    const idsA = await seedCorpusSessions(db, orgA, [
+      {
+        sessionKey: "ph:db-dc-foreign-a-1",
+        startedAt: new Date("2026-07-25T10:00:00.000Z"),
+        events: [
+          {
+            sourceEventId: "db-dc-foreign-a-evt-1",
+            occurredAt: new Date("2026-07-25T10:00:01.000Z"),
+          },
+        ],
+      },
+    ]);
+    const idsB = await seedCorpusSessions(db, orgB, [
+      {
+        sessionKey: "ph:db-dc-foreign-b-1",
+        startedAt: new Date("2026-07-26T10:00:00.000Z"),
+        events: [
+          {
+            sourceEventId: "db-dc-foreign-b-evt-1",
+            occurredAt: new Date("2026-07-26T10:00:01.000Z"),
+          },
+        ],
+      },
+    ]);
+
+    const service = createDetectorCorpusService(db, orgA.ctx);
+
+    // Org A naming ORG B's project. The failure this guards against is not
+    // only a cross-tenant read: it is a project predicate that is dropped or
+    // ignored, which would hand org A its OWN corpus under someone else's id.
+    const aReadingB = await service.read(orgB.projectId, WINDOW);
+    expect(aReadingB.sessions).toEqual([]);
+    expect(aReadingB.basis.totalInWindow).toBe(0);
+    expect(aReadingB.connectionState.status).toBe("not_connected");
+    expect(JSON.stringify(aReadingB)).not.toContain(sessionIdOf(idsB, "ph:db-dc-foreign-b-1"));
+    expect(JSON.stringify(aReadingB)).not.toContain(sessionIdOf(idsA, "ph:db-dc-foreign-a-1"));
+
+    // The mirror direction, so the boundary is not one-sided.
+    const bReadingA = await createDetectorCorpusService(db, orgB.ctx).read(orgA.projectId, WINDOW);
+    expect(bReadingA.sessions).toEqual([]);
+    expect(bReadingA.basis.totalInWindow).toBe(0);
+    expect(JSON.stringify(bReadingA)).not.toContain(sessionIdOf(idsA, "ph:db-dc-foreign-a-1"));
+  });
+
+  it("detector-corpus.service names organization_id on both sides of the events↔sessions join", () => {
+    // A SOURCE assertion, because behaviour cannot make this total. A read
+    // that establishes tenancy by joining to an already-scoped table passes
+    // every behavioural test above and is one refactor away from establishing
+    // none — that is the exact mechanism behind the sibling cross-tenant
+    // incident, and `events-counter.service.ts` already carries this same
+    // both-sides shape.
+    const source = readFileSync(CORPUS_SERVICE_SOURCE_PATH, "utf8");
+    const code = stripSourceComments(source);
+
+    // Guard against a vacuous pass: the file must actually have been read, and
+    // the comment stripper must not have eaten the code.
+    expect(source.length).toBeGreaterThan(0);
+    expect(code).toContain("createDetectorCorpusService");
+
+    // A COUNT, not a match (security audit M-2). `.from(events)` appears
+    // twice in this file — the windowed events read and the project-wide
+    // `anyEvent` probe — and a single `toMatch` passes while one of the two
+    // has had its org predicate dropped. The `anyEvent` probe is the weakest
+    // cell: its only observable effect is `connectionState`, and that is
+    // short-circuited to `not_connected` when `findLatestConnection` returns
+    // null, so no behavioural cross-tenant test can reach it. Ruling 35 /
+    // ADD §6.2 says EVERY predicate names `ctx.organizationId` out loud; only
+    // a per-query count can say that.
+    //
+    // The expected count is DERIVED FROM THE SOURCE, so adding a sixth scoped
+    // query raises the bar automatically instead of leaving the new query
+    // uncovered by a hard-coded number.
+    const countOf = (pattern: RegExp): number => (code.match(pattern) ?? []).length;
+
+    const sessionReads = countOf(/\.from\(\s*sessions\s*\)/g);
+    const eventReads = countOf(/\.from\(\s*events\s*\)/g);
+
+    // Guard against a vacuous pass a second time: a count assertion over zero
+    // queries is satisfied by a file that reads nothing at all.
+    expect(sessionReads).toBeGreaterThan(0);
+    expect(eventReads).toBeGreaterThan(0);
+
+    expect(countOf(/eq\(\s*sessions\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
+      sessionReads,
+    );
+    expect(countOf(/eq\(\s*events\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
+      eventReads,
+    );
+  });
+
+  // --- corpus semantics: D-3, the session cap ------------------------------
+
+  describe("the session cap (D-3)", () => {
+    const EVENTS_PER_SESSION = 3;
+    const OVER_CAP = DETECTOR_CORPUS_MAX_SESSIONS + 1;
+    const CAP_BASE = new Date("2026-07-21T00:00:00.000Z");
+    const UNDER_CAP = 3;
+
+    let overCapOrg: CorpusOrg;
+    let overCapIds: ReadonlyMap<string, string>;
+    let underCapOrg: CorpusOrg;
+
+    beforeAll(async () => {
+      overCapOrg = await seedCorpusOrg(db, "cap-over");
+      overCapIds = await seedCorpusSessions(
+        db,
+        overCapOrg,
+        Array.from({ length: OVER_CAP }, (_unused, index) => {
+          const startedAt = new Date(CAP_BASE.getTime() + index * MINUTE_MS);
+          return {
+            sessionKey: capSessionKey(index),
+            startedAt,
+            events: Array.from({ length: EVENTS_PER_SESSION }, (_e, slot) => ({
+              sourceEventId: `db-dc-cap-${index}-${slot}`,
+              occurredAt: new Date(startedAt.getTime() + slot * 1_000),
+            })),
+          };
+        }),
+      );
+
+      underCapOrg = await seedCorpusOrg(db, "cap-under");
+      await seedCorpusSessions(
+        db,
+        underCapOrg,
+        Array.from({ length: UNDER_CAP }, (_unused, index) => {
+          const startedAt = new Date(CAP_BASE.getTime() + index * MINUTE_MS);
+          return {
+            sessionKey: `ph:db-dc-under-${index}`,
+            startedAt,
+            events: [{ sourceEventId: `db-dc-under-${index}-0`, occurredAt: startedAt }],
+          };
+        }),
+      );
+    });
+
+    it("detector-corpus.service caps by session and never returns a partially-loaded session", async () => {
+      const corpus = await createDetectorCorpusService(db, overCapOrg.ctx).read(
+        overCapOrg.projectId,
+        WINDOW,
+      );
+
+      expect(corpus.sessions.length).toBe(DETECTOR_CORPUS_MAX_SESSIONS);
+
+      // THE assertion. A half-loaded session FABRICATES a drop-off: the events
+      // proving the user reached the destination are exactly the ones a
+      // mid-session cap dropped, so the detector reports a completion as an
+      // abandonment. Every returned session carries all three of its events,
+      // or the cap was applied to events instead of to sessions.
+      const distinctEventCounts = [
+        ...new Set(corpus.sessions.map((session) => session.events.length)),
+      ];
+      expect(distinctEventCounts).toEqual([EVENTS_PER_SESSION]);
+      expect(corpus.sessions.flatMap((session) => session.events).length).toBe(
+        DETECTOR_CORPUS_MAX_SESSIONS * EVENTS_PER_SESSION,
+      );
+
+      // The cap drops WHOLE sessions, from the oldest end.
+      const returned = new Set(corpus.sessions.map((session) => session.sessionId));
+      expect(returned.has(sessionIdOf(overCapIds, capSessionKey(0)))).toBe(false);
+      expect(returned.has(sessionIdOf(overCapIds, capSessionKey(1)))).toBe(true);
+      expect(returned.has(sessionIdOf(overCapIds, capSessionKey(OVER_CAP - 1)))).toBe(true);
+    });
+
+    it("detector-corpus.service sets coverage.truncated when the cap bound the result", async () => {
+      const bound = await createDetectorCorpusService(db, overCapOrg.ctx).read(
+        overCapOrg.projectId,
+        WINDOW,
+      );
+      const unbound = await createDetectorCorpusService(db, underCapOrg.ctx).read(
+        underCapOrg.projectId,
+        WINDOW,
+      );
+
+      // O-003's CR-1 was a silent truncation that read as "no more events".
+      // This is that fix applied before the incident rather than after it.
+      expect(bound.coverage.truncated).toBe(true);
+      // And the control: `truncated` must be a FACT about the read, not a
+      // constant. A read the cap did not bind says so.
+      expect(unbound.coverage.truncated).toBe(false);
+      expect(unbound.sessions.length).toBe(UNDER_CAP);
+    });
+  });
+
+  // --- corpus semantics: FR-7 / ES-7, the denominator ----------------------
+
+  it("detector-corpus.service excludes exclusion_reason != 'none' sessions from the denominator and reports them in basis", async () => {
+    const org = await seedCorpusOrg(db, "basis");
+    const BASIS_BASE = new Date("2026-07-24T09:00:00.000Z");
+    const plan: readonly { readonly key: string; readonly reason: ExclusionReason }[] = [
+      { key: "kept-1", reason: "none" },
+      { key: "kept-2", reason: "none" },
+      { key: "kept-3", reason: "none" },
+      { key: "internal-1", reason: "internal_domain" },
+      { key: "headless-1", reason: "automation_headless" },
+    ];
+    const specs: readonly CorpusSessionSpec[] = plan.map((row, index) => {
+      const startedAt = new Date(BASIS_BASE.getTime() + index * HOUR_MS);
+      return {
+        sessionKey: `ph:db-dc-basis-${row.key}`,
+        startedAt,
+        exclusionReason: row.reason,
+        events: [{ sourceEventId: `db-dc-basis-${row.key}-0`, occurredAt: startedAt }],
+      };
+    });
+    const ids = await seedCorpusSessions(db, org, specs);
+
+    const corpus = await createDetectorCorpusService(db, org.ctx).read(org.projectId, WINDOW);
+
+    // RULING 7: the corpus does NOT pre-filter to kept. Every selected session
+    // is returned carrying its own `exclusionReason`, and the DETECTOR applies
+    // FR-7 — which is what keeps FR-7 asserted against the tested pure layer
+    // rather than against an untested SQL read.
+    expect(corpus.sessions.length).toBe(5);
+    const returned = new Set(corpus.sessions.map((session) => session.sessionId));
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-basis-internal-1"))).toBe(true);
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-basis-headless-1"))).toBe(true);
+    expect(corpus.sessions.map((session) => session.exclusionReason).toSorted()).toEqual([
+      "automation_headless",
+      "internal_domain",
+      "none",
+      "none",
+      "none",
+    ]);
+
+    // …and the DENOMINATOR excludes them. A bot never had the opportunity to
+    // convert, so counting it understates every rate this corpus can support.
+    expect(corpus.basis.totalInWindow).toBe(5);
+    expect(corpus.basis.kept).toBe(3);
+
+    // The gap is EXPLAINED, in the customer's own terms, reusing the vocabulary
+    // the shipped counter already renders.
+    expect(corpus.basis.setAside.toSorted((a, b) => a.reason.localeCompare(b.reason))).toEqual([
+      {
+        reason: "automation_headless",
+        count: 1,
+        label: EXCLUSION_REASON_LABELS.automation_headless,
+      },
+      { reason: "internal_domain", count: 1, label: EXCLUSION_REASON_LABELS.internal_domain },
+    ]);
+    // "none" means CLASSIFIED AND KEPT — never also a set-aside row, or the
+    // identity below would hold while double-counting.
+    expect(corpus.basis.setAside.map((row) => row.reason)).not.toContain("none");
+
+    // THE IDENTITY (D-7), asserted rather than hoped for.
+    const setAsideTotal = corpus.basis.setAside.reduce((total, row) => total + row.count, 0);
+    expect(corpus.basis.kept + setAsideTotal).toBe(corpus.basis.totalInWindow);
+  });
+
+  // --- corpus semantics: D-4, the window ------------------------------------
+
+  it("detector-corpus.service selects sessions by started_at within the window and returns their events whole", async () => {
+    const org = await seedCorpusOrg(db, "window");
+    const ids = await seedCorpusSessions(db, org, [
+      {
+        // Exactly at the window's start. Boundaries are INCLUSIVE (D-6).
+        sessionKey: "ph:db-dc-window-at-start",
+        startedAt: WINDOW.start,
+        events: [
+          {
+            // BEFORE the window opened, and it must still be returned: the
+            // window anchors on the SESSION, not on the event.
+            sourceEventId: "db-dc-window-at-start-early",
+            occurredAt: new Date(WINDOW.start.getTime() - HOUR_MS),
+          },
+          {
+            sourceEventId: "db-dc-window-at-start-inside",
+            occurredAt: new Date(WINDOW.start.getTime() + HOUR_MS),
+          },
+        ],
+      },
+      {
+        // Exactly at the window's end. Inclusive too.
+        sessionKey: "ph:db-dc-window-at-end",
+        startedAt: WINDOW.end,
+        events: [
+          {
+            // AFTER the window closed, and it must still be returned.
+            sourceEventId: "db-dc-window-at-end-late",
+            occurredAt: new Date(WINDOW.end.getTime() + HOUR_MS),
+          },
+        ],
+      },
+      {
+        // One millisecond before the window. Out — even though its event is in.
+        sessionKey: "ph:db-dc-window-before",
+        startedAt: new Date(WINDOW.start.getTime() - 1),
+        events: [
+          {
+            sourceEventId: "db-dc-window-before-evt",
+            occurredAt: new Date(WINDOW.start.getTime() + HOUR_MS),
+          },
+        ],
+      },
+      {
+        // One millisecond after the window. Out — even though its event is in.
+        sessionKey: "ph:db-dc-window-after",
+        startedAt: new Date(WINDOW.end.getTime() + 1),
+        events: [
+          {
+            sourceEventId: "db-dc-window-after-evt",
+            occurredAt: new Date(WINDOW.end.getTime() - HOUR_MS),
+          },
+        ],
+      },
+    ]);
+
+    const corpus = await createDetectorCorpusService(db, org.ctx).read(org.projectId, WINDOW);
+
+    expect(corpus.window).toEqual(WINDOW);
+
+    const returned = new Set(corpus.sessions.map((session) => session.sessionId));
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-window-at-start"))).toBe(true);
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-window-at-end"))).toBe(true);
+    // Selecting by EVENT time instead would pull both of these in and cut the
+    // two above at the boundary — reintroducing D-3's fabricated drop-off
+    // through a different door.
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-window-before"))).toBe(false);
+    expect(returned.has(sessionIdOf(ids, "ph:db-dc-window-after"))).toBe(false);
+    expect(corpus.sessions.length).toBe(2);
+    expect(corpus.basis.totalInWindow).toBe(2);
+
+    // WHOLE sessions: every event of a selected session, regardless of its own
+    // `occurred_at`.
+    const atStart = corpus.sessions.find(
+      (session) => session.sessionId === sessionIdOf(ids, "ph:db-dc-window-at-start"),
+    );
+    expect(atStart?.events.map((event) => event.sourceEventId)).toEqual([
+      "db-dc-window-at-start-early",
+      "db-dc-window-at-start-inside",
+    ]);
+
+    const atEnd = corpus.sessions.find(
+      (session) => session.sessionId === sessionIdOf(ids, "ph:db-dc-window-at-end"),
+    );
+    expect(atEnd?.events.map((event) => event.sourceEventId)).toEqual(["db-dc-window-at-end-late"]);
+  });
+
+  // --- corpus semantics: ES-4 / ES-14, the path and its version -------------
+
+  it("detector-corpus.service returns a path-less event as null and never coerces an unknown version to 0", async () => {
+    // WHAT THIS PINS, and why it needs the real read. Two `null`s cross this
+    // boundary and BOTH mean something the detector acts on:
+    //
+    //  - `url_path = null` — the event carries no surface. `error_event`
+    //    attributes it to no surface at all rather than to a guessed one, and
+    //    `analysedSessions` counts it into `coverage.eventsWithoutUrlPath` so
+    //    the omission is REPORTED rather than silent (ES-4, BS-4). A read that
+    //    substituted a default path would manufacture a surface out of nothing
+    //    and hide the coverage loss at the same time.
+    //  - `url_path_normalisation_version = null` — "written before versions
+    //    were recorded, redaction status unknown" (ES-14). It is NEVER coerced
+    //    to `0`, which would claim a normalisation that never ran; ruling 28's
+    //    unanimous-or-null rule is what consumes it.
+    //
+    // Nothing above this line seeds either `null`, because `??` in the fixture
+    // silently replaced both — this is the assertion that keeps the seeder's
+    // `=== undefined` honest.
+    const org = await seedCorpusOrg(db, "nulls");
+    const NULLS_BASE = new Date("2026-07-23T08:00:00.000Z");
+    const ids = await seedCorpusSessions(db, org, [
+      {
+        sessionKey: "ph:db-dc-nulls-1",
+        startedAt: NULLS_BASE,
+        events: [
+          {
+            // No path at all, AND no recorded version — a pre-versioning row.
+            sourceEventId: "db-dc-nulls-pathless",
+            occurredAt: NULLS_BASE,
+            urlPath: null,
+            urlPathNormalisationVersion: null,
+          },
+          {
+            // A path, stamped by the current write path.
+            sourceEventId: "db-dc-nulls-pathed",
+            occurredAt: new Date(NULLS_BASE.getTime() + MINUTE_MS),
+            urlPath: "/checkout",
+          },
+        ],
+      },
+    ]);
+
+    const corpus = await createDetectorCorpusService(db, org.ctx).read(org.projectId, WINDOW);
+
+    const session = corpus.sessions.find(
+      (row) => row.sessionId === sessionIdOf(ids, "ph:db-dc-nulls-1"),
+    );
+    expect(session).toBeDefined();
+
+    const pathless = session?.events.find((e) => e.sourceEventId === "db-dc-nulls-pathless");
+    const pathed = session?.events.find((e) => e.sourceEventId === "db-dc-nulls-pathed");
+
+    // NON-VACUITY: both rows really did come back, so the `null` assertions
+    // below are about the values and not about a missing event.
+    expect(pathless).toBeDefined();
+    expect(pathed).toBeDefined();
+
+    // The path-less event survives as `null` — not as a default, not dropped.
+    expect(pathless?.urlPath).toBeNull();
+    // ...and `null` is NEVER `0` (ES-14). `?? 0` at the mapping in
+    // `detector-corpus.service.ts` would pass a `toBeFalsy` and fail this.
+    expect(pathless?.urlPathNormalisationVersion).toBeNull();
+    expect(pathless?.urlPathNormalisationVersion).not.toBe(0);
+
+    // The CONTROL, from the CONSTANT rather than a hardcoded number: a version
+    // bump changes what the write path stamps, and this assertion must follow
+    // it instead of silently pinning a stale value.
+    expect(pathed?.urlPath).toBe("/checkout");
+    expect(pathed?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
+    // The two rows really do disagree, so neither assertion can be satisfied
+    // by a read that returned one value for every event.
+    expect(pathed?.urlPathNormalisationVersion).not.toBe(pathless?.urlPathNormalisationVersion);
+
+    // The session's own entry path follows the same rule: a first event with
+    // no path gives a null `entry_url_path`, never the fixture's default.
+    expect(session?.entryUrlPath).toBeNull();
+  });
+
+  // --- ES-1 vs ES-8 ---------------------------------------------------------
+
+  it("detector-corpus.service distinguishes polled-and-found-nothing (ES-1) from never-polled (ES-8)", async () => {
+    const polled = await seedCorpusOrg(db, "es1-polled");
+    const neverPolled = await seedCorpusOrg(db, "es8-never", { withCompletedPoll: false });
+
+    const polledCorpus = await createDetectorCorpusService(db, polled.ctx).read(
+      polled.projectId,
+      WINDOW,
+    );
+    const neverCorpus = await createDetectorCorpusService(db, neverPolled.ctx).read(
+      neverPolled.projectId,
+      WINDOW,
+    );
+
+    // Both corpora are empty, and an empty `sessions` array alone cannot tell
+    // these apart. `connectionState` — from the existing `deriveConnectionState`,
+    // never a second copy of the branch order — is what makes them two
+    // different answers to the customer.
+    expect(polledCorpus.sessions).toEqual([]);
+    expect(neverCorpus.sessions).toEqual([]);
+    expect(polledCorpus.basis.totalInWindow).toBe(0);
+    expect(neverCorpus.basis.totalInWindow).toBe(0);
+
+    expect(polledCorpus.connectionState.status).toBe("connected_no_events_yet");
+    expect(neverCorpus.connectionState.status).toBe("connected_never_polled");
+    expect(polledCorpus.connectionState.status).not.toBe(neverCorpus.connectionState.status);
   });
 });

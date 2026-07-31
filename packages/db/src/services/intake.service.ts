@@ -19,7 +19,9 @@ import {
   CURRENT_EXCLUSION_RULE_SET,
   EXCLUSION_RULE_SET_VERSION,
   SESSION_GROUPING_VERSION,
+  URL_PATH_NORMALISATION_VERSION,
   classifyExclusion,
+  normaliseUrlPath,
 } from "@growthmind/shared";
 
 import { createEventsRepo, type EventInsertRow } from "../repositories/events.repo";
@@ -60,6 +62,46 @@ function collectedFrom(result: SessionSourcePullResult): {
   return result.ok
     ? { sessions: result.sessions, events: result.events }
     : { sessions: result.partialSessions, events: result.partialEvents };
+}
+
+/**
+ * The version stamp for one event's `url_path` — ASSERTED, never assumed
+ * (security audit M-1).
+ *
+ * `SourceEvent` (`packages/shared/src/session-source/types.ts`) deliberately
+ * carries no version field, so nothing in the port type ties a stamp to the
+ * value having actually been normalised. Today `packages/adapters/src/posthog/
+ * parse.ts` happens to call `normaliseUrlPath`; a second source adapter
+ * forwarding a raw `$current_url` would get the same stamp on an UN-normalised
+ * path, and the §5 PII remediation query (`WHERE url_path_normalisation_version
+ * IS NULL OR < N`) would then never select those rows — a live reset token or
+ * an email address in `events.url_path` made permanently invisible to the
+ * remediation the column exists to enable.
+ *
+ * The check is IDEMPOTENCE, exactly as `assertNormalisedSurface` in
+ * `packages/core/src/findings/evidence-shape.ts`: a value is normalised exactly
+ * when re-normalising it is a no-op. That inherits every rule `normaliseUrlPath`
+ * has and every rule it ever gains, rather than a second copy here that would
+ * drift and then disagree.
+ *
+ * `null` (`urlPath === null`) is stamped WITH the version: there is no path to
+ * be un-redacted, and the D-15 guarantee that `NULL` in the column means exactly
+ * one thing — "redaction status unknown" — depends on a no-path row carrying it.
+ *
+ * FAIL DIRECTION: `null`, and deliberately NOT a throw. `null` means "redaction
+ * status unknown, remediate me" and IS selected by the remediation query,
+ * whereas a false stamp is invisible forever. Intake is a write path: throwing
+ * would lose the event, and a lost event is a worse outcome than a row flagged
+ * for remediation.
+ *
+ * Nothing here echoes the path itself — into a message, a log line, or an error
+ * (PL ruling 29). Echoing the raw value is how a live token escapes the one
+ * column it was confined to.
+ */
+function normalisationVersionFor(urlPath: string | null): number | null {
+  if (urlPath === null) return URL_PATH_NORMALISATION_VERSION;
+
+  return normaliseUrlPath(urlPath, null) === urlPath ? URL_PATH_NORMALISATION_VERSION : null;
 }
 
 /**
@@ -137,6 +179,13 @@ export async function persistPullResult(
       name: event.name,
       occurredAt: event.occurredAt,
       urlPath: event.urlPath,
+      // The version travels WITH the value, exactly as the session stamps
+      // above do. `url_path` is redacted by `normaliseUrlPath`, and a stored
+      // path written under an older rule set may still carry a live token or
+      // an email (§5); this stamp is the only thing that could ever tell a
+      // remediation migration which rows those are — which is why it ASSERTS
+      // the value is normalised rather than assuming it (M-1).
+      urlPathNormalisationVersion: normalisationVersionFor(event.urlPath),
     });
   }
 

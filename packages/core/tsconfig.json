@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Explicit because automatic @types discovery does not traverse bun's
+    // symlinked (isolated) node_modules layout. Brings in bun:test and the
+    // bundled Node compatibility types (see packages/shared/tsconfig.json).
+    //
+    // NOTE: this is the ONLY node-shaped thing in this package, and it is a
+    // TYPE reference for the test runner — no module here imports a node
+    // builtin, which is what makes FR-5's "no clock, no randomness" auditable
+    // by construction rather than by review (D-13).
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"]
+}
