@@ -13,6 +13,13 @@
  * collapse into each other, and to make sure a finding lands whichever rung it
  * falls to.
  *
+ * ── ONE GATE STANDS BEFORE THE LADDER, AND IT IS NOT A RUNG ─────────────────
+ * A candidate whose `surface` is not already in its normalised form is REFUSED
+ * before anything is claimed, sent or written (security audit M-1). It is not a
+ * degradation — there is no rung for it, no `floor_*` sentence, and no finding
+ * row — because the hazard it answers is not "we could not write this up" but
+ * "this value may not leave the process at all". See `surfaceIsSafeToSend`.
+ *
  * ── THE LADDER, IN EXACTLY THIS ORDER (ADD AD-9) ────────────────────────────
  *
  *   no key            -> floor_no_key_configured       [0 claims, 0 calls]
@@ -113,7 +120,11 @@ import type {
   SummaryUsage,
   TenantContext,
 } from "@growthmind/shared";
-import { ANALYSIS_RUN_STATUS_MESSAGES, tenantContextSchema } from "@growthmind/shared";
+import {
+  ANALYSIS_RUN_STATUS_MESSAGES,
+  isNormalisedUrlPath,
+  tenantContextSchema,
+} from "@growthmind/shared";
 
 /**
  * The one-home sentence for "this check did not finish", resolved ONCE.
@@ -267,6 +278,12 @@ export interface AnalysisTickSummary {
    * them. Counted separately because it is neither a finding nor a fault of the
    * model lane — see `floorTextFor`. */
   candidatesUnrenderable: number;
+  /** Candidates refused BEFORE the ladder because their surface was not in its
+   * normalised form (security audit M-1). Counted apart from every other number
+   * here: nothing was claimed, nothing was sent and nothing was written for
+   * them, and folding them into `candidatesUnrenderable` would read as "the
+   * floor could not phrase it" when the truth is "we would not transmit it". */
+  candidatesRefused: number;
   /** Model calls this tick actually made. */
   modelCallsAttempted: number;
 }
@@ -313,7 +330,12 @@ type RenderedSummary = {
 type CandidateAction =
   | { readonly kind: "persist"; readonly summary: RenderedSummary }
   | { readonly kind: "reuse" }
-  | { readonly kind: "unrenderable" };
+  | { readonly kind: "unrenderable" }
+  /** The surface gate refused this candidate before the ladder began. A member
+   * of its own, never `unrenderable`: the two are told apart by a reader of the
+   * logs and of the tick summary, and collapsing them would hide a transmission
+   * refusal inside a rendering complaint. */
+  | { readonly kind: "refused" };
 
 /**
  * One candidate's turn, and whether the cap refused it.
@@ -436,6 +458,56 @@ function floorTextFor(
   }
 }
 
+/**
+ * THE SURFACE GATE (security audit M-1). `false` refuses the candidate outright,
+ * before the ladder starts.
+ *
+ * WHAT IT ANSWERS. `CandidateFinding.surface` is only `z.string().min(1)`
+ * (`core/src/findings/candidate.ts:91`), so a raw url path can arrive carrying a
+ * live password-reset token or an email address in a segment. This lane has two
+ * egress points for that value and both are irreversible: `render` hands it to a
+ * third party, and `persist` writes it to a permanent column. Product decisions
+ * §2–§4 forbid PII in the event stream, and neither egress can be walked back
+ * once taken.
+ *
+ * WHY IT IS HERE AND NOT LOWER. The check itself is not new —
+ * `assertNormalisedSurfaceForSignature` in
+ * `db/src/services/signature-ledger.service.ts` was added by an earlier audit
+ * for this exact reason. But in this lane it ran at `recordIdentity`, which is
+ * AFTER both egress points, and its throw is swallowed there by design (D8). A
+ * correct check placed after the thing it protects is an inert check. So the
+ * predicate is asked once, at the top, where refusing still costs nothing.
+ *
+ * FAIL DIRECTION: WITHHOLD (D10). `isNormalisedUrlPath` answers `false` on any
+ * doubt, and the answer to doubt about a value that may be a secret is to not
+ * send it. The bound on that is the identity case — an already-normalised path
+ * is a no-op through the normaliser — so "refuse on doubt" cannot degrade into
+ * "refuse on everything"; `packages/shared/__tests__/sessions/url-path.test.ts`
+ * pins the near-miss controls, and W13 below pins this lane's own fixtures.
+ *
+ * A REFUSAL IS NOT A DEGRADATION. No claim is taken, no call is made, no row is
+ * written, no `floor_*` sentence is chosen and the run is NOT failed — one
+ * candidate the gate refused must not cost this project every other candidate
+ * (D8 isolation). It is counted, so the refusal is visible rather than silent.
+ *
+ * THE MESSAGE NAMES THE CANDIDATE KEY AND THE CAUSE, NEVER THE SURFACE. The
+ * offending value IS the suspected secret, and a log line is a third place it
+ * would then live. Same discipline as `floorTextFor` above and
+ * `core/src/summary/output-schema.ts:28-32`.
+ */
+function surfaceIsSafeToSend(
+  candidateKey: string,
+  candidate: CandidateFinding,
+  logger: AnalysisLogger,
+): boolean {
+  if (isNormalisedUrlPath(candidate.surface)) return true;
+
+  logger.error(
+    `analysis tick: candidate ${candidateKey} arrived with a page path that is not in the form this product stores, so it was not sent to a model, not written down, and nothing was recorded for it`,
+  );
+  return false;
+}
+
 /** One floor rung, assembled. `floor.source` is carried through exactly as the
  * renderer returned it — this never re-states the cause it asked for. */
 function floorAction(floor: FloorSummary, attribution: CallAttribution): CandidateAction {
@@ -469,6 +541,16 @@ async function planCandidate(
   tickAt: Date,
 ): Promise<CandidatePlan> {
   const { candidate, candidateKey } = item;
+
+  // ── GATE 0: THE SURFACE. NOT A RUNG — it stands before the whole ladder, and
+  //    before rung 1 rather than beside it, because the no-key lane persists a
+  //    finding too and `persist` is an egress point in its own right. Refusing
+  //    here is the only position from which zero claims, zero calls and zero
+  //    rows are all guaranteed by construction rather than by every branch below
+  //    remembering to check. See `surfaceIsSafeToSend`.
+  if (!surfaceIsSafeToSend(candidateKey, candidate, deps.logger)) {
+    return { capExhausted: false, action: { kind: "refused" } };
+  }
 
   const floorPlanFor = (
     source: FloorSummarySource,
@@ -674,6 +756,7 @@ type RunTally = {
   tokensOut: number | null;
   findingsPersisted: number;
   unrenderable: number;
+  refused: number;
   capExhausted: boolean;
 };
 
@@ -688,6 +771,7 @@ function newTally(): RunTally {
     tokensOut: null,
     findingsPersisted: 0,
     unrenderable: 0,
+    refused: 0,
     capExhausted: false,
   };
 }
@@ -820,6 +904,15 @@ async function runLane(
         continue;
       }
 
+      if (plan.action.kind === "refused") {
+        // Already logged by `surfaceIsSafeToSend`. Counted, never silent — and
+        // it does NOT fail the run: one candidate the gate refused must not
+        // cost this project every other candidate (D8 isolation). Kept apart
+        // from `unrenderable` all the way to the tick summary.
+        tally.refused += 1;
+        continue;
+      }
+
       if (plan.action.kind === "unrenderable") {
         // Already logged by `floorTextFor`. Counted, never silent — and it does
         // NOT fail the run: one candidate the floor refused must not cost this
@@ -874,6 +967,7 @@ async function runLane(
     await closeRun(deps, runs, lane, run, tally, "failed", "fatal_error");
     summary.findingsPersisted += tally.findingsPersisted;
     summary.candidatesUnrenderable += tally.unrenderable;
+    summary.candidatesRefused += tally.refused;
     summary.modelCallsAttempted += tally.modelCallsAttempted;
     return "failed";
   }
@@ -893,6 +987,7 @@ async function runLane(
 
   summary.findingsPersisted += tally.findingsPersisted;
   summary.candidatesUnrenderable += tally.unrenderable;
+  summary.candidatesRefused += tally.refused;
   summary.modelCallsAttempted += tally.modelCallsAttempted;
   return "completed";
 }
@@ -953,6 +1048,7 @@ export async function runAnalysisTick(deps: AnalysisTickDeps): Promise<AnalysisT
     lanesErrored: 0,
     findingsPersisted: 0,
     candidatesUnrenderable: 0,
+    candidatesRefused: 0,
     modelCallsAttempted: 0,
   };
 
@@ -982,7 +1078,7 @@ export async function runAnalysisTick(deps: AnalysisTickDeps): Promise<AnalysisT
   }
 
   deps.logger.info(
-    `analysis tick: lanes ${String(summary.lanesConsidered)}, checked ${String(summary.lanesRun)} (${String(summary.lanesFailed)} did not finish), already running ${String(summary.lanesAlreadyRunning)}, errored ${String(summary.lanesErrored)}, findings ${String(summary.findingsPersisted)}, written up ${String(summary.modelCallsAttempted)}, not written up at all ${String(summary.candidatesUnrenderable)}`,
+    `analysis tick: lanes ${String(summary.lanesConsidered)}, checked ${String(summary.lanesRun)} (${String(summary.lanesFailed)} did not finish), already running ${String(summary.lanesAlreadyRunning)}, errored ${String(summary.lanesErrored)}, findings ${String(summary.findingsPersisted)}, written up ${String(summary.modelCallsAttempted)}, not written up at all ${String(summary.candidatesUnrenderable)}, turned away before we looked at them ${String(summary.candidatesRefused)}`,
   );
 
   return summary;

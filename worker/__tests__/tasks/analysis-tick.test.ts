@@ -152,6 +152,21 @@ const CANDIDATE_A = laneCandidate("o11-key-a", "/checkout/payment");
 const CANDIDATE_B = laneCandidate("o11-key-b", "/checkout/review");
 const CANDIDATE_C = laneCandidate("o11-key-c", "/signup/verify");
 
+/**
+ * W13's subject: a surface carrying a live password-reset token in a path
+ * segment — the exact shape `packages/shared/src/sessions/url-path.ts` redacts
+ * and `isNormalisedUrlPath` therefore answers `false` for.
+ *
+ * `CandidateFinding.surface` is only `z.string().min(1)`, so this parses through
+ * the shipped schema like every other fixture here. That is the whole hazard: a
+ * value nothing upstream refuses, reaching a third party and a permanent column.
+ *
+ * The token is a distinctive literal so W13 can assert it appears in NO log
+ * line — the value is the secret, and a log is a third place it would live.
+ */
+const LEAKED_TOKEN = "a1b2c3d4e5f6a7b8c9d0";
+const CANDIDATE_LEAKY = laneCandidate("o11-key-leaky", `/reset-password/${LEAKED_TOKEN}`);
+
 /** The lane's candidate order is FIXED — cap exhaustion is only reproducible
  * because it is (ADD §7.5). */
 function lane(overrides: Partial<AnalysisLane> = {}): AnalysisLane {
@@ -794,4 +809,93 @@ test("a retried task run does not double-persist findings or double-consume the 
     expect(run.status).not.toBe("running");
     expect(TERMINAL).toContain(String(run.status));
   }
+});
+
+// ---------------------------------------------------------------------------
+// W13 — the surface gate stands BEFORE the ladder (security audit M-1)
+// ---------------------------------------------------------------------------
+
+test("a candidate whose surface is not normalised is refused before any model call or cap claim", async () => {
+  const summariser = cleanSummariser();
+  // THE REFUSED CANDIDATE GOES FIRST, so a gate that failed the lane instead of
+  // isolating the candidate would cost the sibling its finding — which is what
+  // the `model_rendered` assertion below would then catch.
+  const h = harness({
+    lanes: [lane({ candidates: [CANDIDATE_LEAKY, CANDIDATE_A] })],
+    summariser,
+  });
+
+  const summary = await runAnalysisTick(h.deps);
+
+  // (1) THE VALUE NEVER LEFT THE PROCESS. `render` is the third-party egress,
+  //     and the counting fake is the only thing that can tell "we refused it"
+  //     from "we sent it and the answer was thrown away".
+  expect(summariser.surfaces()).toEqual([CANDIDATE_A.candidate.surface]);
+  expect(summariser.calls()).toBe(1);
+
+  // (2) AND IT COST NO BUDGET. Not merely "won no claim" — it was never even
+  //     OFFERED to the claim, which is the assertion that pins the gate ABOVE
+  //     rung 2 rather than merely inside it. A candidate the model may not see
+  //     must not consume a limit that exists to ration what the model sees.
+  expect(h.runs.claimAttempts()).toEqual([CANDIDATE_A.candidateKey]);
+  expect(h.runs.claimed()).toEqual([CANDIDATE_A.candidateKey]);
+
+  // (3) NOTHING WAS WRITTEN DOWN. `persist` is the permanent-column egress, and
+  //     it is refused for the same reason `render` is — a stored surface is not
+  //     recallable, and the no-key lane persists a finding too.
+  expect(h.findings.rowFor(CANDIDATE_LEAKY.candidateKey)).toBeUndefined();
+  expect(h.findings.rows()).toHaveLength(1);
+  // Nor was its identity filed: the ledger only ever sees surfaces that landed.
+  expect(h.ledger.recorded()).toEqual([CANDIDATE_A.candidate.surface]);
+
+  // (4) THE SURFACE IS IN NO LOG LINE. The offending value IS the secret, so
+  //     the refusal names the candidate key and the cause and nothing else.
+  //     Asserted over EVERY line this tick wrote, not just the refusal's own.
+  for (const line of h.logs()) {
+    expect(line).not.toContain(LEAKED_TOKEN);
+    expect(line).not.toContain(CANDIDATE_LEAKY.candidate.surface);
+  }
+  // Non-vacuity for (4): the lane did log about this candidate — by key. A
+  // handler that logged nothing at all would otherwise pass the loop above.
+  expect(h.logs().some((line) => line.includes(CANDIDATE_LEAKY.candidateKey))).toBe(true);
+
+  // (5) ONE CANDIDATE REFUSED MUST NOT COST THE PROJECT THE REST (D8). The
+  //     sibling still reaches the top rung, and the run still completes.
+  expect(sourceFor(h, CANDIDATE_A.candidateKey)).toBe("model_rendered");
+  const [run] = h.runs.rows();
+  expect(run?.status).toBe("completed");
+  expect(run?.stopReason).toBe("ran_to_completion");
+
+  // (6) COUNTED, NEVER SILENT — and counted APART from the floor's own refusal.
+  //     `floor_model_text_rejected` and `candidatesUnrenderable` are answers
+  //     about text; this is an answer about transmission, and a reader of the
+  //     tick must not have to guess which happened.
+  expect(summary.candidatesRefused).toBe(1);
+  expect(summary.candidatesUnrenderable).toBe(0);
+  expect(summary.findingsPersisted).toBe(1);
+});
+
+test("the surfaces every other test in this file drives are accepted by the gate", async () => {
+  // W1–W12 assert the ladder's rungs. If the gate refused their fixtures, each
+  // of them would go green for the WRONG REASON — no call made, no row written,
+  // and an assertion on a source that never had to be chosen. This test is the
+  // control that makes that failure loud instead of silent, driven through the
+  // same real entry point rather than by calling the predicate directly.
+  const summariser = cleanSummariser();
+  const h = harness({
+    lanes: [lane({ candidates: [CANDIDATE_A, CANDIDATE_B, CANDIDATE_C] })],
+    summariser,
+  });
+
+  const summary = await runAnalysisTick(h.deps);
+
+  expect(summary.candidatesRefused).toBe(0);
+  // Every one of them reached the model and landed a finding — the gate is a
+  // no-op on an ordinary page path.
+  expect(summariser.surfaces()).toEqual([
+    CANDIDATE_A.candidate.surface,
+    CANDIDATE_B.candidate.surface,
+    CANDIDATE_C.candidate.surface,
+  ]);
+  expect(h.findings.rows()).toHaveLength(3);
 });
