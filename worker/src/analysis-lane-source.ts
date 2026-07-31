@@ -26,11 +26,7 @@ import { SYSTEM_ACTOR, listAnalysableProjects, systemContextFor } from "@growthm
 import { describeError } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
-import {
-  type AnalysisLane,
-  type AnalysisLaneSource,
-  type AnalysisLogger,
-} from "./analysis/types";
+import { type AnalysisLane, type AnalysisLaneSource, type AnalysisLogger } from "./analysis/types";
 
 /**
  * The trailing window a tick analyses, ending at the tick's own instant.
