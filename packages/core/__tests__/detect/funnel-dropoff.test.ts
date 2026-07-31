@@ -436,7 +436,7 @@ function stripComments(source: string): string {
 // ---------------------------------------------------------------------------
 
 describe("detectFunnelDropoff", () => {
-  test("should emit each transition's drop-off as a MeasuredCount over sessions", () => {
+  test("should emit a qualifying origin's drop-off as a MeasuredCount over sessions", () => {
     const corpus = firingCorpus();
 
     // Fixture self-check: 40 sessions selected, 30 kept. If this drifts, every
@@ -449,7 +449,10 @@ describe("detectFunnelDropoff", () => {
     const result = detectFunnelDropoff(corpus, ruleSetV1());
 
     expect(result.detector).toBe("funnel_dropoff");
-    // One observed transition (`/pricing` -> `/checkout`), one candidate.
+    // One qualifying origin (`/pricing`), one candidate — O-005 D-2 emits per
+    // ORIGIN, not per transition. This fixture has a single destination, so the
+    // two happen to coincide here; the multi-destination fixtures at the foot of
+    // this file are what tell them apart.
     expect(result.candidates).toHaveLength(1);
 
     const candidate = result.candidates[0];
@@ -1425,13 +1428,38 @@ const FLOOR_DESTINATION = "/t1flr/checkout";
 const FLOOR_AT_ORIGIN = 20;
 const FLOOR_DROPPED = 10;
 
-/** Varies exactly ONE member. `version: 2` because this is honestly not v1 —
- * v1 is a shipped, immutable decision and nothing here edits it. */
+/**
+ * A version number NO SHIPPED RULE SET CAN EVER CARRY, and that is the whole
+ * requirement it has to meet.
+ *
+ * Registered versions are POSITIVE and assigned in increasing order
+ * (`THRESHOLD_RULE_SETS` holds 1 and 2 today), so a NEGATIVE version collides
+ * with none of them — not with `RULE_SET_V2`, and not with the v3 somebody
+ * ships next. It also reads, at a glance, as what it is: a test-local variant,
+ * never a decision this product made. `-1` is the sentinel; the assertion in
+ * the test below pins that `THRESHOLD_RULE_SETS` does not resolve it.
+ *
+ * WHY NOT `version: 2`, WHICH THIS SAID BEFORE. That was written when no v2
+ * existed and "honestly not v1" was the entire point. O-005 SHIPPED v2
+ * (`funnelMinDropoffSessions: 5`, registered at `THRESHOLD_RULE_SETS.get(2)`),
+ * and this helper is called twice with different floors — so stamping `2` made
+ * THREE distinct rule sets all claim to be version 2. The moment anything
+ * persists a `thresholdRuleSetVersion`, a replay through
+ * `THRESHOLD_RULE_SETS.get(2)` reproduces a decision these numbers never made:
+ * the D12 identity fork the v2 bump was made to PREVENT, reintroduced by a
+ * fixture. No persistence path exists today, which is exactly why it is cheap
+ * to fix now.
+ */
+const SYNTHETIC_RULE_SET_VERSION = -1;
+
+/** Varies exactly ONE member, and stamps a version that is deliberately not a
+ * registered rule set (above). v1 and v2 are shipped, immutable decisions and
+ * nothing here edits either of them. */
 function withMinDropoffSessions(
   rules: ThresholdRuleSet,
   funnelMinDropoffSessions: number,
 ): ThresholdRuleSet {
-  return { ...rules, version: 2, funnelMinDropoffSessions };
+  return { ...rules, version: SYNTHETIC_RULE_SET_VERSION, funnelMinDropoffSessions };
 }
 
 function floorCorpus(): DetectorCorpus {
@@ -1460,6 +1488,18 @@ function floorCorpus(): DetectorCorpus {
 describe("detectFunnelDropoff — funnelMinDropoffSessions (FR-9, FR-22)", () => {
   test("should not fire below funnelMinDropoffSessions", () => {
     const v1 = ruleSetV1();
+
+    // THE SENTINEL IS UNREGISTERED, ASSERTED RATHER THAN ASSUMED. The two
+    // variants below are test-local and must never be mistakable for a shipped
+    // decision: if a rule set ever ships under this version, a replay by
+    // version would reproduce these fixture magnitudes instead of the real
+    // ones (D12). Registering it is what this line makes impossible to do
+    // quietly.
+    expect(THRESHOLD_RULE_SETS.has(SYNTHETIC_RULE_SET_VERSION)).toBe(false);
+    expect(THRESHOLD_RULE_SETS.get(SYNTHETIC_RULE_SET_VERSION)).toBeUndefined();
+    // Non-vacuity: the map really does resolve the versions that DO exist, so
+    // the `false` above is this sentinel's absence and not an empty registry.
+    expect(THRESHOLD_RULE_SETS.has(v1.version)).toBe(true);
 
     // THE v1 REDUNDANCY, ASSERTED RATHER THAN CLAIMED. The largest drop-off the
     // floor can block is `funnelMinDropoffSessions - 1`; the thinnest origin
@@ -1686,15 +1726,20 @@ describe("detectFunnelDropoff — surfaceNormalisationVersion (PL ruling 28)", (
 //   - the TERMINAL SURFACE— an origin with an empty `D(O)` emits nothing (D-2c);
 //   - and over the firing hub, exactly ONE `evidence_shape`.
 
-const FORK_ORIGIN = "/pricing";
-const FORK_DESTINATIONS = ["/checkout", "/help", "/faq"] as const;
+// LANE: every id and path in this block is `esc9f`-prefixed, matching its two
+// siblings (`esc9h`, `esc9t`) and colliding with nothing above. The predecessor
+// used the file's top-level `/pricing` and `/checkout` VALUES — no functional
+// collision, since each test builds its own corpus, but it defeated the
+// grep-by-lane discipline every other fixture block here follows.
+const FORK_ORIGIN = "/esc9f/pricing";
+const FORK_DESTINATIONS = ["/esc9f/checkout", "/esc9f/help", "/esc9f/faq"] as const;
 /** 4 + 6 + 8 reach a destination; the remaining 12 leave the origin outright.
  * 12 of 30 is exactly the 40% rate gate, so the ONE aggregated candidate fires
  * at the boundary rather than comfortably over it. */
 const FORK_AT_ORIGIN = 30;
 const FORK_DROPPED = 12;
 
-/** 30 kept sessions all reach `/pricing`; each destination is reached by a
+/** 30 kept sessions all reach `/esc9f/pricing`; each destination is reached by a
  * different small slice, so EVERY transition clears both the absolute floor
  * and the 40% rate gate. */
 function multiDestinationCorpus(): DetectorCorpus {
@@ -1705,7 +1750,7 @@ function multiDestinationCorpus(): DetectorCorpus {
     for (let n = 0; n < count; n += 1) {
       sessions.push(
         sessionTimeline({
-          sessionId: `fork-${String(index).padStart(3, "0")}`,
+          sessionId: `esc9f-${String(index).padStart(3, "0")}`,
           startedAt: new Date(cohortStart(0).getTime() + index * SESSION_STRIDE_MS),
           paths,
           exclusionReason: "none",
@@ -1721,12 +1766,12 @@ function multiDestinationCorpus(): DetectorCorpus {
   // BEFORE FIX (b), THIS EXACT FIXTURE PRODUCED THREE CANDIDATES, at
   // 26 / 24 / 22 of 30 — one per (origin, destination) pair, each counting
   // "did not reach THIS destination" and each rendering to a founder as
-  // "dropped at /pricing". Three near-identical claims about one page, three
+  // "dropped at /esc9f/pricing". Three near-identical claims about one page, three
   // different numbers, one shared `evidence_shape`. Recorded here so the
   // regression stays legible to a reader who never saw the old loop.
   //
   // After fix (b) it produces ONE candidate whose `dropped` is 12: the
-  // sessions that left `/pricing` without reaching ANY of the three.
+  // sessions that left `/esc9f/pricing` without reaching ANY of the three.
   const REACHED = [4, 6, 8] as const;
   FORK_DESTINATIONS.forEach((destination, slot) => {
     push([FORK_ORIGIN, destination], REACHED[slot]);

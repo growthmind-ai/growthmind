@@ -126,11 +126,18 @@ describe("degradation states — enum totality", () => {
     }
   });
 
-  // FR-18c is enforced at the TYPE level (every enum is a closed Zod union,
-  // never a nullable field standing in for a state) and at the worker's own
-  // wire test (`worker/__tests__/cold-start-analysis.test.ts`) — nothing to
-  // add here beyond confirming every schema is total over its declared
-  // members with no additional `null`/`undefined` arm.
+  // FR-18c is enforced at the TYPE level today — every enum is a closed Zod
+  // union, never a nullable field standing in for a state — and the test
+  // below confirms each schema is total over its declared members with no
+  // additional `null`/`undefined` arm.
+  //
+  // THE WIRE HALF IS NOT ENFORCED YET, and this comment previously claimed it
+  // was: it cited `worker/__tests__/cold-start-analysis.test.ts`, which does
+  // not exist. No worker task, no wire, and no such test ship in this sprint.
+  // Writing that task carries the INHERITED OBLIGATION of asserting FR-18c at
+  // the wire — that a run row surfaces one of these closed states and never a
+  // null standing in for one. Type-level totality alone cannot catch a wire
+  // that writes a state this union never declared.
   test("every enum member has exactly one registered message and no schema admits null", () => {
     expect(Object.keys(ANALYSIS_RUN_STATUS_MESSAGES).toSorted()).toEqual(
       [...analysisRunStatusSchema.options].toSorted(),

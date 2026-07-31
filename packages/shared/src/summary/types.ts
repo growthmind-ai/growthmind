@@ -1,16 +1,21 @@
 import { z } from "zod";
 
 // The cold-start analysis lane's shapes (O-005 D-10, D-1). Zod is the single
-// runtime source of truth; `packages/db`'s enum columns are pinned to these
-// unions via `satisfies` (D9 — the pattern at
-// `packages/db/src/schema/session-source-poll-runs.ts:11-27`), so a typo'd
-// column value is a compile error rather than a runtime surprise.
+// runtime source of truth. This sprint ships NO table and NO migration:
+// nothing in `packages/db` references these unions yet. When the lane's run
+// table is written, its enum columns WILL BE pinned to these unions via
+// `satisfies` (D9) so a typo'd column value is a compile error rather than a
+// runtime surprise — that pinning is an inherited obligation of whoever
+// writes that schema file. The pattern to copy already exists and does this
+// today for the poll-run enums:
+// `packages/db/src/schema/session-source-poll-runs.ts:11-27`.
 //
 // Four closed unions, each TOTAL: no path in this lane may return `null` or
-// `undefined` to mean one of these states. A nullable column exists only
-// where null is itself a fact (`finished_at` before a run ends,
-// `tokens_in`/`tokens_out` when the SDK reported no count) — never as a stand-
-// in for a state this file already names.
+// `undefined` to mean one of these states. That constrains the table when it
+// is written: a nullable column may exist only where null is itself a fact
+// (`finished_at` before a run ends, `tokens_in`/`tokens_out` when the SDK
+// reported no count) — never as a stand-in for a state this file already
+// names.
 //
 // Every member below carries a comment stating what it means to a CUSTOMER,
 // not an engineer — `packages/shared/src/summary/messages.ts` turns each one
@@ -19,8 +24,11 @@ import { z } from "zod";
 // drifting apart.
 
 /**
- * Did the run finish? One row per project per analysis tick
- * (`packages/db/src/schema/analysis-runs.ts`, D-9).
+ * Did the run finish? One row per project per analysis tick — but that run
+ * table is NOT YET BUILT (D-9). There is no
+ * `packages/db/src/schema/analysis-runs.ts`, no migration, and no persistence
+ * in this sprint; this union is the shape its `status` column will be pinned
+ * to when someone writes it.
  */
 export const analysisRunStatusSchema = z.enum([
   /** We are looking at this project's activity right now. A customer landing
@@ -115,18 +123,32 @@ export type SummarySource = z.infer<typeof summarySourceSchema>;
 
 // ---------------------------------------------------------------------------
 // The SummaryRenderer port's result shapes (D-1). Defined here, not in
-// `packages/core`, because `packages/adapters` (the producer) and `worker`
-// (the consumer) both need them and neither may depend on the other; `shared`
-// is the one package both already depend on, and it depends on neither.
+// `packages/core`: `packages/adapters` (the producer) does not depend on
+// `core` — its only workspace dependency is `@growthmind/shared` — so `core`
+// is not reachable from the package that constructs these values. `worker`
+// (the consumer) DOES depend on `@growthmind/adapters`, so the graph between
+// them is one-way, not mutual. `shared` is the package both already depend
+// on and which itself depends on nothing in the workspace (only `zod`), which
+// is why the port's shapes live here rather than beside its implementation.
 // ---------------------------------------------------------------------------
 
 /**
  * Why a model render attempt failed, keyed by MECHANISM rather than by the
- * vendor's own error type — `packages/adapters/src/anthropic/errors.ts` maps
- * every SDK error class onto one of these two, never surfacing vendor text
- * verbatim (D-13):
+ * vendor's own error type:
  * - a schema-violating or unparsable result is `output_invalid`;
  * - everything else (transport, auth, rate limit, timeout) is `call_failed`.
+ *
+ * NOTHING MAPS ONTO THESE TWO MEMBERS YET.
+ * `packages/adapters/src/anthropic/errors.ts` does not exist — no adapter and
+ * no mapping ship in this sprint. That file WILL MAP every SDK error class
+ * onto one of these two.
+ *
+ * INHERITED OBLIGATION, handed forward to whoever writes that adapter (D-13):
+ * the vendor's own error text must NEVER surface verbatim on the failure arm
+ * below. An Anthropic SDK error message can carry request-identifying detail,
+ * and `message: z.string()` accepts it silently — the schema cannot enforce
+ * this, so the adapter must, and it needs a test pinning it. This is a
+ * requirement being handed forward, not a guarantee already met.
  */
 export const summaryFailureCodeSchema = z.enum([
   /** The call completed but what came back could not be read as the
@@ -153,16 +175,19 @@ export type SummaryUsage = z.infer<typeof summaryUsageSchema>;
 /**
  * The port's return value. `resolvedModelId` and `usage` are present on
  * BOTH arms — a call that failed still consumed the cap and may still have
- * been metered, and the run row records the model actually addressed
- * whichever way the call went (`resolved_model_id` is null only when no call
- * was attempted at all, never when one merely failed).
+ * been metered. The run row that will record the model actually addressed
+ * does not exist yet (see the run-table note at the top of this file); when
+ * it is written, its `resolved_model_id` may be null only where no call was
+ * attempted at all, never where one merely failed.
  */
 export const summaryRenderResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
-    /** The model's short, plain-English restatement. Never a number, a
-     * class name, or a confidence word (FR-8) — the schema this is validated
-     * against has no field for any of them. */
+    /** The model's short, plain-English restatement. Never a number, a class
+     * name, or a confidence word (FR-8). The output schema that will enforce
+     * that structurally — `packages/core/src/summary/output-schema.ts`, which
+     * will declare `{ headline, context }` and no field for any of them — is
+     * not written yet. Until it is, FR-8 rests on this comment alone. */
     headline: z.string(),
     context: z.string(),
     resolvedModelId: z.string(),
@@ -171,7 +196,9 @@ export const summaryRenderResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(false),
     code: summaryFailureCodeSchema,
-    /** Plain English. Never the vendor's own error text verbatim. */
+    /** Plain English. Never the vendor's own error text verbatim — the
+     * inherited obligation named on `summaryFailureCodeSchema` above.
+     * `z.string()` cannot enforce it; the adapter that produces this must. */
     message: z.string(),
     resolvedModelId: z.string(),
     usage: summaryUsageSchema,

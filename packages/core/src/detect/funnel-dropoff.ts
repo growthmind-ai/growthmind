@@ -209,11 +209,46 @@ export function detectFunnelDropoff(
   //   FAIL DIRECTION: UNDER-DETECT — the house direction, and the direction
   //   every member of `ThresholdRuleSet` is documented in.
   //
+  //   WHAT D-2a REDUCES `dropped` TO, AND WHY `destinations` CANNOT MOVE THE
+  //   NUMBER. `D(O)` is not supplied from outside: `transitionsOf` builds it
+  //   from THESE SAME KEPT WALKS. So take any walk holding the origin and look
+  //   at the slice after its first visit:
+  //     - if that slice is NON-EMPTY, its first entry is by construction an
+  //       immediate successor of the origin IN THIS VERY WALK, hence a member
+  //       of `rawDestinations`; and it differs from the origin, because
+  //       `pathWalk` collapses consecutive repeats — so it survives the D-2b
+  //       filter and is a member of `destinations`. The `.some(...)` below
+  //       therefore succeeds at the FIRST element it tests, whatever else the
+  //       set holds;
+  //     - if that slice is EMPTY, `.some(...)` is false, whatever the set
+  //       holds.
+  //   `dropped` therefore reduces EXACTLY to "the walk ENDS at the session's
+  //   first visit to the origin" (`walk.indexOf(origin) === walk.length - 1`),
+  //   and the CONTENTS of `destinations` cannot change one session's verdict:
+  //   enlarge the set or shrink it, the count is identical. Read the filter
+  //   expression below as the reduction, not as a lookup whose answer depends
+  //   on the set — "reaches a member of `destinations`" is true but reads as
+  //   though the destination set moves the number, and it does not. Both
+  //   `purity.test.ts` and `funnel-dropoff.test.ts` state this reduction where
+  //   they justify their three-cohort fixtures; it is recorded HERE because
+  //   this is where a maintainer reads the loop.
+  //
+  //   WHAT `destinations` IS STILL FOR, then: the D-2c emptiness gate below,
+  //   and nothing in the count. Note that gate is INERT AS CODE for the same
+  //   reason the D-2b filter above it is — `transitionsOf` only ever KEYS an
+  //   origin that had a successor, so `rawDestinations` is never empty, and no
+  //   walk carries adjacent repeats, so it never contains the origin and the
+  //   filter can never empty it. A terminal surface emits nothing because it
+  //   is never a KEY of the transition map, not because the `continue` runs.
+  //   The D-2c test pins that OUTCOME, which is what a reader should rely on;
+  //   the gate, like the D-2b filter, states the meaning decision in code and
+  //   becomes load-bearing the moment either of those two properties changes.
+  //
   //   D-2b — the origin is NOT a member of its own destination set. As a
   //   statement of MEANING this is a real decision: counting a return to the
   //   origin as "going somewhere it could have gone" would be false to the
-  //   sentence FR-2 gives P-2, "left this page without going anywhere it
-  //   could have gone".
+  //   sentence FR-2 owes a non-technical reader, "left this page without
+  //   going anywhere it could have gone".
   //
   //   AS CODE, THE FILTER BELOW IS INERT — say that plainly rather than
   //   dress it up, and note that it is inert under ANY visit-selection

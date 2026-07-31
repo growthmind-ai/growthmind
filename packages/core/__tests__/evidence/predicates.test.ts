@@ -49,6 +49,20 @@ const EXCEPTION_AT = new Date("2026-07-03T12:00:00.000Z");
 
 // --- rule set, fetched by version, never "current" (D-14) -------------------
 
+/**
+ * The version stamped on rule sets this file INVENTS to exercise a predicate.
+ *
+ * It must never collide with a version the registry hands out, because a
+ * synthetic rule set wearing a registered version is a D12 identity fork: the
+ * moment anything persists `thresholdRuleSetVersion`, a replay through
+ * `THRESHOLD_RULE_SETS.get(...)` reproduces a decision this rule set never
+ * made. Registered versions are positive and assigned in increasing order
+ * (`src/rules/thresholds.ts` — "add version 3 for the next change"), so a
+ * NEGATIVE version collides with nothing today and with no future bump either.
+ * `3` could not promise that.
+ */
+const SYNTHETIC_RULE_SET_VERSION = -1;
+
 /** The v1 rule set fetched BY VERSION. After v2 lands this still reproduces a
  * v1 verdict exactly, which is the property D-14 exists to give us. */
 function ruleSetV1(): ThresholdRuleSet {
@@ -587,15 +601,26 @@ describe("instrumentationProofSatisfied (FR-15, FR-9, D-6, PL ruling 1)", () => 
 
 describe("D-14 — predicates read the rule-set parameter, never the module constant", () => {
   test("should follow the rule set it is handed when its proof-signal list differs from v1", () => {
-    // A hypothetical v2 that admits the uncorrelated kind (this is exactly the
-    // one-line edit FR-19 promises, and exactly the edit ESC-1 says needs
-    // first-party capture before it is safe). If the predicate reached for
-    // `BROKEN_PROOF_SIGNALS_V1` directly instead of reading its parameter,
-    // both assertions below would come out the v1 way and this test would
-    // catch it.
+    // A hypothetical rule set that admits the uncorrelated kind (this is
+    // exactly the one-line edit FR-19 promises, and exactly the edit ESC-1
+    // says needs first-party capture before it is safe). If the predicate
+    // reached for `BROKEN_PROOF_SIGNALS_V1` directly instead of reading its
+    // parameter, both assertions below would come out the v1 way and this
+    // test would catch it.
+    //
+    // STAMPED WITH A SYNTHETIC VERSION, NOT `2`. This once read `version: 2`
+    // on the reasoning that it is "honestly not v1" — true only while no v2
+    // existed. O-005 shipped `RULE_SET_V2` and registered it at
+    // `THRESHOLD_RULE_SETS.get(2)`, so stamping `2` here would mint a THIRD
+    // distinct rule set claiming to be version 2. That is the D12 identity
+    // fork the v2 bump was made to prevent: the moment anything persists
+    // `thresholdRuleSetVersion`, a replay through the registry would
+    // reproduce a decision this rule set never made. A negative version
+    // collides with nothing registered today and with no future bump either,
+    // which `3` could not promise.
     const admitsUncorrelated: ThresholdRuleSet = {
       ...ruleSetV1(),
-      version: 2,
+      version: SYNTHETIC_RULE_SET_VERSION,
       brokenProofSignals: ["failure_uncorrelated"],
       confusingProofSignals: ["clean_exit"],
     };
