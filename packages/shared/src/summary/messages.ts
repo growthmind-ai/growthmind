@@ -120,6 +120,237 @@ export const SUMMARY_SOURCE_MESSAGES: Record<SummarySource, string> = {
     "This shows the numbers on their own. A written explanation was generated but did not pass our accuracy check, so we left it out.",
 };
 
+// ── THE FLOOR RENDERER'S VOCABULARY ─────────────────────────────────────────
+//
+// Fixed templates, as DATA. Substitution happens in `packages/core`; nothing
+// below is a function, and that is load-bearing rather than stylistic: the
+// audit at `packages/shared/__tests__/summary/messages.test.ts:80-97` derives
+// its corpus from this module's string exports and objects of strings and
+// SKIPS functions, so a table opts every sentence in it into the hostile
+// plain-English review for free, while a builder function would escape that
+// review entirely.
+//
+// THE TOKEN VOCABULARY IS CLOSED: `{surface}`, `{numerator}`, `{denominator}`,
+// `{unit}`, `{windowStart}`, `{windowEnd}`. Nothing else is a legal
+// placeholder. A token nobody substitutes would reach a reader verbatim, so
+// the renderer refuses any template it cannot fully resolve rather than
+// printing a half-filled sentence.
+//
+// EVERY TEMPLATE BELOW OBEYS, and each is checked mechanically:
+//   - exactly one sentence, ending in exactly one full stop;
+//   - no `they` / `them` / `their` — every sentence names its own subject, so
+//     two facts standing next to each other can never be read as one group of
+//     sessions. That is the whole shape of the SAC-11 block at the top of this
+//     file: a pronoun is what hands one group the other's behaviour;
+//   - no instruction and no next step — the floor says what was measured and
+//     stops. Nothing shipped can act on a finding yet, and a sentence that
+//     implied otherwise would be promising work that does not exist;
+//   - no visit ordering — neither "first" nor "last" visit is named, so
+//     whichever visit a drop ends up counted at, no sentence here becomes
+//     false;
+//   - no machine identifier — no class name, no detector name, no predicate
+//     name, no version;
+//   - no connective welding two claims into a cause.
+
+/**
+ * The finding classes, restated here as a literal union.
+ *
+ * This is a SECOND statement of `FindingClass`, whose home is
+ * `packages/core/src/rules/types.ts` — unavoidable, because `shared` may not
+ * import `core`. The technique, and this comment's shape, are the ones already
+ * shipped at `packages/shared/src/gate/messages.ts:21-35`. The two statements
+ * cannot drift silently, in either direction:
+ *
+ *   - a class added in `core` WITHOUT its sentence here is a **compile
+ *     error**, because `packages/core/src/summary/floor.ts` annotates its
+ *     import of `FLOOR_OBSERVATION_TEMPLATES` as a `Record` over the real
+ *     `FindingClass`, and a missing key fails that assignment;
+ *   - a key added here WITHOUT a class in `core` is a **test failure**, via
+ *     `the floor template table has exactly one entry per FindingClass` in
+ *     `packages/core/__tests__/summary/floor.test.ts`, which compares this
+ *     table's keys against the schema's own members.
+ */
+type FloorFindingClass = "broken" | "confusing" | "changed_mind" | "instrumentation";
+
+/**
+ * How much weight the evidence can bear, restated as a literal union.
+ *
+ * A SECOND statement of `ConfidenceBasis`, whose home is
+ * `packages/core/src/findings/candidate.ts:30-40`. Same two directions, same
+ * mechanism as the union above: a member added in `core` without its sentence
+ * here is a compile error at the renderer's `Record` annotation, and a key
+ * added here with no member in `core` is a test failure in
+ * `packages/core/__tests__/summary/floor.test.ts`.
+ */
+type FloorConfidenceBasis = "threshold_met" | "at_threshold" | "below_threshold";
+
+/**
+ * What each of a candidate's counts MEANS, restated as a literal union.
+ *
+ * A SECOND statement of `CountRole`, whose home is
+ * `packages/core/src/summary/count-roles.ts`. The roles exist at all because a
+ * candidate's counts arrive as a positional array with no label on them, so
+ * the only thing standing between a reader and the wrong number under the
+ * right sentence is that the position is resolved to a named role before any
+ * sentence is chosen. Same two drift directions as the unions above: a role
+ * added in `core` without its sentence here is a compile error at the
+ * renderer's `Record` annotation; a key added here with no role in `core` is a
+ * test failure in `packages/core/__tests__/summary/floor.test.ts`.
+ */
+type FloorCountRole = "reached_surface" | "left_without_continuing" | "affected_sessions";
+
+/**
+ * The observation sentence, keyed by the class the gate CONCLUDED.
+ *
+ * READ THIS BEFORE MAKING ONE OF THEM MORE VIVID — it is the same rule the
+ * comment at `packages/shared/src/gate/messages.ts:58-85` records, at the one
+ * other place it can recur. A sentence keyed by an outcome is emitted on EVERY
+ * path to that outcome, so it may assert only what is true on the WEAKEST such
+ * path. `broken_unsatisfied` shipped reading "We saw people struggling here"
+ * on paths where nobody had struggled; the mechanism was exactly this.
+ *
+ * Each row below names the proof that must have held for its key to be the
+ * final class, and asserts no more than that proof establishes. Where a proof
+ * carries no cohort magnitude, the sentence does not say "people".
+ */
+export const FLOOR_OBSERVATION_TEMPLATES: Record<FloorFindingClass, string> = {
+  // LICENSED BY `brokenProofSatisfied` (`packages/core/src/evidence/predicates.ts:153`):
+  // a failure signal tied to the action that came before it, carried by at
+  // least `errorMinAffectedSessions` sessions — three, "the smallest number
+  // that can carry the word people" (`packages/core/src/rules/thresholds.ts:107-109`).
+  // The plural subject is licensed by that magnitude. The sentence claims a
+  // thing people do here does not work, and stops: WHY it does not work is not
+  // something any predicate established.
+  broken: "Something people are doing on {surface} is not working.",
+
+  // LICENSED BY `confusingProofSatisfied` (`packages/core/src/evidence/predicates.ts:181`):
+  // a repeated-attempt signal carrying BOTH enough return visits within one
+  // session to be a pattern rather than navigation, AND enough separate
+  // sessions doing it for "people" to be the true word — three of each
+  // (`packages/core/src/rules/thresholds.ts:133,161`). Repetition is the whole
+  // claim. The sentence names no leaving, so it cannot be read together with a
+  // magnitude sentence about sessions that left (SAC-11).
+  confusing: "People are coming back to {surface} over and over.",
+
+  // NO LIVE PATH. Nothing in this repository can produce a candidate carrying
+  // this class: no detector may propose it (`packages/core/src/rules/types.ts:43`),
+  // and it is unreachable as a downgrade destination — its row in the
+  // downgrade map is "drop" (`packages/core/src/evidence/gate.ts:68`). The row
+  // exists because the final class is typed over all four classes, not because
+  // anything arrives here.
+  //
+  // LICENSED BY `changedMindProofSatisfied` (`packages/core/src/evidence/predicates.ts:210`)
+  // if anything ever did arrive: a clean-exit signal present, and no failure
+  // and no struggle signal of any kind. That predicate puts NO magnitude on
+  // the clean exit — a single session satisfies it — so the page is the
+  // subject of this sentence and "people" is not, unlike the two above.
+  changed_mind: "{surface} is being left without anything going wrong.",
+
+  // LICENSED BY `instrumentationProofSatisfied` (`packages/core/src/evidence/predicates.ts:237`):
+  // one known kind of activity arriving at or below its allowed share of what
+  // was expected, and only on an expected count large enough to carry the
+  // comparison. "Almost stopped arriving" is the wording the gate already uses
+  // for this same predicate (`packages/shared/src/gate/messages.ts:97`).
+  //
+  // The sentence stops at the observation. Whether the cause is the tracking
+  // or the product is a SECOND claim, and no predicate settles it — joining it
+  // on here would need the causal connective this vocabulary refuses, and
+  // would state as fact something nothing measured.
+  instrumentation: "One kind of activity we normally see on {surface} has almost stopped arriving.",
+};
+
+/**
+ * The magnitude sentence for each count role.
+ *
+ * EVERY value carries `{numerator}`, `{denominator}` AND `{unit}` in ONE
+ * string. That is what makes "a count never appears without its denominator" a
+ * structural property instead of a rule a caller has to remember: there is no
+ * template here that carries a numerator alone, so there is no call shape that
+ * can render one. A bare number in front of a founder is a claim whose size
+ * cannot be judged.
+ *
+ * `{unit}` is always "sessions" — `MeasuredCount.unit` is the literal
+ * `"sessions"` and never "people" (`packages/core/src/counts/measured-count.ts:70-77`),
+ * because this product does not stitch one person's visits together, and
+ * rendering a session count as a people count would be a larger claim than the
+ * one that was measured.
+ */
+export const FLOOR_COUNT_TEMPLATES: Record<FloorCountRole, string> = {
+  /** The sessions that arrived at the page this claim is about. */
+  reached_surface: "{numerator} of {denominator} {unit} reached {surface}.",
+
+  /**
+   * The count's MEANING, with no visit ordering in it: the sentence names
+   * neither the first nor the last visit, so the open question of which visit
+   * a drop is counted at can change the NUMBER without making this sentence
+   * false. The phrasing is the permitted composition stated at the top of this
+   * file — a separate observation about the PAGE, borrowing no subject from
+   * the sentence before it (SAC-11).
+   */
+  left_without_continuing:
+    "{numerator} of {denominator} {unit} left {surface} without going anywhere it could have gone.",
+
+  /**
+   * The single magnitude a detector reading exceptions claims. It says only
+   * that these sessions were affected: WHAT they ran into is the observation
+   * sentence's claim, and repeating it here would state it twice as though it
+   * had been measured twice.
+   */
+  affected_sessions: "{numerator} of {denominator} {unit} were affected on {surface}.",
+};
+
+/**
+ * How much weight the evidence carries, IN WORDS.
+ *
+ * NO VALUE HERE CONTAINS A DIGIT, and none may ever. There is no numeric
+ * confidence anywhere in this product; inventing one here — a percentage, a
+ * score out of ten — would put a precision in front of a reader that nothing
+ * computed, and it would be the reader's most memorable takeaway precisely
+ * because it looks exact.
+ *
+ * The three sit either side of one boundary, and the middle one exists because
+ * "exactly at the line" is a different fact from "past the line" and is worth
+ * saying out loud.
+ */
+export const FLOOR_CONFIDENCE_TEMPLATES: Record<FloorConfidenceBasis, string> = {
+  /** Above every level the detector applied — "above", because the exactly-at
+   * case is its own member below, so this sentence may not claim a margin it
+   * does not know the size of. */
+  threshold_met: "The numbers behind this sit above the level we ask for before we say anything.",
+  /** Exactly at the inclusive boundary — named rather than folded into the
+   * row above, so a reader is told it was close. */
+  at_threshold:
+    "The numbers behind this sit exactly at the level we ask for before we say anything, and no higher.",
+  /** Below the level. Stated plainly rather than softened: a reader who cannot
+   * tell this apart from the row above has been misled about the one thing
+   * this sentence exists to say. */
+  below_threshold: "The numbers behind this sit below the level we ask for before we say anything.",
+};
+
+/**
+ * The window every count above was measured over.
+ *
+ * Both ends are stated as dates rather than as a phrase like "in the last
+ * week": a relative phrase is relative to a moment this text cannot read, and
+ * it stops being true the day after it is written — in a message a reader may
+ * open, or forward, long after it was produced.
+ */
+export const FLOOR_TIMEFRAME_TEMPLATE: string =
+  "This covers what happened between {windowStart} and {windowEnd}.";
+
+/**
+ * What is said when every session in the window was set aside, leaving a
+ * denominator of zero.
+ *
+ * NEVER a division result and never a blank. Dividing by that zero produces
+ * something that is not a number and would reach a reader as one; a blank
+ * reads as "nothing happened", which is a different and false answer. The
+ * honest answer is that there was nothing left to measure against, and it is
+ * stated in words.
+ */
+export const FLOOR_NO_RATE_TEMPLATE: string =
+  "Every session in this window was set aside, leaving no share to report.";
+
 /**
  * Every fixed customer-facing string this lane produces, in one array, so
  * the plain-English audit below is TOTAL rather than best-effort: a new
@@ -131,4 +362,9 @@ export const ALL_CUSTOMER_FACING_MESSAGES: readonly string[] = [
   ...Object.values(ANALYSIS_OUTCOME_MESSAGES),
   ...Object.values(ANALYSIS_STOP_REASON_MESSAGES),
   ...Object.values(SUMMARY_SOURCE_MESSAGES),
+  ...Object.values(FLOOR_OBSERVATION_TEMPLATES),
+  ...Object.values(FLOOR_COUNT_TEMPLATES),
+  ...Object.values(FLOOR_CONFIDENCE_TEMPLATES),
+  FLOOR_TIMEFRAME_TEMPLATE,
+  FLOOR_NO_RATE_TEMPLATE,
 ];
