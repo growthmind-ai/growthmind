@@ -30,6 +30,14 @@ export const serverEnvSchema = z.object({
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   /**
+   * O-005 D-13: model selection is config, never a hardcoded id. Validated-if-
+   * present only — the worker composition root branches on `ANTHROPIC_API_KEY`
+   * being absent (no key -> no provider, no port passed to the lane), and this
+   * variable never widens that branch on its own. A default lives beside the
+   * adapter's constants, not here; the resolved id lands on the run row.
+   */
+  GROWTHMIND_COLDSTART_MODEL: z.string().min(1).optional(),
+  /**
    * Base64 of 32 random bytes (44 chars) — the AES-256-GCM key wrapping every
    * stored third-party credential (O-003 D-1). Required, with a dev default
    * below, exactly like BETTER_AUTH_SECRET.

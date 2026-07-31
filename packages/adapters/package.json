@@ -11,7 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.24",
+    "@growthmind/core": "workspace:*",
     "@growthmind/shared": "workspace:*",
+    "ai": "^7.0.42",
     "zod": "^4.4.3"
   },
   "devDependencies": {

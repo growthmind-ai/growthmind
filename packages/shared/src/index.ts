@@ -162,3 +162,28 @@ export {
   POSTHOG_P90_RETRIEVAL_SECONDS,
   POSTHOG_MAX_RETRIEVAL_SECONDS,
 } from "./counter/lag";
+
+// --- O-005: the cold-start lane's shapes ------------------------------------
+export {
+  analysisRunStatusSchema,
+  analysisOutcomeSchema,
+  analysisStopReasonSchema,
+  summarySourceSchema,
+  summaryFailureCodeSchema,
+  summaryUsageSchema,
+  summaryRenderResultSchema,
+  type AnalysisRunStatus,
+  type AnalysisOutcome,
+  type AnalysisStopReason,
+  type SummarySource,
+  type SummaryFailureCode,
+  type SummaryUsage,
+  type SummaryRenderResult,
+} from "./summary/types";
+export {
+  ANALYSIS_RUN_STATUS_MESSAGES,
+  ANALYSIS_OUTCOME_MESSAGES,
+  ANALYSIS_STOP_REASON_MESSAGES,
+  SUMMARY_SOURCE_MESSAGES,
+  ALL_CUSTOMER_FACING_MESSAGES as SUMMARY_ALL_CUSTOMER_FACING_MESSAGES,
+} from "./summary/messages";

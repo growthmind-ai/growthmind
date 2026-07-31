@@ -10,11 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.24",
     "@growthmind/adapters": "workspace:*",
+    "@growthmind/core": "workspace:*",
     "@growthmind/db": "workspace:*",
     "@growthmind/shared": "workspace:*",
-    "ai": "^7.0.42",
     "graphile-worker": "^0.17.3"
   },
   "devDependencies": {

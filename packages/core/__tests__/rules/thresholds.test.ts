@@ -316,4 +316,59 @@ describe("THRESHOLD_RULE_SETS (D-14, FR-8, FR-9, FR-11)", () => {
       expect(keys).toContain(documentedKey);
     }
   });
+
+  // D-3 (O-005). THE BUMP AND ITS PROOF, TOGETHER: `THRESHOLD_RULE_SET_VERSION`
+  // is now 2, and rule set 1 stays resolvable by key and byte-identical to the
+  // SAME literal item 1 above pins — not merely "still equal to some v1
+  // object", so this test cannot pass by drifting alongside an accidental edit
+  // to that literal. It also re-checks the content hash independently of item
+  // 2 above, because "the fields look right" and "the golden still matches"
+  // are different failure modes and this is the one test that must catch both
+  // after a version bump.
+  test("THRESHOLD_RULE_SET_VERSION is 2 and rule set 1 remains registered and byte-identical", () => {
+    expect(THRESHOLD_RULE_SET_VERSION).toBe(2);
+
+    const v1 = ruleSetV1();
+    expect(v1).toEqual({
+      version: 1,
+      exceptionEventName: "$exception",
+      passiveEventNames: ["$pageview", "$pageleave", "$identify", "$web_vitals"],
+      vendorEventPrefix: "$",
+      userInitiatedVendorEvents: ["$autocapture", "$rageclick", "$dead_click", "$copy_autocapture"],
+      errorCorrelationWindowMs: 30_000,
+      errorMinAffectedSessions: 3,
+      funnelMinSessionsAtOrigin: 20,
+      funnelMinDropoffSessions: 5,
+      funnelDropoffRateThresholdPercent: 40,
+      struggleRepeatedAttemptMin: 3,
+      struggleMinStrugglingSessions: 3,
+      instrumentationDropRatioPercent: 20,
+      instrumentationMinExpected: 50,
+      brokenProofSignals: ["failure_correlated"],
+      confusingProofSignals: ["struggle"],
+      changedMindProofSignals: ["clean_exit"],
+      instrumentationProofSignals: ["instrumentation_rate_drop"],
+    });
+
+    const serialisedV1 = canonicalJson(v1);
+    const actualV1Hash = createHash("sha256").update(serialisedV1, "utf8").digest("hex");
+    expect(actualV1Hash).toBe(V1_CONTENT_HASH);
+
+    // Rule set 2 is registered, is CURRENT, and its NUMERIC VALUES are
+    // unchanged from v1 — only `version` may differ (D-3: the semantics of
+    // three of these numbers changed, the printed values did not). Asserted
+    // structurally — v1's fields minus `version`, compared against v2's
+    // fields minus `version` — rather than by re-listing every field a
+    // second time, so this assertion cannot silently drift out of sync with
+    // the v1 pin above.
+    const v2 = THRESHOLD_RULE_SETS.get(2);
+    if (!v2) throw new Error("threshold rule set version 2 must be registered");
+    expect(v2.version).toBe(2);
+    const { version: _v1Version, ...v1Values } = v1;
+    const { version: _v2Version, ...v2Values } = v2;
+    expect(v2Values).toEqual(v1Values);
+
+    expect(THRESHOLD_RULE_SETS.size).toBe(2);
+    expect(CURRENT_THRESHOLD_RULE_SET).toBe(v2);
+  });
 });
