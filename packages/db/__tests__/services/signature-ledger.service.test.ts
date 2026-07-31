@@ -86,6 +86,12 @@ function fixtureCount(now: Date) {
 function buildCandidate(now: Date, overrides: Record<string, unknown> = {}): CandidateFinding {
   return candidateFindingSchema.parse({
     detector: "funnel_dropoff",
+    // O-005's ESC-9 candidate contract (merged to main after this sprint
+    // branched) made `claimSubject` a required literal. It is not a signature
+    // tuple input — identity is (projectId, surfaceId, symptomClass,
+    // evidenceShape) and nothing else (D-5/D-6) — so this addition must not,
+    // and does not, move any golden digest in this file.
+    claimSubject: "surface",
     claimedClass: "broken",
     finalClass: "broken",
     trace: [
