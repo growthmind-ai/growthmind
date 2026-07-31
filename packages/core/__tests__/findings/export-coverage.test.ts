@@ -297,6 +297,10 @@ const EXPECTED_TEST_TITLES: ReadonlyMap<string, string> = new Map([
     "creates one row and increments times_seen to 2 when the same signature is recorded twice",
   ],
   [
+    "carryForwardValues",
+    "carries the old ledger row's provenance and lifetime state onto the new signature without naming an organization",
+  ],
+  [
     "createDismissalsRepo",
     "writes one dismissal row and returns the same result when the dismissal path is called twice with the same payload",
   ],

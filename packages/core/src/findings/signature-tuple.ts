@@ -47,8 +47,6 @@
 // falling back to the current serialiser — a silent fallback would mint a
 // v1-shaped string for a v2 caller and silently detach every guarantee
 // hanging off the signature (same reasoning as `evidence-shape.ts:160-172`).
-//
-// Implemented (Wave 1) against this scaffold's final signatures.
 import type { FindingClass } from "../rules/types";
 // `canonicalJson` is the ONE canonical-string producer this module must call
 // from `serialiseV1` — never re-implemented (D-13).

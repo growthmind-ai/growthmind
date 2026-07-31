@@ -9,15 +9,16 @@
 // see `dismissals.repo.ts`'s own header). This suite drives the write
 // through `createSignatureLedgerService`'s `recordDismissal` and reads back
 // through `createDismissalsRepo`'s public contract — except in the second
-// test, whose ENTIRE POINT is the unique index itself, which the
-// schema/migration already applies for real; see that test's own note on
-// why it still runs RED today.
+// test, whose ENTIRE POINT is the unique index itself, asserted with a raw
+// insert directly against the real migration, independent of the repository
+// or service layer.
 //
-// `recordDismissal`'s body is a Wave 0B stub that throws "not implemented"
-// unconditionally, so the first test fails on that alone today.
+// IMPLEMENTED: `recordDismissal` and every method here run real logic — no
+// stub throws remain in this suite's path.
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { eq } from "drizzle-orm";
 
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
 import * as schema from "../../src/schema";
@@ -136,11 +137,49 @@ describe("dismissals repository", () => {
       /dismissals_org_finding_action_key|duplicate key|unique constraint/i,
     );
 
-    // The repository read-back is what makes this test RED today: `findFor`
-    // is itself a Wave 0B stub, so this call throws "not implemented" even
-    // though the constraint check above already ran against real SQL.
     const repo = createDismissalsRepo(db, org.ctx);
     const survivor = await repo.findFor(findingId, action);
     expect(survivor?.id).toBe(firstRow.id);
+  });
+
+  // T-DB-21 (post-sprint audit Finding 3). The migration declares
+  // `dismissed_by_user_id … ON DELETE set null` (ADD D-7) — a dismissal must
+  // outlive its author. Nothing exercised this until now: a future schema
+  // edit that flipped `set null` to `cascade` would silently un-suppress
+  // every dismissal an ex-employee ever made, with no error, and would ship
+  // green without this test.
+  it("keeps the dismissal row when its author's user row is deleted", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-dismiss-author-deleted",
+      userName: "Owner Dismiss Author Deleted",
+      email: "owner-dismiss-author-deleted@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "checkout-dismiss-author-deleted",
+    });
+    const service = createSignatureLedgerService(db, org.ctx);
+    const repo = createDismissalsRepo(db, org.ctx);
+    const payload = {
+      projectId: project.id,
+      findingId: "finding-author-deleted-0001",
+      signature: testSignature("1".repeat(64)),
+      action: "not_useful" as const,
+      dismissedByUserId: org.userId,
+    };
+
+    const dismissal = await service.recordDismissal(payload);
+    expect(dismissal.dismissedByUserId).toBe(org.userId);
+
+    // Delete the AUTHOR's user row directly — the exact event `set null`
+    // (never `cascade`) is declared against.
+    await db.delete(schema.user).where(eq(schema.user.id, org.userId));
+
+    const survivor = await repo.findFor(payload.findingId, payload.action);
+    expect(survivor?.id).toBe(dismissal.id);
+    // The ATTRIBUTION is lost (`set null`) but the SUPPRESSION is not — the
+    // row and its `dismissedAt` survive the author's deletion.
+    expect(survivor?.dismissedByUserId).toBeNull();
+    expect(survivor?.dismissedAt.getTime()).toBe(dismissal.dismissedAt.getTime());
   });
 });

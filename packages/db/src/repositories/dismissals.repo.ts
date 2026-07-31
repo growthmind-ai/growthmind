@@ -25,9 +25,19 @@ export interface DismissalsRepo {
    * dismissal has been recorded for this finding/action, or for a foreign
    * org's finding. */
   findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null>;
-  /** Org-filtered lookup by signature, newest first — the read `consultSignature`
-   * and `recordDismissal` use to check for a prior dismissal without joining
-   * `findings`. `null` when this signature has never been dismissed. */
+  /** Org- AND project-filtered lookup by signature, newest first — the read
+   * `consultSignature` uses to check for a prior dismissal without joining
+   * `findings`. `null` when this signature has never been dismissed under
+   * this org/project.
+   *
+   * `projectId` NARROWS THIS QUERY (review CR-13). An earlier draft accepted
+   * it and immediately discarded it "for call-site symmetry" — a parameter
+   * that looks like a scope narrowing and is not is the D2 trap this
+   * codebase has already paid for. D-10's declared exemption
+   * ("`dismissals.project_id` is stamped but never filtered on") is
+   * satisfied by `findFor`, which takes no project at all; a read whose
+   * caller HANDS us a project id must honour it, or a caller passing a
+   * foreign project id would be answered from another project's history. */
   findLatestForSignature(projectId: string, signature: SignatureHex): Promise<DismissalRecord | null>;
 }
 
@@ -54,19 +64,17 @@ export function createDismissalsRepo(db: ScopedDb, ctx: TenantContext): Dismissa
       projectId: string,
       signature: SignatureHex,
     ): Promise<DismissalRecord | null> {
-      // `project_id` is stamped but declared exempt from the filter
-      // (D-10 row 2) — deliberately NOT named here; the read is scoped by
-      // organization_id + signature only. `projectId` is accepted as a
-      // parameter for call-site symmetry with the rest of this repo's
-      // methods, not because it narrows this query.
-      void projectId;
-
+      // organization_id FIRST, then the project the caller named, then the
+      // signature. `project_id` is inside the signature's own hash (D-5), so
+      // this predicate can never exclude a legitimate row — it can only
+      // refuse a caller who named a project the dismissal does not belong to.
       const [row] = await db
         .select()
         .from(dismissals)
         .where(
           and(
             eq(dismissals.organizationId, ctx.organizationId),
+            eq(dismissals.projectId, projectId),
             eq(dismissals.signature, signature),
           ),
         )

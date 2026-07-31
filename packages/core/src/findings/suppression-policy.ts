@@ -32,11 +32,6 @@
 // HERE, in `packages/core`, as primitives and `Date | null` only — never a
 // drizzle row (`$inferSelect`) — so the policy is testable with a literal and
 // `core -> db` stays forbidden (C-c).
-//
-// Implemented in a later wave against this scaffold's final signatures —
-// every function body below throws `not implemented`. Only the exported
-// names, types, the map, and the constants are real (this is a Wave 2 TDD
-// contract task, not an implementation task).
 import type { SuppressionReasonCode } from "@growthmind/shared";
 
 /**
@@ -105,9 +100,6 @@ export const SUPPRESSION_POLICIES: ReadonlyMap<number, SuppressionPolicy> = new 
  * `already_delivered` for a dismissed signature would let a future
  * "resurface after N days" policy (OQ-1) un-suppress a dismissal it must
  * never touch.
- *
- * NOT IMPLEMENTED — this is a Wave 2 TDD contract. A later wave fills this
- * body in against the failing tests a later wave writes.
  */
 function policyV1(state: ResolvedLedgerState): SuppressionDecision {
   if (state.resolution === "unresolvable_ancestry") {
@@ -139,9 +131,6 @@ function policyV1(state: ResolvedLedgerState): SuppressionDecision {
  * Dispatch is BY VERSION, through the map, rather than by "whatever is
  * current" — see the header for why an unknown version throws rather than
  * falling back.
- *
- * NOT IMPLEMENTED — this is a Wave 2 TDD contract. A later wave fills this
- * body in against the failing tests a later wave writes.
  */
 export function suppressionDecision(state: ResolvedLedgerState, version: number): SuppressionDecision {
   const policy = SUPPRESSION_POLICIES.get(version);

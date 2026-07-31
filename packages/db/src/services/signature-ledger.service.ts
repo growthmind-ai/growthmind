@@ -25,7 +25,6 @@
 // cache in front of any read in this service, and a later wave must not add
 // one without re-litigating this note.
 //
-// Implemented (Wave 5) against this scaffold's final signatures.
 // `computeFindingSignature`'s dispatch composes `signatureTuple`
 // (`@growthmind/core`, pure) and `sha256Hex` (`../signatures/hex`, this
 // package) — the ONE function that turns a candidate into a signature (ADD
@@ -37,6 +36,42 @@
 // churn) must land on the live row, never silently stamp a signature nothing
 // consults anymore.
 //
+// ── THE ONE FAIL DIRECTION FOR AN UNRESOLVABLE ANCESTRY WALK (review CR-10) ──
+// Stated once, here, because the read path and the write paths must not
+// disagree about it — an earlier revision had `consultSignature` SUPPRESS on
+// `unresolvable` while `resolveForward` degraded to the unresolved input, so
+// a dismissal was stamped onto a signature the read path had just declared
+// unknowable.
+//
+// THE RULE: an unresolvable walk NEVER moves the system toward an extra
+// delivery, and NEVER discards a customer's action. Concretely:
+//
+//   - `consultSignature` (read)              → SUPPRESS / unresolvable_ancestry.
+//   - `recordDismissal` (write)              → record against the UNRESOLVED
+//                                              input signature.
+//   - `markSignatureDelivered` (write)       → stamp the UNRESOLVED input
+//                                              signature.
+//
+// Those are ONE direction, not two: every branch either withholds a delivery
+// or records something whose only effect is MORE suppression. Refusing the
+// writes was considered and rejected — a throw inside `recordDismissal`
+// destroys the customer's "Not useful" click outright (the failure CR-1
+// names as the worst available), and it destroys it in exactly the state
+// where the ledger is already known to be sick. Recording against the
+// unresolved signature loses nothing: a dismissal keyed on that signature
+// still suppresses it, and if the ancestry chain is later repaired,
+// `recordAncestry`'s carry-forward propagates the dismissal onto the live
+// row via `coalesce(...)`. Both unresolvable branches log at `console.error`.
+//
+// ── THE DISMISSAL IS DURABLE INDEPENDENTLY OF THE LEDGER (review CR-1) ──────
+// `dismissals` and `finding_signatures` have two independent producers with
+// no ordering guarantee: a Slack "Not useful" click can arrive before the
+// analysis lane has ever recorded the signature. `recordDismissal` therefore
+// treats the `dismissals` ROW as the durable record of the customer's
+// decision and the ledger's `dismissed_at` as a denormalised fast path —
+// never the other way round. `consultSignature` reads BOTH, so the
+// suppression holds regardless of arrival order.
+//
 // `recordDismissal` and `recordAncestry` each open exactly one
 // `db.transaction(async (tx) => { … })` and write on `tx` directly — never
 // through a repository factory constructed over `tx`, because `ScopedDb`
@@ -47,7 +82,7 @@
 // naming `ctx.organizationId` literally (ADD D-8). Repository factories
 // (`createFindingSignaturesRepo`, `createSignatureAncestryRepo`) are used
 // everywhere else, where a single read or a single atomic upsert is enough.
-import type { AncestryReason, DismissalAction, TenantContext } from "@growthmind/shared";
+import { normaliseUrlPath, type AncestryReason, type DismissalAction, type TenantContext } from "@growthmind/shared";
 import type {
   CandidateFinding,
   FindingClass,
@@ -63,10 +98,13 @@ import {
 } from "@growthmind/core";
 import { and, eq, sql } from "drizzle-orm";
 
-import type { DismissalRecord } from "../repositories/dismissals.repo";
+import { createDismissalsRepo, type DismissalRecord } from "../repositories/dismissals.repo";
 import { createProjectsRepo } from "../repositories/projects.repo";
 import {
+  carryForwardValues,
+  CARRY_FORWARD_SET,
   createFindingSignaturesRepo,
+  LEDGER_CONFLICT_TARGET,
   type FindingSignatureRecord,
 } from "../repositories/finding-signatures.repo";
 import {
@@ -97,6 +135,48 @@ export interface ComputeFindingSignatureInput {
 }
 
 /**
+ * Belt-and-braces refusal (post-sprint audit Finding 4, security):
+ * `surface` is persisted PERMANENTLY into `finding_signatures.surface` and
+ * hashed into the identity by `computeFindingSignature` below, with NO
+ * normalisation check anywhere in `packages/db` before this one.
+ * `CandidateFinding.surface` is only `z.string().min(1)` at the schema
+ * level; the one existing refusal, `assertNormalisedSurface`
+ * (`@growthmind/core`'s `evidence-shape.ts:104-114`), validates the string
+ * fed into EVIDENCE SHAPE — a different field on the same candidate — not
+ * the `surface` this function receives. A caller can construct a
+ * `ComputeFindingSignatureInput` directly (as this file's own tests do) and
+ * never touch `evidenceShape()` at all.
+ *
+ * The stakes here are higher than at that first check: a raw,
+ * un-normalised URL path can carry a live password-reset token or an email
+ * address (`normaliseUrlPath`'s own H-2 rationale), and here it would be
+ * written into an UN-DELETABLE ledger row and baked into a sha256 identity
+ * that this sprint's own design never rewrites once minted (D12).
+ *
+ * FAIL DIRECTION: refuse — but bounded, exactly like `assertNormalisedSurface`:
+ * the check is IDEMPOTENCE (re-normalising is a no-op), not a pattern list,
+ * so an already-normalised path never trips it.
+ *
+ * The refusal message names ONLY the expected format and echoes NEITHER
+ * the raw value NOR its normalised form — stricter than
+ * `evidence-shape.ts:108-113`'s own message, which names the normalised
+ * result. Deliberate: echoing anything derived from the offending value is
+ * exactly how a token or an email address reaches a log line, and this is
+ * the last gate before the value is hashed into a permanent record.
+ */
+function assertNormalisedSurfaceForSignature(surface: string): void {
+  if (normaliseUrlPath(surface, null) === surface) {
+    return;
+  }
+
+  throw new Error(
+    "computeFindingSignature refuses a surface that is not already a normaliseUrlPath fixed point: " +
+      "a surface must equal its own normalised form (packages/shared's normaliseUrlPath) before it " +
+      "can enter a finding's permanent identity.",
+  );
+}
+
+/**
  * The ONE function that turns a candidate into a signature (ADD D-1, D11,
  * FR-I(e)) — the only caller of `sha256Hex` in production code.
  *
@@ -107,6 +187,8 @@ export function computeFindingSignature(
   input: ComputeFindingSignatureInput,
   version: number = SIGNATURE_TUPLE_VERSION,
 ): SignatureHex {
+  assertNormalisedSurfaceForSignature(input.surface);
+
   return sha256Hex(
     signatureTuple(
       {
@@ -205,10 +287,19 @@ export interface SignatureLedgerService {
    * Caller: a later outcome's surface-derivation swap; version-bump
    * migrations. In ONE transaction (ADD D-3a, D-8): inserts the
    * `signature_ancestry` edge `(org, project, old, new, reason)`, then
-   * carries the old ledger row's state forward onto the new signature
-   * (`carryForward`) — this is D12's own named remedy: a dismissal survives
-   * a re-key because the ledger row carried it, not because a read path
-   * searched for it.
+   * carries the old ledger row's state forward onto the new signature via
+   * `carryForwardValues`/`CARRY_FORWARD_SET` (`../repositories/finding-signatures.repo.ts`,
+   * review CR-12 — the ONE shared definition of carry-forward, also used by
+   * `FindingSignaturesRepo.carryForward`) — this is D12's own named remedy:
+   * a dismissal survives a re-key because the ledger row carried it, not
+   * because a read path searched for it.
+   *
+   * IDEMPOTENT on retry (post-sprint audit Finding 2, D4/D6): the edge
+   * insert is guarded by `onConflictDoNothing` on the same unique index
+   * `(organization_id, old_signature)`; a retry reads back the existing
+   * edge and returns it WITHOUT repeating the carry-forward step, because
+   * `times_seen = existing + old.times_seen` would double-count on a second
+   * application.
    *
    * THROWS, before the transaction opens, on a foreign `projectId` (M-2).
    */
@@ -237,6 +328,7 @@ export function createSignatureLedgerService(
 ): SignatureLedgerService {
   const ledgerRepo = createFindingSignaturesRepo(db, ctx);
   const ancestryRepo = createSignatureAncestryRepo(db, ctx);
+  const dismissalsRepo = createDismissalsRepo(db, ctx);
   const projectsRepo = createProjectsRepo(db, ctx);
 
   /**
@@ -307,12 +399,17 @@ export function createSignatureLedgerService(
   }
 
   /**
-   * Resolves `signature` FORWARD through `signature_ancestry` (ADD D-3(b)):
-   * a caller holding a stale pre-re-key signature must land on the live
-   * row. An unresolvable walk (a cycle or the hop cap) has no "live" answer
-   * to fall back to, so it degrades to the ORIGINAL input signature —
-   * logged, never thrown — leaving the caller to operate on the signature
-   * it was given rather than silently substituting a different one.
+   * Resolves `signature` FORWARD through `signature_ancestry` (ADD D-3(b))
+   * for the WRITE paths: a caller holding a stale pre-re-key signature must
+   * land on the live row.
+   *
+   * An unresolvable walk (a cycle or the hop cap) has no "live" answer, so it
+   * degrades to the ORIGINAL input signature — logged, never thrown. That is
+   * the write half of this file's ONE declared fail direction (see the header,
+   * review CR-10): the read path suppresses, the write paths record against
+   * the unresolved signature, and both branches only ever withhold a delivery
+   * or add suppression. Refusing here would throw away the customer's
+   * dismissal, which is strictly worse.
    */
   async function resolveForward(signature: SignatureHex): Promise<SignatureHex> {
     const resolution = await ancestryRepo.resolve(signature);
@@ -414,9 +511,36 @@ export function createSignatureLedgerService(
       }
 
       const row = await ledgerRepo.findBySignature(projectId, resolution.signature);
-      const rowState: LedgerRowState | null = row
+      let rowState: LedgerRowState | null = row
         ? { deliveredAt: row.deliveredAt, dismissedAt: row.dismissedAt }
         : null;
+
+      // ── "DISMISSED FOREVER" DOES NOT DEPEND ON THE LEDGER ROW (CR-1, CR-2) ──
+      // `dismissals` and `finding_signatures` have two independent producers
+      // with no ordering guarantee (a Slack "Not useful" click vs. the
+      // analysis lane), so the ledger row can be missing, or present with a
+      // null `dismissed_at`, at the moment a dismissal already exists. Reading
+      // ONLY `finding_signatures.dismissed_at` here made the permanent
+      // suppression silently fail in exactly that window. The `dismissals`
+      // row is the durable record; the ledger stamp is the fast path.
+      //
+      // Cost is bounded: this second read runs ONLY when the ledger has not
+      // already answered "dismissed", so the steady state (dismissal stamped,
+      // ledger row present) still costs one query on the delivery hot path.
+      // `findLatestForSignature` is org- AND project-filtered (CR-13), so it
+      // widens nothing a foreign project id could not already reach.
+      if (rowState === null || rowState.dismissedAt === null) {
+        const dismissal = await dismissalsRepo.findLatestForSignature(
+          projectId,
+          resolution.signature,
+        );
+        if (dismissal) {
+          rowState = {
+            deliveredAt: rowState?.deliveredAt ?? null,
+            dismissedAt: dismissal.dismissedAt,
+          };
+        }
+      }
 
       return suppressionDecision({ resolution: "resolved", row: rowState }, SUPPRESSION_POLICY_VERSION);
     },
@@ -485,7 +609,28 @@ export function createSignatureLedgerService(
 
         // `dismissed_at = coalesce(dismissed_at, $now)` — permanent once
         // set; a replay never moves the original instant (D-8, D4).
-        await tx
+        //
+        // THE ROW COUNT IS CHECKED (review CR-1). This UPDATE legitimately
+        // matches ZERO rows when the dismissal arrives before the analysis
+        // lane ever recorded the signature — two independent producers, no
+        // ordering guarantee. It used to return success regardless, and the
+        // permanent suppression evaporated the moment `recordSignature`
+        // later inserted a fresh row with `dismissed_at = NULL`.
+        //
+        // WHY NOT AN UPSERT HERE: `finding_signatures` requires
+        // `symptom_class`, `surface`, `signature_tuple_version`, and
+        // `evidence_shape_version` NOT NULL, and a dismissal carries none of
+        // them. Inserting a ledger row from this path would have to fabricate
+        // that provenance — and `upsertSeen`'s conflict-update deliberately
+        // does NOT overwrite those columns (D-9), so the fabricated values
+        // would be permanent and unrepairable. A row that lies about what a
+        // finding IS, forever, is worse than an absent one.
+        //
+        // WHY NOT THROW: the `dismissals` insert above is the durable record
+        // of the customer's decision, and `consultSignature` reads it as a
+        // fallback — so the suppression HOLDS without this stamp. Throwing
+        // would roll back a dismissal that is already correct.
+        const stamped = await tx
           .update(findingSignatures)
           .set({ dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, ${now})` })
           .where(
@@ -494,7 +639,16 @@ export function createSignatureLedgerService(
               eq(findingSignatures.projectId, input.projectId),
               eq(findingSignatures.signature, resolvedSignature),
             ),
+          )
+          .returning();
+
+        if (stamped.length === 0) {
+          console.error(
+            "signature-ledger: dismissal recorded before any ledger row exists for this signature — " +
+              "suppression is held by the dismissals row, which consultSignature reads as a fallback",
+            { findingId: input.findingId, action: input.action },
           );
+        }
 
         return dismissalRow;
       });
@@ -508,12 +662,20 @@ export function createSignatureLedgerService(
 
       // ONE transaction (ADD D-3a, D-8): the edge insert and the
       // carry-forward upsert succeed together or not at all. The
-      // carry-forward half is hand-written here on `tx` — mirroring
-      // `finding-signatures.repo.ts`'s `carryForward` exactly — rather than
-      // calling the repository method, which is constructed over `db`, not
-      // `tx`, and could not share this transaction.
+      // carry-forward half runs on `tx` here, sharing the ONE definition of
+      // its values/conflict-update with `finding-signatures.repo.ts`'s
+      // `carryForward` (review CR-12) — rather than calling the repository
+      // method itself, which is constructed over `db`, not `tx`, and could
+      // not share this transaction.
       return db.transaction(async (tx) => {
-        const [edge] = await tx
+        // IDEMPOTENT ON RETRY (post-sprint audit Finding 2, D4/D6): guarded
+        // by `onConflictDoNothing` on the same unique index the schema
+        // already enforces, `(organization_id, old_signature)`. Every OTHER
+        // write path in this service degrades cleanly on replay
+        // (`upsertSeen`, `markDelivered`, `recordDismissal`); this insert
+        // used to have no guard at all and raised a raw Postgres unique
+        // violation on a second identical call.
+        const [insertedEdge] = await tx
           .insert(signatureAncestry)
           .values({
             organizationId: ctx.organizationId,
@@ -522,13 +684,41 @@ export function createSignatureLedgerService(
             newSignature: input.newSignature,
             reason: input.reason,
           })
+          .onConflictDoNothing({
+            target: [signatureAncestry.organizationId, signatureAncestry.oldSignature],
+          })
           .returning();
 
-        if (!edge) {
-          throw new Error(
-            "signature-ledger.recordAncestry: ancestry edge insert returned no row",
-          );
+        if (!insertedEdge) {
+          // CONFLICT: this old_signature already has a forward edge under
+          // this org — a RETRY of this exact call, not a new mapping. The
+          // carry-forward below already ran on the ORIGINAL call; it must
+          // NOT run again here, because `times_seen = existing +
+          // old.times_seen` (`CARRY_FORWARD_SET`) is not idempotent under a
+          // second application — running it twice would double-count the
+          // ledger. Read back the existing edge and return it unchanged,
+          // mirroring `recordDismissal`'s own
+          // onConflictDoNothing-then-read-back idempotence.
+          const [existingEdge] = await tx
+            .select()
+            .from(signatureAncestry)
+            .where(
+              and(
+                eq(signatureAncestry.organizationId, ctx.organizationId),
+                eq(signatureAncestry.oldSignature, input.oldSignature),
+              ),
+            );
+
+          if (!existingEdge) {
+            throw new Error(
+              "signature-ledger.recordAncestry: insert conflicted but no existing edge was found on read-back",
+            );
+          }
+
+          return existingEdge;
         }
+
+        const edge = insertedEdge;
 
         // The OLD signature may never have been recorded (e.g. a
         // version-bump migration ancestry edge drawn before any candidate
@@ -550,37 +740,24 @@ export function createSignatureLedgerService(
 
         if (oldRow) {
           // Upsert onto the NEW signature — the old row is never touched,
-          // staying in place as the audit trail (D-3a point 3).
+          // staying in place as the audit trail (D-3a point 3). The values
+          // and the conflict-update come from the ONE shared definition in
+          // `finding-signatures.repo.ts` (review CR-12): only the query
+          // BUILDER differs between here (`tx`) and the repository (`db`),
+          // never the semantics.
           const [carried] = await tx
             .insert(findingSignatures)
             .values({
               organizationId: ctx.organizationId,
-              projectId: input.projectId,
-              signature: input.newSignature,
-              symptomClass: oldRow.symptomClass,
-              surface: oldRow.surface,
-              signatureTupleVersion: oldRow.signatureTupleVersion,
-              evidenceShapeVersion: oldRow.evidenceShapeVersion,
-              surfaceNormalisationVersion: oldRow.surfaceNormalisationVersion,
-              firstSeenAt: oldRow.firstSeenAt,
-              lastSeenAt: oldRow.lastSeenAt,
-              timesSeen: oldRow.timesSeen,
-              deliveredAt: oldRow.deliveredAt,
-              dismissedAt: oldRow.dismissedAt,
+              ...carryForwardValues({
+                projectId: input.projectId,
+                newSignature: input.newSignature,
+                oldRow,
+              }),
             })
             .onConflictDoUpdate({
-              target: [
-                findingSignatures.organizationId,
-                findingSignatures.projectId,
-                findingSignatures.signature,
-              ],
-              set: {
-                firstSeenAt: sql`least(${findingSignatures.firstSeenAt}, excluded.first_seen_at)`,
-                lastSeenAt: sql`greatest(${findingSignatures.lastSeenAt}, excluded.last_seen_at)`,
-                timesSeen: sql`${findingSignatures.timesSeen} + excluded.times_seen`,
-                deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, excluded.delivered_at)`,
-                dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, excluded.dismissed_at)`,
-              },
+              target: LEDGER_CONFLICT_TARGET,
+              set: CARRY_FORWARD_SET,
             })
             .returning();
 

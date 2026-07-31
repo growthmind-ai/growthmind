@@ -34,6 +34,7 @@ import {
 
 import { and, eq } from "drizzle-orm";
 
+import { createFindingSignaturesRepo } from "../../src/repositories/finding-signatures.repo";
 import * as schema from "../../src/schema";
 import {
   computeFindingSignature,
@@ -145,6 +146,57 @@ describe("computeFindingSignature — the one real digest (ADD D-1, T-DB-6)", ()
     // `string` here is a safe upcast (every `SignatureHex` IS a `string`) and
     // avoids fabricating a brand no constructor outside `hex.ts` may produce.
     expect(computeFindingSignature(input) as string).toBe(GOLDEN_SIGNATURE_HEX);
+  });
+});
+
+describe("computeFindingSignature — surface normalisation refusal (post-sprint audit Finding 4)", () => {
+  it("refuses a surface that is not a normaliseUrlPath fixed point", () => {
+    expect(() =>
+      computeFindingSignature({
+        projectId: "00000000-0000-4000-8000-000000000001",
+        // A query string is stripped by `normaliseUrlPath`, so this is NOT a
+        // fixed point — exactly the un-normalised shape this check exists to
+        // refuse before it is hashed into a permanent identity.
+        surface: "/reset-password?token=abc123",
+        symptomClass: "broken",
+        evidenceShape: GOLDEN_EVIDENCE_SHAPE,
+      }),
+    ).toThrow(/normaliseUrlPath fixed point/);
+  });
+
+  it("accepts a surface that is already a normaliseUrlPath fixed point", () => {
+    expect(() =>
+      computeFindingSignature({
+        projectId: "00000000-0000-4000-8000-000000000001",
+        surface: "/checkout",
+        symptomClass: "broken",
+        evidenceShape: GOLDEN_EVIDENCE_SHAPE,
+      }),
+    ).not.toThrow();
+  });
+
+  it("never echoes the offending surface value in its refusal message", () => {
+    // Shaped exactly like the leak this check exists to prevent — a raw
+    // password-reset token that must never reach a log line.
+    const secretSurface = "/reset-password?token=should-never-reach-a-log-line";
+
+    let caught: unknown;
+    try {
+      computeFindingSignature({
+        projectId: "00000000-0000-4000-8000-000000000001",
+        surface: secretSurface,
+        symptomClass: "broken",
+        evidenceShape: GOLDEN_EVIDENCE_SHAPE,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = caught instanceof Error ? caught.message : String(caught);
+    expect(message).not.toContain(secretSurface);
+    expect(message).not.toContain("token=");
+    expect(message).not.toContain("should-never-reach-a-log-line");
   });
 });
 
@@ -646,6 +698,203 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         dismissedByUserId: teammate.id,
       });
       expect(dismissal.dismissedByUserId).toBe(teammate.id);
+    });
+  });
+
+  // ── "Dismissed forever" survives ANY arrival order (review CR-1) ─────────
+  //
+  // The Slack "Not useful" click and the analysis lane are two independent
+  // producers with no ordering guarantee. Before this fix, a dismissal that
+  // arrived first stamped ZERO ledger rows and returned success, and the next
+  // `recordSignature` inserted a fresh row with `dismissed_at = NULL` — the
+  // permanent suppression vanished with no error, defeating the outcome's own
+  // definition of done.
+  describe("dismissal arriving before the ledger row (D3 multiplicity / D4 ordering)", () => {
+    async function seedDismissableProject(lane: string) {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName(lane),
+        userName: NAMES.userName(`${lane}-owner`),
+        email: NAMES.email(`${lane}-owner`),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName(lane),
+      });
+      const candidate = buildCandidate(FIXTURE_NOW);
+      // The signature the analysis lane WOULD compute — derived here through
+      // the one production producer, never fabricated, so the dismissal and
+      // the later record land on the same identity.
+      const signature = computeFindingSignature({
+        projectId: project.id,
+        surface: candidate.surface,
+        symptomClass: candidate.finalClass,
+        evidenceShape: candidate.evidenceShape,
+      });
+
+      return {
+        org,
+        project,
+        candidate,
+        signature,
+        service: createSignatureLedgerService(db, org.ctx),
+      };
+    }
+
+    it("stays suppressed when the signature is recorded AFTER the dismissal", async () => {
+      const fx = await seedDismissableProject("order-after");
+
+      await fx.service.recordDismissal({
+        projectId: fx.project.id,
+        findingId: "finding-order-after-001",
+        signature: fx.signature,
+        action: "not_useful",
+        dismissedByUserId: fx.org.userId,
+      });
+
+      // The analysis lane arrives late and records the signature for the
+      // first time. Its row carries `dismissed_at = NULL` — the ledger alone
+      // cannot answer, and the `dismissals` row must.
+      const recorded = await fx.service.recordSignature(fx.project.id, fx.candidate);
+      expect(recorded.signature).toBe(fx.signature);
+      expect(recorded.record.dismissedAt).toBeNull();
+
+      expect(await fx.service.consultSignature(fx.project.id, fx.candidate)).toEqual({
+        decision: "suppress",
+        reason: "dismissed",
+      });
+      // ...and by bare signature, the stale-inbound shape of the same read.
+      expect(await fx.service.consultSignature(fx.project.id, fx.signature)).toEqual({
+        decision: "suppress",
+        reason: "dismissed",
+      });
+    });
+
+    it("suppresses when a dismissal exists and no ledger row was ever recorded", async () => {
+      const fx = await seedDismissableProject("order-never");
+
+      await fx.service.recordDismissal({
+        projectId: fx.project.id,
+        findingId: "finding-order-never-001",
+        signature: fx.signature,
+        action: "not_useful",
+        dismissedByUserId: fx.org.userId,
+      });
+
+      // No `recordSignature` has ever run for this identity, so
+      // `finding_signatures` holds nothing at all.
+      const ledgerRow = await createFindingSignaturesRepo(db, fx.org.ctx).findBySignature(
+        fx.project.id,
+        fx.signature,
+      );
+      expect(ledgerRow).toBeNull();
+
+      expect(await fx.service.consultSignature(fx.project.id, fx.candidate)).toEqual({
+        decision: "suppress",
+        reason: "dismissed",
+      });
+    });
+  });
+
+  // ── recordAncestry: the carry-forward divergence, closed (post-sprint
+  // audit Finding 1 and Finding 2) ────────────────────────────────────────
+  describe("recordAncestry — carry-forward's degenerate case, and idempotence on retry", () => {
+    // Finding 1's previously-untested branch: `recordAncestry` must not
+    // throw, and must touch no ledger row, when the OLD signature was never
+    // recorded. This is the no-op D-3a itself documents (a version-bump
+    // ancestry edge can legitimately be drawn before any candidate under the
+    // old identity was ever seen) — verified here that the edge is recorded
+    // and BOTH signatures' ledger rows stay absent, not just that no error
+    // is thrown.
+    it("records the ancestry edge and touches no ledger row when the old signature was never recorded", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("ancestry-never-seen"),
+        userName: NAMES.userName("ancestry-never-seen-owner"),
+        email: NAMES.email("ancestry-never-seen-owner"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("ancestry-never-seen"),
+      });
+      const service = createSignatureLedgerService(db, org.ctx);
+      const ledgerRepo = createFindingSignaturesRepo(db, org.ctx);
+
+      const oldCandidate = buildCandidate(FIXTURE_NOW, { surface: "/never-seen-old" });
+      const newCandidate = buildCandidate(FIXTURE_NOW, { surface: "/never-seen-new" });
+      const oldSignature = computeFindingSignature({
+        projectId: project.id,
+        surface: oldCandidate.surface,
+        symptomClass: oldCandidate.finalClass,
+        evidenceShape: oldCandidate.evidenceShape,
+      });
+      const newSignature = computeFindingSignature({
+        projectId: project.id,
+        surface: newCandidate.surface,
+        symptomClass: newCandidate.finalClass,
+        evidenceShape: newCandidate.evidenceShape,
+      });
+
+      // Neither signature has ever gone through `recordSignature` — there is
+      // NOTHING to carry forward.
+      const edge = await service.recordAncestry({
+        projectId: project.id,
+        oldSignature,
+        newSignature,
+        reason: "surface_rename",
+      });
+
+      expect(edge.oldSignature).toBe(oldSignature);
+      expect(edge.newSignature).toBe(newSignature);
+
+      expect(await ledgerRepo.findBySignature(project.id, oldSignature)).toBeNull();
+      expect(await ledgerRepo.findBySignature(project.id, newSignature)).toBeNull();
+    });
+
+    // Finding 2: a retried `recordAncestry` call (the same edge recorded
+    // twice) must degrade cleanly — no raw unique-violation — AND must not
+    // double-apply the carry-forward counters onto the new signature.
+    it("is idempotent on retry — the same edge recorded twice does not throw and does not double-carry times_seen", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("ancestry-retry"),
+        userName: NAMES.userName("ancestry-retry-owner"),
+        email: NAMES.email("ancestry-retry-owner"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("ancestry-retry"),
+      });
+      const service = createSignatureLedgerService(db, org.ctx);
+      const ledgerRepo = createFindingSignaturesRepo(db, org.ctx);
+
+      const oldCandidate = buildCandidate(FIXTURE_NOW, { surface: "/retry-old" });
+      const newCandidate = buildCandidate(FIXTURE_NOW, { surface: "/retry-new" });
+
+      const oldRecorded = await service.recordSignature(project.id, oldCandidate);
+      const newRecorded = await service.recordSignature(project.id, newCandidate);
+      expect(oldRecorded.record.timesSeen).toBe(1);
+      expect(newRecorded.record.timesSeen).toBe(1);
+
+      const ancestryInput = {
+        projectId: project.id,
+        oldSignature: oldRecorded.signature,
+        newSignature: newRecorded.signature,
+        reason: "surface_rename" as const,
+      };
+
+      const firstEdge = await service.recordAncestry(ancestryInput);
+      const afterFirst = await ledgerRepo.findBySignature(project.id, newRecorded.signature);
+      // Carried once: existing (1) + old (1) = 2.
+      expect(afterFirst?.timesSeen).toBe(2);
+
+      // The RETRY — same payload, called a second time (an external retry,
+      // not a distinct migration).
+      const secondEdge = await service.recordAncestry(ancestryInput);
+      expect(secondEdge.id).toBe(firstEdge.id);
+      expect(secondEdge.newSignature).toBe(firstEdge.newSignature);
+
+      const afterSecond = await ledgerRepo.findBySignature(project.id, newRecorded.signature);
+      // UNCHANGED — not double-carried to 3. A raw unique-violation would
+      // have thrown before this point at all.
+      expect(afterSecond?.timesSeen).toBe(2);
     });
   });
 });

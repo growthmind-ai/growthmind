@@ -18,12 +18,6 @@
 // no rotation, so nothing about a rotation forks an identity here (contrast
 // `packages/shared/src/sessions/identity-key.ts`, which keys a real HMAC and
 // therefore does have a rotation-consequence comment).
-//
-// STUB (Wave 0B / T3, schema + TDD-contract task): every exported constant,
-// type, and function signature below is FINAL — a later wave's tests are
-// written directly against these names and shapes. Every function body
-// throws "not implemented"; filling them in is explicitly out of scope for
-// this task ("the logic is explicitly NOT your job").
 import { createHash } from "node:crypto";
 
 /** A valid `SignatureHex` is exactly this many characters. */

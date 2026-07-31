@@ -31,6 +31,70 @@ export interface CarryForwardInput {
   readonly newSignature: SignatureHex;
 }
 
+/**
+ * THE ONE DEFINITION OF CARRY-FORWARD (review CR-12).
+ *
+ * D-3(a)'s carry-forward runs from TWO call sites — this repository (over a
+ * `ScopedDb`) and `recordAncestry`'s transaction body (over a `tx` handle,
+ * which `ScopedDb`'s union cannot accept, ADD D-8). They used to be two
+ * hand-copied ~40-line upserts, which is how the tested copy and the shipped
+ * copy came to differ. The query BUILDER still differs (it must), but the
+ * insert values and the conflict-update clause — the actual semantics — are
+ * built here, once, and both call sites pass them through.
+ *
+ * `organization_id` is DELIBERATELY NOT a parameter and NOT returned (D-B /
+ * `no-org-param.test.ts`): each call site spreads this object and names
+ * `ctx.organizationId` literally beside it, so the org filter is never
+ * something a helper could be handed wrong.
+ */
+export function carryForwardValues(params: {
+  readonly projectId: string;
+  readonly newSignature: SignatureHex;
+  readonly oldRow: FindingSignatureRecord;
+}): Omit<typeof findingSignatures.$inferInsert, "organizationId"> {
+  const { oldRow } = params;
+  // When no row exists yet for the new signature, these values ARE the new
+  // row: the old row's provenance and counters carried over wholesale, so the
+  // new row is a fully valid ledger row and never a partial one.
+  return {
+    projectId: params.projectId,
+    signature: params.newSignature,
+    symptomClass: oldRow.symptomClass,
+    surface: oldRow.surface,
+    signatureTupleVersion: oldRow.signatureTupleVersion,
+    evidenceShapeVersion: oldRow.evidenceShapeVersion,
+    surfaceNormalisationVersion: oldRow.surfaceNormalisationVersion,
+    firstSeenAt: oldRow.firstSeenAt,
+    lastSeenAt: oldRow.lastSeenAt,
+    timesSeen: oldRow.timesSeen,
+    deliveredAt: oldRow.deliveredAt,
+    dismissedAt: oldRow.dismissedAt,
+  };
+}
+
+/** The unique-index tuple every ledger upsert conflicts on. */
+export const LEDGER_CONFLICT_TARGET = [
+  findingSignatures.organizationId,
+  findingSignatures.projectId,
+  findingSignatures.signature,
+];
+
+/**
+ * The conflict-update for carry-forward, per D-3a: when a row for the new
+ * signature already exists (the common case — the pipeline recorded it
+ * naturally before the re-key was noticed), the two histories COMBINE.
+ * `coalesce(existing, old)` on `delivered_at` / `dismissed_at` means a
+ * carry-forward can only ever ADD suppression, never clear it (D-9). The OLD
+ * row is never touched — it stays in place as the audit trail (D-3a point 3).
+ */
+export const CARRY_FORWARD_SET = {
+  firstSeenAt: sql`least(${findingSignatures.firstSeenAt}, excluded.first_seen_at)`,
+  lastSeenAt: sql`greatest(${findingSignatures.lastSeenAt}, excluded.last_seen_at)`,
+  timesSeen: sql`${findingSignatures.timesSeen} + excluded.times_seen`,
+  deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, excluded.delivered_at)`,
+  dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, excluded.dismissed_at)`,
+};
+
 export interface FindingSignaturesRepo {
   /**
    * `ON CONFLICT (organization_id, project_id, signature) DO UPDATE` —
@@ -59,10 +123,18 @@ export interface FindingSignaturesRepo {
    * `times_seen = existing + old.times_seen`,
    * `delivered_at = coalesce(existing.delivered_at, old.delivered_at)`,
    * `dismissed_at = coalesce(existing.dismissed_at, old.dismissed_at)`. The
-   * old row is left in place, untouched, as the audit trail. Called from
-   * inside `recordAncestry`'s transaction (D-3a, D-8) — never on its own.
+   * old row is left in place, untouched, as the audit trail.
+   *
+   * Returns `null` when the OLD signature has no ledger row in this
+   * org/project scope. That is a legitimate degenerate case, not an error: a
+   * version-bump ancestry edge can legally be drawn before any candidate
+   * under the old identity was ever seen here, and there is simply nothing to
+   * carry. `recordAncestry`'s in-transaction copy of this operation treats it
+   * the same way — the two agreeing is the point of review CR-12; they used
+   * to disagree (this method threw, the service no-op'd) while only this,
+   * uncalled, copy was tested.
    */
-  carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord>;
+  carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null>;
 }
 
 export function createFindingSignaturesRepo(
@@ -151,7 +223,7 @@ export function createFindingSignaturesRepo(
       return row ?? null;
     },
 
-    async carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord> {
+    async carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null> {
       // ADD D-3(a): reads the OLD row's state under THIS org/project scope
       // (never a foreign org's row — a foreign context finds nothing here
       // and the caller's transaction has nothing to carry).
@@ -161,53 +233,28 @@ export function createFindingSignaturesRepo(
         .where(byTuple(input.projectId, input.oldSignature));
 
       if (!oldRow) {
-        throw new Error(
-          "createFindingSignaturesRepo.carryForward: no ledger row found for the old signature in this org/project scope",
-        );
+        // Nothing to carry — the edge stands alone and the new signature
+        // starts its own ledger history the ordinary way via
+        // `recordSignature`. See the interface doc for why this is a `null`
+        // and not a throw.
+        return null;
       }
 
-      // Upsert onto the NEW signature: when no row exists yet for it, the
-      // insert values ARE the old row's provenance and counters carried
-      // over wholesale — the new row must be a fully valid ledger row, not
-      // a partial one. When a row already exists (the common case: the
-      // pipeline already recorded the new signature naturally before the
-      // re-key was noticed), the conflict-update combines the two per D-3a:
-      // `first_seen_at = least(existing, old.first_seen_at)`,
-      // `times_seen = existing + old.times_seen`,
-      // `delivered_at = coalesce(existing.delivered_at, old.delivered_at)`,
-      // `dismissed_at = coalesce(existing.dismissed_at, old.dismissed_at)`.
-      // The OLD row is never touched — it stays in place as the audit
-      // trail (D-3a point 3).
+      // Values and conflict-update come from the ONE shared definition above
+      // (CR-12) — the same clauses `recordAncestry` passes to its `tx`.
       const [row] = await db
         .insert(findingSignatures)
         .values({
           organizationId: ctx.organizationId,
-          projectId: input.projectId,
-          signature: input.newSignature,
-          symptomClass: oldRow.symptomClass,
-          surface: oldRow.surface,
-          signatureTupleVersion: oldRow.signatureTupleVersion,
-          evidenceShapeVersion: oldRow.evidenceShapeVersion,
-          surfaceNormalisationVersion: oldRow.surfaceNormalisationVersion,
-          firstSeenAt: oldRow.firstSeenAt,
-          lastSeenAt: oldRow.lastSeenAt,
-          timesSeen: oldRow.timesSeen,
-          deliveredAt: oldRow.deliveredAt,
-          dismissedAt: oldRow.dismissedAt,
+          ...carryForwardValues({
+            projectId: input.projectId,
+            newSignature: input.newSignature,
+            oldRow,
+          }),
         })
         .onConflictDoUpdate({
-          target: [
-            findingSignatures.organizationId,
-            findingSignatures.projectId,
-            findingSignatures.signature,
-          ],
-          set: {
-            firstSeenAt: sql`least(${findingSignatures.firstSeenAt}, excluded.first_seen_at)`,
-            lastSeenAt: sql`greatest(${findingSignatures.lastSeenAt}, excluded.last_seen_at)`,
-            timesSeen: sql`${findingSignatures.timesSeen} + excluded.times_seen`,
-            deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, excluded.delivered_at)`,
-            dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, excluded.dismissed_at)`,
-          },
+          target: LEDGER_CONFLICT_TARGET,
+          set: CARRY_FORWARD_SET,
         })
         .returning();
 
