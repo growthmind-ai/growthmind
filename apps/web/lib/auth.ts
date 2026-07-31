@@ -6,6 +6,7 @@ import {
   type ScopedDb,
 } from "@growthmind/db";
 import { parseServerEnv, resolveActiveOrganization } from "@growthmind/shared";
+import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
@@ -58,8 +59,18 @@ export function buildAuth(options: BuildAuthOptions = {}) {
     // `onDelete: cascade` — a single POST to /organization/delete would
     // silently destroy every project and write key in the org, with no
     // confirmation surface anywhere in the product and no way back.
+    // The dash plugin (dash.better-auth.com) is registered ONLY when this
+    // deployment has an API key. It serves /api/auth/dash/config, which the
+    // hosted dashboard calls to verify ownership of the base URL — without it
+    // the connect step fails with DASH_VALIDATE_NOT_FOUND. Keeping it
+    // conditional means a clean clone, CI, and every self-hoster get an auth
+    // config with no external SaaS dependency, and the generated Drizzle
+    // schema is identical either way (activityTracking defaults to false, so
+    // no `lastActiveAt` column is added — do not enable it without
+    // regenerating packages/db/src/schema/auth.ts).
     plugins: [
       organization({ allowUserToCreateOrganization: false, disableOrganizationDeletion: true }),
+      ...(env.BETTER_AUTH_API_KEY ? [dash({ apiKey: env.BETTER_AUTH_API_KEY })] : []),
     ],
     databaseHooks: {
       user: {

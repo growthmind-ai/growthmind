@@ -28,6 +28,14 @@ export const serverEnvSchema = z.object({
   DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(16),
   BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  /**
+   * Better Auth Infrastructure (dash.better-auth.com) API key. Optional by
+   * design: the hosted dashboard is an operator convenience for THIS
+   * deployment, never a dependency of the product. Absent — the clean-clone
+   * and `docker compose up` case — the dash plugin is simply not registered
+   * (apps/web/lib/auth.ts), and auth behaves identically.
+   */
+  BETTER_AUTH_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   /**
    * O-005 D-13: model selection is config, never a hardcoded id. Validated-if-
