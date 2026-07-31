@@ -34,7 +34,6 @@ import type { EvidenceShapeInput } from "../../src/findings/evidence-shape";
 import * as signatureTupleModule from "../../src/findings/signature-tuple";
 import {
   SIGNATURE_TUPLE_SERIALISERS,
-  SIGNATURE_TUPLE_VERSION,
   signatureTuple,
 } from "../../src/findings/signature-tuple";
 import type { SignatureTupleInput } from "../../src/findings/signature-tuple";
@@ -159,7 +158,7 @@ describe("signatureTuple — no second definition of canonical (D-13)", () => {
       (match) => match[1] as string,
     );
     expect(keysInOutput.length).toBeGreaterThan(0);
-    const sortedKeys = [...keysInOutput].sort((left, right) =>
+    const sortedKeys = keysInOutput.toSorted((left, right) =>
       left < right ? -1 : left > right ? 1 : 0,
     );
     expect(keysInOutput).toEqual(sortedKeys);

@@ -108,6 +108,53 @@ function shapeInputWithSurface(surface: string): EvidenceShapeInput {
   };
 }
 
+// --- test-local churn serialisers (hoisted to module scope — oxlint
+// consistent-function-scoping: neither function captures anything from an
+// enclosing describe/test closure, so hoisting changes nothing about WHEN
+// they run or WHAT they register; `TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS`
+// below still builds its Map at the same describe-body evaluation point it
+// always did) ---------------------------------------------------------------
+
+// TEST-LOCAL ONLY, for fixture (b) below. The real `EVIDENCE_SHAPE_SERIALISERS`
+// map lives in `evidence-shape.ts`, which this sprint may not edit (O-005
+// collision contract, ADD C-h) — registering a real version 2 there is out of
+// scope. This local map mirrors the exact versioned-map discipline
+// `EVIDENCE_SHAPE_SERIALISERS` itself uses, entirely inside this test file, to
+// produce a second, DIFFERENT evidence-shape string standing in for "what a
+// v2 shape would look like" — the fork is then asserted at the
+// `signatureTuple` boundary this file actually owns.
+type TestLocalEvidenceShapeV2Input = EvidenceShapeInput & { readonly extraSignalCount: number };
+
+function testLocalSerialiseEvidenceShapeV2(input: TestLocalEvidenceShapeV2Input): string {
+  const shape: CanonicalObject = {
+    v: 2,
+    detector: input.detector,
+    surface: input.surface,
+    surfaceNormalisationVersion: input.surfaceNormalisationVersion,
+    signalKinds: input.signals.map((signal) => signal.kind),
+    symptomClass: input.symptomClass,
+    extraSignalCount: input.extraSignalCount,
+  };
+  return canonicalJson(shape);
+}
+
+// TEST-LOCAL ONLY, for fixture (e) below. `SIGNATURE_TUPLE_SERIALISERS` in
+// `signature-tuple.ts` has only version 1 registered, and this sprint's own
+// Wave 0 task may not add a real version 2 (this file writes tests, not
+// production code). This local function mirrors EXACTLY what the real v1
+// serialiser is documented to do (`canonicalJson({ v, projectId, surfaceId,
+// symptomClass, evidenceShape })`), with `v` bumped to 2, entirely inside this
+// test file.
+function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
+  return canonicalJson({
+    v: 2,
+    projectId: input.projectId,
+    surfaceId: input.surfaceId,
+    symptomClass: input.symptomClass,
+    evidenceShape: input.evidenceShape,
+  });
+}
+
 // --- W0-5's pinned baseline (probes.md — executed, not assumed) -------------
 
 /**
@@ -206,29 +253,12 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
 
   // --- (b) FR-F b --------------------------------------------------------------
   //
-  // TEST-LOCAL ONLY. The real `EVIDENCE_SHAPE_SERIALISERS` map lives in
-  // `evidence-shape.ts`, which this sprint may not edit (O-005 collision
-  // contract, ADD C-h) — registering a real version 2 there is out of scope.
-  // This local map mirrors the exact versioned-map discipline
-  // `EVIDENCE_SHAPE_SERIALISERS` itself uses, entirely inside this test file,
-  // to produce a second, DIFFERENT evidence-shape string standing in for
-  // "what a v2 shape would look like" — the fork is then asserted at the
+  // TEST-LOCAL ONLY (serialiser + input type hoisted to module scope above —
+  // oxlint consistent-function-scoping). This local map mirrors the exact
+  // versioned-map discipline `EVIDENCE_SHAPE_SERIALISERS` itself uses, to
+  // produce a second, DIFFERENT evidence-shape string standing in for "what a
+  // v2 shape would look like" — the fork is then asserted at the
   // `signatureTuple` boundary this file actually owns.
-  type TestLocalEvidenceShapeV2Input = EvidenceShapeInput & { readonly extraSignalCount: number };
-
-  function testLocalSerialiseEvidenceShapeV2(input: TestLocalEvidenceShapeV2Input): string {
-    const shape: CanonicalObject = {
-      v: 2,
-      detector: input.detector,
-      surface: input.surface,
-      surfaceNormalisationVersion: input.surfaceNormalisationVersion,
-      signalKinds: input.signals.map((signal) => signal.kind),
-      symptomClass: input.symptomClass,
-      extraSignalCount: input.extraSignalCount,
-    };
-    return canonicalJson(shape);
-  }
-
   const TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS: ReadonlyMap<
     number,
     (input: TestLocalEvidenceShapeV2Input) => string
@@ -331,23 +361,11 @@ describe("signature-churn — D12 fork fixtures (relational; independent of any 
 
   // --- (e) FR-F e (the only cuttable fixture) ---------------------------------
   //
-  // TEST-LOCAL ONLY, same reasoning as (b): `SIGNATURE_TUPLE_SERIALISERS` in
-  // `signature-tuple.ts` has only version 1 registered, and this sprint's own
-  // Wave 0 task may not add a real version 2 (this file writes tests, not
-  // production code). This local function mirrors EXACTLY what the real v1
-  // serialiser is documented to do (`canonicalJson({ v, projectId, surfaceId,
-  // symptomClass, evidenceShape })`), with `v` bumped to 2, entirely inside
-  // this test file.
-  function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
-    return canonicalJson({
-      v: 2,
-      projectId: input.projectId,
-      surfaceId: input.surfaceId,
-      symptomClass: input.symptomClass,
-      evidenceShape: input.evidenceShape,
-    });
-  }
-
+  // TEST-LOCAL ONLY (function hoisted to module scope above — oxlint
+  // consistent-function-scoping), same reasoning as (b): `SIGNATURE_TUPLE_SERIALISERS`
+  // in `signature-tuple.ts` has only version 1 registered, and this sprint's
+  // own Wave 0 task may not add a real version 2 (this file writes tests, not
+  // production code).
   test("forks the identity (produces a different tuple string) when SIGNATURE_TUPLE_VERSION is bumped", () => {
     const v1Tuple = signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION);
     const v2Tuple = testLocalSignatureTupleV2(BASELINE_TUPLE_INPUT);

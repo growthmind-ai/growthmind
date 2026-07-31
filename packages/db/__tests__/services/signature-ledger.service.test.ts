@@ -37,7 +37,6 @@ import {
   createSignatureLedgerService,
   type ComputeFindingSignatureInput,
 } from "../../src/services/signature-ledger.service";
-import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../helpers/db-lane-fixtures";
 import {

@@ -38,7 +38,7 @@ function catchError(fn: () => unknown): Error {
     if (error instanceof Error) {
       return error;
     }
-    throw new Error(`expected an Error to be thrown, got: ${String(error)}`);
+    throw new Error(`expected an Error to be thrown, got: ${String(error)}`, { cause: error });
   }
   throw new Error("expected a throw, but the function returned normally");
 }
