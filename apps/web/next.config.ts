@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+// The workspace-root .env is loaded in instrumentation.ts — see the note there
+// for why it cannot live here.
 const nextConfig: NextConfig = {
   // Workspace packages ship TypeScript source (their exports point at
   // src/*.ts), so Next must transpile them.
