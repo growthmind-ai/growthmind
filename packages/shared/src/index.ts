@@ -187,3 +187,14 @@ export {
   SUMMARY_SOURCE_MESSAGES,
   ALL_CUSTOMER_FACING_MESSAGES as SUMMARY_ALL_CUSTOMER_FACING_MESSAGES,
 } from "./summary/messages";
+
+// --- O-006: the signature ledger's shapes -----------------------------------
+export {
+  suppressionReasonCodeSchema,
+  ancestryReasonSchema,
+  dismissalActionSchema,
+  ANCESTRY_RESOLUTION_MAX_HOPS,
+  type SuppressionReasonCode,
+  type AncestryReason,
+  type DismissalAction,
+} from "./signatures/types";
