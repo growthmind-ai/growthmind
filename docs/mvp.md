@@ -39,12 +39,12 @@ sooner, more credibly, or not at all.
 
 Five steps, in order, each ending in a visible confirmation:
 
-| Step | What happens                                                                         | Confirmation                                                         |
-| ---- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 1    | **Connect repo** (read-only, shallow — context for fix specs, not full taxonomy)     | Repo listed, default branch shown                                    |
-| 2    | **Connect PostHog** (their existing project, API key — most targets already have it) | Live event counter ticks                                             |
-| 3    | **Connect Slack** (channel picked)                                                   | Test message arrives in-channel                                      |
-| 4    | **Install the MCP server** in their coding agent                                     | `list_open_fixes` returns an empty-but-valid response                |
+| Step | What happens                                                                         | Confirmation                                                                                           |
+| ---- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| 1    | **Connect repo** (read-only, shallow — context for fix specs, not full taxonomy)     | Repo listed, default branch shown                                                                      |
+| 2    | **Connect PostHog** (their existing project, API key — most targets already have it) | Live event counter ticks                                                                               |
+| 3    | **Connect Slack** (channel picked)                                                   | Test message arrives in-channel                                                                        |
+| 4    | **Install the MCP server** in their coding agent                                     | `list_open_fixes` returns an empty-but-valid response                                                  |
 | 5    | **Trigger an issue** in their own product                                            | The summary pushes to the onboarding screen while they are still on it, then to Slack (§7 deviation 4) |
 
 Step 5 is the demo of the product; steps 1–4 are the product being honest about
@@ -190,8 +190,8 @@ Three, each scoped and with an expiry:
    it does not hold. The decomposition: PostHog's own event-leg p90 is ~24 s
    (decision 0001), the poll adds 15–60 s, and `analysis:tick` is an hourly cron
    with no event trigger — that term alone is ~180× the whole budget.
-   **Ruled:** the ~24 s third-party leg is *accepted* as inherent variance. The
-   two terms that are ours are *fixed* — an onboarding-scoped fast analysis path
+   **Ruled:** the ~24 s third-party leg is _accepted_ as inherent variance. The
+   two terms that are ours are _fixed_ — an onboarding-scoped fast analysis path
    that reuses the existing lane and **respects the single-writer index and the
    cap ledger, or it does not ship** (a cap-bypassing trigger is a cost
    incident, not an optimisation). Internal design target ~25–35 s, **never

@@ -495,10 +495,7 @@ describe("reduceStage — AD-5, the D4 proof", () => {
  * readable has a truthy outcome and a null finding — and falls straight to
  * `ended`.
  */
-const storyboardReduceStage = (
-  p: StagePersistedFacts,
-  nowMs: number,
-): RenderedStageState => {
+const storyboardReduceStage = (p: StagePersistedFacts, nowMs: number): RenderedStageState => {
   const elapsedSeconds = p.armedAt === null ? 0 : Math.round((nowMs - p.armedAt.getTime()) / 1000);
 
   if (p.armedAt === null) return { kind: "unarmed" };
