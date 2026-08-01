@@ -5,40 +5,43 @@
 > the experiential contract the MVP build is held to, beat by beat. It is
 > extracted from the public `/get-started` page on growthmind.ai, where the same
 > script plays as an animated film. The page states publicly that its figures
-> are illustrative and that the five-to-twenty-second push is the budget the
-> build is held to; this document is where the build answers for that promise.
+> are illustrative and that the push must land while the founder is still on the
+> screen; this document is where the build answers for that.
 
 ---
 
 ## 1. The contract in one line
 
-**Break your product. Count to twelve.**
+**Break your product. Don't look away.**
 
-A founder connects five things, breaks their own product on purpose, and the
-screen they are still standing on names the failure — with the evidence
-attached — before they have finished counting. Everything below is the script
-of that experience. The hypothesis it tests is [`mvp.md` §1](mvp.md#1-the-glue-moment):
-a founder who watches this happen is glued.
+A founder connects five things, breaks their own product on purpose, and before
+they have gone looking for something else to do, the screen they are still
+standing on names the failure — with the evidence attached. Everything below is
+the script of that experience. The hypothesis it tests is
+[`mvp.md` §1](mvp.md#1-the-glue-moment): a founder who is still there when it
+lands is glued. That is the whole bar, and it is deliberately not a number —
+we measure what the wait actually costs and we promise nobody a clock
+([`mvp.md` §7 deviation 4](mvp.md#7-deviations-on-the-record)).
 
 ## 2. The timeline
 
-The film runs ten beats. Timecodes are illustrative; the intervals are not —
-each confirmation must land while the user is still looking at the step that
-produced it, and the finding push is bound by the 5–20 s budget
-([`mvp.md` §3](mvp.md#3-the-gating-spike--run-before-anything-is-built)).
+The film runs ten beats. The order is the contract and the clock is not — each
+confirmation must land while the user is still looking at the step that produced
+it, and the finding must land while they are still standing on the screen that
+started the wait.
 
-| Beat | tc    | What happens                                                               | What it proves                                       |
-| ---- | ----- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| 1    | 00:00 | Repo connected, read-only                                                  | Context, not surveillance                            |
-| 2    | 01:04 | PostHog linked — the project they already run                              | The event counter ticks, so the connection is real   |
-| 3    | 02:11 | Slack connected                                                            | The test message lands before they switch back       |
-| 4    | 03:24 | Coding agent shakes hands over MCP                                         | `list_open_fixes → 0 open` — empty, but valid        |
-| 5    | 04:55 | They break their own product — a save that fails. No ticket filed          | Step five is the demo of the product                 |
-| 6    | 05:03 | The screen they are standing on starts counting                            | The armed step-five row visibly watches (+3 s, +8 s) |
-| 7    | 05:07 | **Twelve seconds.** What happened, to whom, with proof — while still there | The glue moment                                      |
-| 8    | 05:31 | The same finding arrives in Slack                                          | Steady state — the screen never asks them back       |
-| 9    | 05:58 | They break it again. Nothing posts twice                                   | The signature ledger remembers                       |
-| 10   | 06:14 | "Get it fixed" is a spec their agent can read                              | Hypothesis: they're glued                            |
+| Beat | What happens                                                      | What it proves                                       |
+| ---- | ----------------------------------------------------------------- | ---------------------------------------------------- |
+| 1    | Repo connected, read-only                                         | Context, not surveillance                            |
+| 2    | PostHog linked — the project they already run                     | The event counter ticks, so the connection is real   |
+| 3    | Slack connected                                                   | The test message lands before they switch back       |
+| 4    | Coding agent shakes hands over MCP                                | `list_open_fixes → 0 open` — empty, but valid        |
+| 5    | They break their own product — a save that fails. No ticket filed | Step five is the demo of the product                 |
+| 6    | The screen they are standing on starts counting                   | The armed step-five row counts up where they can see |
+| 7    | **Still there.** What happened, to whom, with proof               | The glue moment                                      |
+| 8    | The same finding arrives in Slack                                 | Steady state — the screen never asks them back       |
+| 9    | They break it again. Nothing posts twice                          | The signature ledger remembers                       |
+| 10   | "Get it fixed" is a spec their agent can read                     | Hypothesis: they're glued                            |
 
 The five setup steps and their confirmations are specified in
 [`mvp.md` §2](mvp.md#2-onboarding-flow); this table adds the pacing and the
@@ -53,21 +56,34 @@ prints its confirmation as it proves itself:
 
 ```
 ✓ repo connected · read-only · branch: main
-✓ posthog linked · yourapp-prod · masking verified
+✓ posthog linked · yourapp-prod · what we collect, on the record
 ✓ slack connected · #growth · test message delivered
 ✓ mcp installed · list_open_fixes → 0 open · valid
 ● your turn — trigger an issue in your product
 ```
 
-Note the second line: **masking verified** is a step-two confirmation, not a
-background job — the §5 PII commitment surfaces during onboarding, exactly as
-[`mvp.md` §6](mvp.md#6-commitments-that-still-bind-at-mvp-scale) requires.
+Note the second line. Step two claims nothing has been checked inside your
+capture config, because there is no capture code of ours to check —
+`packages/sdk-js` is a stub and stays one at MVP scale
+([`mvp.md` §4](mvp.md#4-what-is-in-what-is-out)). What step two shows instead is
+a **read-only receipt** of what we do and do not collect: page addresses kept as
+tidied-up patterns rather than raw ones, whose visits are set aside and where
+that guess came from, the direction we fail in when we cannot tell (we keep the
+visit), identity stored as a one-way stand-in, no bag of event properties at
+all, and every outbound message checked for leftover personal detail before it
+leaves. Nothing on it is a setting, and there is nothing to switch on.
+
+That is the §5 PII commitment surfaced during onboarding exactly as
+[`mvp.md` §6](mvp.md#6-commitments-that-still-bind-at-mvp-scale) requires, and
+it is the honest version of it: a receipt states what is already true and can be
+proved, where a confirmation implies work this build has not done.
 
 **The first-run console** — `FIRST-RUN · LIVE · READ-ONLY`. A five-row
 checklist where each row carries its own proof (`main · read-only`,
 `events ticking`, `#growth · test ✓`, `0 open fixes`), a live `events seen`
 counter that visibly ticks (step two's confirmation), and — once step five is
-armed — a watching row (`your move` → `watching · +3s` → `watching · +8s`)
+armed — a watching row whose elapsed count ticks up (`your move` →
+`watching · +3s` → `watching · +8s`, a stopwatch and never a countdown)
 and a raw evidence feed as the failure is captured:
 
 ```
@@ -96,7 +112,7 @@ This is the legibility budget ([product-decisions §10](product-decisions.md))
 made concrete. The renderer and its tests should be held to this register —
 plain English, counts with denominators, the claim tied to its proof.
 
-**Pushed to the first-run screen (+12 s), class `BROKEN`:**
+**Pushed to the first-run screen while they are still on it, class `BROKEN`:**
 
 > **Saving workspace settings is broken.**
 >
@@ -284,10 +300,15 @@ problem.
 The `/get-started` page is a public commitment, and it is careful about three
 things this build must keep true:
 
-1. **The figures are illustrative; the budget is not.** The film shows twelve
-   seconds; the promise is the 5–20 s push window. The M-0 spike
-   ([`mvp.md` §3](mvp.md#3-the-gating-spike--run-before-anything-is-built))
-   decides whether the PostHog pull path can honour it.
+1. **The figures are illustrative, and so is the pacing.** The page commits to
+   no push window at all. The M-0 spike
+   ([`mvp.md` §3](mvp.md#3-the-gating-spike--run-before-anything-is-built)) ran
+   and the committed one did not survive it, so
+   [`mvp.md` §7 deviation 4](mvp.md#7-deviations-on-the-record) withdrew it: a
+   third party's own leg is outside our control, the two terms that are ours are
+   fixed, and what we owe a reader is the measured result rather than a promise
+   made before the measurement. What the page does promise is the shape of the
+   moment — the finding lands while the founder is still on the screen.
 2. **"Open source and built in the open, so you can hold us to it."** The page
    invites scrutiny of exactly the commitments in
    [`mvp.md` §6](mvp.md#6-commitments-that-still-bind-at-mvp-scale).
@@ -304,8 +325,9 @@ adds the register they must be experienced in:
   a ticking counter, a test message, an empty-but-valid response. "Connected"
   with no proof is a bug.
 - The step-five wait is **watched, not spun** — the surface shows elapsed time
-  and the evidence feed as it captures, so the 5–20 s window feels short
-  instead of silent.
+  counting up and the evidence feed as it captures, so the wait reads as work
+  being done instead of as silence. It never shows a countdown, a bar or a
+  figure it would have to keep.
 - The finding lands **on the screen the user is standing on**, then in Slack,
   in the same plain-English register — one output, two audiences.
 - The second identical failure produces **one visible suppression line** on
