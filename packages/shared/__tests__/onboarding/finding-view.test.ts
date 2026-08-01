@@ -21,7 +21,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { FLOOR_NO_RATE_TEMPLATE, SUMMARY_SOURCE_MESSAGES } from "../../src/summary/messages";
+import {
+  FLOOR_NO_RATE_TEMPLATE,
+  FLOOR_OBSERVATION_TEMPLATES,
+  SUMMARY_SOURCE_MESSAGES,
+} from "../../src/summary/messages";
 import type { SummarySource } from "../../src/summary/types";
 import type { OnboardingCount, OnboardingFinding, ToFindingView } from "./contract-shapes";
 import { loadUnderConstruction } from "./module-under-construction";
@@ -245,5 +249,61 @@ describe("toFindingView — FR-O20, EC-O5", () => {
         unit: line.unit,
       })),
     ).toEqual([...counts]);
+  });
+
+  // Row 11 — AUTHORISED CROSS-WAVE ADDITION (Wave 0e), closing the hole Wave 0d
+  // found in row 4 above.
+  //
+  // Row 4 asserts only `view.classSentence.trim().length > 0`, and A RAW
+  // PASS-THROUGH OF `finalClass` SATISFIES THAT. `finalClass` is the persisted
+  // `findings.final_class` column, whose four values are the machine keys
+  // `broken` / `confusing` / `changed_mind` / `instrumentation` — so a view that
+  // simply forwards it renders the literal string "changed_mind" or
+  // "instrumentation" at a founder, on the ONE SCREEN THIS MVP EXISTS FOR, and
+  // every row in this file stays green. That is a product-decisions §10 breach
+  // (plain English in every customer-facing string) shipped behind a passing
+  // suite, which is precisely the class of miss the §9 standing rules exist for.
+  //
+  // A FIXTURE PER KEY, NOT ONE FIXTURE. Driving a single class would let three
+  // of the four pass through unrendered behind one correct branch; the loop is
+  // what makes "no class can reach the view raw" a statement about the whole
+  // union rather than about the one member somebody happened to test.
+  //
+  // The surface is deliberately neutral (`/settings`): a surface literal
+  // containing one of the four key names would make the negative assertion below
+  // fail for a reason that has nothing to do with the view.
+  test("the class sentence comes from FLOOR_OBSERVATION_TEMPLATES and no raw class name reaches the view", async () => {
+    const toFindingView = await loadToFindingView();
+
+    type FloorClassKey = keyof typeof FLOOR_OBSERVATION_TEMPLATES;
+    const classKeys = Object.keys(FLOOR_OBSERVATION_TEMPLATES) as readonly FloorClassKey[];
+
+    // The four keys are the shipped table's own, read off it rather than
+    // re-listed here — a fifth class added to the union is covered the day it
+    // lands instead of the day somebody remembers this file.
+    expect(classKeys).toHaveLength(4);
+
+    const surface = "/settings";
+
+    for (const finalClass of classKeys) {
+      const view = toFindingView(findingWith({ finalClass, surface }));
+
+      // THE SENTENCE IS THE SHIPPED TEMPLATE WITH `{surface}` SUBSTITUTED, and
+      // nothing else. Not a paraphrase, not a prefix, not a title-cased key —
+      // the copy has one home (FR-O22) and this is the assertion that keeps it
+      // there. `{surface}` is the closed token vocabulary's own placeholder
+      // (`messages.ts:133`), so a view that forgot to substitute renders a
+      // literal brace at the founder and fails here too.
+      expect(view.classSentence).toBe(
+        FLOOR_OBSERVATION_TEMPLATES[finalClass].replaceAll("{surface}", surface),
+      );
+
+      // AND NO RAW KEY SURVIVES ANYWHERE IN IT. Checked against ALL FOUR keys
+      // for EVERY class, so the row also refuses a view that renders one class
+      // correctly while leaking another's key into the same sentence.
+      for (const key of classKeys) {
+        expect(view.classSentence).not.toContain(key);
+      }
+    }
   });
 });

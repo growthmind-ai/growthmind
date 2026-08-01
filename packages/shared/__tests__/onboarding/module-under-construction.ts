@@ -231,3 +231,57 @@ export function readSourceUnderConstruction(spec: {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// WAVE 0e ADDITIONS — the third shape of absence. ADDITIVE ONLY: nothing above
+// this line changed, and the five helpers above are untouched.
+//
+// THE PROBLEM WAVES 0b-0d NEVER HIT. Every module those waves described was
+// ABSENT ENTIRELY, so `loadUnderConstruction` had a resolution failure to
+// convert into a named diagnostic. Wave 0e describes four modules that are
+// GREEN AND SHIPPED TODAY and whose CONTRACT changes:
+//
+//   - `analysis-tick.ts` exists; `runAnalysisLane` is not exported from it yet
+//   - `analysis-lane-source.ts` exists; its port has no `laneForProject` yet
+//   - `poll-plan.ts` exists; it has no `isOnboardingPlan` yet
+//   - `delivery-tick.ts` exists; its deps carry `poster`, not `posterFor`
+//
+// For these, the module resolves, the file reads, and the loaders above are
+// perfectly happy. The absence surfaces one layer in — as a `TypeError:
+// undefined is not a function` from inside production code, or as a bare
+// `expect(0).toBe(1)`. BOTH READ AS A BROKEN TEST RATHER THAN AN ABSENT
+// CONTRACT, which is the exact failure mode the header at the top of this file
+// exists to abolish, one level further in.
+//
+// So: assert the contract's PRESENCE first, with the same named diagnostic, and
+// only then drive it. A row that cannot reach its subject says so in the words
+// of the subject rather than in the words of whatever crashed first.
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that a contract a later wave adds to an ALREADY-SHIPPED module is
+ * present, failing with the same named diagnostic the loaders above produce.
+ *
+ * Use it as the FIRST statement of any row whose subject is a new field, a new
+ * method on an existing port, or a new export on an existing module — before
+ * the call that would otherwise fail with a bare runtime error.
+ *
+ * @param present The presence check itself, evaluated by the caller — e.g.
+ *   `typeof source.laneForProject === "function"` or `"posterFor" in deps`.
+ * @param spec.contract What is missing, in the contract's own words.
+ * @param spec.ownedBy The wave/task that adds it. It lands in the failure
+ *   message so a red names its own owner.
+ */
+export function assertUnderConstruction(
+  present: boolean,
+  spec: { readonly contract: string; readonly ownedBy: string },
+): asserts present {
+  if (!present) {
+    throw new Error(
+      `NOT IMPLEMENTED YET: ${spec.contract}. The module it belongs to already exists on this ` +
+        `tree — it is the CONTRACT that is absent, so this red is not a broken import and not a ` +
+        `broken fixture. It is created by ${spec.ownedBy}. The assertions below are what that ` +
+        `wave must satisfy.`,
+    );
+  }
+}
