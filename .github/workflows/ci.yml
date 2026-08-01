@@ -22,6 +22,14 @@ jobs:
   build:
     name: Build gate
     runs-on: ubuntu-latest
+    # Without this, a hung step holds a runner for GitHub's six-hour default. On a
+    # public repository that is not just a slow build: it is six hours of the
+    # shared queue spent on a job nobody is watching, in front of contributors
+    # waiting on their own. Thirty minutes is roughly double what the gates
+    # below actually cost — a runaway catcher, not a performance budget. If a
+    # legitimate run ever approaches it, the run got slower and that is worth
+    # knowing.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,8 +42,29 @@ jobs:
         with:
           bun-version-file: package.json
 
+      # `--frozen-lockfile` is the first gate in the workflow for a reason: it
+      # fails outright when bun.lock and the manifests disagree, before anything
+      # spends a minute on a tree that was never going to install the same way
+      # twice.
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Deliberately ahead of the three expensive gates, and deliberately a
+      # duplicate of one row inside `Test` below.
+      #
+      # An import of a package the workspace does not declare resolves fine on a
+      # laptop whose node_modules has accumulated it, and fails here — as a bare
+      # TS2307 from `Typecheck`, naming a file and a symbol the contributor may
+      # never have opened. That is the wrong first thing for a first-time
+      # contributor to see. This suite reads the manifests, finds the same
+      # mistake in about a second, and says which package, which specifier,
+      # which line, and which workspace package to import from instead.
+      #
+      # It runs again in `Test`. The duplication is the point: this row exists to
+      # put the readable failure FIRST, and `bun test` is where a contributor is
+      # meant to have already hit it locally.
+      - name: Dependency hygiene
+        run: bun test __tests__/undeclared-dependencies.test.ts
 
       - name: Typecheck
         run: bun run typecheck
@@ -58,6 +87,9 @@ jobs:
   compose:
     name: docker compose up from a clean clone
     runs-on: ubuntu-latest
+    # Two images built from scratch with no layer cache, then a boot and a probe.
+    # Same reasoning as the build gate: a bounded failure, not a six-hour one.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,9 +105,16 @@ jobs:
           echo
           echo "healthy"
 
-      - name: Logs on failure
+      - name: Diagnostics on failure
         if: failure()
-        run: docker compose logs
+        run: |
+          # `ps` first, and it is not redundant with the logs. `up --wait` reports
+          # that a container is unhealthy without reliably saying WHICH of the
+          # three, and a container that exited non-zero shows its exit code here
+          # and nowhere else. Reading three services' interleaved logs without
+          # knowing which one to read is most of the debugging time.
+          docker compose ps --all
+          docker compose logs --timestamps
 
       - name: Tear down
         if: always()
