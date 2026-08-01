@@ -28,7 +28,12 @@
 // `AnalysisOutcome`, `SummarySource` and `ConnectionState` are real today, and
 // mirroring them would be inventing drift where there is none.
 
-import type { ConnectionState } from "../../src/session-source/types";
+import type { PostResult } from "../../src/delivery/poster";
+import type {
+  ConnectRefusalCode,
+  ConnectionState,
+  InternalDomainProvenance,
+} from "../../src/session-source/types";
 import type { AnalysisOutcome, AnalysisRunStatus, SummarySource } from "../../src/summary/types";
 
 // ---------------------------------------------------------------------------
@@ -257,3 +262,250 @@ export type FindingView = {
 };
 
 export type ToFindingView = (finding: OnboardingFinding) => FindingView;
+
+// ===========================================================================
+// WAVE 0c ADDITIONS — steps, the privacy receipt, the Slack test post.
+// ADDITIVE ONLY: nothing above this line changed.
+//
+// Same rules as the block above. Where the ADD declares the type outright
+// (AD-19 does, in TypeScript) it is COPIED VERBATIM. Where it names a type and
+// leaves its body to prose or to the UX spec's Expected-UI column, the
+// derivation is CITED and any residual ambiguity is called out in a comment
+// rather than resolved silently. The same honest limitation applies: the
+// loader casts to these types, so a Wave 1 signature drift is not a compile
+// error HERE.
+//
+// (`ConnectRefusalCode`, `InternalDomainProvenance` and `PostResult` are all
+// SHIPPED types and are imported at the top of this file with the others —
+// mirroring a type that already exists would invent drift where there is none.)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// AD-19 — the step sequence. The union block is COPIED VERBATIM from the ADD's
+// own TypeScript (docs/adds/onboarding-five-steps.md:551-563).
+// ---------------------------------------------------------------------------
+
+/** ADD AD-19, line 551 — `stepStateSchema`'s members. FR-O23: `coming-next` is
+ *  a FIRST-CLASS member, so filling a stub later widens no union. */
+export type StepState = "pending" | "active" | "done" | "skipped" | "coming-next";
+
+/** ADD AD-19, line 552 — `stepIdSchema`'s members, in ordinal order. */
+export type StepId = "repo" | "analytics" | "slack" | "agent" | "moment";
+
+/**
+ * One field on a work step.
+ *
+ * AD-19 names `FieldDescriptor` and does not declare it. Every property below
+ * is forced by a normative cell of the UX First-Run Checklist, cited per line;
+ * nothing here is invented to be convenient.
+ *
+ * UNDER-SPECIFIED, FLAGGED RATHER THAN GUESSED: the ADD gives no name for the
+ * "which field is this refusal about" wire, and UX row 7 requires one (the
+ * region disclosure auto-expands on `unreachable`, "because that is the field
+ * the sentence is about"). Modelled as `refusalCodes` ON THE DESCRIPTOR rather
+ * than as a separate lookup function, because D11's rule is that the consumer
+ * deriving the value from what it already holds is the only wiring with no
+ * thread to sever — the renderer already has the descriptor. The wave that
+ * writes `steps.ts` may rename this; it may not delete the relationship.
+ */
+export type FieldDescriptor = {
+  readonly id: string;
+  /** Normative copy — UX rows 5 and 12 state every label in bold. */
+  readonly label: string;
+  /**
+   * The sentence UNDER the field. UX rows 5 and 12 each give one in bold ("In
+   * PostHog: Settings → Personal API keys…", "In Slack: right-click the
+   * channel → …"), and those two sentences are the entire reason AD-4's
+   * proper-noun allow-list exists — so the descriptor needs somewhere to
+   * carry them or the copy has no home.
+   */
+  readonly helper: string | null;
+  /** Rendered masked. UX rows 5 and 12: the personal key and the bot token. */
+  readonly secret: boolean;
+  /**
+   * Behind the collapsed disclosure on first render. UX row 5's region field is
+   * the sprint's only `true`: prefilled, correct for most, and folded so step 2
+   * shows "exactly two visible fields".
+   */
+  readonly folded: boolean;
+  /** UX rows 5 and 12 give these in bold: `12345`, `xoxb-…`, `C01AB2CD3EF`. */
+  readonly placeholder: string | null;
+  /**
+   * UX row 5: the region is prefilled `https://us.i.posthog.com`. A VISIBLE
+   * field is never prefilled — a field the product can fill in for you is a
+   * field it should not have asked for (the Dumb-2026-Human forcing question 3).
+   */
+  readonly prefill: string | null;
+  /**
+   * The refusal codes this field is the subject of. UX row 6 puts focus on the
+   * key field for `invalid_credentials`; UX row 7 auto-expands the region for
+   * `unreachable`.
+   */
+  readonly refusalCodes: readonly ConnectRefusalCode[];
+};
+
+/**
+ * One action on a work step. AD-19 names `ActionDescriptor` without declaring
+ * it; UX row 12 gives both the labels and the ranking ("Send a test message"
+ * primary, "Skip for now" secondary), and UX §6 requires them stacked with the
+ * primary first on mobile — so the rank is data, not a render-time decision.
+ */
+export type ActionDescriptor = {
+  readonly id: string;
+  readonly label: string;
+  readonly rank: "primary" | "secondary";
+};
+
+/**
+ * What a step confirms IN PLACE once it succeeds (UX §5: "success is always
+ * shown in place, adjacent to its cause"). Left as a `string` rather than
+ * enumerated: the PRD fixes the count for step 2 ("two confirmations — counter,
+ * then receipt") but no source names the identifiers, and inventing three
+ * literals here would pin a vocabulary nobody has chosen.
+ */
+export type ConfirmationId = string;
+
+/** ADD AD-19, lines 554-563 — COPIED VERBATIM, with the three types above
+ *  supplied as declared just so this file typechecks standalone. */
+export type StepDescriptor =
+  | {
+      readonly kind: "coming-next";
+      readonly id: StepId;
+      readonly ordinal: number;
+      readonly title: string;
+      readonly whatItWillDo: string;
+      readonly filler: string;
+    }
+  //   ^ no `fields`, no `actions`, no `confirmations`. There is nothing to
+  //     render as a control. This absence IS the FR-O3/FR-O15 contract.
+  | {
+      readonly kind: "work";
+      readonly id: StepId;
+      readonly ordinal: number;
+      readonly title: string;
+      readonly helper: string;
+      readonly fields: readonly FieldDescriptor[];
+      readonly actions: readonly ActionDescriptor[];
+      readonly confirmations: readonly ConfirmationId[];
+      readonly skippable: boolean;
+    }
+  | {
+      readonly kind: "stage";
+      readonly id: StepId;
+      readonly ordinal: number;
+      readonly title: string;
+    };
+
+/**
+ * The persisted facts the sequence is derived FROM.
+ *
+ * UX §3's data table is explicit that step states are "derived from persisted
+ * connection rows + the skip/dismiss facts — NEVER a stored per-step status
+ * column", so every member below is a persisted fact and none is a step state.
+ *
+ * UNDER-SPECIFIED, FLAGGED: `reopenedReadOnly` is the one member that is not a
+ * persisted row. UX row 25's re-open disclosure is client state ("toggle, not
+ * navigation — the URL never changes"), and no source says how it reaches the
+ * derivation. It is carried here because the row's assertion — every step at
+ * its resolved state, none re-activated — has to be checkable somewhere, and
+ * the sequence engine is the only place that knows what "resolved state" is.
+ * The wave that writes `deriveStepStates` may move it to a second parameter;
+ * it may not make read-only a renderer's private decision, because then no
+ * test can reach it (AD-1: there is no DOM runner).
+ */
+export type StepSequenceFacts = {
+  /** `null` when no connection row exists at all. */
+  readonly connectionStatus: ConnectionState["status"] | null;
+  readonly slackConnected: boolean;
+  /** FR-O14: derived from the persisted absence of a connection, never a flag. */
+  readonly slackSkipped: boolean;
+  /** Flow D: a failed test post leaves step 3 active and NOT done. */
+  readonly slackTestPostFailed: boolean;
+  readonly armedAt: Date | null;
+  /** UX row 25. See the flag above. */
+  readonly reopenedReadOnly: boolean;
+};
+
+/**
+ * One step as the sequence resolves it.
+ *
+ * `state` and `ordinal` are forced by ADD §9's first two rows. `open` and
+ * `interactive` are derived from the UX Checklist and are the only way the two
+ * orphan rows this file carries can be asserted without a DOM:
+ *   - `open` — UX row 8: step 2 "flips to done AND STAYS OPEN", step 3 "opens
+ *     beneath without a click". Done-and-open is a different render from
+ *     done-and-collapsed, and the difference is the whole confirmation.
+ *   - `interactive` — UX row 25: on re-open "no step re-activates, no form
+ *     re-opens".
+ */
+export type StepView = {
+  readonly id: StepId;
+  readonly ordinal: number;
+  readonly state: StepState;
+  /** The body renders. */
+  readonly open: boolean;
+  /** The body's controls accept input. False for every step when re-opened. */
+  readonly interactive: boolean;
+};
+
+export type DeriveStepStates = (facts: StepSequenceFacts) => readonly StepView[];
+
+// ---------------------------------------------------------------------------
+// The privacy receipt (AD-2, FR-O8, PRD ruling R2)
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE LINE OF THE RECEIPT, AND IT IS A STRING.
+ *
+ * ADD §9 states the type outright: "the receipt is `readonly ReceiptLine[]` of
+ * strings by type". That is not a stylistic choice — it is the whole mechanism
+ * behind `the receipt exposes no editable control`. A string cannot carry a
+ * field, a toggle, an action or a default value, so the row is true BY TYPE
+ * rather than by anybody's discipline, and a later edit that wants a control
+ * has to change this alias first, in the open.
+ */
+export type ReceiptLine = string;
+
+/** ADD §5's Wave 1 table, line 691 — `buildPrivacyReceipt({ inferredInternalDomain, provenance })`. */
+export type PrivacyReceiptInput = {
+  readonly inferredInternalDomain: string | null;
+  readonly provenance: InternalDomainProvenance | null;
+};
+
+export type BuildPrivacyReceipt = (input: PrivacyReceiptInput) => readonly ReceiptLine[];
+
+// ---------------------------------------------------------------------------
+// The Slack test post (FR-O11)
+// ---------------------------------------------------------------------------
+
+/**
+ * CONTRADICTION IN THE SOURCES, RESOLVED IN THE OPEN RATHER THAN GUESSED.
+ *
+ * ADD §5 line 695 declares `describeTestPostOutcome(PostResult)`. ADD §9's
+ * fifth row requires `a successful post marks the step done AND NAMES THE
+ * CHANNEL`, and UX row 15's normative copy is "A test message just landed in
+ * #channel." `PostResult` (`packages/shared/src/delivery/poster.ts:66-77`)
+ * carries `messageRef` and nothing else on its success arm — THERE IS NO
+ * CHANNEL ON IT.
+ *
+ * So the input is mirrored as an object carrying both. The alternative —
+ * substituting the channel at the call site — would put a customer-facing
+ * sentence outside `packages/shared`, which FR-O22 forbids and which
+ * `render-purity.test.ts`'s "no component authors a customer-facing sentence
+ * inline" row would then fail. Wave 1 must settle the exact parameter shape;
+ * it may not settle it by dropping the channel.
+ */
+export type TestPostInput = {
+  readonly result: PostResult;
+  /** FR-O13: read from the `slack_connections` row, never from a payload. */
+  readonly channelId: string;
+};
+
+/** ADD §5 line 695 and §9's six rows — the three fields, verbatim. */
+export type TestPostOutcome = {
+  readonly sentence: string;
+  readonly retryable: boolean;
+  readonly marksStepDone: boolean;
+};
+
+export type DescribeTestPostOutcome = (input: TestPostInput) => TestPostOutcome;

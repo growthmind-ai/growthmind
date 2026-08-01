@@ -71,3 +71,71 @@ export async function loadUnderConstruction<T>(spec: {
 
   return value as T;
 }
+
+// ---------------------------------------------------------------------------
+// WAVE 0c ADDITIONS — the same resolution, for the exports that are not
+// functions. ADDITIVE ONLY: nothing above this line changed.
+//
+// `loadUnderConstruction` insists the export is callable, which is right for
+// `reduceStage` / `renderStageView` / `toFindingView` and wrong for the four
+// things Wave 0c has to reach: `STEP_DESCRIPTORS` (a frozen array),
+// `stepStateSchema` (a zod object), `ONBOARDING_PROPER_NOUNS` (a tuple), and
+// the whole `onboarding/messages` namespace (the `Object.entries` completeness
+// walk AD-4 inherits from `session-source/messages.test.ts` needs the module,
+// not one export off it).
+//
+// Two new helpers rather than a fourth private copy of the try/catch — the D11
+// duplication the header at the top of this file exists to prevent.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the whole namespace of a module a later wave creates.
+ *
+ * The completeness walk in `messages.test.ts` is the reason this exists: its
+ * whole point is that it derives the expected set from the module's ACTUAL
+ * exports rather than from a hand-maintained second list, so it cannot be
+ * written against a fixed set of named imports.
+ *
+ * @param spec.modulePath Relative to THIS FILE, exactly as above.
+ * @param spec.ownedBy The task that creates it. It lands in the failure
+ *   message so a red names its own owner.
+ */
+export async function loadModuleUnderConstruction(spec: {
+  readonly modulePath: string;
+  readonly ownedBy: string;
+}): Promise<Record<string, unknown>> {
+  try {
+    return (await import(spec.modulePath)) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `NOT IMPLEMENTED YET: ${spec.modulePath} does not exist on this tree. ` +
+        `It is created by ${spec.ownedBy}. This is a Wave 0 red for the RIGHT reason: the ` +
+        `behaviour is absent, and the assertions below it are the contract that wave must satisfy.`,
+    );
+  }
+}
+
+/**
+ * Resolve one NON-CALLABLE export of a module a later wave creates.
+ *
+ * The presence check is `!== undefined` rather than a type test, because the
+ * things Wave 0c reaches for are an array, a zod object and a tuple — three
+ * different `typeof` answers with one shared failure mode (absent).
+ */
+export async function loadValueUnderConstruction<T>(spec: {
+  readonly modulePath: string;
+  readonly exportName: string;
+  readonly ownedBy: string;
+}): Promise<T> {
+  const namespace = await loadModuleUnderConstruction(spec);
+  const value = namespace[spec.exportName];
+
+  if (value === undefined) {
+    throw new Error(
+      `NOT IMPLEMENTED YET: ${spec.modulePath} exists but exports no \`${spec.exportName}\`. ` +
+        `${spec.ownedBy} owns that export.`,
+    );
+  }
+
+  return value as T;
+}
