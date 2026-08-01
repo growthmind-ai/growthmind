@@ -1,0 +1,252 @@
+/* THE FIRST-RUN SURFACE'S ONE STYLESHEET (O-008, binding rule B6, and the
+ * storyboard's transition spec T1-T14).
+ *
+ * ###########################################################################
+ * # NO COLOUR VALUE IS WRITTEN OUT IN THIS FILE, AND THAT IS THE WHOLE OF B6.
+ * #
+ * # The canonical prior incident in this repository was an onboarding page
+ * # invisible in light mode, and every line of it was a value written by hand:
+ * # a hex panel, an rgba hairline, a dark-glass blur. Colour here comes from
+ * # Mantine's semantic tokens and the theme tuples (band, stamp, dark)
+ * # exclusively — each of which resolves per colour scheme, which a literal
+ * # never does.
+ * ###########################################################################
+ *
+ * MOTION IS THE STORYBOARD'S TABLE, NOT A SECOND VERSION OF IT. One easing
+ * curve for the whole surface. T6 folds in over 340 ms, T10 appends over
+ * 300 ms, and T11 arrives over 420 ms — deliberately the slowest thing on the
+ * screen, because it is the one moment this product is allowed to feel like an
+ * event. Every property list is explicit: `transition: all` animates
+ * properties nobody chose, including the ones a reduced-motion reader asked
+ * not to see and the ones a reload must mount already settled.
+ *
+ * WHAT IS NOT HERE, ON PURPOSE. No rule targets a stub row: a stub is inert,
+ * and a hover cue on an inert element is a lie the reader acts on (UX §5). No
+ * rule removes an outline: the focus ring in `app/globals.css` is what makes
+ * every tab stop visible, and one `outline: none` here would silently undo it
+ * for the whole sequence.
+ */
+
+/* --------------------------------------------------------------------------
+ * T14 — hover and press feedback.
+ *
+ * The lift lives behind `pointer: fine` and nothing else does. A bare `:hover`
+ * fires on touch, where it STICKS after a tap and reads as a control frozen
+ * mid-press; a transform aimed at a mouse inherited by a stylus is the same
+ * mistake one step further in.
+ * -------------------------------------------------------------------------- */
+
+.action {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 180ms cubic-bezier(0.22, 0.7, 0.24, 1),
+    transform 180ms cubic-bezier(0.22, 0.7, 0.24, 1);
+}
+
+.action:active {
+  transform: scale(0.985);
+  transition-duration: 50ms;
+}
+
+@media (hover: hover) {
+  .reopen:hover {
+    background-color: var(--mantine-color-default-hover);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .action:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * The strip, and the fold that puts it there (T6).
+ *
+ * The strip mounts BEFORE the sequence is gone. A frame where neither exists
+ * reads as a page load, and a page load here reads as the product crashing at
+ * its most important moment.
+ * -------------------------------------------------------------------------- */
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.foldIn {
+  transform-origin: top center;
+  animation: foldIn 340ms cubic-bezier(0.22, 0.7, 0.24, 1) both;
+}
+
+.foldOut {
+  animation: foldOut 200ms cubic-bezier(0.22, 0.7, 0.24, 1) both;
+}
+
+@keyframes foldIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes foldOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * The wait log (T10) — append-only, and the stamps stay in their own column.
+ * -------------------------------------------------------------------------- */
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Wide enough that a two-digit and a three-digit stamp keep the same column,
+ * and tabular so the digits do not reflow as they change. */
+.stamp {
+  flex-shrink: 0;
+  min-width: 3.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.appear {
+  animation: appear 300ms cubic-bezier(0.22, 0.7, 0.24, 1) both;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * The elapsed readout (T9) and its dot (T8).
+ *
+ * The dot is the only looping animation on this surface and it carries no
+ * numeric meaning — it is proof the page is alive, not a proportion of a total
+ * nobody measured.
+ * -------------------------------------------------------------------------- */
+
+.elapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--mantine-color-band-4);
+  animation: breathe 1600ms ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * T11 — THE ARRIVAL.
+ *
+ * A TRANSITION RATHER THAN A KEYFRAME ANIMATION, AND THAT IS THE LOAD-BEARING
+ * CHOICE. The card mounts at `.finding` and the class below is added one frame
+ * later, so the motion is a real transition between two declared states — which
+ * is what lets the reduced-motion block keep the FADE and drop the TRAVEL
+ * without re-authoring the whole entrance. On a reload the card mounts already
+ * carrying `.arrived`, so nothing transitions at all: replaying an entrance
+ * would claim something just happened that happened before the reader arrived
+ * (T13).
+ * -------------------------------------------------------------------------- */
+
+.finding {
+  display: block;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 420ms cubic-bezier(0.22, 0.7, 0.24, 1),
+    transform 420ms cubic-bezier(0.22, 0.7, 0.24, 1);
+}
+
+.arrived {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* The counts scroll inside their own container so the page body never scrolls
+ * sideways at 375px. */
+.counts {
+  overflow-x: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * REDUCED MOTION — everything stops except the payoff's fade.
+ *
+ * The carve-out is deliberate and it is the reason this block re-declares a
+ * live opacity transition instead of collapsing the lot: the arrival is the one
+ * piece of motion on this surface that ANNOUNCES something, and a reader who
+ * asked for less motion is still owed the announcement. What they are not owed
+ * is the travel, the breathing dot, or a fold that moves the page under them.
+ * -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition-duration: 0.01ms;
+  }
+
+  .dot {
+    animation: none;
+  }
+
+  .appear,
+  .foldIn,
+  .foldOut {
+    animation: none;
+  }
+
+  .finding {
+    transition: opacity 420ms ease;
+    transform: none;
+  }
+}

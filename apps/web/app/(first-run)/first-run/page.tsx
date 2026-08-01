@@ -50,6 +50,7 @@ import {
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
 import { ConnectSlackForm } from "@/components/first-run/ConnectSlackForm";
 import { CounterGrid } from "@/components/first-run/CounterGrid";
+import { FirstRunClient } from "@/components/first-run/FirstRunClient";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { StepRow } from "@/components/first-run/StepRow";
 import { StubStep } from "@/components/first-run/StubStep";
@@ -135,36 +136,43 @@ export default async function FirstRunPage() {
 
   return (
     <Container size="sm" py="xl" px="md">
-      <Stack gap="md">
-        {STEP_DESCRIPTORS.map((descriptor) => {
-          const view = views.get(descriptor.id);
-          if (view === undefined) {
-            return null;
-          }
+      {/* THE SEAM. Phase B — the strip, the stage, the wait log and the
+          finding — is a client concern: it polls and it holds a clock. It
+          arrives by wrapping the sequence below, and folds it away once
+          `status.armedAt` is set. The sequence needed no reshaping to allow
+          it, because it was already a subtree. */}
+      <FirstRunClient status={status}>
+        <Stack gap="md">
+          {STEP_DESCRIPTORS.map((descriptor) => {
+            const view = views.get(descriptor.id);
+            if (view === undefined) {
+              return null;
+            }
 
-          // A stub holds its place at its own ordinal and renders no surface
-          // at all. It neither advances nor blocks the sequence.
-          if (descriptor.kind === "coming-next") {
-            return <StubStep key={descriptor.id} step={descriptor} />;
-          }
+            // A stub holds its place at its own ordinal and renders no surface
+            // at all. It neither advances nor blocks the sequence.
+            if (descriptor.kind === "coming-next") {
+              return <StubStep key={descriptor.id} step={descriptor} />;
+            }
 
-          return (
-            <StepRow
-              key={descriptor.id}
-              ordinal={descriptor.ordinal}
-              title={descriptor.title}
-              helper={descriptor.kind === "work" ? descriptor.helper : null}
-              state={view.state}
-              open={view.open}
-            >
-              {/* Step 5 is the stage, and its body is Wave 7b's. Until then it
+            return (
+              <StepRow
+                key={descriptor.id}
+                ordinal={descriptor.ordinal}
+                title={descriptor.title}
+                helper={descriptor.kind === "work" ? descriptor.helper : null}
+                state={view.state}
+                open={view.open}
+              >
+                {/* Step 5 is the stage, and its body is Wave 7b's. Until then it
                   is a title-only row, which is exactly what UX §3 renders for
                   a step whose turn has not come. */}
-              {descriptor.kind === "work" ? workBody({ step: descriptor, view, status }) : null}
-            </StepRow>
-          );
-        })}
-      </Stack>
+                {descriptor.kind === "work" ? workBody({ step: descriptor, view, status }) : null}
+              </StepRow>
+            );
+          })}
+        </Stack>
+      </FirstRunClient>
     </Container>
   );
 }
