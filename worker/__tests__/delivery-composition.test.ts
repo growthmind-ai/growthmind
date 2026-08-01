@@ -56,6 +56,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { createDeliveriesRepo } from "@growthmind/db";
+import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
@@ -67,7 +68,6 @@ import {
 } from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import {
   DELIVERY_ACTOR_ID,
-  DELIVERY_ACTOR_ROLE,
   type DeliveryLane,
   type DeliveryTickSummary,
 } from "../src/tasks/delivery-tick";
@@ -211,7 +211,7 @@ function contextFor(organizationId: string, organizationName: string): TenantCon
     userId: DELIVERY_ACTOR_ID,
     organizationId,
     organizationName,
-    role: DELIVERY_ACTOR_ROLE,
+    role: SYSTEM_ACTOR_ROLE,
   });
 }
 
