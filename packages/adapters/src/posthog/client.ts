@@ -14,18 +14,14 @@
 import type { SourceFailure } from "@growthmind/shared";
 
 import { computeBackoffDelayMs, parseRetryAfterSeconds } from "./backoff";
-import {
-  eventsUrl,
-  MAX_RATE_LIMIT_ATTEMPTS,
-  MAX_RESPONSE_BYTES,
-  MAX_RESPONSE_CHUNKS,
-  personsUrl,
-  REQUEST_TIMEOUT_MS,
-} from "./constants";
+import { eventsUrl, MAX_RATE_LIMIT_ATTEMPTS, personsUrl, REQUEST_TIMEOUT_MS } from "./constants";
 import { isSameOriginAsHost } from "./host-guard";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
 import { mapFailure } from "./errors";
 import { assertPostHogInstant } from "./instant";
+// The body reader lives in its own module because `discovery.ts` needs the same three
+// bounds. One implementation, two consumers; a second copy here would drift.
+import { readJsonBody } from "./read-json-body";
 
 /** The two endpoints this adapter touches. Each keeps its own attempt counter. That
  * separation IS the per-endpoint bucket. */
@@ -59,62 +55,6 @@ export interface PostHogClient {
 
   /** Attempts spent on each endpoint in this run, for the poll-run row. */
   rateLimitAttempts(endpoint: PostHogEndpoint): number;
-}
-
-/**
- * Reads a JSON body without ever throwing across this boundary. A proxy's HTML error
- * page, an empty 204-shaped body, or a truncated response all degrade to `null`, which
- * `mapFailure` then classifies from the status alone.
- */
-async function readJsonBody(response: Response): Promise<unknown> {
-  try {
-    // : `MAX_PAGES_PER_RUN` bounds the request count, not the bytes, so an unbounded
-    // body means a hostile host can oom the worker 25 times over. Reject on the
-    // declared length first (cheap), then guard the undeclared case by reading with a
-    // byte counter that aborts past the cap.
-    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) return null;
-
-    const body = response.body;
-    if (!body) return (await response.json()) as unknown;
-
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    // Bounded by chunk count as well as by bytes. `for` would be the natural shape
-    // here and is deliberately not used: this package forbids unbounded loops outright
-    // and asserts it with a structural test, because every loop in it is driven by a
-    // hostile-capable remote. A stream that yields endless zero-length chunks would
-    // satisfy the byte cap forever, so the iteration count is capped too.
-    let readsRemaining = MAX_RESPONSE_CHUNKS;
-    while (readsRemaining > 0) {
-      readsRemaining -= 1;
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(value);
-    }
-    if (readsRemaining === 0) {
-      // Hit the chunk ceiling without `done`. Treat as unreadable, never as a
-      // truncated-but-valid body.
-      await reader.cancel();
-      return null;
-    }
-
-    const joined = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      joined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return JSON.parse(new TextDecoder().decode(joined)) as unknown;
-  } catch {
-    return null;
-  }
 }
 
 export function createPostHogClient(
