@@ -126,3 +126,27 @@ export function resolvePollPlan(input: {
 
   return { passes: 1, sleepMsBetween: 0 };
 }
+
+/**
+ * Is this the accelerated onboarding plan, or the ordinary steady-state one?
+ * (O-008 AD-11a.)
+ *
+ * THE POINT IS THAT IT READS THE PLAN RATHER THAN RE-DERIVING THE WINDOW. The
+ * onboarding analysis trigger fires only on a pass that ran under this plan, and
+ * the call site already holds the plan `resolvePollPlan` handed it. A second
+ * copy of `now - connectedAt < ONBOARDING_WINDOW_MINUTES` at that call site
+ * would be a D11 wire waiting to be severed: change the window here and the
+ * trigger would silently keep firing on the old one — and a trigger firing
+ * outside the window spends an analysis on ordinary steady-state traffic, on
+ * every connection, forever.
+ *
+ * So the boundary is not restated here either. `resolvePollPlan` decides it
+ * (exclusive: exactly `ONBOARDING_WINDOW_MINUTES` elapsed is OUTSIDE), and this
+ * predicate reads the answer off `passes` — the field that field exists to
+ * carry. The two cannot drift because there is only one comparison.
+ *
+ * Pure: no clock, no I/O.
+ */
+export function isOnboardingPlan(plan: PollPlan): boolean {
+  return plan.passes === MAX_ONBOARDING_PASSES;
+}

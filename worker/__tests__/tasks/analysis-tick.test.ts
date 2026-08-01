@@ -64,11 +64,13 @@ import { expect, test } from "bun:test";
 // failure every test below reports until Wave 3 lands it.
 import type {
   AnalysisLane,
+  AnalysisLaneDeps,
   AnalysisLaneSource,
   AnalysisLogger,
   AnalysisTickDeps,
+  AnalysisTickSummary,
 } from "../../src/tasks/analysis-tick";
-import { runAnalysisTick } from "../../src/tasks/analysis-tick";
+import { runAnalysisLane, runAnalysisTick } from "../../src/tasks/analysis-tick";
 
 // ---------------------------------------------------------------------------
 // Frozen fixtures — all `o11`-prefixed, colliding with no other suite
@@ -239,7 +241,17 @@ function lane(overrides: Partial<AnalysisLane> = {}): AnalysisLane {
 }
 
 function laneSource(lanes: readonly AnalysisLane[]): AnalysisLaneSource {
-  return { listDueLanes: () => Promise.resolve(lanes) };
+  return {
+    listDueLanes: () => Promise.resolve(lanes),
+    // O-008 AD-10. Implemented over the SAME list rather than stubbed to
+    // `null`: a fake whose second method could never return a lane would make
+    // every future row driving it vacuously green. Nothing in THIS file calls
+    // it — the tick reaches lanes only through `listDueLanes` — so its presence
+    // here is the port's shape, and its behaviour is proven against a real
+    // database where it lives, in `analysis-lane-source.for-project.test.ts`.
+    laneForProject: (projectId: string) =>
+      Promise.resolve(lanes.find((row) => row.projectId === projectId) ?? null),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1631,4 +1643,172 @@ test("the analysis lane port carries candidate findings and no separate key", as
 
   expect(h.runs.claimAttempts()).toEqual([signatureOf(CANDIDATE_A)]);
   expect(h.findings.rows().map((row) => row.signature)).toEqual([signatureOf(CANDIDATE_A)]);
+});
+
+// ---------------------------------------------------------------------------
+// W22–W23 — THE runAnalysisLane EXTRACTION (O-008 AD-9, ADD §9)
+//
+// AD-22: the wave that owns the code owns the suite update. This suite is the
+// pre-existing guard for that refactor, and the twenty-one rows above are the
+// bulk of the proof — every one of them still drives `runAnalysisTick` and
+// still asserts what it asserted before. NONE WAS RELAXED. The two rows below
+// add what the existing ones structurally cannot say: that the summary survived
+// the fold moving out of the lane, and that the one intentional behavioural
+// change actually happened.
+//
+// WHY THE EXTRACTION EXISTS AT ALL. `runAnalysisLane` is now reached by two
+// callers — this hourly tick, and the onboarding trigger that fires seconds
+// after a founder breaks their own product. FR-O17 says the fast path "respects
+// the single-writer index AND the cap ledger, or it does not ship", and names a
+// cap-bypassing trigger a FINANCIAL COMMITMENT. The strongest form of that
+// promise is not a careful second implementation; it is that there is only ONE
+// implementation, and the trigger contributes a project id to it.
+// ---------------------------------------------------------------------------
+
+/** A project whose run another worker already holds, and a project that breaks
+ *  mid-walk — so W22's summary is folded from THREE lanes with three different
+ *  outcomes rather than from one, which is the only version of this row that
+ *  could catch a fold silently dropping a member. */
+const HELD_PROJECT = "o11-project-held";
+const BREAKING_PROJECT = "o11-project-breaking";
+
+// W22 — the refactor is behaviour-preserving, stated as one exact object.
+test("runAnalysisTick produces the same summary after runAnalysisLane is extracted", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({
+    summariser,
+    lanes: [
+      // Completes, one finding.
+      lane(),
+      // Another worker holds it — `already_running`, and the ONE outcome that
+      // now folds a tally of four zeroes rather than skipping the fold. A
+      // refactor that folded it as anything else shows up here.
+      lane({ projectId: HELD_PROJECT }),
+      // Fails mid-walk, having already refused one candidate before it broke —
+      // so `failed` still has to REPORT the work it did. A lane returning an
+      // empty tally on failure would surface as a missing `candidatesRefused`.
+      lane({
+        projectId: BREAKING_PROJECT,
+        candidates: [CANDIDATE_LEAKY, CANDIDATE_B],
+        sessionsConsidered: 30,
+      }),
+    ],
+  });
+
+  // The incumbent, seeded through the repository's OWN open so it is exactly the
+  // row the partial unique index will refuse ours against.
+  await h.runs.repoFor(OTHER_WORKER).open({
+    projectId: HELD_PROJECT,
+    tickAt: INCUMBENT_STARTED_AT,
+  });
+  // The store stops answering for the third lane's one renderable candidate.
+  h.findings.breakOn(signatureIn(BREAKING_PROJECT, CANDIDATE_B));
+
+  const summary = await runAnalysisTick(h.deps);
+
+  // EVERY FIELD, AS ONE OBJECT. A field-by-field walk lets a member the fold
+  // silently stopped carrying pass unnoticed; `toEqual` on the whole summary
+  // cannot. This is the pin the extraction is judged against.
+  expect(summary).toEqual({
+    lanesConsidered: 3,
+    // The completed lane and the failed lane both OPENED a run; the held one
+    // did not.
+    lanesRun: 2,
+    lanesAlreadyRunning: 1,
+    lanesFailed: 1,
+    lanesErrored: 0,
+    findingsPersisted: 1,
+    candidatesUnrenderable: 0,
+    // The leaky surface, refused before the ladder — counted on the FAILED
+    // lane, which is the half proving a failure still reports its work.
+    candidatesRefused: 1,
+    // TWO, NOT ONE, AND THE SECOND IS THE POINT. The failing lane spent a model
+    // call on `CANDIDATE_B` before its persist broke, and that spend is real
+    // money that must reach the summary even though no finding did. A fold that
+    // dropped a failed lane's tally would report ONE here and the cap would
+    // silently stop being accounted for on every broken run.
+    modelCallsAttempted: 2,
+  } satisfies AnalysisTickSummary);
+
+  // AND THE PERSISTED FACTS AGREE WITH THE REPORTED ONES. A summary is a
+  // report; if the two disagreed, only one of them would be true and this row
+  // could not say which.
+  expect(h.findings.rows()).toHaveLength(1);
+  expect(
+    h.runs
+      .rows()
+      .filter((row) => row.status === "running")
+      .map((row) => row.projectId),
+  ).toEqual([HELD_PROJECT]);
+});
+
+// W23 — the ONE intentional behavioural change, and the structural guarantee
+// that came with it.
+test("runAnalysisLane returns its tally rather than mutating a shared summary", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({ summariser });
+
+  // (1) THE SUMMARY PARAMETER IS GONE, PROVEN BY ARITY. The old private
+  //     `runLane(deps, summary, lane, tickAt)` took four arguments, the second
+  //     of which was the caller's accumulator. Three is the assertion: a runner
+  //     that mutates its caller's object cannot be called by anyone who does
+  //     not have one, which is exactly the position the onboarding trigger is
+  //     in.
+  expect(runAnalysisLane).toHaveLength(3);
+
+  // (2) IT TAKES THE LANE'S DEPS, NOT THE TICK'S. `lanes` is deliberately
+  //     absent from `AnalysisLaneDeps`: a lane runner that could still reach
+  //     the lane SOURCE could widen its own work from one project to the whole
+  //     installation, which is precisely the second pipeline AD-9 exists to
+  //     make impossible. The annotation is explicit rather than inferred,
+  //     because passing the wider object would prove nothing about what the
+  //     narrower type permits.
+  const { lanes: _tickOnlySource, ...laneOnlyDeps } = h.deps;
+  const deps: AnalysisLaneDeps = laneOnlyDeps;
+
+  // (3) THE VALUE COMES BACK. Driven through the real exported entry point,
+  //     with no accumulator anywhere in the call.
+  const result = await runAnalysisLane(deps, lane(), TICK_AT);
+
+  expect(result.outcome).toBe("completed");
+  expect(result.tally).toEqual({
+    findingsPersisted: 1,
+    unrenderable: 0,
+    refused: 0,
+    modelCallsAttempted: 1,
+  });
+
+  // (4) AND THE RETURNED COUNTS ARE THE PERSISTED ONES. Read back off the store
+  //     and off the closed run row, never off a value this file handed over — a
+  //     tally reporting numbers the run row does not carry would be a second,
+  //     disagreeing home for the same facts.
+  expect(h.findings.rows()).toHaveLength(1);
+  expect(sourceFor(h, CANDIDATE_A)).toBe("model_rendered");
+  const closed = h.runs.rows()[0];
+  expect(closed?.status).toBe("completed");
+  expect(closed?.modelCallsAttempted).toBe(result.tally.modelCallsAttempted);
+  expect(closed?.candidatesRefused).toBe(result.tally.refused);
+  expect(closed?.candidatesUnrenderable).toBe(result.tally.unrenderable);
+
+  // (5) THE ZERO TALLY IS A REAL VALUE, NOT AN ABSENT ONE. `already_running`
+  //     does no work and must still hand back four numbers, so every caller
+  //     folds unconditionally and no branch has to remember to skip it.
+  const held = harness({ summariser: cleanSummariser() });
+  await held.runs.repoFor(OTHER_WORKER).open({ projectId: PROJECT, tickAt: INCUMBENT_STARTED_AT });
+  const { lanes: _heldTickOnlySource, ...heldLaneOnlyDeps } = held.deps;
+
+  const blocked = await runAnalysisLane(heldLaneOnlyDeps, lane(), TICK_AT);
+
+  expect(blocked.outcome).toBe("already_running");
+  expect(blocked.tally).toEqual({
+    findingsPersisted: 0,
+    unrenderable: 0,
+    refused: 0,
+    modelCallsAttempted: 0,
+  });
+  // NO TERMINAL WRITE ONTO SOMEBODY ELSE'S RUN — the reason `already_running`
+  // returns early at all, re-asserted here because the extraction moved that
+  // return.
+  expect(held.runs.rows()).toHaveLength(1);
+  expect(held.runs.rows()[0]?.status).toBe("running");
 });

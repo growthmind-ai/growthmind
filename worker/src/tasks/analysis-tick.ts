@@ -160,6 +160,7 @@ import { applyAttribution, newTally, outcomeFor } from "../analysis/tally";
 import { tenantContextFor } from "../analysis/types";
 import type {
   AnalysisLane,
+  AnalysisLaneDeps,
   AnalysisLogger,
   AnalysisTickDeps,
   AnalysisTickSummary,
@@ -170,11 +171,12 @@ import type {
 // The shapes below live in `../analysis/types.ts`, the bottom of this lane's
 // dependency graph. They are re-exported here because this module is the lane's
 // public face: `../index.ts` composes the tick, `../analysis-lane-source.ts`
-// implements its port, and the suite drives `runAnalysisTick`. Every one of
-// them names this file, and none of them should have to learn the lane's
-// internal layout to do it.
+// implements its port, `../tasks/onboarding-analysis.ts` runs one lane, and the
+// suite drives `runAnalysisTick`. Every one of them names this file, and none of
+// them should have to learn the lane's internal layout to do it.
 export type {
   AnalysisLane,
+  AnalysisLaneDeps,
   AnalysisLaneSource,
   AnalysisLogger,
   AnalysisTickDeps,
@@ -182,9 +184,67 @@ export type {
   AnalysisRunsRepoFor,
   ConfiguredSummariser,
   FindingsRepoFor,
+  LaneOutcome,
   SignatureLedgerFor,
 } from "../analysis/types";
 export { ANALYSIS_ACTOR_ID } from "../analysis/types";
+
+/**
+ * What one lane's run contributed, handed BACK to whoever asked for it (AD-9).
+ *
+ * These four counts are exactly the ones `runAnalysisTick` folds into its
+ * summary, and they are RETURNED rather than accumulated into a caller's object
+ * that this function mutates. That is the one behavioural change the extraction
+ * makes, and it is what lets a second caller — the onboarding trigger, which has
+ * no summary and wants none — run a lane without inventing a scratch object to
+ * be written into.
+ *
+ * The run row remains the DURABLE record of all of this (`closeRun` writes
+ * `candidates_unrenderable` / `candidates_refused` / `modelCallsAttempted`
+ * before this value is built). A tally that lived only here would die with the
+ * process; this one is a report to the caller, never the storage.
+ */
+export type LaneTally = {
+  readonly findingsPersisted: number;
+  readonly unrenderable: number;
+  readonly refused: number;
+  readonly modelCallsAttempted: number;
+};
+
+/** One lane's turn: what happened, and what it contributed. */
+export type LaneRunResult = {
+  readonly outcome: LaneOutcome;
+  readonly tally: LaneTally;
+};
+
+/**
+ * The tally of a lane that did no work at all — the `already_running` path.
+ *
+ * Zeroes rather than an absent tally, so a caller folds unconditionally and no
+ * branch can forget to. `already_running` is the single-writer guarantee
+ * WORKING (D6), not a failure, and it costs nothing: no candidates, no claims,
+ * and above all no terminal write onto a run somebody else is still walking.
+ */
+const NO_WORK_DONE: LaneTally = {
+  findingsPersisted: 0,
+  unrenderable: 0,
+  refused: 0,
+  modelCallsAttempted: 0,
+};
+
+/** The four counts that cross the boundary, off the run's own accumulated
+ *  facts. The other four members of `RunTally` (`resolvedModelId`, the two token
+ *  totals, `capExhausted`) are the RUN ROW's business and were already written
+ *  by `closeRun`; re-reporting them to a caller would invite a second home for
+ *  facts that have one. */
+function laneTallyOf(tally: RunTally): LaneTally {
+  return {
+    findingsPersisted: tally.findingsPersisted,
+    unrenderable: tally.unrenderable,
+    refused: tally.refused,
+    modelCallsAttempted: tally.modelCallsAttempted,
+  };
+}
 
 /**
  * The one-home sentence for "this check did not finish", resolved ONCE.
@@ -240,7 +300,7 @@ async function recordIdentity(
  * exactly as stuck AND lose the log line.
  */
 async function closeRun(
-  deps: AnalysisTickDeps,
+  deps: AnalysisLaneDeps,
   runs: AnalysisRunsRepo,
   lane: AnalysisLane,
   run: AnalysisRunRecord,
@@ -288,19 +348,42 @@ async function closeRun(
 }
 
 /**
- * One project's turn.
+ * ONE PROJECT'S TURN — THE WHOLE LANE, AND THE ONLY PLACE IT EXISTS (AD-9).
  *
- * Returns an outcome on every path. The run is opened FIRST and closed on every
- * path out of a successful open — including the one where a candidate's
- * persistence fails, which ends the lane rather than continuing against a store
- * that has stopped answering.
+ * Returns an outcome and a tally on every path. The run is opened FIRST and
+ * closed on every path out of a successful open — including the one where a
+ * candidate's persistence fails, which ends the lane rather than continuing
+ * against a store that has stopped answering.
+ *
+ * ── WHY THIS IS EXPORTED, AND WHY THAT IS THE GUARANTEE ─────────────────────
+ * Two callers reach this function: the hourly `analysis:tick` cron, and the
+ * onboarding trigger that fires seconds after a founder breaks their own product
+ * (`./onboarding-analysis.ts`). FR-O17 says the fast path "respects the
+ * single-writer index AND the cap ledger, or it does not ship", and names a
+ * cap-bypassing trigger a financial commitment.
+ *
+ * The strongest available form of that promise is NOT a test that the trigger
+ * calls `claimModelCall` correctly — it is that THE TRIGGER HAS NO MODEL-CALL
+ * SITE OF ITS OWN TO GET WRONG. This function is the code that opens the run
+ * against `analysis_runs_one_open_per_project_key`, claims through
+ * `claimModelCall` under BOTH ceilings, walks the eight-rung ladder, and closes
+ * the run terminally on every exit path. The trigger contributes a project id.
+ *
+ * So: no second lane runner may be written beside this one, and this function
+ * may not take `lanes` — see `AnalysisLaneDeps`, where the absence is stated as
+ * a contract rather than left as an accident of what it happens to reference.
+ *
+ * `at` rather than `tickAt`: the instant is the CALLER'S, and it is threaded all
+ * the way into `runs.open` so the abandoned-run lease (`ANALYSIS_RUN_LEASE_MS`)
+ * is evaluated against it. A runner that read a clock of its own would give the
+ * two callers different answers about the same jammed project.
  */
-async function runLane(
-  deps: AnalysisTickDeps,
-  summary: AnalysisTickSummary,
+export async function runAnalysisLane(
+  deps: AnalysisLaneDeps,
   lane: AnalysisLane,
-  tickAt: Date,
-): Promise<LaneOutcome> {
+  at: Date,
+): Promise<LaneRunResult> {
+  const tickAt = at;
   const ctx = tenantContextFor(lane);
   const findings = deps.findingsFor(ctx);
   const runs = deps.runsFor(ctx);
@@ -318,7 +401,7 @@ async function runLane(
     deps.logger.info(
       `analysis tick: project ${lane.projectId} is already being checked by another run, so this tick left it alone`,
     );
-    return "already_running";
+    return { outcome: "already_running", tally: NO_WORK_DONE };
   }
 
   const run = opened.run;
@@ -430,11 +513,11 @@ async function runLane(
       `analysis tick: project ${lane.projectId} could not finish its check — ${describeError(error)}`,
     );
     await closeRun(deps, runs, lane, run, tally, "failed", "fatal_error");
-    summary.findingsPersisted += tally.findingsPersisted;
-    summary.candidatesUnrenderable += tally.unrenderable;
-    summary.candidatesRefused += tally.refused;
-    summary.modelCallsAttempted += tally.modelCallsAttempted;
-    return "failed";
+    // THE WORK ALREADY DONE IS STILL REPORTED. A failed lane that returned an
+    // empty tally would tell its caller nothing was found by a run that in fact
+    // wrote findings before it broke — "we lost some" decaying into "there was
+    // nothing", one level up from where `closeRun` refuses the same collapse.
+    return { outcome: "failed", tally: laneTallyOf(tally) };
   }
 
   // A SPENT CAP IS NOT A FAILURE AND NOT AN EMPTY ANSWER. The run completed and
@@ -450,11 +533,7 @@ async function runLane(
     tally.capExhausted ? "cap_exhausted" : "ran_to_completion",
   );
 
-  summary.findingsPersisted += tally.findingsPersisted;
-  summary.candidatesUnrenderable += tally.unrenderable;
-  summary.candidatesRefused += tally.refused;
-  summary.modelCallsAttempted += tally.modelCallsAttempted;
-  return "completed";
+  return { outcome: "completed", tally: laneTallyOf(tally) };
 }
 
 /**
@@ -494,7 +573,19 @@ export async function runAnalysisTick(deps: AnalysisTickDeps): Promise<AnalysisT
 
   for (const lane of lanes) {
     try {
-      const outcome = await runLane(deps, summary, lane, tickAt);
+      const { outcome, tally } = await runAnalysisLane(deps, lane, tickAt);
+
+      // FOLDED HERE, UNCONDITIONALLY, from a value the lane RETURNED. The lane
+      // used to be handed this summary and write into it; a runner that mutates
+      // its caller's accumulator cannot be called by anyone who does not have
+      // one, which is exactly the position the onboarding trigger is in.
+      // `already_running` folds four zeroes, so no branch has to remember to
+      // skip it.
+      summary.findingsPersisted += tally.findingsPersisted;
+      summary.candidatesUnrenderable += tally.unrenderable;
+      summary.candidatesRefused += tally.refused;
+      summary.modelCallsAttempted += tally.modelCallsAttempted;
+
       if (outcome === "completed") summary.lanesRun += 1;
       if (outcome === "failed") {
         summary.lanesRun += 1;

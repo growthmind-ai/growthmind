@@ -47,6 +47,22 @@ export const TASK = {
    * on boot inside `crontab`, and only inside a running container.
    */
   ANALYSIS_TICK: "analysis:tick",
+  /**
+   * The onboarding fast path (O-008 AD-11). The SAME lane the hourly tick runs,
+   * asked for ONE project, seconds after a founder's own broken request reached
+   * us — rather than up to an hour later.
+   *
+   * MODEL-AGNOSTIC and SURFACE-AGNOSTIC for the reason every name above is
+   * vendor-agnostic. Colon separator, never a dot — a dot crashes the worker on
+   * boot inside `crontab`, and only inside a running container.
+   *
+   * THIS TASK IS QUEUED, NEVER CRONNED, and it is queued with a `jobKey` of
+   * `${TASK.ANALYSIS_ONBOARDING}:${projectId}` under `jobKeyMode:
+   * "preserve_run_at"` so N pending triggers for one project collapse into one
+   * job that still fires when the FIRST trigger asked. The queueing itself lives
+   * in ../index.ts, the only queue-aware file.
+   */
+  ANALYSIS_ONBOARDING: "analysis:onboarding",
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];
