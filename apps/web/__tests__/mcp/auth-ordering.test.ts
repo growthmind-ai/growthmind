@@ -47,9 +47,10 @@
 // moves. Note the `;charset=utf-8` suffix: it is the measured header value, and
 // an equality against a bare `application/json` fails.
 //
-// `WIRE-O2` is red until wave 8, because the route does not speak JSON-RPC yet
-// and answers the same body with our pre-protocol `MALFORMED_BODY` rather than
-// with a parse error the transport framed.
+// `WIRE-O2` was authored red — the route did not speak JSON-RPC yet and
+// answered the same body with our pre-protocol `MALFORMED_BODY` rather than
+// with a parse error the transport framed. Wave 8 landed and it passes: the
+// parse error is the transport's, which is the whole point of the row.
 import { describe, expect, test } from "bun:test";
 
 import { UNAUTHENTICATED } from "../../lib/mcp/refusals";

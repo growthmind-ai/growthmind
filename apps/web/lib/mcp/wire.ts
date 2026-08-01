@@ -46,6 +46,12 @@
 //   - `legacy: "stateless"` is passed EXPLICITLY. It is the verified default,
 //     and it is load-bearing rather than decorative: the only alternative,
 //     `"reject"`, makes a stock client fail its first POST with `-32022`.
+//   - `maxSubscriptions: 0` REFUSES `subscriptions/listen` OUTRIGHT, and it is
+//     an AVAILABILITY CONTROL rather than a preference. See the option's own
+//     paragraph below `settled()`.
+//   - `onerror` is the transport's own fault channel, and it is the THIRD of
+//     three log sites rather than a duplicate of either. See its paragraph
+//     below.
 //   - BOTH PROTOCOL ERAS ARE SERVED BY THIS ONE HANDLER, and nothing here is
 //     era-specific. A stock client negotiates the legacy floor through
 //     `initialize`; an opt-in client pinned to the modern era reaches the same
@@ -79,16 +85,34 @@
 // TRANSPORT'S, because they are framing. Nothing below emits a JSON-RPC error
 // object, and `MALFORMED_BODY` in `./refusals.ts` is deliberately NOT reachable
 // from here: the pre-protocol envelope reader that produced it is gone, and the
-// transport's own parse error is the answer a caller now gets. The constant
-// stays exported and audited because it is still a customer-facing sentence a
-// future producer could legitimately need; it simply has no producer today.
+// transport's own parse error is the answer a caller now gets. Its one producer
+// today is `./server.ts`'s batch gate, which refuses an ARRAY body before this
+// file is reached at all — a shape decision made on the raw bytes, in front of
+// the transport, never a second parser behind it.
 //
 // There is also NO CATCH HERE. `callTool` does not throw — a fault inside a
 // read, a renderer or an output schema is caught there, logged ONCE, and comes
 // back as a refusal value we render like any other. `./server.ts` keeps an
-// outer catch for a fault in this file itself. Adding a third catch, or an
-// `onerror` that fires on faults those two already own, is how one incident
-// becomes two log lines that disagree.
+// outer catch for a fault in this file itself. Adding a third CATCH, or one
+// that fires on faults those two already own, is how one incident becomes two
+// log lines that disagree.
+//
+// THE `onerror` BELOW IS NOT THAT THIRD CATCH, AND THE DISTINCTION IS THE WHOLE
+// REASON IT EXISTS. It is the transport's OWN fault channel, and it carries the
+// faults NEITHER of the other two can observe: the SDK's `reportError` is
+// `(e) => { try { onerror?.(e) } catch {} }`, and a fault inside the SDK is
+// RETURNED as `500 {"code":-32603}` rather than thrown — so `./server.ts`'s
+// catch never sees it, and `callTool`'s catch is a layer further in. Left
+// unwired, as it was until the post-sprint audit, a wire-layer failure answered
+// a caller with a 500 and wrote ZERO LOG LINES. That was a regression against
+// the pre-transport behaviour, where the envelope reader was ours and its
+// faults threw into `./server.ts`'s catch.
+//
+// So the three channels partition rather than overlap: `callTool` owns a fault
+// inside a tool call, `./server.ts` owns a fault escaping THIS file, and this
+// one owns a fault inside the SDK that neither can reach. The message below is
+// distinct from both for exactly that reason — during an incident the sentence
+// says which layer broke.
 import { MCP_TOOLS } from "@growthmind/shared";
 import {
   McpServer,
@@ -142,15 +166,22 @@ export interface McpWireDeps {
  * Serve one authenticated, gated request over the MCP wire.
  *
  * Called by `./server.ts` after it has authenticated the caller and cleared the
- * Origin, Content-Type and method gates. Everything from here down is framing:
- * negotiation, the envelope, error codes for malformed input, and the shape a
- * result travels in are all the transport's, and none of them is a decision
- * this codebase makes.
+ * Origin, Content-Type, method, body-size and batch gates. Everything from here
+ * down is framing: negotiation, the envelope, error codes for malformed input,
+ * and the shape a result travels in are all the transport's, and none of them
+ * is a decision this codebase makes.
+ *
+ * THE `request` IS REBUILT BY `./server.ts` AND THAT IS INVISIBLE HERE. A body
+ * can only be read once and the two gates above had to read it, so what arrives
+ * is a fresh `Request` over the same url, method, headers and bytes. Nothing
+ * below can tell, and nothing below should have to.
  */
 export async function renderMcpWire(request: Request, deps: McpWireDeps): Promise<Response> {
   const handler = createMcpHandler(() => buildServer(deps), {
     responseMode: "sse",
     legacy: "stateless",
+    maxSubscriptions: 0,
+    onerror: reportTransportFault,
   });
 
   try {
@@ -180,6 +211,27 @@ export async function renderMcpWire(request: Request, deps: McpWireDeps): Promis
  * preserving: it emits no notifications, no progress and no logging, so a
  * response is one frame and draining it costs a copy of a few hundred bytes.
  *
+ * ⚠️ "A RESPONSE IS ONE FRAME" WAS TRUE OF EVERY ANSWER THIS FILE PRODUCES AND
+ * FALSE OF ONE THE SDK PRODUCES BEHIND IT, AND THAT GAP WAS A HANG. The modern
+ * leg carries `subscriptions/listen`, answered by the SDK's own listen router
+ * with an SSE stream that ends only on client disconnect or `handler.close()`.
+ * The drain above then waited for a stream only the teardown could end, and the
+ * teardown in `renderMcpWire`'s `finally` waited for the drain: a deadlock, one
+ * per request, each pinning a server instance and a 15-second keep-alive timer.
+ * MEASURED, before the fix: one such request unanswered at 45 seconds, and 50
+ * concurrent ones with none answered.
+ *
+ * THE FIX IS `maxSubscriptions: 0` AT THE CONSTRUCTION SITE ABOVE, AND IT IS
+ * TRUTHFUL RATHER THAN A WORKAROUND. This surface declares no subscription
+ * capability and emits no notifications, so there is nothing a subscriber could
+ * ever be sent; the SDK's limit guard is nullish-coalesced (`?? 1024`), so `0`
+ * is honoured rather than treated as absent, and the same request now answers
+ * in about a millisecond with `200 {"error":{"code":-32603,"message":
+ * "Subscription limit reached"}}` and no stream at all. If this surface ever
+ * grows a notification worth sending, raising that number is the moment to
+ * re-read this paragraph — the drain above is what makes a streaming answer
+ * impossible, not an accident that could be left in place beside one.
+ *
  * NOTHING ABOUT THE ANSWER MOVES. The status, the status text and every header
  * are the transport's, carried across unchanged; the body is the same bytes.
  * A response with no body at all — the `202` a notification is answered with,
@@ -198,6 +250,43 @@ async function settled(response: Response): Promise<Response> {
     statusText: response.statusText,
     headers: response.headers,
   });
+}
+
+/**
+ * The transport's own fault channel, and the third of exactly three log sites.
+ *
+ * ONE LINE, AND A SENTENCE NEITHER OF THE OTHER TWO WRITES. `callTool` logs
+ * "a tool call could not be completed"; `./server.ts` logs "the wire could not
+ * answer a request"; this logs that the fault was INSIDE the SDK, where neither
+ * of them can see it. Three partitioned channels, never three claims on one
+ * event — the file header argues the partition, and
+ * `__tests__/mcp/failure-isolation.test.ts` still requires exactly one line for
+ * a broken read, which never reaches this channel because `callTool` does not
+ * throw.
+ *
+ * THE ERROR OBJECT GOES TO THE LOG AND NOWHERE ELSE. The SDK's contract for
+ * this callback is reporting-only — it never alters the response — so the
+ * caller still gets the transport's own detail-free frame, exactly as before.
+ * That asymmetry is the point: the detail is ours, the sentence is theirs.
+ *
+ * WHAT ACTUALLY ARRIVES HERE, MEASURED. On the legacy leg the SDK constructs
+ * its transport WITHOUT wiring this callback into it, so the legacy content
+ * negotiation (406), media type (415) and parse (-32700) refusals are silent
+ * here and every existing contract row's log count is untouched. What does
+ * arrive: a factory or serving failure on either leg, a rejected inbound
+ * request the entry classified, a modern-leg protocol rejection, and the
+ * `subscriptions/listen` refusal `maxSubscriptions: 0` produces.
+ *
+ * THE MESSAGE RATHER THAN THE ERROR OBJECT, AND THAT IS DELIBERATE HERE WHERE
+ * IT WOULD BE WRONG IN THE OTHER TWO. Those two catch faults raised by OUR
+ * code, where a stack is the point. What the SDK hands this callback is
+ * overwhelmingly a REJECTED REQUEST — its own documented wording — whose every
+ * frame is inside the package and names none of our files, so the object buys
+ * a screenful of node_modules for a sentence that already said everything. One
+ * fault, one line, readable during an incident.
+ */
+function reportTransportFault(error: Error): void {
+  console.error("mcp: the transport reported a fault", error.message);
 }
 
 /**

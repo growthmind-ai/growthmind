@@ -93,20 +93,26 @@
 // asserts nothing at all while looking like it asserts everything.
 //
 // ---------------------------------------------------------------------------
-// RED UNTIL WAVES 7–8
+// GREEN, AND WHAT THAT MEANS HERE
 // ---------------------------------------------------------------------------
 //
-// `apps/web/lib/mcp/wire.ts` is a signature-only stub and `server.ts` still
-// reads its pre-protocol `{tool, input}` envelope, so today `connect()` cannot
-// complete: the client's `initialize` arrives as a body with no `tool` key and
-// comes back HTTP 400. Every row below is red for that one reason, and waves
-// 7–8 are what make them green.
+// These rows were authored red, before `wire.ts` existed: `server.ts` read a
+// pre-protocol `{tool, input}` envelope, so a real client's `initialize`
+// arrived as a body with no `tool` key and came back HTTP 400. That is history.
+// Waves 7–8 landed, and every row in this file passes.
+//
+// WHAT STILL HAS TO BE TRUE, now that nothing here is waiting on an
+// implementation: a row that goes red is a REGRESSION and not an unfinished
+// feature, and the failure to reach for first is the SDK-behaviour note the row
+// carries rather than a missing handler. The `⚠️` blocks below are the
+// measurements; they are what a debugging session should start from.
 //
 // Lane prefix `mcpe`.
 import { createApiKeysRepo } from "@growthmind/db";
 import {
   MCP_TOOL,
   MCP_TOOL_NAMES,
+  fixSpecEnvelopeSchema,
   listOpenFixesOutputSchema,
   type TenantContext,
 } from "@growthmind/shared";
@@ -140,7 +146,10 @@ import {
 import {
   fakeCredentials,
   fakeReadPort,
+  findingRecordFor,
+  fixRecordFor,
   mintRealApiKey,
+  openFixRowFor,
   sseDataLines,
   KEY_A,
   ORG_A,
@@ -752,6 +761,195 @@ describe("a real MCP client against the real exported handler", () => {
 
       expect(result.isError).toBe(true);
       expect(result.structuredContent).toBeUndefined();
+      expect(firstText(result)).toBe(NOT_FOUND.message);
+    } finally {
+      await closeQuietly(client);
+    }
+  });
+});
+
+// ===========================================================================
+// WIRE-E10 — the two tools that have never answered a real record to a real
+// client
+// ===========================================================================
+//
+// ⚠️ THIS IS THE EXACT D11 CLASS THIS SPRINT ALREADY PAID FOR ONCE. `wire.ts`
+// names it as a live obligation in as many words: `get_fix` and `get_finding`
+// "only escape it today because they answer NOT_FOUND as execution errors, and
+// execution errors are exempt; the moment they return a real record they
+// inherit this line unchanged". Every row above seeds an EMPTY store, so
+// `WIRE-E9(a)` exercises the structured-content contract on `list_open_fixes`
+// and on nothing else — two of the three tools have never had a non-error
+// answer validated by a foreign client's compiled validator, which is the only
+// place the defect is visible at all. THE SERVER DOES NOT ENFORCE IT.
+//
+// A SEPARATE DEPS OBJECT, NOT A SEEDED `FAKE_DEPS`. Seeding the shared one
+// would move `WIRE-E3`, `WIRE-E8` and `WIRE-E9(a)` off the empty answer they
+// assert and `WIRE-E4`, `WIRE-E5`, `WIRE-E7` and `WIRE-E9(c)` off their
+// refusals — sixty-nine contract rows do not get quietly rewritten to make a
+// new one convenient. The store below is this block's alone.
+//
+// STILL NO DATABASE. The records come from the same fixture builders the
+// handler suites use, parsed through their own schemas at construction, so a
+// record this block can seed is a record the contract accepts.
+
+const SEEDED_FIX_ID = "fix-mcpe-seeded";
+const SEEDED_FINDING_ID = "finding-mcpe-seeded";
+const SEEDED_RESULTS_BY = "2026-07-01T00:00:00.000Z";
+
+const SEEDED_DEPS: McpServerDeps = {
+  credentials: fakeCredentials({ [KEY_A]: ORG_A }),
+  reads: fakeReadPort({
+    openFixes: [
+      {
+        organizationId: ORG_A,
+        projectId: "project-mcpe",
+        row: openFixRowFor({
+          fixId: SEEDED_FIX_ID,
+          findingId: SEEDED_FINDING_ID,
+          resultsBy: SEEDED_RESULTS_BY,
+        }),
+      },
+    ],
+    fixes: [
+      {
+        organizationId: ORG_A,
+        record: fixRecordFor({
+          fixId: SEEDED_FIX_ID,
+          findingId: SEEDED_FINDING_ID,
+          resultsBy: SEEDED_RESULTS_BY,
+        }),
+      },
+    ],
+    findings: [
+      {
+        organizationId: ORG_A,
+        record: findingRecordFor({ findingId: SEEDED_FINDING_ID, fixId: SEEDED_FIX_ID }),
+      },
+    ],
+  }).port,
+};
+
+const serveSeeded: Serve = (request) => handleMcpRequest(request, SEEDED_DEPS);
+
+describe("a real MCP client reading real records out of a seeded store", () => {
+  test("WIRE-E10 — should call all three tools through one listing client and have every result accepted", async () => {
+    const wire = wireTo(serveSeeded);
+    const client = await openClient(wire, KEY_A);
+
+    try {
+      // LIST FIRST, AS EVERYWHERE IN THIS FILE. This is what compiles the
+      // output validators; without it the three calls below prove nothing at
+      // all (`WIRE-E8`'s vacuous half says so in detail).
+      await client.listTools();
+
+      // ⚠️ EACH CALL RESOLVING IS THE ASSERTION. A result that omits or
+      // mis-shapes `structuredContent` never reaches the lines below — the
+      // client throws `ProtocolError -32600` first, exactly as `WIRE-E9(b)`
+      // proves it does.
+      const listed = await client.callTool({
+        name: MCP_TOOL.LIST_OPEN_FIXES,
+        arguments: {},
+      });
+      const fix = await client.callTool({
+        name: MCP_TOOL.GET_FIX,
+        arguments: { fixId: SEEDED_FIX_ID },
+      });
+      const finding = await client.callTool({
+        name: MCP_TOOL.GET_FINDING,
+        arguments: { findingId: SEEDED_FINDING_ID },
+      });
+
+      // NOT REFUSALS. `isError` results are EXEMPT from output validation, so a
+      // block that accidentally asked for ids nobody seeded would resolve
+      // happily and assert nothing — this is the line that stops it.
+      expect(listed.isError).toBeFalsy();
+      expect(fix.isError).toBeFalsy();
+      expect(finding.isError).toBeFalsy();
+
+      // THE NORTH STAR'S "calls all three tools", with a real answer on each.
+      expect(listed.structuredContent).not.toBeUndefined();
+      expect(fix.structuredContent).not.toBeUndefined();
+      expect(finding.structuredContent).not.toBeUndefined();
+    } finally {
+      await closeQuietly(client);
+    }
+  });
+
+  test("WIRE-E10 — should answer get_fix with a rendered spec valid against the schema it advertises", async () => {
+    const wire = wireTo(serveSeeded);
+    const client = await openClient(wire, KEY_A);
+
+    try {
+      await client.listTools();
+      const result = await client.callTool({
+        name: MCP_TOOL.GET_FIX,
+        arguments: { fixId: SEEDED_FIX_ID },
+      });
+
+      // Parsed through OUR schema as well as the client's compiled validator,
+      // for the reason `WIRE-E9(a)` gives: the client proves a foreign program
+      // accepts it, and this proves it is the same shape `packages/shared`
+      // declares — so the two can never drift into "the client is happy and we
+      // are serving something else".
+      const parsed = fixSpecEnvelopeSchema.safeParse(result.structuredContent);
+      if (!parsed.success) {
+        throw new Error(`mcpe: get_fix answered a shape the contract refuses: ${parsed.error}`);
+      }
+
+      expect(parsed.data.fixId).toBe(SEEDED_FIX_ID);
+      expect(parsed.data.findingId).toBe(SEEDED_FINDING_ID);
+      // The join `call-tool.ts` performs in one line — the renderer's sentences,
+      // reaching a real client rather than only a handler assertion.
+      expect(parsed.data.specText.length).toBeGreaterThan(0);
+      expect(parsed.data.dateIsFinal).toBe(true);
+    } finally {
+      await closeQuietly(client);
+    }
+  });
+
+  test("WIRE-E10 — should answer get_finding with evidence a real client accepted", async () => {
+    const wire = wireTo(serveSeeded);
+    const client = await openClient(wire, KEY_A);
+
+    try {
+      await client.listTools();
+      const result = await client.callTool({
+        name: MCP_TOOL.GET_FINDING,
+        arguments: { findingId: SEEDED_FINDING_ID },
+      });
+
+      expect(result.isError).toBeFalsy();
+
+      // `get_finding`'s output schema is reachable only through the descriptor
+      // (`@growthmind/shared`'s barrel does not re-export it), so the assertion
+      // here is on the fields rather than on a re-parse — the descriptor's own
+      // schema already parsed this value inside `call-tool.ts`, and the client's
+      // compiled validator accepted it, which is two independent checks.
+      const structured = result.structuredContent as Record<string, unknown> | undefined;
+      expect(structured?.findingId).toBe(SEEDED_FINDING_ID);
+      expect(structured?.fixId).toBe(SEEDED_FIX_ID);
+      expect(Array.isArray(structured?.evidence)).toBe(true);
+    } finally {
+      await closeQuietly(client);
+    }
+  });
+
+  test("WIRE-E10 — should still refuse an id nobody seeded, from the same store", async () => {
+    // NON-VACUITY FOR THE WHOLE BLOCK. A store that answered every id with the
+    // one record it holds would pass all three rows above; this is what proves
+    // the reads are resolving the id rather than returning whatever is there.
+    const wire = wireTo(serveSeeded);
+    const client = await openClient(wire, KEY_A);
+
+    try {
+      await client.listTools();
+      const result = await client.callTool({
+        name: MCP_TOOL.GET_FIX,
+        arguments: { fixId: NEVER_ISSUED_FIX },
+      });
+
+      expect(result.isError).toBe(true);
       expect(firstText(result)).toBe(NOT_FOUND.message);
     } finally {
       await closeQuietly(client);

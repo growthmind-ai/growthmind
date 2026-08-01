@@ -17,24 +17,25 @@
 // for; "this file may not name the wire" is total, and only a scan can say so.
 //
 // ---------------------------------------------------------------------------
-// WHY S2 AND S5 ARE RED, AND WHAT WOULD BE THE WRONG WAY TO FIX THEM
+// ALL FIVE ARE GREEN, AND THEY GO RED FOR DIFFERENT REASONS
 // ---------------------------------------------------------------------------
 //
-// `callTool` currently exists as a SIGNATURE-ONLY STUB whose body throws — Wave
-// 2 landed it precisely so this suite typechecks while it runs red. So S2 and
-// S5 fail with `callTool has no implementation yet — task 7.1 owns the body`.
-// That is the right red: the symbol exists, the types are final, and what is
-// missing is the behaviour task 7.1 owns.
+// S2 and S5 were authored against a signature-only stub whose body threw, so
+// they ran red until task 7.1 moved the real logic down out of `./server.ts`.
+// It did. `callTool` is implemented, and all five rows pass.
 //
-// DO NOT MAKE THEM GREEN BY WRITING AN IMPLEMENTATION INTO `call-tool.ts` FROM
-// HERE. Task 7.1 moves the real logic down from `./server.ts`; a reference
-// implementation written to satisfy a test would be a second copy of decisions
-// that already exist, and the drift between them is the bug this sprint is
-// removing.
+// WHAT A FAILURE MEANS NOW. S1, S3 and S4 are source scans: red means somebody
+// gave the deciding half a name from the transport, or reintroduced the v1
+// package, or added a second file that names the transport — three edits with a
+// visible diff and no ambiguity about the fix. S2 and S5 are behavioural: red
+// means the tool core started throwing, or started taking its organization
+// from somewhere other than the credential, which is a security regression and
+// not a build one.
 //
-// S1, S3 and S4 are guard rows and are green from the moment they are written.
-// That is correct: they are not waiting for a feature, they are standing over
-// one.
+// THE ONE WRONG FIX IS STILL THE WRONG FIX. Nothing in `call-tool.ts` may grow
+// a second copy of a decision that lives in a schema or a refusal constant to
+// make a row here pass; a reference implementation written to satisfy a test is
+// the drift this sprint removed.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -101,6 +101,7 @@ import {
   ORG_A,
   ORG_B,
 } from "./helpers/mcp-fixture";
+import { modernToolCallRequest } from "./helpers/modern-envelope";
 
 const CREDENTIALS = fakeCredentials({ [KEY_A]: ORG_A, [KEY_B]: ORG_B });
 
@@ -364,5 +365,146 @@ describe("the read-only machine surface refuses across organizations without say
 
     expect(print.body).not.toContain(ORG_B_FIX_ID);
     expect(print.body).not.toContain(ORG_B_FINDING_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WIRE-X6 — the same proof, on the other leg
+// ---------------------------------------------------------------------------
+
+describe("the crown jewel holds on the modern leg too", () => {
+  /**
+   * WHY THIS ROW EXISTS, AND WHY IT WAS MISSING (post-sprint audit).
+   *
+   * `WIRE-X1…X5` are authored entirely on the LEGACY leg, because the fixture
+   * mints legacy-only requests by design and legacy is the leg a stock client
+   * negotiates. That is the right default and it is not being changed. But the
+   * transport serves BOTH eras from one handler with no modern-off switch, so
+   * the modern leg is reachable by any client that pins the era — and until
+   * this row, NOTHING asserted the tenant boundary there. The property was
+   * measured identical; measured is not asserted, and an unasserted security
+   * property is one a package upgrade can move in silence.
+   *
+   * ⚠️ MODERN COMPARED AGAINST MODERN, NEVER AGAINST A LEGACY LITERAL. The
+   * modern result carries `resultType: "complete"` and a `_meta.serverInfo`
+   * block the legacy frame lacks, so `notFoundFrame()` above is not the
+   * expectation here and must not be made into one. What this row compares is
+   * two answers on the SAME leg, which is exactly what the identity claim is:
+   * a caller cannot tell a foreign id from an absent one.
+   *
+   * `WIRE-R10` scans this file, so the comparison below is `fingerprint` and
+   * `toEqual` like every other row here — no partial match, no parse.
+   */
+  test("WIRE-X6 — a fix id from another organization answers byte-identically to an absent one on the modern leg", async () => {
+    const reads = twoOrgStore();
+    const deps = { credentials: CREDENTIALS, reads: reads.port };
+
+    // NON-VACUITY FIRST, AS EVERYWHERE IN THIS FILE: org B really can read its
+    // own fix through the modern envelope, so the identity below is between two
+    // refusals rather than between two answers of some other broken kind.
+    const owned = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({ tool: "get_fix", input: { fixId: ORG_B_FIX_ID }, key: KEY_B }),
+        deps,
+      ),
+    );
+    expect(owned.status).toBe(200);
+    expect(owned.body).toContain(ORG_B_FIX_ID);
+    expect(owned.body).not.toContain(NOT_FOUND.message);
+
+    const foreign = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({ tool: "get_fix", input: { fixId: ORG_B_FIX_ID }, key: KEY_A }),
+        deps,
+      ),
+    );
+    const absent = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({ tool: "get_fix", input: { fixId: NEVER_ISSUED }, key: KEY_A }),
+        deps,
+      ),
+    );
+
+    // The band before the comparison, and it is the MODERN band: the answer
+    // really is a tool execution error carrying our sentence, not a protocol
+    // rejection that two requests would share for a reason of the transport's.
+    expect(foreign.status).toBe(200);
+    expect(foreign.body).toContain(NOT_FOUND.message);
+
+    // THE TENANT PROOF, ON THIS LEG. Load-bearing; never loosen this line.
+    expect(foreign).toEqual(absent);
+  });
+
+  test("WIRE-X6 — a finding id from another organization is indistinguishable from an absent one on the modern leg", async () => {
+    const reads = twoOrgStore();
+    const deps = { credentials: CREDENTIALS, reads: reads.port };
+
+    const owned = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({
+          tool: "get_finding",
+          input: { findingId: ORG_B_FINDING_ID },
+          key: KEY_B,
+        }),
+        deps,
+      ),
+    );
+    expect(owned.status).toBe(200);
+    expect(owned.body).toContain(ORG_B_FINDING_ID);
+
+    const foreign = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({
+          tool: "get_finding",
+          input: { findingId: ORG_B_FINDING_ID },
+          key: KEY_A,
+        }),
+        deps,
+      ),
+    );
+    const absent = await fingerprint(
+      await handleMcpRequest(
+        modernToolCallRequest({
+          tool: "get_finding",
+          input: { findingId: NEVER_ISSUED },
+          key: KEY_A,
+        }),
+        deps,
+      ),
+    );
+
+    expect(foreign.status).toBe(200);
+    expect(foreign.body).toContain(NOT_FOUND.message);
+    expect(foreign).toEqual(absent);
+  });
+
+  test("WIRE-X6 — the organization is still the credential's when the request is modern and names another", async () => {
+    // `WIRE-X4`'s claim, on the other leg. A modern envelope carries a `_meta`
+    // block the legacy one does not, so `params` is a richer object here — and
+    // the row asserts the enrichment changed nothing about where the
+    // organization comes from.
+    const reads = twoOrgStore();
+    const deps = { credentials: CREDENTIALS, reads: reads.port };
+
+    await handleMcpRequest(
+      modernToolCallRequest({
+        tool: "list_open_fixes",
+        input: { organizationId: ORG_B, projectId: ORG_B_PROJECT_ID },
+        key: KEY_A,
+      }),
+      deps,
+    );
+    await handleMcpRequest(
+      modernToolCallRequest({
+        tool: "get_fix",
+        input: { organizationId: ORG_B, fixId: ORG_B_FIX_ID },
+        key: KEY_A,
+      }),
+      deps,
+    );
+
+    expect(reads.organizationsAsked).toHaveLength(2);
+    expect(reads.organizationsAsked.every((organizationId) => organizationId === ORG_A)).toBe(true);
+    expect(reads.organizationsAsked).not.toContain(ORG_B);
   });
 });

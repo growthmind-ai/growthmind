@@ -44,28 +44,24 @@
 // file out of the guard's reach.
 //
 // ---------------------------------------------------------------------------
-// ⚠️ THIS ROW IS RED ON ARRIVAL, AND THE RED IS THE POINT
+// THE FIVE LOOSENINGS THIS ROW WAS AUTHORED AGAINST ARE GONE
 // ---------------------------------------------------------------------------
 //
-// Wave 0-T1's task notes predicted this row would go green immediately, on the
-// reasoning that it reads source text and needs no handler. That reasoning was
-// right about the mechanism and wrong about the state of the files: as landed
-// at `35d5e6f`, three of the four already carry a loosened comparison, all of
-// them in rows waves 5.1 and 5.2 rewrite:
+// ⚠️ AN EARLIER VERSION OF THIS HEADER LISTED FIVE OFFENDERS BY `file:line` AND
+// SAID THE ROW WAS RED ON ARRIVAL. It was, once. As landed at `35d5e6f` three
+// of the four suites carried a loosened comparison — two `JSON.parse(` sites in
+// `api-key-credentials.test.ts` and three `toMatchObject` sites across
+// `cross-tenant.test.ts` and `cross-tenant-real-keys.test.ts` — and waves 5.1
+// and 5.2 removed all five. The line numbers are not repeated here because they
+// no longer point at anything, and a `file:line` that resolves to unrelated
+// code is worse than no reference at all.
 //
-//   apps/web/__tests__/mcp/cross-tenant.test.ts:164            toMatchObject
-//   apps/web/__tests__/mcp/cross-tenant.test.ts:197            toMatchObject
-//   apps/web/__tests__/mcp/cross-tenant-real-keys.test.ts:232  toMatchObject
-//   apps/web/__tests__/mcp/api-key-credentials.test.ts:171     JSON.parse(
-//   apps/web/__tests__/mcp/api-key-credentials.test.ts:182     JSON.parse(
-//
-// So this is not a guard that starts satisfied and must stay so — it is a guard
-// that names five existing loosenings and goes green when the wave that owns
-// those rows removes them. The two `JSON.parse` sites are exactly what the
-// fixture's `sseDataLines` / `sseDataLine` extractor exists to replace; the
-// three `toMatchObject` sites are non-vacuity halves that should become whole
-// comparisons. IF YOU ARE THE AUTHOR OF TASK 5.1 OR 5.2, THIS ROW IS YOURS TO
-// TURN GREEN, and the way to turn it green is never to relax the list below.
+// SO THIS IS NOW A GUARD THAT STARTS SATISFIED AND MUST STAY SO. Red means a
+// loosening was reintroduced, and the failure message names the file, the line
+// and the token. The two `JSON.parse` sites were replaced by the fixture's
+// `sseDataLines` / `sseDataLine` extractor — reach for that, never for a parse.
+// The three `toMatchObject` sites were non-vacuity halves and became whole
+// comparisons. THE WAY TO MAKE THIS ROW GREEN IS NEVER TO RELAX THE LIST BELOW.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -44,15 +44,21 @@
 // from asserting against a different refusal entirely.
 //
 // ---------------------------------------------------------------------------
-// RED, AND WHY
+// ALL SIX ARE GREEN, AND TWO MORE GATES HAVE LANDED SINCE
 // ---------------------------------------------------------------------------
 //
-// The Origin and Content-Type gates do not exist yet: `server.ts` imports
-// neither `BROWSER_ORIGIN` nor `WRONG_CONTENT_TYPE` as of Wave 0, and answers
-// every JSON-RPC body with our pre-protocol `MALFORMED_BODY` 400. Waves 7–8
-// build both gates and the wire behind them. `WIRE-G6(b)` is green now and must
-// stay green — it is the row saying authentication can never move behind a
-// content-negotiation check.
+// These rows were authored red: as of Wave 0 `server.ts` imported neither
+// `BROWSER_ORIGIN` nor `WRONG_CONTENT_TYPE` and answered every JSON-RPC body
+// with a pre-protocol `MALFORMED_BODY` 400. Waves 7–8 built both gates and the
+// wire behind them, and every row here passes. `WIRE-G6(b)` was green from the
+// start and must stay so — it is the row saying authentication can never move
+// behind a content-negotiation check.
+//
+// TWO GATES OF `server.ts` ARE NOT COVERED HERE, DELIBERATELY. The post-sprint
+// audit added a body size ceiling and a batch (array-body) refusal, both firing
+// after the four gates above. They are availability bounds rather than header
+// gates, they need bodies this file's rows never mint, and they live in
+// `./wire-bounds.test.ts` with the measurements that produced them.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -35,19 +35,25 @@
 // envelope answer it names.
 //
 // ---------------------------------------------------------------------------
-// RED, AND WHY EACH ONE IS RED
+// ALL EIGHT ARE GREEN, AND THE ONE RULE THAT MADE THEM GREEN STILL BINDS
 // ---------------------------------------------------------------------------
 //
-// As of Wave 0 the route still reads its own pre-protocol envelope — a `tool`
-// key and an `input` key on the body — so every JSON-RPC message minted here
-// reaches it as an object with no `tool` field and comes back as HTTP 400
-// `MALFORMED_BODY`. That is the right red: the surface does not speak this
-// protocol yet, and waves 7–8 are what make it. WIRE-W1 is the one exception
-// and its comment says so.
+// These rows were authored red against the Wave 0 route, which read its own
+// pre-protocol `{tool, input}` envelope and answered every JSON-RPC message
+// minted here with an HTTP 400. Waves 7–8 handed the request to the transport
+// and all eight pass.
 //
-// DO NOT MAKE THESE GREEN BY TEACHING `server.ts` TO RECOGNISE JSON-RPC BY
-// HAND. Task 8.1 hands the request to the transport; a second parser written to
-// satisfy this file would be exactly the drift this sprint removes.
+// DO NOT MAKE A FUTURE ONE GREEN BY TEACHING `server.ts` TO RECOGNISE JSON-RPC
+// BY HAND. A second parser written to satisfy this file is exactly the drift
+// this sprint removed, and it is the reason every row above asserts WHAT
+// ARRIVES rather than that we authored it.
+//
+// ⚠️ ONE GATE OF OURS NOW SITS IN FRONT OF THE TRANSPORT, AND IT IS NOT A
+// PARSER. `server.ts` refuses a body over a byte ceiling and a body whose first
+// non-whitespace byte opens an array — a size and a shape, decided on raw
+// bytes, with no envelope read and no `JSON.parse` anywhere in that file. Both
+// are availability bounds rather than protocol opinions; `./wire-bounds.test.ts`
+// owns them, and `WIRE-W1` below explains what the second one changed.
 import { MCP_TOOL } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
@@ -106,19 +112,29 @@ const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 
 describe("WIRE-W1 — a batch request is answered without crashing the handler", () => {
   /**
-   * ⚠️ THE WEAKEST ROW IN THE FILE, ON PURPOSE, AND IT IS ALREADY GREEN.
+   * ⚠️ THE WEAKEST ROW IN THE FILE, ON PURPOSE, AND ITS ANSWER HAS MOVED TWICE.
    *
    * A JSON-RPC batch is an ARRAY, and the revision this surface negotiates
-   * removed batching — so what the transport answers is its business, and the
-   * only thing this row is entitled to claim is that an array is a shape the
-   * surface HAS an answer for. Today that answer is our pre-protocol
-   * `MALFORMED_BODY` (an array is not a record); after wave 8 it is whatever the
-   * transport frames. Both satisfy the claim, which is why this row is green now
-   * and stays green.
+   * removed batching — so the only thing this row is entitled to claim is that
+   * an array is a shape the surface HAS an answer for, below 500, with
+   * something in it. That claim has survived both moves, which is why the row
+   * is unchanged.
    *
-   * Pinning the exact code would be authoring an assertion against behaviour
-   * nobody has measured, and it would go red at wave 8 for a reason that says
-   * nothing about this surface.
+   * ⚠️ THE ORIGINAL VERSION OF THIS COMMENT SAID THE ANSWER WAS "our
+   * pre-protocol `MALFORMED_BODY`, and after wave 8 whatever the transport
+   * frames". BOTH HALVES WERE WRONG BY THE END OF THE SPRINT, AND THE SECOND
+   * ONE HID A HOLE. Measured after wave 8: the transport did not refuse an
+   * array at all — it PROCESSED it. A 500-message batch executed 500 tool calls
+   * and returned 500 frames from one POST, which against a real repository is
+   * 500 database round-trips bought with one read-only credential.
+   *
+   * WHAT ANSWERS IT TODAY is `server.ts`'s batch gate, added by the post-sprint
+   * audit: a body whose first non-whitespace byte is `[` is refused 400 with
+   * `MALFORMED_BODY` — whose sentence already began "Send a single JSON-RPC
+   * message" — before the transport is reached. `./wire-bounds.test.ts`'s
+   * `WIRE-L3` is where that behaviour is pinned, with the fan-out measurement
+   * beside it; this row deliberately stays the weak one, so it cannot go red
+   * for a reason that says nothing about the surface.
    */
   test("an array body comes back as a response below 500, with something in it", async () => {
     const { deps } = spyDeps();

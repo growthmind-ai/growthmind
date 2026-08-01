@@ -71,6 +71,7 @@ import { describe, expect, test } from "bun:test";
 
 import * as mcpRoute from "../../app/api/mcp/route";
 import {
+  BODY_TOO_LARGE,
   BROWSER_ORIGIN,
   MALFORMED_BODY,
   NOT_FOUND,
@@ -370,13 +371,22 @@ describe("what the surface refuses, and how it says so", () => {
   /**
    * THE CORPUS GROWS, AND IT ENUMERATES EVERY CONSTANT BY NAME.
    *
-   * Two of the seven were re-authored this sprint (`WRONG_METHOD` and
+   * Two of the eight were re-authored this sprint (`WRONG_METHOD` and
    * `MALFORMED_BODY` both named things that stopped being true — a `GET`
-   * catalogue and a `tool`/`input` envelope), and two are new
+   * catalogue and a `tool`/`input` envelope), and two were new
    * (`BROWSER_ORIGIN`, `WRONG_CONTENT_TYPE`). A corpus that listed messages
    * without naming them would let a new refusal ship unaudited, so the names are
-   * the assertion: adding an eighth constant fails the count until somebody adds
+   * the assertion: adding a ninth constant fails the count until somebody adds
    * it here and reads what it says.
+   *
+   * ⚠️ THE EIGHTH ARRIVED THIS WAY, AND THE MECHANISM WORKED EXACTLY AS
+   * DESIGNED. `BODY_TOO_LARGE` is the one sentence the post-sprint audit added:
+   * the size gate in `server.ts` needed an answer, and reusing `MALFORMED_BODY`
+   * would have told an agent its JSON was shaped wrong when what was wrong was
+   * the size — the same "different mistakes, different next actions" argument
+   * that keeps `WRONG_CONTENT_TYPE` separate from `MALFORMED_BODY`. Adding it
+   * here is not a loosening of this row; it is the row's own extension point,
+   * used deliberately and with the sentence read.
    */
   test("WIRE-R8 — every refusal this surface can produce is plain English with no product vocabulary", () => {
     const overLimit = listOpenFixesInputSchema.safeParse({ limit: 999 });
@@ -389,12 +399,14 @@ describe("what the surface refuses, and how it says so", () => {
       BROWSER_ORIGIN: BROWSER_ORIGIN.message,
       WRONG_CONTENT_TYPE: WRONG_CONTENT_TYPE.message,
       WRONG_METHOD: WRONG_METHOD.message,
+      BODY_TOO_LARGE: BODY_TOO_LARGE.message,
       MALFORMED_BODY: MALFORMED_BODY.message,
     };
 
-    // ALL SEVEN, BY NAME. An eighth frozen refusal added to `refusals.ts` and
+    // ALL EIGHT, BY NAME. A ninth frozen refusal added to `refusals.ts` and
     // not added here fails this line rather than shipping unread.
     expect(Object.keys(corpus).toSorted()).toEqual([
+      "BODY_TOO_LARGE",
       "BROWSER_ORIGIN",
       "MALFORMED_BODY",
       "NOT_FOUND",
@@ -415,7 +427,7 @@ describe("what the surface refuses, and how it says so", () => {
     ];
 
     // Non-vacuity: the corpus is real before anything is claimed about it.
-    expect(messages).toHaveLength(9);
+    expect(messages).toHaveLength(10);
     expect(messages.every((message) => message.length > 0)).toBe(true);
     for (const message of messages) {
       for (const jargon of FORBIDDEN_PRODUCT_JARGON) {
@@ -715,6 +727,36 @@ describe("this surface reads and does nothing else", () => {
     expect(byName.get(MCP_TOOL.LIST_OPEN_FIXES)).toBe(listOpenFixesInputSchema);
     expect(byName.get(MCP_TOOL.GET_FIX)).toBe(getFixInputSchema);
     expect(byName.get(MCP_TOOL.GET_FINDING)).toBe(getFindingInputSchema);
+  });
+
+  test("WIRE-R21 — and each tool's ANSWER is parsed by the very output schema its descriptor advertises", () => {
+    /**
+     * THE HALF THIS ROW WAS MISSING (post-sprint audit). The identity above is
+     * pinned for inputs only, and the two imported output schemas were exactly
+     * as free to drift: `call-tool.ts` parses a `get_fix` answer with
+     * `fixSpecEnvelopeSchema` and a `list_open_fixes` answer with
+     * `listOpenFixesOutputSchema`, BOTH IMPORTED BY NAME rather than taken off
+     * the descriptor. If either import stopped being the object the descriptor
+     * advertises, the server would happily serve an answer no client could
+     * validate — invisible server-side, and rejected client-side as
+     * `ProtocolError -32600`, which is the one defect class in this sprint that
+     * would have reached a customer's coding agent.
+     *
+     * `get_finding` is absent by NECESSITY rather than by oversight and that is
+     * not a gap: `@growthmind/shared`'s barrel does not re-export
+     * `getFindingOutputSchema`, so `call-tool.ts` reaches it through the
+     * descriptor itself (`requireTool(...).outputSchema`) — the identity holds
+     * by construction there, with no second reference to pin it against.
+     */
+    const byName = new Map(MCP_TOOLS.map((tool) => [tool.name, tool.outputSchema]));
+    expect(byName.get(MCP_TOOL.LIST_OPEN_FIXES)).toBe(listOpenFixesOutputSchema);
+    expect(byName.get(MCP_TOOL.GET_FIX)).toBe(fixSpecEnvelopeSchema);
+
+    // Non-vacuity: all three descriptors really do carry an output schema, so
+    // the two identities above are not being asserted about `undefined`.
+    for (const tool of MCP_TOOLS) {
+      expect(byName.get(tool.name)).toBeDefined();
+    }
   });
 
   /**

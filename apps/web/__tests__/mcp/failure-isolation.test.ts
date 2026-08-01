@@ -35,13 +35,21 @@
 // — and asserts the absence afterwards.
 //
 // ---------------------------------------------------------------------------
-// RED UNTIL WAVES 7–8
+// BOTH ARE GREEN, AND A THIRD LOG CHANNEL HAS SINCE BEEN ADDED BESIDE THEM
 // ---------------------------------------------------------------------------
 //
-// Task 7.1 gives `callTool` the catch that turns a broken read into
-// `{ ok: false, refusal: UNAVAILABLE }`; task 8.1 renders it as a tool
-// execution error. Until then both rows fail on the message assertion, which is
-// the right red: the path they describe does not exist yet.
+// These rows were authored red: task 7.1 gave `callTool` the catch that turns a
+// broken read into `{ ok: false, refusal: UNAVAILABLE }` and task 8.1 renders
+// it as a tool execution error. Both landed; both rows pass.
+//
+// ⚠️ `WIRE-B1`'s "exactly one" IS NOW LOAD-BEARING AGAINST A THIRD CHANNEL.
+// The post-sprint audit wired an `onerror` into the transport, because a fault
+// inside the SDK is RETURNED rather than thrown and was therefore invisible to
+// every catch we had. That channel must stay silent on THIS path — `callTool`
+// catches its own fault and returns a value, so nothing throws into the SDK —
+// and if it ever speaks here, one incident has become two lines that disagree
+// and this row goes red first. `./wire-bounds.test.ts`'s `WIRE-L8` asserts the
+// same partition from the other side, naming WHICH line this must be.
 import { MCP_TOOL } from "@growthmind/shared";
 import { describe, expect, spyOn, test } from "bun:test";
 

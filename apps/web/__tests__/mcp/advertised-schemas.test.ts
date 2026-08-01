@@ -59,16 +59,19 @@
 // and never at the frame.
 //
 // ---------------------------------------------------------------------------
-// RED UNTIL WAVE 8, AND RED IN ONE PLACE
+// GREEN, AND THE NON-VACUITY LINE IS WHY IT MEANS ANYTHING
 // ---------------------------------------------------------------------------
 //
-// `apps/web/lib/mcp/wire.ts` is a signature-only stub and `server.ts` still
-// reads its pre-protocol `{tool, input}` envelope, so a `tools/list` message
-// reaches the route today as an object with no `tool` key and comes back HTTP
-// 400 `MALFORMED_BODY`. Nothing is advertised at all. Every row below therefore
-// asserts the three tool names FIRST — an advertisement that could not be read
-// yields an empty list, and a row that only walked "every advertised document"
-// would pass vacuously over nothing.
+// These rows were authored red against a signature-only `wire.ts`, when a
+// `tools/list` reached the route as an object with no `tool` key and came back
+// HTTP 400 with nothing advertised at all. Wave 8 landed and every row passes.
+//
+// THE HABIT THAT RED FORCED IS THE REASON THESE ROWS ARE WORTH KEEPING. Every
+// one asserts the three tool names FIRST, because an advertisement that could
+// not be read yields an EMPTY LIST — and "every tool in an empty list
+// advertises an object" is true, green, and worthless. Do not delete a
+// `advertisedNames(ad)` line as redundant: it is the only thing standing
+// between this file and a suite that passes over nothing.
 //
 // Lane prefix `mcpadv`.
 import { LIST_OPEN_FIXES_DEFAULT_ITEMS, MCP_TOOL, MCP_TOOL_NAMES } from "@growthmind/shared";

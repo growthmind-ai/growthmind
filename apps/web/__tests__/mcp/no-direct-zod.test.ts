@@ -220,12 +220,14 @@ describe("WIRE-Z3 — the schemas handed to the SDK are Standard Schemas, and on
    * the three keys that would show a Zod object had been serialised whole
    * instead.
    *
-   * ⚠️ RED UNTIL WAVE 8, BY DESIGN. There is no `tools/list` on this route yet:
-   * `wire.ts` is a signature-only stub, so the precondition below (an HTTP 200
-   * whose body actually advertises a schema) fails first. THAT PRECONDITION IS
-   * LOAD-BEARING — without it this row would pass today against a refusal body,
-   * which trivially contains none of the three keys, and would then be a green
-   * row proving nothing at the exact moment the feature landed.
+   * ⚠️ THE PRECONDITION BELOW IS LOAD-BEARING, AND IT IS WHY THIS ROW WAS RED
+   * BEFORE WAVE 8. There was no `tools/list` on this route — `wire.ts` was a
+   * signature-only stub — so the HTTP 200 whose body actually advertises a
+   * schema failed first. Without that line the row would have passed against a
+   * refusal body, which trivially contains none of the three keys, and would
+   * have been a green row proving nothing at the exact moment the feature
+   * landed. Wave 8 landed and the row passes on the real catalogue; do not
+   * remove the precondition as redundant.
    *
    * Scanned as text over the whole response rather than parsed, so the SSE
    * framing the surface is pinned to makes no difference to what is asserted.
