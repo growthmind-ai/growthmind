@@ -35,13 +35,21 @@ const SURFACE_ROLES = ["surface"] as const;
  * One row per finding the analysis lane persisted (O-011 FR-M7, ADD AD-1/AD-5/
  * AD-8). The FIRST analysis-side persistence in this repository.
  *
- * ── THIS TABLE'S CONSUMER IS THE DELIVERY LANE, AND THE WIRE IS NOT BUILT ────
- * (Mandatory deferral, ADD AD-12.) Nothing reads these rows yet. Delivery is
- * missing two halves — a lane source and a poster built from a
- * `slack_connections` row that does not exist — so wiring candidates through
- * now would produce a wire that LOOKS connected and is not (D11). The wire
- * lands with the first sprint that needs findings flowing to delivery, and
- * this paragraph stands until it does. The same statement is carried on
+ * ── THE DEFERRAL IS DISCHARGED: THIS TABLE HAS CONSUMERS (O-008 FR-O25) ─────
+ * O-011 shipped this table with the delivery wire deliberately CUT and recorded
+ * why, here: a poster had to be built from a `slack_connections` row this
+ * repository did not have, so wiring candidates through would have produced a
+ * wire that LOOKED connected and was not (D11). That table now EXISTS — it is
+ * declared beside this one (`./slack-connections.ts`) and lands in the same
+ * migration as the first-run surface — so the reason has expired, and the
+ * paragraph that recorded it would now read false.
+ *
+ * O-008 is the sprint that closes the wire, and it builds two readers of these
+ * rows: the first-run status read, which takes the single newest finding for
+ * the project a founder is watching, and the delivery lane source, which
+ * composes an organization's undelivered findings for its own channel. Both go
+ * through this table's repository under an org-scoped context, and neither
+ * reaches these rows any other way. The same statement is carried on
  * `packages/db/src/repositories/findings.repo.ts`.
  *
  * ── `signature` IS THE FINDING'S IDENTITY, NOT A HANDLE (D12, ADD v2 AD-20) ──

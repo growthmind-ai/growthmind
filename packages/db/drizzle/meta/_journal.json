@@ -64,6 +64,13 @@
       "when": 1785512823529,
       "tag": "0008_wet_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785573569933,
+      "tag": "0009_oval_screwball",
+      "breakpoints": true
     }
   ]
 }

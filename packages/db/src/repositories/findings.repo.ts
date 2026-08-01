@@ -1,17 +1,19 @@
 // Repository for the `findings` table (O-011 FR-M7 / FR-M9 / FR-M14 / FR-M19,
 // ADD AD-1/AD-5/AD-8/AD-12/AD-18).
 //
-// ── NAMED DEFERRAL: THIS TABLE HAS NO CONSUMER THIS SPRINT (AD-12, FR-M18) ───
-// The `delivery-tick`'s `DeliveryLaneSource` wire is CUT for O-011. Nothing
-// reads these rows yet: delivery is still missing a lane source and a poster
-// built from a `slack_connections` row that does not exist, so wiring findings
-// through now would produce a wire that LOOKS connected and is not — the D11
-// failure where a value is computed and then dropped on the floor, silently,
-// forever. The wire lands with the FIRST sprint that needs findings flowing to
-// delivery, and this paragraph stands until it does. It is recorded here, in
-// git-tracked source, and on `../schema/findings.ts` — deliberately not only in
-// `tasks/`, which is gitignored and therefore does not exist for any future
-// reader. This comment is an acceptance criterion of O-011, not a nicety.
+// ── THE O-011 DEFERRAL IS DISCHARGED: THIS TABLE HAS READERS (O-008 FR-O25) ──
+// O-011 recorded, here and on `../schema/findings.ts`, that the `delivery-tick`
+// wire was CUT because delivery was missing a lane source and a poster built
+// from a `slack_connections` row this repository did not have. That table now
+// exists (`../schema/slack-connections.ts`), so the deferral's stated reason has
+// expired and the claim that nothing reads these rows would now be false.
+//
+// O-008 closes the wire and adds two readers, both of them through the methods
+// below rather than around them: the first-run status read takes the single
+// newest finding for one project, and the delivery lane source composes an
+// organization's undelivered findings for its own channel. Neither is a new
+// door — the org-scope rule in the next paragraph governs both, and there is
+// still no method here that takes an organization id.
 //
 // ── ORG SCOPE COMES FROM THE CONTEXT, AND FROM NOWHERE ELSE (D2, D7) ─────────
 // Same shape as `deliveries.repo.ts`: `createFindingsRepo(db, ctx)`. No method

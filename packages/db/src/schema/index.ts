@@ -21,3 +21,9 @@ export { apiKeys } from "./api-keys";
 export * from "./analysis-runs";
 export * from "./findings";
 export * from "./analysis-model-calls";
+// The first-run surface (O-008). `slack_connections` is org-scoped and depends
+// only on `auth`; the two `first_run_*` tables are two grains and deliberately
+// two tables (AD-8).
+export * from "./slack-connections";
+export * from "./first-run-state";
+export * from "./first-run-dismissals";
