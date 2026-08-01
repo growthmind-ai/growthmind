@@ -25,8 +25,13 @@
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 import { z } from "zod";
 
-import { MAX_RESPONSE_BYTES, REQUEST_TIMEOUT_MS, SLACK_POST_MESSAGE_URL } from "./constants";
+import { REQUEST_TIMEOUT_MS, SLACK_POST_MESSAGE_URL } from "./constants";
 import type { SlackPosterConfig, SlackPosterDeps } from "./deps";
+// The body reader lives in its own module because it now has three consumers: this
+// poster, the OAuth token exchange, and the channel list. One implementation, three
+// callers; the same lift `../posthog/read-json-body.ts` documents. Behaviour is
+// unchanged — this file's own suite is the proof of that.
+import { readSlackJsonBody } from "./envelopes";
 import { mapSlackError, postFailure } from "./errors";
 
 /**
@@ -47,38 +52,6 @@ const slackPostMessageResponseSchema = z.object({
   ts: z.string().optional(),
   error: z.string().optional(),
 });
-
-/**
- * Reads a response body without ever throwing across this boundary.
- *
- * Returns `null` for anything unreadable, which the caller then maps to `call_failed`.
- * Note this is deliberately simpler than `../posthog/client.ts`'s byte-counting stream
- * reader: that one walks pages whose urls the remote supplies, so it must assume a
- * hostile body; here the url is a compile-time constant naming one endpoint, the reply
- * is a few hundred bytes, and the declared-length check plus a post-read cap covers the
- * only realistic case (a proxy or captive portal answering with a page).
- */
-async function readJsonBody(response: Response): Promise<unknown> {
-  try {
-    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
-      return null;
-    }
-
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_BYTES) {
-      return null;
-    }
-
-    // Annotated rather than asserted: `JSON.parse` returns `any`, and widening it to
-    // `unknown` at the binding keeps that `any` from escaping this function without a
-    // cast.
-    const decoded: unknown = JSON.parse(text);
-    return decoded;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Builds a poster bound to one workspace's credential.
@@ -146,7 +119,7 @@ export function createSlackDeliveryPoster(
           return postFailure("call_failed");
         }
 
-        const parsed = slackPostMessageResponseSchema.safeParse(await readJsonBody(response));
+        const parsed = slackPostMessageResponseSchema.safeParse(await readSlackJsonBody(response));
         if (!parsed.success) {
           return postFailure("call_failed");
         }
