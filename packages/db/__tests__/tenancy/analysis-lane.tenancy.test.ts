@@ -507,7 +507,8 @@ describe("no bypass context is reachable from the analysis lane", () => {
       // The worker legitimately runs with no user — which is exactly why the
       // sentinel must be minted ONCE, in `src/system/`, from a claimed row, and
       // never reached for from inside a scoped repository.
-      expect(code).not.toMatch(/\bSYSTEM_ACTOR_ID\b/);
+      expect(code).not.toMatch(/\bSYSTEM_ACTOR\b/);
+      expect(code).not.toMatch(/\bsystemContextFor\b/);
       expect(code).not.toMatch(/\bsystemTenantContextFor\b/);
       expect(code).not.toMatch(/from\s+["'](\.\.\/)+system/);
     }

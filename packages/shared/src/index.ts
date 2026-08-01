@@ -1,5 +1,7 @@
 export { serverEnvSchema, parseServerEnv, DEV_ENCRYPTION_KEY, type ServerEnv } from "./env";
 
+export { describeError } from "./errors";
+
 export {
   tenantContextSchema,
   tenantResolutionInputSchema,

@@ -101,12 +101,13 @@
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
 import { decideDelivery, renderSlackMessage, scanResidualPii } from "@growthmind/core";
 import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
+import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
 import {
   DELIVERY_STATUS_MESSAGES,
   DELIVERY_VOCABULARY,
   RESIDUAL_PII_KIND_MESSAGES,
-  tenantContextSchema,
+  describeError,
 } from "@growthmind/shared";
 
 /**
@@ -147,16 +148,14 @@ export interface DeliveryLogger {
 }
 
 /**
- * A NAMESPACED SENTINEL, not a fake user id — the same device
- * `packages/db/src/system/system-context.ts` uses for the poll. It cannot
- * collide with a Better Auth user id, and it says who acted in any log line or
- * future audit row without anyone having to look it up.
+ * This lane's scheduled actor, re-exported for the tests that assert who wrote
+ * a row.
+ *
+ * The value and the `TenantContext` built from it live in
+ * `@growthmind/db/system` — one home for every background writer's identity,
+ * behind the boundary that keeps `apps/` from minting a system scope at all.
  */
-export const DELIVERY_ACTOR_ID = "system:delivery-tick";
-
-/** The role stamped on a system context, so a future audit surface can tell a
- * scheduled write from a human one without parsing the actor id. */
-export const DELIVERY_ACTOR_ROLE = "system";
+export const DELIVERY_ACTOR_ID = SYSTEM_ACTOR.DELIVERY_TICK;
 
 /** The renderer's deliver arm, named — `Extract<…>` at four call sites reads as
  * noise, and this is the only shape a candidate can be rendered from. */
@@ -287,10 +286,6 @@ type PreparedPost =
   | { readonly ok: true; readonly request: PostRequest }
   | { readonly ok: false; readonly reason: string; readonly outcome: LaneOutcome };
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * The string the PII gate scans — derived from the request that will be POSTED,
  * so the gate and the post can never see different text (D11).
@@ -378,17 +373,13 @@ function prepare(
 
 /**
  * Builds the `TenantContext` this lane's writes run as, from the lane row
- * itself. Parsed through the SAME schema a request-derived context is, rather
- * than returned as a bare literal: there is one accepted context shape, and the
- * scheduled path is held to it too.
+ * itself — never from a payload, never from a caller-supplied id (D7).
+ *
+ * The parse and the actor both live in `@growthmind/db/system`; this names
+ * WHICH actor and nothing else.
  */
 function tenantContextFor(lane: DeliveryLane): TenantContext {
-  return tenantContextSchema.parse({
-    userId: DELIVERY_ACTOR_ID,
-    organizationId: lane.organizationId,
-    organizationName: lane.organizationName,
-    role: DELIVERY_ACTOR_ROLE,
-  });
+  return systemContextFor(SYSTEM_ACTOR.DELIVERY_TICK, lane);
 }
 
 /**
