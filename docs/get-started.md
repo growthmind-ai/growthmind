@@ -161,9 +161,125 @@ The spec is plain sentences an agent can act on and a founder can read over
 its shoulder — the MVP's minimal fix spec (structured state rendered as
 sentences, no code), per [`mvp.md` §4](mvp.md#4-what-is-in-what-is-out). The
 MCP surface behind it is the read-only subset: `list_open_fixes`, `get_fix`,
-`get_finding`.
+`get_finding`. §6 is how you wire it up today.
 
-## 6. What the public page promises
+## 6. Connect your coding agent
+
+Beat four is the handshake and beat ten is the payoff. This section is the part
+a developer actually types, and it takes about a minute.
+
+The one-command installer in §3 (`npx growthmind init`) is the shape the setup
+is being built toward, not something you can run yet. What exists today is
+below, and it works.
+
+### Mint a key
+
+This surface reads with a key you mint yourself. There is no key-management
+screen yet — it is one command, run from the repo root against a started stack:
+
+```bash
+bun scripts/mint-api-key.ts --name "claude code"
+```
+
+It prints the key once and writes it to no file, so copy it before you close the
+terminal. Add `--org <id-or-slug>` if you belong to more than one organisation;
+with more than one it refuses to guess and names your options instead. Revoke
+with `bun scripts/revoke-api-key.ts --key-id <id>`, and the very next request
+presenting that key is refused — nothing about a key is cached.
+
+### Point Claude Code at it
+
+```bash
+claude mcp add --transport http growthmind http://localhost:3000/api/mcp \
+  --header "Authorization: Bearer gmak_your_key_here"
+```
+
+Then `claude mcp list` prints:
+
+```
+growthmind: http://localhost:3000/api/mcp (HTTP) - ✔ Connected
+```
+
+Swap in your deployed URL when you have one. Add `--scope user` to keep the
+entry in your own config instead of this project's.
+
+### Or check it in, as a file
+
+A `.mcp.json` at the repo root does the same for everyone who clones it, with
+the key read from the environment rather than committed:
+
+```json
+{
+  "mcpServers": {
+    "growthmind": {
+      "type": "http",
+      "url": "http://localhost:3000/api/mcp",
+      "headers": { "Authorization": "Bearer ${GROWTHMIND_API_KEY}" }
+    }
+  }
+}
+```
+
+> **`"type": "http"` is not optional, and omitting it is the likeliest way a
+> first attempt fails.** An entry with a `url` and no `type` is read as a local
+> command to launch, so the server is skipped entirely:
+>
+> ```
+> MCP server "growthmind" has a "url" but no "type"; add "type": "http" (or "sse" / "ws") to this entry
+> ```
+>
+> A server declared in `.mcp.json` also needs approving once — run `claude` in
+> the project and accept it, or it sits at "Pending approval".
+
+### The three tools, in plain English
+
+All three read. Nothing here changes anything, in your product or in ours.
+
+| Tool              | What it is for                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_open_fixes` | The problems waiting to be fixed, most urgent first. Start here when you have been asked to improve something and hold no id. Each entry carries an id, one line on what is wrong, how many sessions hit it out of how many were measured, and when its result is due. At most 25 entries, plus the total, so a bigger total means you are looking at the most urgent slice. |
+| `get_fix`         | The full instructions for one fix, by id: what is wrong and where, why it matters, the checks it will be judged on, when to stop early. It names files and states what should be true when you are done — it contains no code, and how to get there is yours.                                                                                                                |
+| `get_finding`     | The evidence behind one problem, by id: what happened, how many sessions hit it out of how many were measured, over what dates, and links to the recordings and requests that show it. Everything in it was observed, never inferred.                                                                                                                                        |
+
+Ask for an id that does not exist and you get the same sentence as an id
+belonging to someone else — that is deliberate, and there is no way to tell the
+two apart.
+
+### You do not configure the protocol
+
+A stock MCP client — one built with no options at all — connects on the legacy
+protocol revision `2025-11-25` through the usual `initialize` handshake, and
+needs nothing set. Claude Code is one of those: measured against this endpoint,
+it sends `"protocolVersion":"2025-11-25"`. A client pinned to the modern
+`2026-07-28` revision is served by the same endpoint, on the same URL, with the
+same three tools. You do not pick one; the endpoint answers both.
+
+### What comes back today: nothing, and it says so
+
+There is no table of findings behind these tools yet — that is a separate piece
+of work — so every answer is honestly empty rather than absent. `list_open_fixes`
+returns an empty list with a truthful window:
+
+```json
+{
+  "fixes": [],
+  "window": { "returned": 0, "totalOpen": 0, "truncated": false }
+}
+```
+
+and both id lookups answer exactly as they would for an id that never existed:
+
+> There is nothing here with that id. Call list_open_fixes to see the ids you
+> can ask about.
+
+**That is the correct answer, not a placeholder that will fill itself in.** An
+empty list rather than an error, a count of `0 of 0` rather than a blank, and a
+"not found" that reads the same however you got there — that is what this
+surface is held to when it has nothing to say. It will have something to say
+when findings exist; until then, do not read the empties as a connection
+problem.
+
+## 7. What the public page promises
 
 The `/get-started` page is a public commitment, and it is careful about three
 things this build must keep true:
@@ -179,7 +295,7 @@ things this build must keep true:
    banner says it, the MCP subset enforces it. §1's read-only rule is visible
    copy, not a footnote.
 
-## 7. Done when, experientially
+## 8. Done when, experientially
 
 [`mvp.md` §8](mvp.md#8-done-when) states the acceptance criteria; this film
 adds the register they must be experienced in:
