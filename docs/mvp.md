@@ -21,9 +21,12 @@ The moment, precisely:
 
 1. During onboarding, the user opens their own product and does something that
    goes wrong — a failed save, a dead button, a rage-click loop.
-2. Within **5–20 seconds**, the onboarding screen they are already standing on
-   pushes the summary: what happened, to whom, the evidence (failed request,
-   event sequence, counts with denominators), and what class of problem it is.
+2. **While they are still standing on it**, the onboarding screen pushes the
+   summary: what happened, to whom, the evidence (failed request, event
+   sequence, counts with denominators), and what class of problem it is.
+   (Originally "within 5–20 seconds" — amended by deviation 4 in §7 once M-0
+   measured the real distribution. The moment is defined by the user still
+   being present, which is what "glued" actually means, not by a number.)
 3. After onboarding, that same summary arrives as a Slack message — the steady
    state. The onboarding screen is a **first-run surface, not a dashboard**: it
    exists once, during install, while the user is already present. Nothing is
@@ -42,7 +45,7 @@ Five steps, in order, each ending in a visible confirmation:
 | 2    | **Connect PostHog** (their existing project, API key — most targets already have it) | Live event counter ticks                                             |
 | 3    | **Connect Slack** (channel picked)                                                   | Test message arrives in-channel                                      |
 | 4    | **Install the MCP server** in their coding agent                                     | `list_open_fixes` returns an empty-but-valid response                |
-| 5    | **Trigger an issue** in their own product                                            | The summary pushes to the onboarding screen in 5–20 s, then to Slack |
+| 5    | **Trigger an issue** in their own product                                            | The summary pushes to the onboarding screen while they are still on it, then to Slack (§7 deviation 4) |
 
 Step 5 is the demo of the product; steps 1–4 are the product being honest about
 what it needs. If any step takes more than a couple of minutes, that step is a
@@ -182,12 +185,33 @@ Three, each scoped and with an expiry:
    detection). Dormant, not violated — PostHog event names are used as-is and
    never re-authored, so no second source of truth is created. Expiry: M1
    proper.
+4. **The 5–20 second promise is withdrawn and replaced by a measured bar.**
+   §3 called it "the riskiest assumption in this document"; M-0 (O-001) ran and
+   it does not hold. The decomposition: PostHog's own event-leg p90 is ~24 s
+   (decision 0001), the poll adds 15–60 s, and `analysis:tick` is an hourly cron
+   with no event trigger — that term alone is ~180× the whole budget.
+   **Ruled:** the ~24 s third-party leg is *accepted* as inherent variance. The
+   two terms that are ours are *fixed* — an onboarding-scoped fast analysis path
+   that reuses the existing lane and **respects the single-writer index and the
+   cap ledger, or it does not ship** (a cap-bypassing trigger is a cost
+   incident, not an optimisation). Internal design target ~25–35 s, **never
+   rendered as copy**: the waiting state narrates what is happening and shows
+   elapsed actuals, and never promises a number or runs a countdown it cannot
+   keep. §8's "within 20 seconds" is replaced by the same measured bar.
+   **§3's second branch does not fire** — no first-party capture, no rrweb, no
+   capture code. It stays on the record as the named trigger if real testers
+   turn out not to be glued at the measured latency. Expiry: this deviation ends
+   when a tester says the wait broke the moment, at which point §3's fallback is
+   the pre-decided answer rather than a fresh debate.
 
 ## 8. Done when
 
 - A fresh user completes onboarding steps 1–4 in under ten minutes without help.
 - They trigger a real failure in their own product and the summary lands on the
-  onboarding screen within 20 seconds, evidence attached, class named.
+  onboarding screen **while they are still standing on it**, evidence attached,
+  class named, and the **observed p50/p90 recorded** (§7 deviation 4 — the bar
+  is measured, not softened; swapping one aspirational integer for a larger one
+  is what produced the amendment).
 - The same finding arrives in Slack, renders inside the legibility budget, and
   a second identical failure that day produces **no** second message.
 - "Not useful" suppresses the signature permanently; "Get it fixed" yields a
