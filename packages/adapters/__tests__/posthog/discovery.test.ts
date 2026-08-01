@@ -49,6 +49,18 @@ const AD_UNAUTHORIZED_BODY = {
   attr: null,
 };
 
+/**
+ * A 404 of the DRF shape. Deliberately NOT the vendor's "project not found" — this is
+ * what a path that is not routed on an origin returns, which is the only thing a 404 can
+ * mean on the LIST endpoint (no project id is in the request to be missing).
+ */
+const AD_NOT_FOUND_BODY = {
+  type: "invalid_request",
+  code: "not_found",
+  detail: "Not found.",
+  attr: null,
+};
+
 const AD_THROTTLED_BODY = {
   type: "throttled_error",
   code: "throttled",
@@ -185,6 +197,50 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.host).toBe(EU_PROBE_ORIGIN);
+  });
+
+  // The row that protects US founders against an inference nobody has observed. The
+  // spike only ever saw a 200 from the EU family; that `https://us.i.posthog.com` serves
+  // `/api/projects/` at all is read off the SHAPE of its 401, not off a 200. If that is
+  // wrong, US ingest answers 404 to this probe — and a 404 that refused would turn away
+  // every US founder at the first field of setup, with a message about their projects not
+  // being found rather than about us looking on the wrong origin.
+  //
+  // Falling through is unambiguous here in a way it would not be anywhere else in this
+  // adapter: the LIST path carries no project id, so a 404 cannot mean "your project does
+  // not exist" — there is no project in the request to not find.
+  test("falls through to the second origin on a 404 — the list path has no project id to be missing", async () => {
+    const fake = createFakeFetch((url) =>
+      url.startsWith(US_PROBE_ORIGIN)
+        ? { status: 404, body: AD_NOT_FOUND_BODY }
+        : { status: 200, body: adProjectsBody([adProject()]) },
+    );
+    const { deps } = createFakeDeps(fake.fetch);
+
+    const result = await discoverProjects(discoveryInput(), deps);
+
+    expect(requestOrigins(fake.requests)).toEqual([US_PROBE_ORIGIN, EU_PROBE_ORIGIN]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.host).toBe(EU_PROBE_ORIGIN);
+  });
+
+  // Fallthrough is not forgiveness. Once every origin has answered, the walk refuses on
+  // the last origin's failure exactly as it does for 401 — and for a 404 that failure is
+  // `project_not_found`, the code `mapFailure` gives status 404. Pinned rather than left
+  // implicit, so a later edit that starts inventing a status the vendor never sent (or
+  // rewrites the final refusal) has to come through this row.
+  test("refuses with project_not_found when EVERY origin 404s, after asking both", async () => {
+    const fake = createFakeFetch(() => ({ status: 404, body: AD_NOT_FOUND_BODY }));
+    const { deps, sleeps } = createFakeDeps(fake.fetch);
+
+    const result = await discoverProjects(discoveryInput(), deps);
+
+    expect(requestOrigins(fake.requests)).toEqual([US_PROBE_ORIGIN, EU_PROBE_ORIGIN]);
+    expect(sleeps).toEqual([]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("project_not_found");
   });
 
   // The row that catches a retry loop being added later. A human is staring at a form;
@@ -354,6 +410,28 @@ describe("discoverProjects on the self-host branch", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.host).toBe(AD_HOST);
+  });
+
+  // THE ROW THAT PROVES THE 404 FALLTHROUGH DID NOT LEAK. On the walk a 404 means "this
+  // origin does not serve this path, ask the next" and advances. Here there IS no next
+  // origin — the customer named this host — so the same status must refuse on the spot.
+  // The load-bearing assertion is the request COUNT: a fallthrough that leaked into this
+  // branch would show up as a second request to a cloud origin the customer never asked
+  // us to contact, sending their personal key somewhere they did not name.
+  test("refuses a 404 on a customer-supplied host immediately, with no second request", async () => {
+    const fake = createFakeFetch(() => ({
+      status: 404,
+      body: { type: "invalid_request", code: "not_found", detail: "Not found.", attr: null },
+    }));
+    const { deps } = createFakeDeps(fake.fetch);
+
+    const result = await discoverProjects(discoveryInput({ host: AD_HOST }), deps);
+
+    expect(fake.requests.length).toBe(1);
+    expect(requestOrigins(fake.requests)).toEqual([AD_HOST]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("project_not_found");
   });
 
   // The ssrf gate, and the assertion that matters is the request COUNT. A refusal that

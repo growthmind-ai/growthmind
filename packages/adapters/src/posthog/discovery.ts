@@ -11,7 +11,8 @@
 //      no translation step in between to get wrong.
 //   2. A key from the wrong region answers 401, not the 403 the ADD assumed. Both are
 //      treated as "try the next origin" here, and the walk refuses only after every
-//      origin has answered.
+//      origin has answered. A 404 joins them on the walk — and only on the walk — for a
+//      reason the spike did NOT establish; see `WALK_FALLTHROUGH_STATUSES` below.
 //   3. There is no event count on this endpoint at all. `ingested_event` is a boolean,
 //      and it is the whole ordering signal. Nothing here derives a number from it.
 //   4. Each result carries BOTH `id` and `project_id`, and they hold DIFFERENT values.
@@ -92,16 +93,64 @@ const discoveredProjectSchema = z.object({
  */
 const projectListSchema = z.object({ results: z.array(z.unknown()) });
 
-/** What one origin answered, and whether the walk may continue past it. */
+/** What one origin answered. */
 type ProbeAnswer =
   | { readonly ok: true; readonly body: unknown }
   | {
       readonly ok: false;
       readonly failure: SourceFailure;
-      /** True only for 401 and 403 — the two statuses that mean "wrong region, ask the
-       * next one". Everything else stops the walk where it stands. */
-      readonly tryNextOrigin: boolean;
+      /**
+       * The status that produced the failure, or 0 for a transport fault where no
+       * response exists at all.
+       *
+       * Carried as the raw status rather than as a "may we continue" boolean on purpose:
+       * whether a failure is worth walking past is the CALLER's question, and only one
+       * of the two callers has anywhere to walk to. See `WALK_FALLTHROUGH_STATUSES`.
+       */
+      readonly status: number;
     };
+
+/**
+ * The statuses that mean "not this origin — ask the next one", ON THE MULTI-ORIGIN WALK
+ * AND NOWHERE ELSE. Read inside `discoverProjects`'s cloud loop only; the self-host
+ * branch never consults it, because there is no next origin there — the customer named
+ * that host, so every failure it returns is final.
+ *
+ * 401 is what the live account actually returned for an EU-issued key asked on US (spike
+ * finding 2); 403 is what the ADD assumed and was never observed. Both fall through,
+ * because refusing on one while walking past the other would strand whichever founders a
+ * future PostHog change points at the other status.
+ *
+ * 404 is here for a different reason, and it is the one a future reader will query,
+ * because a 404 refuses everywhere else in this adapter — `mapFailure` maps it to
+ * `project_not_found`, which is right for `eventsUrl`/`personsUrl` and wrong here:
+ *
+ *   1. On THIS path a 404 cannot mean "your project does not exist". `projectsUrl`
+ *      (constants.ts) is the LIST endpoint and carries no project id segment, so there is
+ *      no project in the request to fail to find. The only thing a 404 can say to a
+ *      request like this one is "this origin does not serve this path" — which is exactly
+ *      "ask the next origin". The ambiguity that would make this reckless on any other
+ *      path is structurally absent on this one.
+ *
+ *   2. It is load-bearing because `https://us.i.posthog.com` serving `/api/projects/` is
+ *      INFERRED, NOT OBSERVED. `scripts/spikes/notes/posthog-projects-endpoint.md` only
+ *      ever got a 200 from the EU family; the US ingest origin answered 401 to that
+ *      account's EU-issued key. A 401 is consistent with BOTH "served here, wrong region
+ *      for this key" AND "not served here at all". The evidence favours the first — the
+ *      401 body was the standard DRF `{type, code, detail, attr}` envelope an EXISTING
+ *      authenticated route returns, not what an unrouted path produces — but nobody has
+ *      watched a US-issued key get a 200 from that origin. If the inference is wrong, US
+ *      ingest answers 404 and, without this entry, EVERY US founder is refused at the
+ *      first field of setup, told their projects could not be found rather than that we
+ *      looked in the wrong place.
+ *
+ * The fail directions are not symmetric, which settles it: falling through wrongly costs
+ * one extra request in a case that had already failed, and the walk still refuses once
+ * every origin has answered. Refusing wrongly costs a whole region of founders their
+ * setup. One live probe with a US-issued key would retire the inference; until then this
+ * is the cheaper direction to be wrong in.
+ */
+const WALK_FALLTHROUGH_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
 
 /**
  * One request to one origin. Never more: there is no retry here, and no branch that can
@@ -128,8 +177,9 @@ async function probeOrigin(
     });
   } catch {
     // A transport fault is not "wrong region". Probing on would spend a second wait to
-    // reach the same answer, so the walk stops and says so.
-    return { ok: false, failure: mapFailure(0, null, secrets), tryNextOrigin: false };
+    // reach the same answer, so the walk stops and says so. Status 0 is the "no response
+    // exists" marker, and it is in no fallthrough set by construction.
+    return { ok: false, failure: mapFailure(0, null, secrets), status: 0 };
   }
 
   const body = await readJsonBody(response);
@@ -137,12 +187,13 @@ async function probeOrigin(
     return { ok: true, body };
   }
 
-  // 401 is what the live account actually returned for an EU-issued key asked on US
-  // (spike finding 2); 403 is what the ADD assumed and was never observed. Both fall
-  // through, because refusing on one while walking past the other would strand whichever
-  // founders a future PostHog change points at the other status.
-  const tryNextOrigin = response.status === 401 || response.status === 403;
-  return { ok: false, failure: mapFailure(response.status, body, secrets), tryNextOrigin };
+  // The status is reported, not judged. What it means for the walk is decided by the one
+  // caller that has a next origin to try (`WALK_FALLTHROUGH_STATUSES`).
+  return {
+    ok: false,
+    failure: mapFailure(response.status, body, secrets),
+    status: response.status,
+  };
 }
 
 /**
@@ -241,6 +292,12 @@ export async function discoverProjects(
 
     // `checked.origin` rather than the raw input: the canonical origin is what gets
     // stored on the connection, so what we probe and what we save are the same string.
+    // Every failure here is final, `answer.status` is not consulted, and
+    // `WALK_FALLTHROUGH_STATUSES` is deliberately not in scope of this branch's logic.
+    // There is no next origin: the customer named this host, so a 404 means their host
+    // does not serve the API rather than "look somewhere else", and refusing is the only
+    // honest answer. The fallthrough that the walk below grants a 404 must never reach
+    // here — a test asserts this branch makes exactly one request and stops.
     const answer = await probeOrigin(checked.origin, input.personalApiKey, deps);
     if (!answer.ok) {
       return { ok: false, failure: answer.failure };
@@ -263,10 +320,12 @@ export async function discoverProjects(
     }
 
     // Always the origin asked most recently. A 429 or a transport fault stops here and
-    // that origin's failure is the one returned; a 401/403 walks on, and if the last
-    // origin also refuses, its answer is the final word. One rule for both shapes.
+    // that origin's failure is the one returned; a `WALK_FALLTHROUGH_STATUSES` answer
+    // walks on, and if the last origin also refuses, its answer is the final word. One
+    // rule for every shape — including a 404, which is not treated specially once every
+    // origin has been asked.
     lastFailure = answer.failure;
-    if (!answer.tryNextOrigin) {
+    if (!WALK_FALLTHROUGH_STATUSES.has(answer.status)) {
       return { ok: false, failure: lastFailure };
     }
   }
