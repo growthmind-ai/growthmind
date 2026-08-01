@@ -21,7 +21,13 @@
     // Brings in bun:test and the bundled Node compatibility types.
     "types": ["bun"]
   },
-  "include": ["scripts/**/*.ts"],
+  // `__tests__/` is here for the same reason `scripts/` is: the repo-root suites
+  // (`toolchain.test.ts`, `undeclared-dependencies.test.ts`) are gates ON the
+  // toolchain, they belong to no workspace, and until this line they were the only
+  // TypeScript in the repository that `bun run typecheck` never looked at. A guard
+  // that is not itself typechecked is a guard that can rot into a runtime throw and
+  // report it as a red row about something else entirely.
+  "include": ["scripts/**/*.ts", "__tests__/**/*.ts"],
 
   // TWO PRE-EXISTING SCRIPTS ARE EXCLUDED, LOUDLY AND TEMPORARILY.
   // Both predate this config and both fail `exactOptionalPropertyTypes` in the
