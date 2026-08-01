@@ -106,10 +106,7 @@ const loadCreateRepo = (): Promise<CreateSlackConnectionsRepo> =>
  * (`AGENTS.md`), so no fixture in it will ever carry a usable secret. The same
  * shape `slack-connections.repo.test.ts` uses, for the same reason.
  */
-const KEY: CredentialKey = {
-  key: Buffer.from(Array.from({ length: 32 }, (_, index) => index)),
-  keyId: "",
-} as unknown as CredentialKey;
+const KEY: CredentialKey = { bytes: Uint8Array.from({ length: 32 }, (_, index) => index) };
 
 const CHANNEL_ID = "C01AB2CD3EF";
 const CONNECTED_AT = new Date("2026-08-01T09:00:00.000Z");
@@ -195,21 +192,35 @@ describe("existsAnyActiveSlackConnection — the installation's delivery gate (A
   test("an installation whose only connection is deactivated answers false", async () => {
     const exists = await loadExists();
     const createRepo = await loadCreateRepo();
-    const org = await seedOrg(db, "only-deactivated");
 
-    const id = await connect(db, createRepo, org);
-    await createRepo(db, org.ctx).deactivate(id);
+    // THIS ROW NEEDS ITS OWN INSTALLATION, and that is not incidental setup —
+    // it is the row's claim. `existsAnyActiveSlackConnection` is deliberately
+    // ORG-AGNOSTIC (AD-14: "is delivery worth composing on this installation"),
+    // so "whose ONLY connection is deactivated" is a statement about the whole
+    // database, not about this org. On the suite-wide `db` — which has no
+    // per-test reset — row 2's active connection is still present, and this
+    // assertion would be unreachable for ANY correct implementation. Seeding a
+    // second org here would test org-scoping, which is a different row's job.
+    const { db: solo, close: closeSolo } = await createTestDb();
+    try {
+      const org = await seedOrg(solo, "only-deactivated");
 
-    // The row is still there — `deactivate` flips `is_active`, it does not
-    // delete history, exactly as FR-O9's "everything already collected is kept"
-    // requires one table over. So a predicate that forgets `is_active` reports
-    // a connected installation forever after the first disconnect, and every
-    // finding is composed against a credential nobody can use.
-    expect(await exists(db)).toBe(false);
+      const id = await connect(solo, createRepo, org);
+      await createRepo(solo, org.ctx).deactivate(id);
 
-    // ...and the org's own read agrees, so this is a fact about the data rather
-    // than about one query's opinion of it.
-    expect(await createRepo(db, org.ctx).getActiveForOrg()).toBeNull();
+      // The row is still there — `deactivate` flips `is_active`, it does not
+      // delete history, exactly as FR-O9's "everything already collected is kept"
+      // requires one table over. So a predicate that forgets `is_active` reports
+      // a connected installation forever after the first disconnect, and every
+      // finding is composed against a credential nobody can use.
+      expect(await exists(solo)).toBe(false);
+
+      // ...and the org's own read agrees, so this is a fact about the data
+      // rather than about one query's opinion of it.
+      expect(await createRepo(solo, org.ctx).getActiveForOrg()).toBeNull();
+    } finally {
+      await closeSolo();
+    }
   });
 
   // --- row 4 ---------------------------------------------------------------

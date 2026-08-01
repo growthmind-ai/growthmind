@@ -153,6 +153,12 @@ describe("ensureProject — FR-O1, the row nothing else works without", () => {
     const errors = spyOn(console, "error");
     let resultA: { projectId: string };
     let resultB: { projectId: string };
+    // Snapshotted inside the `finally`, BEFORE `mockRestore()`. Bun's
+    // `mockRestore()` also RESETS the mock, so reading `errors.mock.calls`
+    // after it always yields `[]` and leg 1 below is unpassable for any
+    // implementation. `signup-org.test.ts:174-176` — the precedent this row
+    // cites — reads the calls before restoring for exactly this reason.
+    let loggedLines: string[] = [];
     try {
       // `Promise.all`, not sequential awaits — both calls issue their read-first
       // SELECT before either INSERT lands, which is what puts the loser on the
@@ -164,6 +170,7 @@ describe("ensureProject — FR-O1, the row nothing else works without", () => {
         ensureProject(db, org.ctx),
       ]);
     } finally {
+      loggedLines = errors.mock.calls.map(([first]) => String(first));
       errors.mockRestore();
     }
 
@@ -178,10 +185,9 @@ describe("ensureProject — FR-O1, the row nothing else works without", () => {
     // cannot see it becoming frequent. The pattern is deliberately loose about
     // wording — the contract is that the conflict path SAYS SO, not that it
     // says any particular sentence.
-    const conflictLogs = errors.mock.calls.filter(([first]) => {
-      const line = String(first);
-      return /ensureProject/.test(line) && /concurrent|conflict|duplicate|winner/i.test(line);
-    });
+    const conflictLogs = loggedLines.filter(
+      (line) => /ensureProject/.test(line) && /concurrent|conflict|duplicate|winner/i.test(line),
+    );
     expect(conflictLogs).toHaveLength(1);
 
     // LEG 2 — AND THE CONSTRAINT ITSELF EXISTS AND BITES, BY NAME.
