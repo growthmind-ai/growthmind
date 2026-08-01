@@ -139,3 +139,95 @@ export async function loadValueUnderConstruction<T>(spec: {
 
   return value as T;
 }
+
+// ---------------------------------------------------------------------------
+// WAVE 0d ADDITIONS — the same two ideas, for suites that live OUTSIDE
+// `packages/shared/__tests__/onboarding/`. ADDITIVE ONLY: nothing above this
+// line changed, and the three loaders above are untouched.
+//
+// TWO PROBLEMS WAVE 0d HIT THAT WAVES 0b/0c DID NOT.
+//
+//   1. `modulePath` IS RESOLVED RELATIVE TO **THIS FILE**, not to the suite
+//      that calls the loader — a dynamic `import()` resolves against the
+//      module performing it. Every 0b/0c suite is this file's own directory
+//      neighbour, so the distinction never mattered. Wave 0d's suites live in
+//      `packages/db/__tests__/{tenancy,repositories,services}/`, which happen
+//      to sit at the SAME depth — so `"../../../db/src/…"` resolves correctly
+//      from here AND reads correctly from there, BY COINCIDENCE. That
+//      coincidence is load-bearing and invisible, and the day it breaks (a
+//      worker suite at `worker/__tests__/`, a route suite at
+//      `apps/web/__tests__/api/first-run/`) it does not break loudly: it
+//      produces a MISLEADING RED — "the module does not exist" for a module
+//      that does. That is precisely the failure this file was written to
+//      abolish, one level up.
+//
+//   2. NOT EVERY WAVE 0 RED IS A CALL. Several §9 rows are SOURCE SCANS over a
+//      file a later wave writes (AD-6's "names organization_id on both sides
+//      of every join", AD-20's "nothing re-implements resolveCredentialKey").
+//      `readFileSync` on an absent path throws `ENOENT` — a bare errno, which
+//      reads as a broken checkout for exactly the reason a bare TS2307 does.
+//
+// FOR WAVES 0e-0g: use `underConstructionSpecifier` for every `modulePath` and
+// `readSourceUnderConstruction` for every scan. Neither depends on where your
+// suite sits, and a fifth private copy of either is the D11 duplication the
+// header at the top of this file exists to prevent.
+// ---------------------------------------------------------------------------
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+/**
+ * The repository root, derived from THIS FILE's own location — the one place
+ * the depth is written down.
+ *
+ * `packages/shared/__tests__/onboarding/module-under-construction.ts` is four
+ * directories below the root, hence four `..`. If this file ever moves, this
+ * constant is the single line that has to move with it, and every caller of
+ * the two functions below keeps working unchanged.
+ */
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
+/**
+ * Turns a REPO-ROOT-RELATIVE module path into a specifier the three loaders
+ * above can resolve from anywhere.
+ *
+ * The result is an absolute `file://` URL, so it carries no dependence on
+ * either this file's location or the calling suite's — which is the whole
+ * point. Extensionless paths resolve exactly as a relative specifier would.
+ *
+ * @param repoRelativePath e.g. `"packages/db/src/tenancy/ensure-project"`.
+ *   Written the way a reader would cite it in the ADD, with no `../` arithmetic
+ *   to get wrong in either direction.
+ */
+export function underConstructionSpecifier(repoRelativePath: string): string {
+  return pathToFileURL(path.join(REPO_ROOT, repoRelativePath)).href;
+}
+
+/**
+ * Reads the SOURCE of a file a later wave creates, for the §9 rows that are
+ * structural scans rather than behavioural calls.
+ *
+ * An absent file becomes the same NAMED diagnostic the loaders produce, so a
+ * scan row's red states the absent behaviour and names its owner instead of
+ * surfacing an `ENOENT` a reviewer cannot tell from a typo in the path.
+ *
+ * @param spec.repoRelativePath Repo-root-relative, WITH its extension — this
+ *   reads a file rather than resolving a module, so nothing infers `.ts`.
+ * @param spec.ownedBy The task that creates it. It lands in the failure
+ *   message so a red names its own owner.
+ */
+export function readSourceUnderConstruction(spec: {
+  readonly repoRelativePath: string;
+  readonly ownedBy: string;
+}): string {
+  try {
+    return readFileSync(path.join(REPO_ROOT, spec.repoRelativePath), "utf8");
+  } catch {
+    throw new Error(
+      `NOT IMPLEMENTED YET: ${spec.repoRelativePath} does not exist on this tree, so the ` +
+        `structural scan below has nothing to read. It is created by ${spec.ownedBy}. This is a ` +
+        `Wave 0 red for the RIGHT reason: the file that must satisfy the invariant is absent.`,
+    );
+  }
+}
