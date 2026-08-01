@@ -39,7 +39,7 @@
 //  where they used to read 404; `NOT_FOUND.status` keeps its 404 and simply
 //  stops being read on this path.
 //
-//  ⚠️ the per-row line for these rows still says `application/json`.
+//  The per-row line for these rows still says `application/json`.
 //  Round-1 residue from the abandoned `responseMode: "json"` pin — the band
 //  paragraph and both say `text/event-stream`, measured on both legs
 //  under all three modes, and they win. Do not "fix" it back.
@@ -50,7 +50,7 @@
 // `JSON.parse(`; it contains none of them, and the one `toMatchObject` it used to carry
 // (at the old line 232) is gone, see `WIRE-XR3`.
 //
-// ⚠️ `WIRE-XR5` is untouched, byte for byte. No id prefix, no band assertion, not a
+// `WIRE-XR5` is untouched, byte for byte. No id prefix, no band assertion, not a
 // character. It resolves two real credentials with no HTTP anywhere near it, it doubles
 // as the teammate row, and it is one of the three rows that prove PR #16's credential
 // path is reused verbatim (row 43).
@@ -309,7 +309,7 @@ describe("two real organizations, two real credentials, and no way from one to t
     // Non-vacuity: the same narrowing, asked with the credential of the organization
     // that owns the project, returns the one fix in it.
     //
-    // ⚠️ this half used `toMatchObject` and now does not. It was one of the five
+    // This half used `toMatchObject` and now does not. It was one of the five
     // loosenings `WIRE-R10` named at Wave 0-T1, and the only one in this file. The raw
     // frame is inspected by containment instead. No parse, no subset matcher, and
     // strictly more of the answer inside the assertion.

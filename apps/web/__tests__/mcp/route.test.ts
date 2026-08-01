@@ -190,7 +190,7 @@ function errorCodeMarker(code: number): string {
 
 describe("what the surface refuses, and how it says so", () => {
   /**
-   * ⚠️ if this row is red at wave 8, read this before debugging anything else.
+   * If this row is red at wave 8, read this before debugging anything else.
    *
    * It is achievable only under the Surface B, and `W0-P2d` measured exactly why. With
    * `registerTool` alone, `McpServer` resolves `params.name` against its own registry
@@ -324,7 +324,7 @@ describe("what the surface refuses, and how it says so", () => {
   });
 
   /**
-   * ⚠️ claim inverted. This row used to read "a method other than GET or POST"; `GET`
+   * Claim inverted. This row used to read "a method other than GET or POST"; `GET`
    * is now refused too, because the catalogue it used to serve moved onto the wire
    * protocol as `tools/list`. The row is not dropped. An agent that GETs must still
    * receive a sentence saying what to send instead, which is why `GET` stays an
@@ -364,7 +364,7 @@ describe("what the surface refuses, and how it says so", () => {
    * names are the assertion: adding a ninth constant fails the count until somebody
    * adds it here and reads what it says.
    *
-   * ⚠️ the eighth arrived this way, and the mechanism worked exactly as designed.
+   * The eighth arrived this way, and the mechanism worked exactly as designed.
    * `BODY_TOO_LARGE` is the one sentence the post-sprint audit added: the size gate in
    * `server.ts` needed an answer, and reusing `MALFORMED_BODY` would have told an agent
    * its JSON was shaped wrong when what was wrong was the size, the same "different
@@ -461,7 +461,7 @@ describe("an installation with nowhere to record a fix answers truthfully", () =
     const result = resultOf(print);
     expect(result.isError).toBeUndefined();
 
-    // ⚠️ read from `structuredContent`, and that is load-bearing. A tool that
+    // Read from `structuredContent`, and that is load-bearing. A tool that
     // advertises an output schema and answers without schema-valid structured content
     // is rejected by a real client that has listed first. Measured, `ProtocolError
     // -32600`. The server does not enforce it, so this row is where a handler-level
@@ -618,7 +618,7 @@ describe("what a tool answers when there is something to answer with", () => {
 
 describe("this surface reads and does nothing else", () => {
   /**
-   * ⚠️ the `toEqual` is deliberate and survives this sprint unchanged. adds NO export
+   * The `toEqual` is deliberate and survives this sprint unchanged. adds NO export
    * to the composition root: the SDK handler is constructed inside `wire.ts`,
    * `handleMcpRequest` keeps its signature, and research OQ-6 closes with "nothing new
    * is exported". An exact-equality assertion is what makes that a decision rather than

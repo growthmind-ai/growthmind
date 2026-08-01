@@ -40,7 +40,7 @@
 // "text/event-stream", 'event: message\ndata: {…}\n\n' }` under the pinned
 // `responseMode: "sse"`.
 //
-// ⚠️ the per-row line for `WIRE-A1…A7` says `WIRE-A3` "asserts application/json". That
+// The per-row line for `WIRE-A1…A7` says `WIRE-A3` "asserts application/json". That
 // is round-1 residue from the abandoned `responseMode: "json"` pin. the own band
 // paragraph and say the SDK-rendered band is `text/event-stream`, measured on both legs
 // under all three modes, and they win. Do not "fix" it back.
@@ -319,7 +319,7 @@ describe("the read surface answers a credential a person minted, and nothing els
     // Status, content type and body text, never parsed objects, which would hide
     // exactly the differing message these four rows exist to catch.
     //
-    // ⚠️ these four are identical by construction, not by the framing pin.
+    // These four are identical by construction, not by the framing pin.
     // Authentication runs on the raw `Request` before `wire.ts` is called at all, so
     // `responseMode` cannot reach this path and neither can the transport's `Accept`
     // 406. `WIRE-G6` asserts against this exact frame from the other side. Keep it
@@ -364,7 +364,7 @@ describe("the read surface answers a credential a person minted, and nothing els
     // Non-vacuity: `not.toContain` on an empty needle passes against anything.
     expect(raw.length).toBeGreaterThan(40);
 
-    // ⚠️ the precondition is the point of this row's rewrite, and it is not decoration.
+    // The precondition is the point of this row's rewrite, and it is not decoration.
     // An absence assertion is vacuous unless it first proves the body is the one it
     // means to inspect: five 406s from the transport carry no credential material
     // either, and this row would pass forever while the wire behind it answered nothing

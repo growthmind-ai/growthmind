@@ -36,8 +36,7 @@
 // don't" asymmetry is correct: identity is what the problem IS (the gate's output class
 // and the signal kinds, both inside `evidence_shape`), not which rules found it. A
 // threshold change that flips `finalClass` should fork, because it is now a different
-// claim. That decision is closed. NO, pinned by two tests in `signature-churn.test.ts`
-// .
+// claim. That question is closed: no, pinned by two tests in `signature-churn.test.ts`.
 //
 // Fail direction: refuse. An unknown tuple version throws rather than falling back to
 // the current serialiser. A silent fallback would mint a v1-shaped string for a v2

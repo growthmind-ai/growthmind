@@ -1,95 +1,9 @@
 // The minimal fix spec: a finding's structured state rendered to plain sentences a
-// coding agent reads over MCP.
-//
-// What is not TRUE of this file, stated first
-//
-// Nothing calls `renderFixSpec` in production. There is no MCP server in this
-// repository that invokes it, no worker task, no route, and no dispatch path. It is
-// exercised by its own test suite and by nothing else. No fix spec produced here has
-// ever reached a coding agent, or anyone.
-//
-// There is no model. Nothing in `packages/core` imports `ai` or `@ai-sdk/anthropic`,
-// and this package cannot read an environment variable at all, having no node builtin
-// in reach. Every sentence below is a fixed template with values written into it, so
-// "did a model make this up" has a mechanical answer rather than an assurance.
-//
-// There is no dispatch, no verification, and no experiment. This module produces a
-// value. Nothing sends it anywhere, nothing acts on it, and nothing measures what
-// happened afterwards.
-//
-// The one thing this module exists to guarantee: No code
-//
-// The product decision (product-decisions, and the wedge in `.claude/VALUES.md`) is
-// that we dispatch a spec, not a PATCH. A fix spec says what is wrong and what the
-// evidence is, and leaves the fix to the agent reading it. So no output of this module
-// may contain a code fence, a diff hunk, a patch header, a file path with a line
-// number, or an instruction phrased as an edit.
-//
-// That is enforced structurally, not by review, and the argument is this:
-//
-// 1. No sentence is composed here. Every sentence is a fixed template, from
-//  `@growthmind/shared`'s already-audited floor vocabulary, or from the two
-//  tables this module declares below — with values written into it by
-//  `../summary/substitute`, which is the one seam in this package where a
-//  value is written into a template and which refuses any placeholder it
-//  cannot resolve.
-//
-// 2. Every template passes a code gate before it is used. `templateOrRefuse`
-//  runs `isCodeShaped` over the template on every render — not once at
-//  module load, and not in a test only — so a table edit that introduced a
-//  backtick, an operator, a filename, or an edit instruction throws instead
-//  of shipping.
-//
-// 3. The substituted values are drawn from exactly four bounded sources: a
-//  `surface` already proved to be in normalised form by the module that
-//  Owns normalisation, integers from a branded `MeasuredCount`, the literal
-//  string `"sessions"`, and the date part of an ISO instant. None of the
-//  four can carry a fence, a hunk header, or an imperative.
-//
-// The stated bound on, because an unqualified "the output contains no code" would
-// be a claim wider than the mechanism supports: a customer's own normalised `url_path`
-// is rendered verbatim, and `normaliseUrlPath` strips a query and a fragment but does
-// not police punctuation. A page really named ``/`` with a backtick in it renders with
-// that backtick. That is correct behaviour and not a hole (see the composed-input note
-// below) and what this module guarantees precisely is that no code marker it authored
-// can reach the output.
-//
-// The composed-input rule, applied twice (edge taxonomy)
-//
-// Both guards in this file scan the template, before substitution, never the rendered
-// sentence. That is deliberate and it is the whole of the composed-input lesson: a
-// keyword classifier fed a document containing a segment it was never designed for
-// matches boilerplate in that segment and flips the pipeline's behaviour.
-//
-// The concrete case, and it is asserted as intended in `../delivery/slack-message.ts`:
-// `describesPeople("/users/profile")` is TRUE. `/users/profile` is a customer's own
-// page address, not a claim about human beings. A guard applied to the rendered
-// sentence would fire on it, and the only available responses. Rewriting the path,
-// dropping the sentence, refusing the spec. Are all worse than the thing being
-// prevented. So the customer's data never reaches either guard, and a surface carrying
-// a cohort noun renders verbatim. There is a named test.
-//
-// Fail direction: Refuse, everywhere, and here is why it is the only one
-//
-// `../delivery/slack-message.ts` runs two guards with different fail directions, chosen
-// by input source: a hit on a caller-supplied label (our own vocabulary) is refused as
-// a caller bug, while a hit on model-written prose drops the prose and degrades the
-// message to its numbers-only form, so a true finding is not withheld over one word.
-//
-// This module renders no model prose at all. Every string it emits is our own fixed
-// vocabulary. The degrade branch therefore has no subject here, and the label branch
-// applies to every string: a violation is a bug in this file's tables or in the
-// caller's candidate, never a bad draw from a generator. So every gate below throws.
-//
-// Refusing is also the right direction on the merits. A fix spec that never appears is
-// a gap: a caller notices it and can handle it. A fix spec carrying a patch is the
-// product doing the single thing it promised not to do, handed to an agent with write
-// access to somebody's repository.
-//
-// Pure: no clock, no randomness, no I/O, no node builtin. The package-wide properties
-// `__tests__/detect/purity.test.ts` asserts over all of `src/`. Both ends of the window
-// arrive on the candidate; nothing here asks what time it is, which is what lets the
-// same finding render identically forever.
+// coding agent reads over MCP. The one guarantee: no output of this module can carry a
+// code fence, a diff, a patch, or an instruction phrased as an edit. Nothing composes
+// a sentence here; every string is a fixed template that passes a code gate on every
+// render, and every gate refuses (throws) rather than degrading. Pure, no clock.
+// Design rationale: docs/decisions/0011-fix-spec-contract.md
 import {
   FLOOR_CONFIDENCE_TEMPLATES,
   FLOOR_COUNT_TEMPLATES,
@@ -135,26 +49,10 @@ const COUNT_TEXT: Record<CountRole, string> = FLOOR_COUNT_TEMPLATES;
  * What kind of thing was seen, one sentence per evidence signal kind.
  *
  * `Record<EvidenceSignalKind, string>` is the compile pin: a sixth member added to
- * `EvidenceSignal` without a sentence here is a `bun run typecheck` failure, not an
- * `undefined` rendered into a spec an agent then acts on.
- *
- * The page is the subject of every one of them, and no sentence says "people". A signal
- * is one observation; the magnitude that would license a plural human subject lives on
- * the predicate that consumed the signal, not on the signal itself.
- * `packages/shared/src/gate/messages.ts:58-85` is the record of what happens when a
- * sentence keyed by a state asserts more than the weakest path to that state
- * established, `broken_unsatisfied` shipped reading "We saw people struggling here" on
- * paths where nobody had struggled. Keying these by signal kind is the same mechanism,
- * so they claim only what one signal is.
- *
- * No event name is rendered, and that is a real cost chosen deliberately. A coding
- * agent would plainly find `checkout_submit_failed` more actionable than "an action
- * taken there". But an event name is un-normalised, un-redacted external text from a
- * customer's own instrumentation, and rendering it would either put it through a code
- * gate designed for our vocabulary. The exact composed-input mistake the header
- * refuses, or past no gate at all. Naming the event needs a redaction rule for event
- * names, which does not exist in this repository. Until it does, the spec states the
- * shape of the evidence and says so out loud in its own boundary sentences.
+ * `EvidenceSignal` without a sentence here fails `bun run typecheck`. The page is the
+ * subject of every sentence, no sentence says "people", and no event name is rendered:
+ * an event name is un-redacted customer text with no redaction rule yet. The design
+ * doc carries both arguments.
  */
 export const FIX_SPEC_EVIDENCE_TEMPLATES: Record<EvidenceSignalKind, string> = {
   /** `failure_correlated`: an exception tied to the action that preceded it. */
@@ -190,30 +88,18 @@ export const FIX_SPEC_EVIDENCE_TEMPLATES: Record<EvidenceSignalKind, string> = {
 };
 
 /**
- * What is said when a finding carries no evidence signals at all.
- *
- * Not an empty section and not a crash. A candidate can legitimately reach a renderer
- * with an empty `signals` array, `CandidateFinding` does not carry signals at all, so a
- * caller assembling one from a persisted row may simply have none to hand, and the
- * honest output is a spec that says so and then stands on its counts, which are present
- * and complete either way. A blank section reads as "we did not look", which is a
+ * What is said when a finding carries no evidence signals at all: an empty `signals`
+ * join is legitimate, and a blank section would read as "we did not look", which is a
  * different and false claim.
  */
 export const FIX_SPEC_NO_EVIDENCE_TEMPLATE: string =
   "No individual observations were recorded alongside this, so what follows rests on the counts.";
 
 /**
- * What this spec is not. The "no code" product decision, stated in the output rather
- * than only in this comment.
- *
- * These three ship on every spec, unconditionally. A reader who has to infer that we
- * did not look at their source is a reader who may reasonably assume we did, and an
- * agent that assumes a spec is a review of its code will look for the change we are
- * supposedly pointing at. Saying it costs three sentences.
- *
- * No next step is stated, for the same reason `../summary/floor.ts:216-220` states
- * none: nothing shipped can act on a finding, so a sentence implying otherwise would
- * promise work that does not exist.
+ * What this spec is not: the "no code" product decision, stated in the output itself,
+ * on every spec, unconditionally. A reader who has to infer that we did not look at
+ * their source may reasonably assume we did. No next step is stated: nothing shipped
+ * can act on a finding.
  */
 export const FIX_SPEC_BOUNDARY_TEMPLATES: readonly string[] = [
   "This describes what was measured on one page, not how that page is built.",
@@ -222,28 +108,19 @@ export const FIX_SPEC_BOUNDARY_TEMPLATES: readonly string[] = [
 ];
 
 /**
- * The limitation the evidence section carries, stated only when there IS an evidence
- * section to qualify.
- *
- * Each evidence sentence is qualitative by design (see `FIX_SPEC_EVIDENCE_TEMPLATES`):
- * a signal's own cohort magnitude (`correlatedSessions`, `strugglingSessions`) is a
- * different population from the candidate's counts, and standing the two next to each
- * other invites exactly the reading SAC-11 forbids, where one group is handed the
- * other's behaviour. Rather than compose that carefully, the spec renders one
- * population's magnitudes and says plainly that the evidence lines carry none.
+ * The limitation the evidence section carries, stated only when there is one. Evidence
+ * sentences are qualitative by design: a signal's own cohort magnitude is a different
+ * population from the candidate's counts, and standing the two next to each other
+ * invites reading one group's behaviour onto the other.
  */
 export const FIX_SPEC_EVIDENCE_LIMIT_TEMPLATE: string =
   "Each observation above says what kind of thing was seen on this page, not how much of it.";
 
 /**
- * What the run could not see, travelling with what it did.
- *
- * `DetectorCoverage` is carried onto every candidate precisely so a limitation is never
- * silently dropped, and a fix spec that hid a truncated read would hand an agent a
- * floor while presenting it as a total. Both sentences are qualitative:
- * `eventsWithoutUrlPath` is a bare number with no denominator. Legitimately so, being a
- * statement about the run rather than a claim about the product, and rendering a bare
- * number in front of a reader is the one thing `MeasuredCount` exists to prevent.
+ * What the run could not see, travelling with what it did: a spec that hid a truncated
+ * read would hand an agent a floor while presenting it as a total. Both sentences are
+ * qualitative, because rendering a bare number in front of a reader is the one thing
+ * `MeasuredCount` exists to prevent.
  */
 export const FIX_SPEC_COVERAGE_TEMPLATES = {
   truncated:
@@ -253,15 +130,10 @@ export const FIX_SPEC_COVERAGE_TEMPLATES = {
 } as const;
 
 /**
- * Every fixed string this module authors, in one array, so the plain-English audit over
- * it is total rather than best-effort.
- *
- * Derived from the tables above rather than re-listed, so a sentence cannot escape
- * review by being added in one place and not the other, the same rule
- * `packages/shared/src/signatures/messages.ts:79-81` follows for the same reason. The
- * vocabulary reused from `@growthmind/shared` is not here: it is already covered by
- * that package's own audit, and the rendered-output scan in
- * `__tests__/fixes/fix-spec.test.ts` covers it again in situ.
+ * Every fixed string this module authors, in one array, derived from the tables above
+ * rather than re-listed, so the plain-English audit over it is total and a sentence
+ * cannot escape review by being added in one place and not the other. The vocabulary
+ * reused from `@growthmind/shared` is covered by that package's own audit.
  */
 export const FIX_SPEC_ALL_TEMPLATES: readonly string[] = [
   ...Object.values(FIX_SPEC_EVIDENCE_TEMPLATES),
@@ -286,22 +158,12 @@ export type CodeShapedMarker = {
 };
 
 /**
- * The markers a fix-spec template may not contain.
- *
- * Deliberately broader than prose needs, because of what it is pointed at. It scans our
- * own vocabulary and nothing else (see the composed-input rule in the header), and our
- * vocabulary is a few dozen hand-written sentences that have no legitimate use for a
- * parenthesis, an angle bracket, an operator, or a file extension. Strictness against a
- * closed, authored corpus is free; the same strictness pointed at a customer's data
- * would be the failure.
- *
- * No pattern carries the `g` flag. A global regular expression is stateful across
- * `.test` calls, so the same template would match on one render and not the next. A
- * determinism bug inside the guard that exists to make the output deterministic.
- *
- * The brace pair is not banned: `{surface}` is the placeholder syntax
- * `../summary/substitute.ts` reads, and `substitute` already refuses any placeholder it
- * cannot resolve, so an unresolved brace never survives to the output.
+ * The markers a fix-spec template may not contain. Deliberately broader than prose
+ * needs: it scans only our own closed, authored vocabulary, never customer data (the
+ * design doc's composed-input rule). No pattern carries the `g` flag, which is
+ * stateful across `.test` calls, a determinism bug inside the guard that exists to
+ * make the output deterministic. The brace pair is not banned because `{surface}` is
+ * the placeholder syntax `substitute` reads, and it refuses unresolved placeholders.
  */
 export const CODE_SHAPED_MARKERS: readonly CodeShapedMarker[] = [
   { name: "fenced_code", pattern: /```|~~~/ },
@@ -350,20 +212,11 @@ export const CODE_SHAPED_MARKERS: readonly CodeShapedMarker[] = [
 ];
 
 /**
- * True when a string reads as code, a diff, or an instruction to edit one.
- *
- * Point this at our own vocabulary only. It is a deterministic keyword gate and
- * therefore applies to it exactly as it applies to `describesPeople`: it will miss
- * phrasings, and (more importantly) it fires on perfectly ordinary customer data.
- * `/api/users` is a real page address containing a parenthesis, `/docs/readme.md`
- * ends in a file extension, and neither is a patch. Every caller in this module runs it
- * over a template before a value is written in, which is what makes the strictness
- * above safe.
- *
- * Miss direction, named: an unmatched phrasing renders. This gate is the cheap
- * mechanical last catch over a closed corpus a human wrote; it is not the primary
- * control, and it is not a claim to recognise every possible code shape. The primary
- * control is that no sentence is composed here at all.
+ * True when a string reads as code, a diff, or an instruction to edit one. Point this
+ * at our own vocabulary only: it fires on perfectly ordinary customer data (a path
+ * like `/docs/readme.md` ends in a file extension and is not a patch), so every caller
+ * runs it over a template before a value is written in. Miss direction: an unmatched
+ * phrasing renders; the primary control is that no sentence is composed here at all.
  */
 export function isCodeShaped(text: string): boolean {
   return codeMarkerIn(text) !== null;
@@ -476,42 +329,14 @@ function carriesACount(template: string): boolean {
 }
 
 /**
- * Returns a template fit to render, or refuses.
- *
- * The last gate before our vocabulary becomes a sentence, and it runs on every render
- * rather than once at module load, so a table edited in a later sprint is checked by
- * the code that uses it and not by a reviewer's memory. Three refusals:
- *
- * Not exactly one sentence. Every element of a `FixSpec` section is one
- *  sentence, so a table edit that welded two together — or dropped a full
- *  stop — would silently change the output contract. Refused rather than
- *  split, because splitting would mean authoring a sentence boundary, which
- *  is the one thing this module must never do.
- *
- * Code-shaped. The product decision, mechanised. See the header.
- *
- * A count sentence that describes people. This is
- *  `../counts/measured-count.ts:60-69` enforced at the rendering seam rather
- *  than restated: identity stitching does not exist in this product — there
- *  is no `identities` table — so "12 of 25" means 12 of 25 sessions, and a
- *  sentence pairing that pair with a cohort noun makes a claim about human
- *  beings that nothing measured. The check is conditional on the template
- *  carrying a count, and that is the precise rule rather than a softened one:
- *  a count-free sentence may name people where a cohort magnitude licenses it
- *  (`FLOOR_OBSERVATION_TEMPLATES.broken` does, licensed by
- *  `errorMinAffectedSessions`), and a blanket ban would refuse the shipped,
- *  audited symptom vocabulary this module reuses.
- *
- *  `describesPeople` is imported from `../delivery/slack-message.ts` rather
- *  than reimplemented: one cohort matcher for the product, so a noun added
- *  there is caught here for free. It is a keyword gate and it misses —
- *  it cannot see a role word, a name, or a paraphrase. It is the cheap last
- *  catch over a closed corpus, not the primary control.
- *
- * The message names the slot and the marker, and no template text. A slot name and a
- * marker name are facts about this codebase and are safe in a log line; a rendered
- * sentence carries a page path and count values, and neither is a fact about this
- * codebase. Same discipline as `../summary/substitute.ts:84-88`.
+ * Returns a template fit to render, or refuses. The last gate before our vocabulary
+ * becomes a sentence, run on every render rather than once at module load. Three
+ * refusals: not exactly one sentence (refused rather than split, because splitting
+ * would author a sentence boundary); code-shaped (the product decision, mechanised);
+ * and a count sentence that describes people (conditional on the template carrying a
+ * count, because a count-free sentence may name people where a cohort magnitude
+ * licenses it). The error names the slot and the marker, never template text. The full
+ * argument for each refusal is in the design doc.
  */
 function templateOrRefuse(template: string, slot: string): string {
   const trimmed = template.trim();
@@ -534,9 +359,9 @@ function templateOrRefuse(template: string, slot: string): string {
 
 /**
  * Gate the template, then write the values in. In that order, always. The guards scan
- * our vocabulary and never the customer's data (see the header), and this function is
- * the only place the two steps are sequenced, so there is no call site that can get the
- * order wrong.
+ * our vocabulary and never the customer's data (see the design doc), and this function
+ * is the only place the two steps are sequenced, so there is no call site that can get
+ * the order wrong.
  */
 function write(
   template: string,
@@ -580,21 +405,12 @@ function surfaceOfSignal(signal: EvidenceSignal, fallback: string): string {
 }
 
 /**
- * One magnitude, with its denominator in the same sentence.
- *
- * Structural rather than remembered: every value of `FLOOR_COUNT_TEMPLATES` carries
- * `{numerator}`, `{denominator}` and `{unit}` in one string, so there is no template
- * here that can render a numerator alone and therefore no call shape that can either.
- *
- * `rateOf` is the switch, and its result is never printed. A zero denominator (every
- * session in the window set aside) is a real, reportable state, and it takes the
- * explicit no-rate sentence. Never a division (there is no answer), never a blank
- * (which reads as nothing having happened), never `0%` and never `NaN`. On the other
- * branch `rate.value` is deliberately left unread: it is a float, this product renders
- * no numeric precision anywhere (`FLOOR_CONFIDENCE_TEMPLATES` carries no digit at all,
- * on purpose), and the numerator and the denominator are the claim. A percentage beside
- * them would be the most memorable thing a reader took away precisely because it looks
- * exact.
+ * One magnitude, with its denominator in the same sentence: every count template
+ * carries `{numerator}`, `{denominator}` and `{unit}` in one string, so no call shape
+ * can render a numerator alone. A zero denominator takes the explicit no-rate
+ * sentence, never a division, a blank, `0%` or `NaN`; `rate.value` is deliberately
+ * never printed, because this product renders no numeric precision anywhere and the
+ * numerator and the denominator are the claim.
  */
 function magnitudeSentence(role: CountRole, count: MeasuredCount, surface: string): string {
   const rate = rateOf(count);
@@ -631,44 +447,14 @@ function coverageSentences(coverage: DetectorCoverage): readonly string[] {
 /**
  * Turns a finding's structured state into the sentences a coding agent reads.
  *
- * What it deliberately does not do
- *
- * No code, no diff, no edit. The whole point; see the header for the structural
- * argument and for the one stated bound on it.
- *
- * No ratio is computed between counts. A funnel finding's two counts share one
- * denominator (the kept sessions in the window) so dividing one by the other does not
- * produce the drop rate the detector applied its threshold to. That rate has a
- * different denominator, no `MeasuredCount` carries it, and deriving it here would be
- * this module inventing a statistic. The honest consequence: an agent is shown the two
- * counts the threshold was computed from, not the threshold's own rate.
- *
- * No class is re-derived. `finalClass` (the class the gate concluded) is read as given.
- * `claimedClass` and `trace` are not read at all.
- *
- * No signal magnitude is rendered. See `FIX_SPEC_EVIDENCE_LIMIT_TEMPLATE`; the spec
- * says so itself.
- *
- * No clock is read. Both ends of the window arrive on the candidate, rendered as dates
- * rather than as a phrase like "the last seven days", which would be relative to a
- * moment this code cannot read and would stop being true the day after it was written.
- * In a spec an agent may open long after it was made.
- *
- * Fail direction: Refuse, at every step
- *
- * A candidate or a signal that does not satisfy `fixSpecInputSchema` (the
- *  boundary comes first, so a caller cannot skip it by passing an
- *  already-typed value);
- * A `surface` (the candidate's or a signal's own) that is not already in
- *  its normalised form;
- * A `counts` arity that disagrees with the detector's declared roles
- *  (`resolveCounts` refuses; a mislabelled number is worse than none);
- * A template that is not one sentence, that reads as code, or that pairs a
- *  count with a cohort noun (`templateOrRefuse`);
- * A template carrying a placeholder nothing supplies (`substitute` refuses).
- *
- * The isolation half, one refused finding must not abort a whole run. Is not here and
- * is not claimed. It belongs to whatever eventually calls this, and nothing does yet.
+ * Fail direction: refuse, at every step. The input schema is parsed first; every
+ * surface (the candidate's or a signal's own) must already be normalised; a `counts`
+ * arity that disagrees with the detector's declared roles refuses (`resolveCounts`);
+ * and every template gates on every render. No code is emitted, no ratio is computed
+ * between counts, no class is re-derived, no signal magnitude is rendered, and no
+ * clock is read. Isolation of one refused finding from a whole run is not claimed
+ * here; it belongs to whatever eventually calls this, and nothing does yet. The
+ * argument for each of these is in the design doc.
  */
 export function renderFixSpec(input: FixSpecInput): FixSpec {
   // 1. The boundary, and it comes first. No `??`, no default, no fallback

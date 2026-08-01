@@ -1,5 +1,5 @@
-// Wave 0C (red) (signature-ledger, "Unit tests)
-// packages/db/__tests__/signatures/hex.test.ts".
+// Wave 0C (red), signature-ledger "Unit tests",
+// packages/db/__tests__/signatures/hex.test.ts.
 //
 // `packages/db/src/signatures/hex.ts` is a Wave 0B stub: every exported function throws
 // "not implemented" unconditionally, regardless of its input. A bare `expect(=>

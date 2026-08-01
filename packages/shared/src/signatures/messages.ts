@@ -3,7 +3,7 @@
 // **Standalone by instruction, not by accident.** Wave 1 says to append these to the
 // existing `ALL_CUSTOMER_FACING_MESSAGES` aggregate only if that aggregate's home is
 // unchanged and uncontested. It is contested: the aggregate lives in
-// `../session-source/messages.ts` today, and That decision is concurrently creating a
+// `../session-source/messages.ts` today, and a concurrent sprint is creating a
 // second home for it at `../summary/messages.ts`. Joining either one now buys a rebase
 // fight and, worse, a coin-flip about which aggregate the plain-English audit actually
 // scans. So this map ships standalone with its own enumeration and plain-English audit
@@ -39,7 +39,8 @@ import type { SuppressionReasonCode } from "./types";
  * thing at runtime against the Zod enum, so the guarantee survives a `Record` that
  * someone later loosens.
  *
- * The rendering surface is the, not this sprint's. These are the words, not the layout.
+ * The rendering surface is a later sprint's, not this one's. These are the words, not
+ * the layout.
  */
 export const SUPPRESSION_REASON_MESSAGES: Record<SuppressionReasonCode, string | null> = {
   // May: a person decided, and it will not come back. May not: that it is fixed, that

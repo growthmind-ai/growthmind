@@ -783,13 +783,13 @@ describe("detector-corpus.service — the T1 corpus read", () => {
     expect(source.length).toBeGreaterThan(0);
     expect(code).toContain("createDetectorCorpusService");
 
-    // A count, not a match (security audit ). `.from(events)` appears twice in this
+    // A count, not a match (security audit). `.from(events)` appears twice in this
     // file. The windowed events read and the project-wide `anyEvent` probe, and a
     // single `toMatch` passes while one of the two has had its org predicate dropped.
     // The `anyEvent` probe is the weakest cell: its only observable effect is
     // `connectionState`, and that is short-circuited to `not_connected` when
     // `findLatestConnection` returns null, so no behavioural cross-tenant test can
-    // reach it. Ruling 35 / That decision says every predicate names
+    // reach it. Ruling 35 says every predicate names
     // `ctx.organizationId` out loud; only a per-query count can say that.
     //
     // The expected count is derived from the source, so adding a sixth scoped query
@@ -896,7 +896,7 @@ describe("detector-corpus.service — the T1 corpus read", () => {
         WINDOW,
       );
 
-      // the That decision was a silent truncation that read as "no more events". This
+      // the precedent incident was a silent truncation that read as "no more events". This
       // is that fix applied before the incident rather than after it.
       expect(bound.coverage.truncated).toBe(true);
       // And the control: `truncated` must be a fact about the read, not a constant. A

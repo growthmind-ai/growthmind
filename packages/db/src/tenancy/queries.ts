@@ -1,7 +1,7 @@
 // Tenancy bootstrap reads, the queries that resolve who a request is acting as, before
 // any organization scope exists.
 //
-// These are deliberately not repository factories. Every repository in./repositories
+// These are deliberately not repository factories. Every repository in ../repositories
 // takes a `TenantContext` at construction, which is the only way to name an
 // organization. These functions cannot follow that shape, because they are what
 // produces a `TenantContext`. Scoping them by one is circular.
@@ -19,7 +19,7 @@
 //  not around it.
 //
 // Adding an organization-id parameter to anything here breaks all three. If a query
-// needs one, it belongs in./repositories as a scoped factory instead.
+// needs one, it belongs in ../repositories as a scoped factory instead.
 import type { Membership } from "@growthmind/shared";
 import { asc, eq } from "drizzle-orm";
 

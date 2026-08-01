@@ -2,58 +2,11 @@ import { z } from "zod";
 
 import { exclusionReasonSchema } from "../exclusions/types";
 
-// The read-only machine surface's wire shapes (`docs/architecture.md`; the draft
-// machine-surfaces contract, tools #12).
-//
-// Three tools this slice, all reads: `list_open_fixes`, `get_fix`, `get_finding`. The
-// descriptors that bind these shapes to their names live in `./tools.ts`; the
-// HTTP/stdio route that serves them is a later slice, and the fix spec's prose.
-// Structured state rendered to plain sentences under fixed headings. Belongs to
-// `packages/core`, not here. See `fixSpecEnvelopeSchema` below for why this file
-// carries the rendered spec as one opaque string and declares none of its sections.
-//
-// Why `packages/shared`. It depends on `zod` only (never `@growthmind/core`, never
-// `@growthmind/db`), and both the producer (a route in `apps/web`) and any consumer
-// will already depend on it, the same reasoning that put the SummaryRenderer port's
-// shapes in `../summary/types.ts`.
-//
-// Two naming decisions, both deliberate
-//
-// 1. Tool names are snake_case (`list_open_fixes`) and are quoted verbatim in
-//  the definition of done and in the draft contract. They are the wire,
-//  so they are pinned as constants and asserted in `__tests__/mcp/tools.test.ts`
-//  — the hazard `worker/src/task-names.ts` documents at length. A renamed
-//  tool is not a compile error anywhere; it is a capability that silently
-//  stops being reachable, because a client asks for tools by string.
-//
-// 2. Field names are camelCase, and this is a considered deviation from the
-//  draft contract's `fix_id` / `finding_id` prose. Every Zod schema in this
-//  package is camelCase (`totalInWindow`, `resolvedModelId`,
-//  `surfaceNormalisationVersion`), and one convention per repository beats
-//  matching a draft's incidental key style. What the contract actually
-//  requires is that every response carries both ids — an agent working across
-//  turns loses the thread otherwise, and a fix applied to the wrong finding
-//  is worse than no fix. That requirement is met literally: `fixId` and
-//  `findingId` are required on every output shape below, and a named test
-//  pins it. Field style is cosmetic; carrying both ids is not.
-//
-// The org is never an argument
-//
-// No input schema in this file has an organization key, and none may grow one. The
-// organization comes from the authenticated credential the call arrived on and from
-// nowhere else, so "give me another tenant's fixes" is not a sentence this contract can
-// express. The lesson `packages/db/__tests__/repositories/no-org-param.test.ts` already
-// pays for at the repository and service layers, restated at the layer a customer's
-// coding agent can actually reach. `__tests__/mcp/tools.test.ts` walks every input
-// schema's keys recursively and fails on one.
-//
-// The client-supplied ids below (`fixId`, `findingId`, `projectId`) are the residual
-// risk, and the schema cannot close it: an id is just a string. Inherited obligation
-// for whoever writes the route. Every id must be resolved inside the credential's
-// organization, and an id belonging to another organization must answer exactly as an
-// id that does not exist does. A distinguishable "not yours" answer is itself a
-// cross-tenant read. There is no code here to test that against yet; it is a
-// requirement handed forward, not a guarantee already met.
+// Wire shapes for the read-only machine surface: three tools, all reads, with the
+// descriptors that bind them to their names in `./tools.ts`. No input schema in this
+// file has an organization key and none may grow one: the organization comes from the
+// authenticated credential the call arrived on, and from nowhere else.
+// Design rationale: docs/decisions/0008-mcp-tool-types.md
 
 /**
  * An id as it actually exists in this product: `packages/db`'s primary keys are `text`

@@ -1,6 +1,6 @@
 // items 43–45, the impure fetch wrapper.
 //
-// Addendum a row 5's load-bearing fact: the throttle bucket is per-endpoint. While
+// Addendum A row 5's load-bearing fact: the throttle bucket is per-endpoint. While
 // session recordings were throttled, the events list still returned 200. So attempt
 // counters live per endpoint for the lifetime of one poll run, and a 429 from persons
 // exhausts the identity budget without pausing the events walk.

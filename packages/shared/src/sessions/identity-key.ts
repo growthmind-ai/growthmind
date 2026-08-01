@@ -1,4 +1,4 @@
-// Deterministic, project-salted, keyed identity-key hashing (security audit ).
+// Deterministic, project-salted, keyed identity-key hashing (security audit).
 //
 // PostHog's `identify` is routinely called with a user's email address as the
 // `distinct_id`. That is how a lot of customer SDKs are wired, not an edge case.

@@ -19,7 +19,7 @@
 //  fails toward reporting less than was read, never more.
 // Ruling 16: `coverage.truncated` propagates. It is a fact about the read
 //  and cannot be recomputed from the sessions — a recomputed `false` would
-//  be the, a silent truncation reading as "no more events".
+//  be a silent truncation reading as "no more events".
 // Ruling 24: `coverage.eventsWithoutUrlPath` is recomputed over the kept
 //  sessions only. The corpus's own value is not trusted, so the number is
 //  provably about what this run analysed.
@@ -360,7 +360,7 @@ describe("analysedSessions — coverage.truncated (PL ruling 16)", () => {
   test("should propagate a truncated read rather than recomputing it from the sessions", () => {
     // Truncation is a fact about the read. Nothing in `sessions` records it, so a
     // recomputed value could only ever be `false`, and a silent truncation reading as
-    // "no more events" was the.
+    // "no more events" is the failure this recompute ban exists to prevent.
     const sessions = [
       t1anlSession({
         key: "truncated-1",

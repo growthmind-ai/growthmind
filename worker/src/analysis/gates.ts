@@ -55,7 +55,7 @@ export function floorTextFor(
 }
 
 /**
- * The surface gate (security audit ). `false` refuses the candidate outright, before
+ * The surface gate (security audit). `false` refuses the candidate outright, before
  * the ladder starts.
  *
  * What it answers. `CandidateFinding.surface` is only `z.string.min`, so a raw url

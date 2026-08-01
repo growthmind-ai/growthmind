@@ -80,7 +80,7 @@ const ANALYSIS_STOP_REASONS = [
  * different facts about different points in the lane, and a reader must be able to tell
  * them apart without guessing:
  * `candidates_refused`, the surface gate would not transmit the value at
- *  all (security audit ). Nothing was claimed, nothing was sent, nothing
+ *  all (security audit). Nothing was claimed, nothing was sent, nothing
  *  was written.
  * `candidates_unrenderable`, the deterministic floor could not phrase the
  *  candidate even without a model, so no honest sentence existed to store.

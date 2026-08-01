@@ -1,6 +1,6 @@
 // item 26, URL-path normalisation (sec-b, edge taxonomy).
 //
-// Addendum a sec-b pinned that `$current_url` carries the full url including the query
+// Addendum A sec-b pinned that `$current_url` carries the full url including the query
 // string, while `$pathname` is the path alone. Storing the raw `$current_url` would
 // mean one utm parameter forks the surface and every finding signature hanging off it.
 // A textbook identity churn, paid for by an ordinary campaign link.
@@ -74,7 +74,7 @@ describe("normaliseUrlPath", () => {
 
 // Security audit, a raw path segment can carry a live reset token or an email
 // address straight into `events.url_path` / `sessions.entry_url_path`. Fail direction:
-// redact on doubt (documented beside each predicate in././src/sessions/url-path.ts).
+// redact on doubt (documented beside each predicate in ../../src/sessions/url-path.ts).
 // Every case here pins one predicate's positive and its near-miss, so the deny-list
 // cannot quietly widen into redacting ordinary product paths.
 describe("normaliseUrlPath redacts identifier-shaped path segments", () => {

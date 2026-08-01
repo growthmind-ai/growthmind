@@ -1,6 +1,6 @@
 // items 46–48, failure mapping at the PostHog boundary.
 //
-// Addendum a sec-d: Both observed auth failures are 401, never 403, and they share the
+// Addendum A sec-d: Both observed auth failures are 401, never 403, and they share the
 // `{type, code, detail, attr}` envelope with the 429. So one parser serves both and
 // branching is on `code`, not on the status alone. No 403 branch is coded, because a
 // 403 was never observed.

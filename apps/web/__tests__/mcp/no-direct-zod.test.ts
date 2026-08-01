@@ -30,7 +30,7 @@
 // The regression it catches is a future author "simplifying" the schemas into
 // pre-rendered JSON and re-breaking registration.
 //
-// ⚠️ Round 2's era reversal does not touch this row. Its inversion rests on the schema
+// Round 2's era reversal does not touch this row. Its inversion rests on the schema
 // probe, not on the era probe that was overturned. The two were conflated once and
 // should not be again.
 import { readFileSync, readdirSync } from "node:fs";
@@ -138,7 +138,7 @@ describe("WIRE-Z1 — apps/web declares no direct zod dependency", () => {
    * half imports the specifier for real and asserts it fails, so the invariant is about
    * the module graph rather than about a JSON file.
    *
-   * ⚠️ the specifier is built at runtime, and it has to be. A literal `import("zod")`
+   * The specifier is built at runtime, and it has to be. A literal `import("zod")`
    * in an `apps/web` test breaks `bun run typecheck` with TS2307. The type checker
    * resolves the literal, cannot find the package, and fails the build the row was
    * meant to protect. Measured, as is the other temptation: `Bun.resolveSync` disagrees
@@ -206,7 +206,7 @@ describe("WIRE-Z3 — the schemas handed to the SDK are Standard Schemas, and on
    * the object that produced it. `~standard`, `_def` and `parse` are the three keys
    * that would show a Zod object had been serialised whole instead.
    *
-   * ⚠️ the precondition below is load-bearing, and it is why this row was red before
+   * The precondition below is load-bearing, and it is why this row was red before
    * wave 8. There was no `tools/list` on this route (`wire.ts` was a signature-only
    * stub) so the HTTP 200 whose body actually advertises a schema failed first. Without
    * that line the row would have passed against a refusal body, which trivially

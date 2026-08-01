@@ -15,7 +15,7 @@ import { AD_CONFIG, createFakeDeps, createFakeFetch } from "./helpers/fakes";
 import { readAdapterSources } from "./helpers/source-scan";
 
 describe("the SessionSource port", () => {
-  // Item 61, /. The vendor name must not leak past the composition root, and a second
+  // Item 61. The vendor name must not leak past the composition root, and a second
   // adapter must be a compile error (an unhandled branch of the one-member union),
   // never a silent fallthrough in a lookup table.
   test("exactly one SessionSource implementation is referenced, by name — no registry, factory map, or dynamic lookup", () => {

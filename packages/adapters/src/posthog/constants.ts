@@ -112,7 +112,7 @@ export const IDENTITY_LOOKUP_BUDGET = 50;
 export const MAX_RATE_LIMIT_ATTEMPTS = 5;
 
 /**
- * Per-request wall-clock ceiling (audit ). The run budget is only checked between
+ * Per-request wall-clock ceiling (audit). The run budget is only checked between
  * passes, so without this a host that accepts the connection and then never answers
  * hangs the poll for as long as the runtime allows. Generous enough for a slow page
  * over a cold connection; short enough that a stuck endpoint costs one cron tick rather
@@ -121,7 +121,7 @@ export const MAX_RATE_LIMIT_ATTEMPTS = 5;
 export const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Ceiling on a single response body (audit ). `MAX_PAGES_PER_RUN` bounds how many
+ * Ceiling on a single response body (audit). `MAX_PAGES_PER_RUN` bounds how many
  * requests a hostile host can serve, not how large each one is, 25 unbounded bodies is
  * an oom, not a rate limit. A legitimate events page at `EVENTS_PAGE_LIMIT` is orders
  * of magnitude under this.

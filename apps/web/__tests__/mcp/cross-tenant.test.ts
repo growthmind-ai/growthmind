@@ -44,7 +44,7 @@
 //  is a named deviation, not a regression: `NOT_FOUND.status` keeps its 404
 //  and simply stops being read on this path.
 //
-//  ⚠️ the per-row line for `WIRE-X1…X5` still says these rows assert
+//  The per-row line for `WIRE-X1…X5` still says these rows assert
 //  `application/json`. That is round-1 residue from the abandoned
 //  `responseMode: "json"` pin; the own band paragraph and both say the
 //  SDK-rendered band is `text/event-stream`, and they are correct. Measured
@@ -131,7 +131,7 @@ const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
  * opposite: it pins key order rather than discarding it, and the resulting string is
  * compared as a string.
  *
- * ⚠️ per-leg by construction. The modern leg's result carries `resultType: "complete"`
+ * Per-leg by construction. The modern leg's result carries `resultType: "complete"`
  * and a `_meta.serverInfo` block this frame lacks, so this literal is authored against
  * the legacy leg. The one a stock client negotiates, and the one everything the fixture
  * mints lands on.
@@ -274,7 +274,7 @@ describe("the read-only machine surface refuses across organizations without say
     // Non-vacuity: the same narrowing, asked by the organization that owns the project,
     // returns the one fix in it.
     //
-    // ⚠️ this half used `toMatchObject` and now does not. That was one of the five
+    // This half used `toMatchObject` and now does not. That was one of the five
     // loosenings `WIRE-R10` named at Wave 0-T1; a partial match here is exactly the
     // shape that lets a whole-body comparison rot into a subset comparison one row at a
     // time. The raw frame is inspected by containment instead. No parse, no subset
@@ -310,7 +310,7 @@ describe("the read-only machine surface refuses across organizations without say
   test("WIRE-X4 — the organization every read is scoped to comes from the credential and never from the request", async () => {
     const reads = twoOrgStore();
 
-    // ⚠️ the arguments now carry an `organizationId`, and that is the row's new half.
+    // The arguments now carry an `organizationId`, and that is the row's new half.
     // Under the pre-protocol envelope a body could only name a tool and its input;
     // under JSON-RPC a caller can put anything it likes in `params.arguments`, so the
     // row asserts the stronger claim: even a request that explicitly names another
@@ -340,7 +340,7 @@ describe("the read-only machine surface refuses across organizations without say
 
     const print = await fingerprint(await callAsOrgA(reads, "list_open_fixes", {}));
 
-    // ⚠️ the second `toMatchObject` `WIRE-R10` named, also gone. The row now asserts
+    // The second `toMatchObject` `WIRE-R10` named, also gone. The row now asserts
     // the band, then the presence of what org A owns, then (and only then) the absence
     // of what it does not. An absence assertion over a body that was a 406 or a 401
     // passes forever while proving nothing.
@@ -375,7 +375,7 @@ describe("the crown jewel holds on the modern leg too", () => {
    * asserted, and an unasserted security property is one a package upgrade can move in
    * silence.
    *
-   * ⚠️ modern compared against modern, never against a legacy literal. The modern
+   * Modern compared against modern, never against a legacy literal. The modern
    * result carries `resultType: "complete"` and a `_meta.serverInfo` block the legacy
    * frame lacks, so `notFoundFrame` above is not the expectation here and must not be
    * made into one. What this row compares is two answers on the same leg, which is

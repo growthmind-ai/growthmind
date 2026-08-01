@@ -1,7 +1,7 @@
 // The evidence gate's plain-English reasons, one sentence per finding class per
 // outcome.
 //
-// Why these strings live in `shared` and not beside the gate That decision requires
+// Why these strings live in `shared` and not beside the gate: the registry rule requires
 // every one of them to be registered in `ALL_CUSTOMER_FACING_MESSAGES`, so the
 // already-hostile plain-English suite at `__tests__/session-source/messages.test.ts`
 // covers them for free. The audit that decides whether a sentence is customer-readable
@@ -72,7 +72,7 @@ export type GateReasonKey = `${GateReasonClass}_satisfied` | `${GateReasonClass}
 //
 // Two contradictory sentences in one trace, and the first one was FALSE. That is a
 // wrong verdict rendered in the customer's own words. Precisely what product decisions
-// ("no verdict beats a wrong verdict") and exist to prevent, and the P-2 persona reads
+// ("no verdict beats a wrong verdict") exist to prevent, and the P-2 persona reads
 // this string verbatim.
 //
 // The target wording ("We saw people struggling here, but we could not prove the

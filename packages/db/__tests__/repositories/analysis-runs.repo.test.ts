@@ -341,7 +341,7 @@ describe("analysis runs repository", () => {
     expect(past).toEqual({ claimed: false, reason: "cap_exhausted" });
 
     // The three answers are pairwise distinct. Stated directly, because the whole point
-    // of That decision is that they never collapse.
+    // of the three-state design is that they never collapse.
     expect(repeat).not.toEqual(past);
     expect(first).not.toEqual(repeat);
     expect(first).not.toEqual(past);

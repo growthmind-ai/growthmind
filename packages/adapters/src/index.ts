@@ -22,7 +22,7 @@ export {
 } from "./posthog/scrub";
 
 // --: the Slack delivery poster `FetchLike` is deliberately not re-exported here. The
-// barrel already exports that name from./posthog/deps, and the Slack module's copy is
+// barrel already exports that name from ./posthog/deps, and the Slack module's copy is
 // module-local so one platform type never gets two names.
 export { createSlackDeliveryPoster } from "./slack/poster";
 export { SLACK_POST_MESSAGE_URL } from "./slack/constants";
@@ -38,7 +38,7 @@ export {
 export type { SlackPosterConfig, SlackPosterDeps } from "./slack/deps";
 
 // --: the model lane's summariser The `ai` / `@ai-sdk/anthropic` dependency is declared
-// only in this package and imported only under./anthropic/. Nothing outside
+// only in this package and imported only under ./anthropic/. Nothing outside
 // packages/adapters may reach the SDK. Consumers get this port and the shapes in
 // @growthmind/shared.
 export { createAnthropicSessionSummariser } from "./anthropic/summariser";

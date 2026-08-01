@@ -49,7 +49,7 @@ const DELIVERY_STATUSES = ["pending", "posted", "failed"] as const satisfies rea
  * different and cited reason: this table's shipped suites insert rows carrying
  * synthetic `finding_id` values that reference no `findings` row, and those suites are
  * frozen. The `ALTER TABLE … ADD CONSTRAINT` is cheap; repairing frozen fixtures is
- * not, and doing it inside That decision is precisely the scope creep that sprint
+ * not, and doing it inside this sprint is precisely the scope creep the plan
  * forbids. Heir: the sprint that lands the findings producer end to end (the
  * corpus-reader heir of), the same sprint that must migrate these fixtures. Owns
  * adding the FK. This paragraph is the deferral's only git-tracked home: sprint task

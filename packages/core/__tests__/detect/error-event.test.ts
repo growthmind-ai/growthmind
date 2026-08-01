@@ -202,7 +202,7 @@ function uncorrelatedSignalsOf(result: DetectorResult): readonly UncorrelatedSig
 }
 
 describe("detectErrorEvent", () => {
-  // /. The load-bearing test of the whole file: the name is data, not code. Written to
+  // The load-bearing test of the whole file: the name is data, not code. Written to
   // fail if `"$exception"` is inlined in the detector body. The rule set names a
   // different event, and `"$exception"` is present in the same corpus as a decoy that
   // must be ignored.
@@ -269,7 +269,7 @@ describe("detectErrorEvent", () => {
     ).toBe(true);
   });
 
-  //  /. Inclusive: it fires AT the threshold, not one below it.
+  // Inclusive: it fires AT the threshold, not one below it.
   test("should correlate at exactly errorCorrelationWindowMs (inclusive boundary)", () => {
     const ruleSet = ruleSetV1();
 
@@ -617,7 +617,7 @@ describe("detectErrorEvent — a preceding action is never another exception (PL
 // evidence gate, and the customer read `broken_satisfied`. "We could prove the thing
 // they were trying to do failed on them". When nobody was trying to do anything. A
 // wrong verdict rendered in the customer's own words is precisely what the "no verdict
-// beats a wrong verdict" and exist to prevent, and a predicate firing on a superset of
+// beats a wrong verdict" principle exists to prevent, and a predicate firing on a superset of
 // its real target is the conflation this whole sprint exists to prevent.
 //
 // Every fixture above this line used a named click, which is why none of them caught

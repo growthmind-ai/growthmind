@@ -1,6 +1,6 @@
 // item 62, the assumed-ceiling guard, plus the two url builders.
 //
-// Addendum a row 1 pins `limit` as honoured to at least 220 rows in a single response;
+// Addendum A row 1 pins `limit` as honoured to at least 220 rows in a single response;
 // a ceiling above 220 was not testable against the probe project. So 220 is a proven
 // floor, not a proven ceiling, and PAGE_LIMIT must sit under it. This test is what
 // stops someone "optimising" the page size past a number nobody has measured.

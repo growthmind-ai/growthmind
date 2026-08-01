@@ -30,7 +30,7 @@
 // fixture-minted and therefore legacy (no `_meta` claim keys, no `Mcp-Method` header)
 // which is the leg a stock client actually negotiates.
 //
-// ⚠️ a NOTE for anyone holding an earlier version of this task. It said `WIRE-G6`
+// A NOTE for anyone holding an earlier version of this task. It said `WIRE-G6`
 // "constructs its own Requests, bypassing the helper's WIRE_HEADERS". It does not, and
 // must not: the fixture grew a per-request `headers` override for exactly these three
 // rows (`WIRE-G1`'s `Origin`, `WIRE-G3`'s content type, `WIRE-G6`'s narrowed `accept`),
@@ -268,7 +268,7 @@ describe("WIRE-G5 — no response ever carries a session id header", () => {
    * session id appearing on one answer would tell a client to send it back on the next,
    * and the next request would be answered from a session this server never stored.
    *
-   * ⚠️ each case asserts its own status before reading the header, and that
+   * Each case asserts its own status before reading the header, and that
    * precondition is not decoration. An absence assertion is vacuous unless the response
    * really is the one it means to inspect: four refusals of the wrong kind carry no
    * session id either, and the row would pass forever while the wire behind it answered

@@ -149,7 +149,7 @@ export function createFakeDeps(
   };
 }
 
-// PostHog event fixtures, the pinned wire shape (Addendum a row 3 / row 4 / row 6).
+// PostHog event fixtures, the pinned wire shape (Addendum A row 3 / row 4 / row 6).
 // Top-level keys are exactly the eight the probe observed, including `person`, which is
 // present and always `null`.
 

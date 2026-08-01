@@ -194,7 +194,7 @@ function offenders(
 /** . The event whose payload the barred proxy would have been built on. */
 const AUTOCAPTURE = /autocapture/i;
 
-/**  /. The vendor literals, `$`-prefixed as PostHog writes them. Zero
+/** The vendor literals, `$`-prefixed as PostHog writes them. Zero
  * occurrences, with NO exemption: our own absence list is deliberately free of vendor
  * event names (`not-built.ts` says so), so nothing here has any business carrying one. */
 const VENDOR_CLICK_EVENT = /\$\s*(?:rageclick|rage_click|dead_?click|dead_?swipe)/i;

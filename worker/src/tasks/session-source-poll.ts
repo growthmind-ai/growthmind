@@ -4,7 +4,7 @@
  * A plain exported async function with no queue types in its signature, so it is
  * unit-testable without a queue, and so the end-to-end wire proof can drive the real
  * consumer entry point rather than a producer and a consumer in isolation. Registration
- * lives in./index.ts, the only queue-aware file.
+ * lives in ../index.ts, the only queue-aware file.
  *
  * This is the one place the vendor's name appears below the port:
  * `createPostHogSessionSource` is imported by name and selected by an exhaustive switch
@@ -61,7 +61,7 @@ import {
 } from "./poll-plan";
 
 /** The logger surface this handler needs. The subset Graphile Worker's `helpers.logger`
- * already satisfies, so the thin closure in./index.ts passes it straight through and a
+ * already satisfies, so the thin closure in ../index.ts passes it straight through and a
  * test passes a recording fake. */
 export interface PollLogger {
   info(message: string): void;

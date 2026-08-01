@@ -1,4 +1,4 @@
-// Addendum B / "Probe tests".: a zod v4 schema is assignable to `generateObject`'s
+// Addendum B "Probe tests": a zod v4 schema is assignable to `generateObject`'s
 // `schema` parameter with NO cast, NO `as any`, and NO `satisfies` escape hatch.
 // docs/adds/cold-start-analysis-lane.md:84.
 //

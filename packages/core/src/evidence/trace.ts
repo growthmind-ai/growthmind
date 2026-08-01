@@ -10,7 +10,7 @@
 // `reason` sentence is what a founder reads, and it carries no class name, no predicate
 // identifier, and no product jargon.
 //
-// Where the sentences live, and why (resolved) That decision requires every string in
+// Where the sentences live, and why: the registry rule requires every string in
 // `GATE_REASON_MESSAGES` to be registered in `packages/shared`'s
 // `ALL_CUSTOMER_FACING_MESSAGES`, so the already-hostile plain-English suite at
 // `packages/shared/__tests__/session-source/messages.test.ts` covers them for free. The

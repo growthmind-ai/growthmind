@@ -35,7 +35,7 @@
 // read into `{ ok: false, refusal: UNAVAILABLE }` and task 8.1 renders it as a tool
 // execution error. Both landed; both rows pass.
 //
-// ⚠️ `WIRE-B1`'s "exactly one" is now load-bearing against a third channel. The
+// `WIRE-B1`'s "exactly one" is now load-bearing against a third channel. The
 // post-sprint audit wired an `onerror` into the transport, because a fault inside the
 // SDK is returned rather than thrown and was therefore invisible to every catch we had.
 // That channel must stay silent on this path, `callTool` catches its own fault and

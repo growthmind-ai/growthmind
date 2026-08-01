@@ -4,7 +4,7 @@
 // against the generated Better Auth schema.
 //
 // Every helper here writes real rows via `createTestDb`'s PGlite instance
-// (see././src/testing.ts). No mocking, since the entire point of this sprint's
+// (see ../../src/testing.ts). No mocking, since the entire point of this sprint's
 // repository tests is proving real SQL tenant scoping.
 //
 // Design note: this file targets `ScopedDb` (the union of the production node-postgres

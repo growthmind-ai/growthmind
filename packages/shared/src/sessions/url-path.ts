@@ -1,4 +1,4 @@
-// URL-path normalisation (sec-b, security audit ).
+// URL-path normalisation (sec-b, security audit).
 //
 // Surfaces stay thin this sprint (no `surface_id` is computed) but the path we store is
 // already the input a surface id will one day be derived from, so it is normalised and
@@ -16,7 +16,7 @@
 // here, at the one function every persisted path already funnels through.
 //
 // Implemented in Wave 1 against the scaffold's final signature. Segment redaction added
-// post-launch (security audit ).
+// post-launch (security audit).
 
 /** Bump when the normalisation rules change, so an old value's provenance stays
  * readable instead of silently forking. Bumped to 2 for the segment-redaction pass:

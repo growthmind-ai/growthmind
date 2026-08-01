@@ -111,7 +111,7 @@ async function answeredWithin(
 /**
  * A `subscriptions/listen` the transport accepts as well-formed.
  *
- * ⚠️ the filter shape is load-bearing and was measured into existence. A
+ * The filter shape is load-bearing and was measured into existence. A
  * `notifications` value the transport cannot read is answered `-32602` without ever
  * reaching the listen router, and a row built on one would pass while proving nothing
  * about the hang. This shape reaches the router: before the fix it hung, and after it

@@ -36,7 +36,7 @@ export const THRESHOLD_RULE_SET_VERSION = 2;
 const RULE_SET_V1: ThresholdRuleSet = {
   version: 1,
 
-  /** PostHog's own reserved literal, pinned by Addendum a row (20/20 observed,
+  /** PostHog's own reserved literal, pinned by Addendum A row A-1 (20/20 observed,
    * `$exception_list` present on every one). A name, so there is no magnitude and no
    * fail direction to declare. It lives here rather than in `error-event.ts` so no
    * detector body carries an event-name literal. */
@@ -52,10 +52,10 @@ const RULE_SET_V1: ThresholdRuleSet = {
    * `brokenProofSignals` admits) and the gate then tells a founder "we could prove the
    * thing they were trying to do failed on them" when nobody was trying to do anything.
    * A wrong verdict in the customer's own words is the one outcome the "no verdict
-   * beats a wrong verdict" and exist to prevent.
+   * beats a wrong verdict" principle exists to prevent.
    *
    * A denylist, not an allowlist, and that direction is the whole design. The T1
-   * vocabulary probe pinned only `$exception` as present (Addendum a row ); every
+   * vocabulary probe pinned only `$exception` as present (Addendum A row A-1); every
    * interaction event name is therefore unpinned, so an allowlist would be guesswork
    * that silently drops real correlations for any name we failed to guess. A denylist
    * names only what we know to be passive and lets the unknown case fall through to the
@@ -143,8 +143,8 @@ const RULE_SET_V1: ThresholdRuleSet = {
    * number that can carry the word "people", and the sentence a founder actually reads
    * on a satisfied `confusing` rung says exactly that. "People hesitated, went back, or
    * tried the same thing more than once here." One outlier session makes that sentence
-   * false in the customer's own words, which the "no verdict beats a wrong verdict" and
-   * exist to prevent.
+   * false in the customer's own words, which the "no verdict beats a wrong verdict" principle
+   * exists to prevent.
    *
    * An absolute floor rather than a share of the cohort, deliberately: the denominator
    * a signal can carry is `basis.kept` (the whole analysed corpus), not the at-origin
@@ -164,7 +164,7 @@ const RULE_SET_V1: ThresholdRuleSet = {
    * rare". */
   instrumentationMinExpected: 50,
 
-  /** /. The blind-spot comment lives at the constant's definition site in
+  /** The blind-spot comment lives at the constant's definition site in
    * `../evidence/signals.ts`, not here. */
   brokenProofSignals: BROKEN_PROOF_SIGNALS_V1,
   confusingProofSignals: CONFUSING_PROOF_SIGNALS_V1,

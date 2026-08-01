@@ -93,7 +93,7 @@ const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_PAGE_SIZE = 500;
 /**
  * Hard bound on pages. A bound reached is reported as a truncated sample rather than
- * passed off as the whole corpus. The That decision was a silent truncation that read
+ * passed off as the whole corpus. The precedent incident was a silent truncation that read
  * as "no more events", which here would read as an absence.
  */
 const DEFAULT_MAX_PAGES = 40;

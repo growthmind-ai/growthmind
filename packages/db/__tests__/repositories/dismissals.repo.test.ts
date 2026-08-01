@@ -1,4 +1,4 @@
-// Wave 0C (red), signature-ledger, T-DB-18 (idempotence, fr-c f), plus the schema-level
+// Wave 0C (red), signature-ledger, T-DB-18 (idempotence), plus the schema-level
 // companion proving the unique index (not a convention) is what enforces it.
 //
 // The write lives in the service, not this repository (`recordDismissal` performs the

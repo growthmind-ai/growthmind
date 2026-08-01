@@ -1,4 +1,4 @@
-// Rate-limit backoff (Addendum a row 5). Pure: no clock, no I/O, no randomness of its
+// Rate-limit backoff (Addendum A row 5). Pure: no clock, no I/O, no randomness of its
 // own, `random` is injected so a 429 sequence is asserted with zero wall-clock waiting.
 //
 // Nothing in this file calls `Date.now`, `Math.random`, or any sleep. That is what

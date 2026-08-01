@@ -32,7 +32,7 @@ export type AnalysedSessions = {
  *
  * `kept`, sessions with `exclusion_reason = 'none'` (the corpus hands over every
  *  selected session carrying its own reason, and the detector applies the rule, so
- *  That decision is asserted against this tested pure layer rather than against an
+ *  the rule is asserted against this tested pure layer rather than against an
  *  untested SQL read). A set-aside session reaches no numerator and inflates no
  *  denominator.
  * `coverage.truncated`, propagates from the corpus. It is a fact about the read and

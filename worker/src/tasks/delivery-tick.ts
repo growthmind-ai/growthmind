@@ -1,94 +1,10 @@
 /**
- * The delivery lane's composition root.
+ * The delivery lane's composition root: decide, render, scan, claim, post, terminal
+ * state, once per due project. The residual PII scan runs over the exact text that is
+ * posted, and every path out of a successful claim records `posted` or `failed`: a
+ * row left `pending` jams the project's lane silently, forever.
  *
- * A plain exported async function with no queue types in its signature, so it is
- * unit-testable without a queue and the whole lane can be driven end to end through the
- * real consumer entry point with fakes. Registration lives in./index.ts, the only
- * queue-aware file, the same split./session-source-poll.ts uses, and for the same
- * reason.
- *
- * Nothing here decides anything. Every judgement was made by a pure function that
- * already shipped, and this file's whole job is to run them in the one order that
- * cannot leak, cannot double-post, and cannot jam:
- *
- * decide (`decideDelivery`) → render (`renderSlackMessage`) → scan (`scanResidualPii`)
- * → claim (`claimForPost`) → post → terminal state
- *
- * The scan runs over the text that will actually be sent The outcome's definition of
- * done is "the residual PII scanner passes over generated text before any push or
- * post", and a gate that scans a different string from the one posted is a gate that
- * does nothing. The shape where a value is computed and then dropped on the floor. So
- * the `PostRequest` is built first, `textPostedFor` derives the scanned string from
- * that very object, and the object handed to the poster is the same reference. Scanning
- * the model's raw input instead would clear text nobody sends and post text nobody
- * cleared.
- *
- * Structurally, not by discipline: `poster.post` is reachable on exactly one branch
- * (the one where `prepared.ok` is true) and `prepare` is the only producer of that
- * value. A refusal cannot be routed around without deleting the branch.
- *
- * A dirty scan does not post, records the delivery `failed` with a sentence from
- * `@growthmind/shared`'s one home, and never quotes the offending text: echoing the
- * match would copy the personal data into the row, the logs, and every alert built on
- * them. Relocating the leak instead of closing it. The finding is untouched and stays
- * deliverable (a `failed` row is re-claimable), so a fixed summary goes out on a later
- * tick.
- *
- * Claim before POST, always `claimForPost` is one atomic statement against the unique
- * index; a `{claimed: false}` means another worker (or a Graphile Worker retry of a job
- * that already got as far as posting) owns this post. On that answer this handler does
- * nothing and returns. No post, no terminal write, no log-level error. It is the
- * ordinary outcome of two ticks overlapping, not a fault.
- *
- * Every exit path is terminal a claimed row starts `pending`, and a row left `pending`
- * shows up in `listPendingForProject` forever, which makes the scheduler answer
- * `one_already_open` on every future tick and jams the lane silently, with no error
- * anywhere. So every path out of a successful claim records `posted` or `failed`: the
- * poster's `ok: false` arm, an unexpected throw from the poster (a port contracted
- * never to throw is still a port somebody can break), a render refusal, and the PII
- * refusal. The only path that can leave a `pending` row is a terminal write that itself
- * fails, and that one is logged loudly.
- *
- * Per-lane isolation One project's failure cannot abort the batch; a sibling project
- * still delivers. The per-lane try/catch is belt-and-braces on top of the branch-level
- * handling below, so a fault in the paths around a delivery (the repository
- * construction, the context build) still cannot take the tick down.
- *
- * Nothing-today is decided, logged, and not posted The decision, and why, because the
- * shape of the data forces it:
- *
- * `deliveries` deliberately has NO row shape for a nothing-today. It has no
- * `finding_id`, and giving it one would mean making that column nullable. Voiding the
- * `(organization_id, finding_id, channel_id)` unique index that IS the idempotency
- * guard this whole lane rests on (see the header of
- * `packages/db/src/schema/deliveries.ts`). Nothing else in this branch's history
- * persists a scheduler day-state either.
- *
- * So there is no key on which "have we already said this today?" could be asked. A
- * nothing-today post would therefore be an unkeyed post from a cron tick: it would
- * repeat on every tick, forever, and the customer's channel would fill with us saying
- * nothing. The exact / spam this table's index exists to make impossible for findings.
- * Between "say nothing this tick" and "possibly say nothing dozens of times a day",
- * only one of those can be un-sent. It is not posted.
- *
- * That also matches the product ruling this sprint was written against
- * (`tasks/delivery-slack-pii/prd.md`, Constraint 2 / OQ-1: "nothing-today never posts
- * to Slack at MVP. A daily 'nothing today' post erodes the channel's signal"). The tick
- * logs the reason, counts it in the summary, and creates NO `deliveries` row.
- *
- * TODO: the honest version of this needs persistence that still does not exist
- * — a scheduler day-state row keyed `(project, day)`. That row is what would
- * make a nothing-today idempotent, turning this branch into a claim-then-post
- * exactly like the deliver arm, with the day key playing the part the unique
- * index plays here. O-008 wired the lane and the poster and did NOT add it, so
- * the reason remains a log line and a counter rather than a message, and
- * `nothing_today` is READ from the app rather than pushed at anybody.
- *
- * Tenant scope comes from the lane row There is no payload (the task is cron-triggered)
- * so there is nothing a caller could supply an organization id through even in
- * principle. The context is built from the lane the source read, parsed through the
- * same `tenantContextSchema` a request-derived context is, and every repository is
- * constructed org-scoped from it.
+ * Design rationale: docs/decisions/0003-delivery-tick-lanes.md
  */
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
 import { decideDelivery, renderSlackMessage, scanResidualPii } from "@growthmind/core";
@@ -131,7 +47,7 @@ function requireSentence(sentence: string | null, subject: string): string {
 }
 
 /** The logger surface this handler needs. The subset Graphile Worker's `helpers.logger`
- * already satisfies, so the thin closure in./index.ts passes it straight through and a
+ * already satisfies, so the thin closure in ../index.ts passes it straight through and a
  * test passes a recording fake. */
 export interface DeliveryLogger {
   info(message: string): void;
@@ -191,21 +107,19 @@ export type DeliveryLane = {
 };
 
 /**
- * Where lanes come from. A PORT, not a repository call — and the gap it was
- * holding open is now CLOSED (O-008 AD-15).
+ * Where lanes come from. A port rather than a repository call, and the gap it was
+ * holding open is now closed.
  *
- * O-007 shipped this interface with no producer, because the delivering side of
- * the lane needed a `findings` table and a `slack_connections` table that were
- * not in this branch's history: O-007 shipped the scheduler, the renderer, the
- * scanner, the ledger and the poster port, and nothing that could build a lane.
- * Naming the read as a port rather than inlining a query is what kept that gap
- * VISIBLE and one-line-fillable.
+ * This interface shipped with no producer, because the delivering side of the lane
+ * needed a `findings` table and a `slack_connections` table that did not exist yet:
+ * what shipped then was the scheduler, the renderer, the scanner, the ledger and the
+ * poster port, and nothing that could build a lane. Naming the read as a port rather
+ * than inlining a query is what kept that gap visible and one-line-fillable.
  *
  * `../delivery-lane-source.ts` is that one line, landed. Both tables exist,
- * `createDeliveryLaneSource` implements this interface against them, and
- * NOTHING IN THIS FILE CHANGED FOR IT — which is what the port was for. From
- * here on, an empty lane list means "nobody has connected a channel", never
- * "no producer was written".
+ * `createDeliveryLaneSource` implements this interface against them, and nothing in
+ * this file changed for it, which is what the port was for. From here on, an empty lane
+ * list means "nobody has connected a channel", never "no producer was written".
  */
 export interface DeliveryLaneSource {
   /** Every project due a delivery decision on this tick. An empty list is an ordinary
@@ -220,7 +134,7 @@ export interface DeliveryLaneSource {
  * against the ledger's contract with a fake carrying real state, and the fake is
  * compile-checked against the same interface production uses, so it cannot drift into
  * agreeing with a repository that no longer exists. The one call to
- * `createDeliveriesRepo` lives in./index.ts, beside the pool it needs.
+ * `createDeliveriesRepo` lives in ../index.ts, beside the pool it needs.
  */
 export type DeliveriesRepoFor = (ctx: TenantContext) => DeliveriesRepo;
 

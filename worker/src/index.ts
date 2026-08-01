@@ -330,42 +330,39 @@ function resolveAnalysisComposition(): AnalysisComposition | null {
 }
 
 /**
- * The analysis lane's dependencies, assembled ONCE for BOTH of its callers —
- * the hourly tick and the onboarding trigger (AD-9, AD-11b).
+ * The analysis lane's dependencies, assembled once for both of its callers: the hourly
+ * tick and the onboarding trigger.
  *
- * ONE ASSEMBLY, NOT TWO, AND THE REASON IS FINANCIAL. FR-O17 says the fast path
- * respects the single-writer index AND the cap ledger, or it does not ship, and
- * names a cap-bypassing trigger a financial commitment. A second hand-written
- * deps object beside this one is exactly how a cap silently diverges: one call
- * site gets `COLDSTART_MODEL_CALL_CAP` and the other gets whatever somebody
- * typed on the day, and nothing fails. There is one list, so there is one
- * ceiling.
+ * One assembly rather than two, and the reason is financial. The fast path respects the
+ * single-writer index and the cap ledger or it does not ship, because a cap-bypassing
+ * trigger is a financial commitment. A second hand-written deps object beside this one
+ * is exactly how a cap silently diverges: one call site gets
+ * `COLDSTART_MODEL_CALL_CAP` and the other gets whatever somebody typed on the day, and
+ * nothing fails. There is one list, so there is one ceiling.
  *
- * `AnalysisTickDeps` and `OnboardingAnalysisDeps` are the same shape by
- * construction — both are `AnalysisLaneDeps` plus a lane source — so this
- * function's return type serves both without a cast.
+ * `AnalysisTickDeps` and `OnboardingAnalysisDeps` are the same shape by construction,
+ * both being `AnalysisLaneDeps` plus a lane source, so this function's return type
+ * serves both without a cast.
  */
 function analysisDepsFor(composed: AnalysisComposition, logger: AnalysisLogger): AnalysisTickDeps {
   const { db } = resolveResources();
 
   return {
     lanes: composed.lanes,
-    // `null` ⇒ the no-key lane, decided at `resolveSummariser`. The task body
-    // never learns whether a key exists; it learns only whether it was handed a
-    // port.
+    // `null` means the no-key lane, decided at `resolveSummariser`. The task body never
+    // learns whether a key exists; it learns only whether it was handed a port.
     summariser: composed.summariser,
-    // The two repositories and the ledger, org-scoped PER LANE from the context
-    // the handler builds out of the lane row — never from a payload. The one
-    // call to each `create*` lives here, beside the pool it needs.
+    // The two repositories and the ledger, org-scoped per lane from the context the
+    // handler builds out of the lane row, never from a payload. The one call to each
+    // `create*` lives here, beside the pool it needs.
     findingsFor: (ctx) => createFindingsRepo(db, ctx),
     runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
     ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
-    // Policy, injected — BOTH ceilings (AD-23). A spend limit is a property of
-    // the lane that spends, so both travel from ./analysis-cap.ts through here
-    // and neither leaks into `packages/db`, whose claim takes them as
-    // parameters. The organisation-wide one is what supplies the N the
-    // per-project one is missing: nothing limits how many projects an
-    // organisation creates.
+    // Policy, injected, and both ceilings travel together. A spend limit is a property
+    // of the lane that spends, so both come from ./analysis-cap.ts through here and
+    // neither leaks into `packages/db`, whose claim takes them as parameters. The
+    // organisation-wide one supplies the bound the per-project one is missing: nothing
+    // limits how many projects an organisation creates.
     projectCap: COLDSTART_MODEL_CALL_CAP,
     organizationCap: ORG_MODEL_CALL_CAP,
     now: () => new Date(),
@@ -374,10 +371,10 @@ function analysisDepsFor(composed: AnalysisComposition, logger: AnalysisLogger):
 }
 
 /**
- * The task registry — the only place task names meet handlers. Handlers stay
- * queue-agnostic (plain functions in ./tasks); the thin closures here adapt
- * them to Graphile Worker's signature. worker/src/registry.test.ts asserts
- * this list and TASK never drift apart.
+ * The task registry, the only place task names meet handlers. Handlers stay
+ * queue-agnostic (plain functions in ./tasks); the thin closures here adapt them to
+ * Graphile Worker's signature. worker/src/registry.test.ts asserts this list and task
+ * never drift apart.
  */
 export const taskList: TaskList = {
   [TASK.HEARTBEAT]: (_payload, helpers) => {
@@ -514,11 +511,11 @@ export const taskList: TaskList = {
     const composed = resolveAnalysisComposition();
 
     if (composed === null) {
-      // GRACEFUL ABSENCE, IN THE TRIGGER'S OWN VOCABULARY (AD-12). It names the
-      // trigger — so a reader can tell a fast-path absence from the hourly
-      // tick's — and it names the floor, because the one thing this path may
-      // never do is fail toward silence: nothing here is written, nothing is
-      // suppressed, and the project's ordinary hourly turn is untouched.
+      // Graceful absence, in the trigger's own vocabulary. It names the trigger, so a
+      // reader can tell a fast-path absence from the hourly tick's, and it names the
+      // floor, because the one thing this path may never do is fail toward silence:
+      // nothing here is written, nothing is suppressed, and the project's ordinary
+      // hourly turn is untouched.
       helpers.logger.info(
         "analysis onboarding: no analysis lane is wired on this installation, so this trigger did nothing and the hourly check is unaffected",
       );

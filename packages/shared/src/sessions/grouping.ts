@@ -24,7 +24,7 @@ export interface SessionKeyInput {
    * optional, so it is documented as PostHog's, not ours). */
   readonly postHogSessionId: string | null;
   /** The keyed hmac hash of PostHog's `distinct_id` (`./identity-key.ts`, security
-   * audit ), never the raw value. `identify` is routinely called with an email
+   * audit), never the raw value. `identify` is routinely called with an email
    * address as the distinct id, so only the hash may ever reach this input. */
   readonly identityKey: string | null;
   readonly occurredAt: Date;

@@ -13,7 +13,7 @@ const AD_ID_GOOD_1 = "019fb42c-fc4b-70e5-b634-4af26cb7b6b7";
 const AD_ID_GOOD_2 = "019fb42c-fc4b-70e5-b634-4af26cb7b6c8";
 
 describe("parseEventsPage", () => {
-  // Item 34, /. The liveness hazard.
+  // Item 34. The liveness hazard.
   test("skips ONE malformed item, counts the drop, and returns the rest of the page", () => {
     const page = adEventsPage([
       adEventItem({ id: AD_ID_GOOD_1, timestamp: "2026-07-30T17:57:49.891000+00:00" }),

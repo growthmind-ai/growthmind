@@ -1,4 +1,4 @@
-// Wave 1 red tests for the pure renderers (file 12,; prd /, P-2 plain-English bar).
+// Wave 1 red tests for the pure renderers (file 12; the plain-English bar).
 // Asserts the public contract of scripts/spikes/lib/report.ts: renderVerdictLine,
 // renderSummaryTable, renderDecisionDocBlock. All pure, all return string. Stubs throw
 // "not implemented". These tests must fail until Wave 2. Assertions are

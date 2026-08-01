@@ -58,7 +58,7 @@
 // 405, because an agent that GETs must receive a sentence telling it what to send
 // instead.
 //
-// ⚠️ `WIRE-M5` is untouched, byte for byte. No id prefix, no band assertion, not a
+// `WIRE-M5` is untouched, byte for byte. No id prefix, no band assertion, not a
 // character. It is the producer/consumer wire proof and one of the three rows
 // demonstrating that PR #16's credential path is reused verbatim (row 48).
 //
@@ -159,7 +159,7 @@ describe("the mounted route answers the credential store this sprint built", () 
     expect(print.status).toBe(200);
     expect(print.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
 
-    // ⚠️ a whole-frame comparison, built rather than pasted, and the reason matters.
+    // A whole-frame comparison, built rather than pasted, and the reason matters.
     // The old row `toEqual`'d our pre-protocol `{ok, tool, result}` envelope, which no
     // MCP client has ever sent or read. Its replacement is the JSON-RPC frame, and the
     // frame has two halves with two different amounts of evidence behind them:
@@ -193,7 +193,7 @@ describe("the mounted route answers the credential store this sprint built", () 
   });
 
   test("WIRE-M2 — should answer 405 to the same credential through the mounted GET", async () => {
-    // ⚠️ claim inverted, and the row is kept rather than dropped. The credential is the
+    // Claim inverted, and the row is kept rather than dropped. The credential is the
     // same live one `WIRE-M1` was served with, so this 405 is about the method and
     // never about the key, which is the only way the inversion proves anything.
     const print = await fingerprint(await GET(verbRequest({ method: "GET", key: mintedRaw })));

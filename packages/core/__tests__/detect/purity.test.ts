@@ -34,7 +34,7 @@
 //  perfectly and means nothing. Every test below first proves it found the
 //  modules, the imports, or the bodies it claims to be checking.
 //
-// That decision is binding on test 5. the target is unnamed numeric literals inside
+// The no-magic-numbers rule is binding on test 5. The target is unnamed numeric literals inside
 // detector function bodies. A named module constant is not merely tolerated, it is the
 // opposite of the magic number exists to prevent, `PERCENT_SCALE = 100` at
 // `src/counts/percent.ts` is exactly right, and could not have come from the rule set
@@ -237,7 +237,7 @@ const FUNCTION_HEAD = /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)
  *
  * The consequence that matters for test 5: module-level code (a named constant, an
  * exported literal) lies outside every region and is therefore never scanned, which is
- * precisely what That decision requires.
+ * precisely what the no-magic-numbers rule requires.
  */
 function collectFunctionRegions(source: string): readonly FunctionRegion[] {
   const { codeOnly } = stripSource(source);
@@ -265,7 +265,7 @@ function collectFunctionRegions(source: string): readonly FunctionRegion[] {
  *
  * The lookbehind is what separates `100` from the `1` in `v1`, `sha256`, or
  * `PERCENT_SCALE_2`: a digit preceded by an identifier character is part of a name, and
- * a name is the thing That decision is asking for. Array indices (`counts[0]`) DO
+ * a name is the thing the no-magic-numbers rule is asking for. Array indices (`counts[0]`) DO
  * match, deliberately. This package's own style already destructures (`const [first] =
  * versions`) rather than indexing, and a positional index inside a detector is a
  * magnitude with no name just like any other.
@@ -830,7 +830,7 @@ describe("detector purity and coverage", () => {
   // -- test 5
   test("should contain no numeric literal in any detector body", async () => {
     //  the scanner is proven before it is trusted. A named module constant must
-    // pass. It is what That decision is asking for. The same magnitude inlined into a
+    // pass. It is what the no-magic-numbers rule is asking for. The same magnitude inlined into a
     // body must fail. If these two disagreed, every assertion below would be theatre.
     expect(numericLiteralsInFunctionBodies(NAMED_CONSTANT_FIXTURE)).toEqual([]);
     expect(numericLiteralsInFunctionBodies(INLINE_LITERAL_FIXTURE)).toEqual([
