@@ -227,7 +227,13 @@ function declaresAFailDirection(source: string): boolean {
 }
 
 describe("WIRE-G4 — the origin gate's fail direction is declared in words in the module header", () => {
-  const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+  const REPO_ROOT = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "..",
+    "..",
+  );
   const SERVER_SRC = "apps/web/lib/mcp/server.ts";
 
   test("server.ts's header says which way a missing Origin fails", () => {
@@ -260,7 +266,9 @@ describe("WIRE-G4 — the origin gate's fail direction is declared in words in t
     expect(declaresAFailDirection(declares)).toBe(true);
     expect(declaresAFailDirection(silent)).toBe(false);
     // And the direction must be in the HEADER, not merely somewhere in the file.
-    expect(declaresAFailDirection(["const x = 1;", "// origin: fails open"].join("\n"))).toBe(false);
+    expect(declaresAFailDirection(["const x = 1;", "// origin: fails open"].join("\n"))).toBe(
+      false,
+    );
   });
 });
 
@@ -358,7 +366,8 @@ describe("WIRE-G6 — a LEGACY-leg request that will not accept both media types
   // NON-VACUITY for the two leak scanners above. A scanner that has gone blind
   // reports "no leak" on a body that is nothing but leak.
   test("(a) the leak scanners do find a stack frame and a file path in a known-positive control", () => {
-    const leaky = 'TypeError: x is not a function\n    at renderMcpWire (apps/web/lib/mcp/wire.ts:97:9)';
+    const leaky =
+      "TypeError: x is not a function\n    at renderMcpWire (apps/web/lib/mcp/wire.ts:97:9)";
 
     expect(carriesStackFrame(leaky)).toBe(true);
     expect(carriesFilePath(leaky)).toBe(true);
@@ -372,10 +381,7 @@ describe("WIRE-G6 — a LEGACY-leg request that will not accept both media types
     const { deps } = spyDeps();
 
     const narrowed = await fingerprint(
-      await handleMcpRequest(
-        rpcRequest({ method: "tools/list", headers: NARROWED_ACCEPT }),
-        deps,
-      ),
+      await handleMcpRequest(rpcRequest({ method: "tools/list", headers: NARROWED_ACCEPT }), deps),
     );
     const full = await fingerprint(
       await handleMcpRequest(rpcRequest({ method: "tools/list" }), deps),

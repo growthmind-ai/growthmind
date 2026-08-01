@@ -74,7 +74,13 @@ import {
   ORG_A,
 } from "./helpers/mcp-fixture";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+);
 
 const SERVER_SRC = "apps/web/lib/mcp/server.ts";
 const WIRE_SRC = "apps/web/lib/mcp/wire.ts";

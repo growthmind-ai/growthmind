@@ -105,7 +105,8 @@ describe("WIRE-B1 — a read that throws becomes a detail-free answer with the f
   // NON-VACUITY for the two leak scanners: the thrown error's own text is
   // exactly what a leak would look like, and both scanners must see it.
   test("the leak scanners do fire on the fixture's own error text and a stack frame", () => {
-    const leaky = "Error: mcp fixture: the read port is unreachable\n    at listOpenFixes (apps/web/lib/mcp/call-tool.ts:70:11)";
+    const leaky =
+      "Error: mcp fixture: the read port is unreachable\n    at listOpenFixes (apps/web/lib/mcp/call-tool.ts:70:11)";
 
     expect(carriesStackFrame(leaky)).toBe(true);
     expect(carriesFilePath(leaky)).toBe(true);

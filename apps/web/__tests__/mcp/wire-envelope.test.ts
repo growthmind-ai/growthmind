@@ -124,7 +124,10 @@ describe("WIRE-W1 — a batch request is answered without crashing the handler",
     const { deps } = spyDeps();
 
     const watched = await watchForUnhandledRejections(async () =>
-      handleMcpRequest(rawBodyRequest('[{"jsonrpc":"2.0","id":1,"method":"tools/list"}]', KEY_A), deps),
+      handleMcpRequest(
+        rawBodyRequest('[{"jsonrpc":"2.0","id":1,"method":"tools/list"}]', KEY_A),
+        deps,
+      ),
     );
     const print = await fingerprint(watched.result);
 
