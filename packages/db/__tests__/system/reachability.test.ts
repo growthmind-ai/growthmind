@@ -80,22 +80,211 @@ function relative(file: string): string {
   return path.relative(REPO_ROOT, file).split(path.sep).join("/");
 }
 
+// ===========================================================================
+// Item 83's detector, as a pure function over (path, source) pairs
+//
+// Lifted out of the row so the REAL tree and the PLANTED FIXTURES below go
+// through exactly one code path. A detector that fixtures exercise separately
+// from the files it is meant to police proves nothing about the files.
+// ===========================================================================
+
+/** A file the detector can be run against — a real one, or a planted fixture. */
+interface ScannedSource {
+  /** Repo-relative, forward slashes: exactly what `relative()` produces. */
+  readonly path: string;
+  readonly source: string;
+}
+
+const fixture = (filePath: string, source: string): ScannedSource => ({ path: filePath, source });
+
+/**
+ * Directory segments whose contents are never shipped.
+ *
+ * Same shape as `SKIP_DIRS` above — a set of path segments matched by name —
+ * deliberately, so this file has exactly one way of saying "not production"
+ * rather than two mechanisms that can drift apart.
+ */
+const TEST_DIRS = new Set(["__tests__"]);
+
+/** Suffixes that make a file a test wherever it sits, colocated or not. */
+const TEST_FILE_SUFFIXES = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"];
+
+/**
+ * Deliberately tighter than item 84's `allowed()`, which uses
+ * `rel.includes(".test.")`. A substring match also swallows
+ * `lib/first-run/my.test.helper.ts` — a real production file with an unlucky
+ * name. An exclusion that decides what this gate is allowed to see may only
+ * ever get narrower.
+ */
+function isTestPath(rel: string): boolean {
+  const segments = rel.split("/");
+  const name = segments.pop() ?? "";
+  return (
+    segments.some((segment) => TEST_DIRS.has(segment)) ||
+    TEST_FILE_SUFFIXES.some((suffix) => name.endsWith(suffix))
+  );
+}
+
+const SYSTEM_IMPORT_PATTERNS = [
+  /["']@growthmind\/db\/system["']/,
+  /["'][^"']*packages\/db\/src\/system[^"']*["']/,
+];
+
+const importsSystemModule = (source: string): boolean =>
+  SYSTEM_IMPORT_PATTERNS.some((pattern) => pattern.test(source));
+
+/** Every PRODUCTION file in `files` that reaches the system module, by path. */
+const systemImportOffenders = (files: readonly ScannedSource[]): readonly string[] =>
+  files
+    .filter((file) => !isTestPath(file.path) && importsSystemModule(file.source))
+    .map((file) => file.path);
+
+// ---------------------------------------------------------------------------
+// The controls — a planted offender and a clean fixture, per leg
+// ---------------------------------------------------------------------------
+
+/**
+ * THE OFFENDER IS THE REALISTIC EDIT. A route handler that needs "just the org
+ * list" reaches for the one function that already returns it, and the import
+ * resolves, typechecks, lints and ships. This is the exact line the gate exists
+ * to stop, and it must be caught by its package subpath.
+ */
+const PLANTED_PRODUCTION_IMPORT = fixture(
+  "apps/web/app/api/first-run/slack/status/route.ts",
+  `import { listOrgsWithActiveSlackConnection } from "@growthmind/db/system";
+
+export async function GET() {
+  return Response.json(await listOrgsWithActiveSlackConnection(db));
+}
+`,
+);
+
+/**
+ * The same offence routed around the package boundary — a deep relative path
+ * into `packages/db/src/system/`, which is what someone writes when the subpath
+ * import is the thing they were told not to do. Separate fixture because it is
+ * the SECOND pattern in `SYSTEM_IMPORT_PATTERNS`, and a control that only
+ * exercises the first leaves the other free to rot.
+ */
+const PLANTED_PRODUCTION_RELATIVE_IMPORT = fixture(
+  "apps/web/lib/first-run/status.ts",
+  `import { systemContextFor } from "../../../../packages/db/src/system/system-actor";
+`,
+);
+
+/**
+ * The clean fixture for the exclusion: the real shape of the file that forced
+ * this narrowing — a suite under `__tests__/` importing the system module to
+ * build a fixture. It must NOT be caught, and the assertion proving that is
+ * what turns the exclusion from an assumption into a tested claim.
+ */
+const CLEAN_TEST_DIR_IMPORT = fixture(
+  "apps/web/__tests__/first-run/nullable-channel-readers.test.ts",
+  `import { listOrgsWithActiveSlackConnection } from "@growthmind/db/system";
+`,
+);
+
+/** The same, colocated rather than under `__tests__/` — the suffix leg. */
+const CLEAN_COLOCATED_TEST_IMPORT = fixture(
+  "apps/web/lib/first-run/status.spec.ts",
+  `import { systemContextFor } from "../../../../packages/db/src/system/system-actor";
+`,
+);
+
+/**
+ * A production file that imports the SCOPED barrel. Not caught — otherwise the
+ * detector is matching "db" rather than "the system subpath", and every row
+ * below would be reporting a boundary breach that is just an ordinary import.
+ */
+const CLEAN_PRODUCTION_IMPORT = fixture(
+  "apps/web/lib/first-run/status.ts",
+  `import { createSlackConnectionsRepo } from "@growthmind/db";
+`,
+);
+
 describe("system subpath unreachability", () => {
   // -- item 83
-  it("has no file under apps/ importing the db system module", () => {
-    const files = listSourceFiles(path.join(REPO_ROOT, "apps"));
+  //
+  // WHAT THIS GUARDS. `packages/db/src/system/` is the one module that can mint
+  // a `TenantContext` for an arbitrary organization with NO USER PRESENT
+  // (`systemContextFor`), claim connection rows across every tenant at once
+  // (`claimDuePollableConnections`), and open credential material
+  // (`readConnectionCredential`). It exists because the worker's cron tasks have
+  // no request and therefore no session to derive a scope from. Everything the
+  // request path does to keep one org's data away from another's is, inside this
+  // module, simply not applied.
+  //
+  // WHY A PRODUCTION IMPORT UNDER apps/ IS DANGEROUS. Web-app code ships, and
+  // ships attached to a request. A route handler holding `systemContextFor` can
+  // name any organization it can parse out of a body, a query param or a header
+  // and build a fully-privileged repository for it — the D7 "path that steps
+  // outside the context flow", except the bypass is imported rather than
+  // written. It typechecks, it lints, and nothing at runtime objects.
+  //
+  // WHY A TEST IMPORT IS NOT. A file under `__tests__/`, or named `*.test.ts` /
+  // `*.spec.ts`, is not bundled into the app, is not reachable from any route,
+  // and receives no request. There is no actor to escalate and no tenant to
+  // cross. A suite reaching for the system module is EXERCISING the boundary —
+  // building a cross-org fixture the scoped repositories deliberately cannot
+  // build — which is the opposite of crossing it in production.
+  //
+  // THE SCAN IS THEREFORE PRODUCTION-ONLY, ON PURPOSE. The invariant is about
+  // reachability of shipped code, not about the string appearing under `apps/`.
+  // That narrowing was forced by `apps/web/__tests__/first-run/
+  // nullable-channel-readers.test.ts`, whose import is correct and necessary
+  // (AD-4's delivery-population fixture needs the org-agnostic listing).
+  //
+  // THIS IS THE FLOOR, NOT A PRECEDENT. The exclusion is exactly two things: a
+  // `__tests__` path segment, and a test-file suffix. Nothing else is
+  // exempt — not `scripts/`, not `dev-only` files, not anything behind a flag,
+  // because "does not ship" is a claim only the two exclusions above can
+  // actually make good on. Widening this list is widening the tenant boundary,
+  // and the next person to want an exemption should move their fixture into
+  // `packages/db/__tests__/` instead.
+  //
+  // AND IT SHIPS BOTH CONTROLS, asserted BEFORE any claim about the real tree.
+  // Without them this scan could match nothing at all — a broken regex, a path
+  // separator that stopped normalising, a filter that excluded everything — and
+  // report green forever, which on THIS row means reporting that the tenant
+  // boundary is intact because the scanner could not read it.
+  it("has no production file under apps/ importing the db system module", () => {
+    // POSITIVE CONTROL. The detector fires on a shipped file, by subpath...
+    expect(systemImportOffenders([PLANTED_PRODUCTION_IMPORT])).toEqual([
+      "apps/web/app/api/first-run/slack/status/route.ts",
+    ]);
+    // ...and on the same offence routed through a deep relative path.
+    expect(systemImportOffenders([PLANTED_PRODUCTION_RELATIVE_IMPORT])).toEqual([
+      "apps/web/lib/first-run/status.ts",
+    ]);
+
+    // CLEAN CONTROLS. The exclusion is proved, not assumed: the identical import
+    // under a test path is not an offence — by directory, and by suffix.
+    expect(systemImportOffenders([CLEAN_TEST_DIR_IMPORT])).toEqual([]);
+    expect(systemImportOffenders([CLEAN_COLOCATED_TEST_IMPORT])).toEqual([]);
+    // ...and the detector is about the SUBPATH, not about importing the db.
+    expect(systemImportOffenders([CLEAN_PRODUCTION_IMPORT])).toEqual([]);
+
+    const scanned: ScannedSource[] = listSourceFiles(path.join(REPO_ROOT, "apps")).map((file) => ({
+      path: relative(file),
+      source: readFileSync(file, "utf8"),
+    }));
+
     // The scan must actually see the web app, or the assertion is vacuous.
-    expect(files.length).toBeGreaterThan(0);
+    expect(scanned.length).toBeGreaterThan(0);
 
-    const offenders = files.filter((file) => {
-      const source = readFileSync(file, "utf8");
-      return (
-        /["']@growthmind\/db\/system["']/.test(source) ||
-        /["'][^"']*packages\/db\/src\/system[^"']*["']/.test(source)
-      );
-    });
+    const production = scanned.filter((file) => !isTestPath(file.path));
 
-    expect(offenders.map(relative)).toEqual([]);
+    // ...and it must still see it AFTER the exclusion. An exclusion that ate the
+    // whole tree would pass the row above and assert over nothing.
+    expect(production.length).toBeGreaterThan(0);
+
+    // The exclusion must also ENGAGE on the real tree, not only on fixtures.
+    // This is the leg the planted controls cannot cover: if `relative()` ever
+    // stopped normalising Windows separators, `isTestPath` would match every
+    // fixture above and no real file, and the exclusion would be silently inert.
+    expect(production.length).toBeLessThan(scanned.length);
+
+    expect(systemImportOffenders(scanned)).toEqual([]);
   });
 
   // -- item 84
