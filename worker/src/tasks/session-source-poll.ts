@@ -50,6 +50,7 @@ import {
   credentialAad,
   decryptSecret,
   deriveIdentityHmacKey,
+  describeError,
   resolveCredentialKey,
 } from "@growthmind/shared";
 
@@ -132,10 +133,6 @@ interface PassOutcome {
   sawEvents: boolean;
   watermarkAt: Date | null;
   backfillBefore: string | null;
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

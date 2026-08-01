@@ -5,10 +5,12 @@ import { createAbsentReadPort } from "@/lib/mcp/read-port";
 import { handleMcpRequest, type McpServerDeps } from "@/lib/mcp/server";
 import { getDb } from "@/lib/db";
 
-// THE READ-ONLY MACHINE SURFACE, MOUNTED (O-009; `docs/architecture.md` §7).
+// THE READ-ONLY MACHINE SURFACE, MOUNTED (O-009, O-013; `docs/architecture.md`
+// §7).
 //
-// Three tools, all reads — `list_open_fixes`, `get_fix`, `get_finding`. `POST`
-// calls one; `GET` lists them. There is no other verb here and no tool that
+// Three tools, all reads — `list_open_fixes`, `get_fix`, `get_finding`. A
+// `POST` carrying a JSON-RPC message is the only verb; `tools/list` names them
+// and `tools/call` runs one. There is no other verb here and no tool that
 // writes: `report_shipped`, the draft contract's one write tool, is absent from
 // `MCP_TOOLS` and asserted absent by name in
 // `packages/shared/__tests__/mcp/tools.test.ts`.
@@ -23,7 +25,7 @@ import { getDb } from "@/lib/db";
 // (`apps/web/__tests__/mcp/wiring.test.ts`, ADD D-4).
 //
 // ===========================================================================
-// WHAT THIS ENDPOINT DOES ON THIS INSTALLATION TODAY, AND THE TWO THINGS IT
+// WHAT THIS ENDPOINT DOES ON THIS INSTALLATION TODAY, AND THE ONE THING IT
 // STILL CANNOT DO — BECAUSE A HALF-TRUE ENDPOINT IS WORSE THAN AN ABSENT ONE
 // ===========================================================================
 //
@@ -39,8 +41,8 @@ import { getDb } from "@/lib/db";
 // database access at all. `@/lib/mcp/credentials.ts` carries that argument in
 // full.
 //
-// TWO SEPARATE THINGS ARE STILL MISSING FROM THIS BRANCH, AND NEITHER IS
-// SOMETHING THIS ROUTE COULD INVENT.
+// ONE THING IS STILL MISSING FROM THIS BRANCH, AND IT IS NOT SOMETHING THIS
+// ROUTE COULD INVENT.
 //
 // 1. NO TABLE RECORDS A FINDING OR A FIX. `packages/db/src/schema/` holds
 //    finding signatures, dismissals and deliveries — the ledger and the
@@ -51,38 +53,59 @@ import { getDb } from "@/lib/db";
 //    `@/lib/mcp/read-port.ts`. The `findings` table is O-011's, and building a
 //    second one here would be the worst outcome available.
 //
-// 2. THERE IS NO MCP WIRE PROTOCOL HERE — THIS IS PLAIN JSON OVER HTTP. A call
-//    is `POST {"tool":…,"input":…}` and the catalogue is a plain `GET`. There
-//    is no JSON-RPC 2.0 envelope, no `initialize` handshake, no session id and
-//    no Streamable HTTP transport anywhere in this repository: zero occurrences
-//    of `jsonrpc`, `tools/list`, `tools/call`, `modelcontextprotocol` or
-//    `streamable` across `apps/`, `packages/`, `worker/` and `docs/`, and no
-//    MCP SDK in any manifest. CONSEQUENCE, said plainly rather than left for
-//    someone to discover: `claude mcp add` against this URL still fails at
-//    `initialize`. What an agent CAN do today is reach it with curl, `fetch` or
-//    a thin wrapper, call all three tools, and get truthful answers — including
-//    truthfully empty. Do not claim more than that. The transport is O-012's.
+// ===========================================================================
+// THIS SURFACE SPEAKS MCP, AND IT SERVES BOTH PROTOCOL ERAS FROM ONE HANDLER
+// ===========================================================================
+//
+// A call is a JSON-RPC 2.0 message on the `POST`, and the catalogue arrives as
+// `tools/list` on the same verb — `GET` is a 405 with a sentence saying so
+// (`@/lib/mcp/refusals.ts`). `claude mcp add --transport http` against this URL
+// connects: a stock client, constructed with no options at all, negotiates the
+// LEGACY floor `2025-11-25` through the `initialize` handshake and lists three
+// tools. The SAME handler also serves the MODERN `2026-07-28` era, which it
+// advertises through `server/discover` to a client that asks for it. Neither
+// leg is configuration; the transport serves both and offers no switch that
+// turns either off.
+//
+// ⚠️ THE RECONCILIATION, BECAUSE IT IS THE TRAP THE NEXT READER HITS.
+// `2026-07-28` is ABSENT from the transport package's own
+// `SUPPORTED_PROTOCOL_VERSIONS`, and that absence is correct and asserted ON
+// PURPOSE. That list is the LEGACY-ERA NEGOTIATION LIST, and an era that drops
+// the `initialize` handshake has nothing to negotiate — it advertises itself by
+// discovery instead. It is not a gap and it must not be "fixed" by editing the
+// list. `@/lib/mcp/wire-constants.ts` carries the same warning beside the
+// constant, and a real client proves the era is served by refusing to connect
+// any other way.
+//
+// AN HONEST SHORTFALL, RECORDED RATHER THAN ENGINEERED AROUND. Our 401 is
+// produced before the transport is anywhere in the call stack, so its bytes are
+// identical on both eras. But on the MODERN leg's `connect()` ONLY, the
+// client's own version-negotiation probe REPLACES our sentence with its own
+// ("Version negotiation failed: the server requires authorization (HTTP 401)"),
+// so "errors instruct rather than report" degrades exactly there. That is the
+// client's text in the client's code — not something a server can fix, and not
+// something we will paper over by re-authoring a refusal to suit one client's
+// error formatting. The scope is precisely this: `connect()` on the modern leg.
+// The legacy leg — the one a stock client meets — shows our sentence verbatim,
+// and EVERY other refusal path is a `tools/call`, including a credential
+// revoked mid-session, so all of them are unaffected on both legs.
 //
 // THE HONEST SUMMARY: O-009's definition of done — three tools exposed, every
 // call organization-scoped and authenticated against a credential a person
-// minted — is met and proven through the real exported handlers below. The
-// cross-tenant identity guarantee, the fail-closed credential gate, the
-// read-only shape and the graceful-absence answers all have named tests. What
-// this surface does not yet have is data to answer with, or the wire protocol
-// an MCP client speaks.
+// minted — is met, and O-013 adds the clause O-009 failed: a program nobody
+// here wrote can now connect and call all three. The cross-tenant identity
+// guarantee, the fail-closed credential gate, the read-only shape, the
+// graceful-absence answers and a real client's whole session all have named
+// tests. What this surface does not yet have is data to answer with.
 //
-// WHAT UNBLOCKS EACH, one line of this file per gap:
-//   - reads: a `findings` table (with fixes and evidence) plus an org-scoped
-//     repository implementing `McpReadPort`; return it below instead of
-//     `createAbsentReadPort`. Its one hard obligation is written in that file's
-//     header — filter by organization in the SAME query as the id, so a foreign
-//     row is `null` and not a slower `null`.
-//   - the wire: a JSON-RPC 2.0 envelope over Streamable HTTP with an
-//     `initialize` handshake, wrapping — not replacing — the handler this route
-//     already calls.
+// WHAT UNBLOCKS THAT, one line of this file: a `findings` table (with fixes and
+// evidence) plus an org-scoped repository implementing `McpReadPort`; return it
+// below instead of `createAbsentReadPort`. Its one hard obligation is written
+// in that file's header — filter by organization in the SAME query as the id,
+// so a foreign row is `null` and not a slower `null`.
 //
-// Nothing else in `@/lib/mcp` changes when either lands, because nothing else
-// names a table or a transport.
+// Nothing else in `@/lib/mcp` changes when it lands, because nothing else names
+// a table, and only `@/lib/mcp/wire.ts` names a transport.
 
 // Always evaluated at request time: the answer depends on the credential the
 // request carried, and a cached response on a tenant-scoped read is a
@@ -117,17 +140,28 @@ export function resolveMcpDeps(db: ScopedDb = getDb()): McpServerDeps {
     credentials: createApiKeyMcpCredentials(db),
     // The absent read port, deliberately: the `findings` table is O-011's, and
     // its truthful-empty answers are this sprint's acceptance criterion rather
-    // than a gap (gap 1 above).
+    // than a gap (the one gap named above).
     reads: absentReads,
   };
 }
 
-/** Calls one tool. The only verb that takes a body, and it still only reads. */
+/** The whole protocol, on one verb: a single JSON-RPC message in, one answer
+ * out. `tools/list` names what exists and `tools/call` runs one, and every one
+ * of them only reads. */
 export async function POST(request: Request): Promise<Response> {
   return handleMcpRequest(request, resolveMcpDeps());
 }
 
-/** Lists the tools that exist. Authenticated like everything else here. */
+/**
+ * The verb this surface does not answer, answered anyway.
+ *
+ * EXPORTED RATHER THAN LEFT UNMOUNTED, ON PURPOSE. The catalogue moved onto the
+ * wire protocol, so a `GET` has nothing left to serve — but a real client opens
+ * a speculative one during every successful handshake, and an agent that tries
+ * it deserves a sentence saying what to send instead. `handleMcpRequest`
+ * answers 405 with exactly that; Next's own bodiless 405, which is what the
+ * unmounted verbs get, would not.
+ */
 export async function GET(request: Request): Promise<Response> {
   return handleMcpRequest(request, resolveMcpDeps());
 }

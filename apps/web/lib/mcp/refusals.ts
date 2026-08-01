@@ -56,15 +56,18 @@
  * did not happen; none of them is a partial answer.
  *
  * LISTED IN THE ORDER THE GATES FIRE in `./server.ts` — authenticate, then
- * Origin, then Content-Type, then method, then the envelope, then the tool,
- * then the row, then our own fault. The order is not decoration: it is the
- * security argument (`server.ts:10-40`), and a reader who wants to know what an
- * anonymous caller can learn reads it top-down and stops at the first line. */
+ * Origin, then Content-Type, then method, then the body's size, then its shape
+ * (a batch is refused as `malformed_request`), then the envelope, then the
+ * tool, then the row, then our own fault. The order is not decoration: it is
+ * the security argument in that file's header, and a reader who wants to know
+ * what an anonymous caller can learn reads it top-down and stops at the first
+ * line. */
 export type McpRefusalCode =
   | "unauthenticated"
   | "browser_origin"
   | "wrong_content_type"
   | "wrong_method"
+  | "body_too_large"
   | "malformed_request"
   | "unknown_tool"
   | "not_found"
@@ -183,6 +186,34 @@ export const WRONG_METHOD: McpRefusal = Object.freeze({
 });
 
 /**
+ * A body bigger than anything this surface could ever have a use for.
+ *
+ * NEW THIS SPRINT, AND THE ONLY SENTENCE THE POST-SPRINT AUDIT ADDED. It exists
+ * because nothing stood between the credential check and the transport, and a
+ * read-only key is not a lever a caller should be able to buy arbitrary work
+ * with: a 20 MB body was buffered whole — about 89 MB of heap — before any gate
+ * downstream of authentication fired. `./server.ts` now stops reading at a
+ * stated ceiling, and this is what it says when it does.
+ *
+ * SEPARATE FROM `MALFORMED_BODY` FOR THE SAME REASON `WRONG_CONTENT_TYPE` IS.
+ * "Your JSON is shaped wrong" and "your request was too big to read" are
+ * different mistakes with different next actions, and an agent told the wrong
+ * one shrinks nothing and re-sends. 413 rather than 400 because the status
+ * already carries the distinction, so the sentence does not have to argue it.
+ *
+ * IT NAMES THE SIZE IN WORDS, NOT IN BYTES. The reader is a coding agent
+ * relaying to a person, and "under a megabyte" is actionable where a five-digit
+ * byte count is arithmetic. The number itself lives once, in `./server.ts`.
+ */
+export const BODY_TOO_LARGE: McpRefusal = Object.freeze({
+  code: "body_too_large",
+  message:
+    "That request was too big to read, so none of it was looked at. This server only ever needs " +
+    "a short message — a method name and at most a couple of ids — so send one under a megabyte.",
+  status: 413,
+});
+
+/**
  * The body we could not read at all.
  *
  * RE-AUTHORED (D-12), for the same reason and with the same care. The previous
@@ -192,6 +223,15 @@ export const WRONG_METHOD: McpRefusal = Object.freeze({
  * parsed, and still instructs: it says which method to send and where the
  * arguments go, so an agent that got the shape wrong can fix it from the
  * refusal alone without reading a document.
+ *
+ * IT HAS A PRODUCER AGAIN, AND IT IS THE ONE THE RE-AUTHORED SENTENCE WAS
+ * WRITTEN FOR. The pre-protocol envelope reader that used to produce this is
+ * gone, and for one sprint nothing did — the transport's own parse error
+ * answers a body that is not JSON. What `./server.ts` now refuses with it is a
+ * JSON-RPC BATCH: an array body, refused on its first non-whitespace byte
+ * before the transport ever sees it. "Send a SINGLE JSON-RPC message" is
+ * already the first instruction in the sentence, which is why no new sentence
+ * was authored for it.
  */
 export const MALFORMED_BODY: McpRefusal = Object.freeze({
   code: "malformed_request",

@@ -70,6 +70,11 @@ worker/            # Graphile Worker process (analysis pipeline, batch polling)
 docs/              # product decisions, architecture, stack — shipped contracts
 ```
 
+Code comments cite short identifiers (`D7`, `AD-20`, `FR-M9`, `SAC-10`).
+[docs/spec-vocabulary.md](docs/spec-vocabulary.md) decodes the families and
+defines the `D1`–`D12` edge-case taxonomy — read it before treating a comment's
+tag as noise, and before simplifying a shape one of them explains.
+
 Unit tests live in `__tests__/` directories next to the code they cover.
 Worker task names are exported constants in `worker/src/task-names.ts`, never
 raw strings — the registry test enforces it.
