@@ -75,6 +75,7 @@ import {
   createRecordingDeliveryLogger,
   createRecordingPosterFor,
   seedSlackConnection,
+  slackTestServerEnv,
   type MirrorDeliveryTickDeps,
   type MirrorMakePosterFor,
 } from "./helpers/onboarding-delivery-fixtures";
@@ -392,7 +393,13 @@ test("posterFor returns null for an org whose connection was deactivated", async
     OWNER_SCHEMA,
   );
 
-  const posterFor = makePosterFor(db, undefined);
+  // A REAL `ServerEnv`, carrying the very key the envelope above was sealed
+  // under. `makePosterFor(db, env)` resolves its key through the shipped
+  // `resolveCredentialKey(env)` gate, so `undefined` here is not "the env does
+  // not matter" — it is a `TypeError` on the first property read, and a poster
+  // that could never be resolved for anybody would make the `null` assertion
+  // below pass for entirely the wrong reason.
+  const posterFor = makePosterFor(db, slackTestServerEnv());
 
   // WHILE THE CONNECTION IS ACTIVE, a poster is resolved for this org.
   expect(await posterFor(ctx)).not.toBeNull();

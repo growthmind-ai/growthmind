@@ -156,6 +156,125 @@ test("every TASK name parses as a Graphile Worker crontab identifier", () => {
   }
 });
 
+// --- O-008 Wave 5 (AD-11, AD-23) --------------------------------------------
+// THE ONBOARDING FAST PATH IS THE FIRST QUEUED TASK IN THIS CODEBASE. Every
+// other one is cron-triggered, so until now "registered" and "scheduled" were
+// the same question. This one is registered and deliberately NOT scheduled, and
+// its whole behaviour lives in three values on one `addJob` call — which makes
+// it exactly the D9 stringly-typed hazard this file exists for: each of the
+// three is a plain string that would compile, run, and be wrong in a way only a
+// founder watching a clock would ever notice.
+//
+// A SOURCE SCAN AND NOT A RUNTIME PROBE, deliberately: `helpers.addJob` needs a
+// live Graphile Worker `JobHelpers`, and the values below are arguments rather
+// than exported constants — there is nothing on the module to inspect. Each
+// scanner ships a PLANTED OFFENDER and a CLEAN CONTROL, so a scanner that
+// matched nothing could not report green forever.
+
+const INDEX_FILE = path.join(WORKER_ROOT, "src", "index.ts");
+
+/** Comments discuss the rejected modes BY NAME — that is the point of them — so
+ * every scan below runs over code with the comments removed. Scanning the raw
+ * file would fail on the clean source for citing what it refuses to do. */
+function indexCode(): string {
+  return stripComments(readFileSync(INDEX_FILE, "utf8"));
+}
+
+/**
+ * `preserve_run_at`, and neither of the other two modes.
+ *
+ * `replace` re-stamps `run_at` FORWARD on every trigger, so a founder producing
+ * a burst of broken requests watches the analysis slide away from them on a
+ * screen that is showing them a clock. `unsafe_dedupe` was measured against a
+ * running holder and DROPS the trigger — losing the late-window failure the
+ * whole onboarding surface exists to catch. Only `preserve_run_at` collapses N
+ * pending asks into one job that still fires when the FIRST ask arrived.
+ */
+function preservesRunAt(code: string): boolean {
+  return (
+    /jobKeyMode:\s*"preserve_run_at"/.test(code) &&
+    !/jobKeyMode:\s*"(?:replace|unsafe_dedupe)"/.test(code)
+  );
+}
+
+/**
+ * `addJob`, SINGULAR.
+ *
+ * graphile-worker's BULK `addJobs` declares `jobKeyMode?: never`, so a later
+ * refactor that batched these calls would COMPILE and would silently drop the
+ * mode — and with it the collapsing the trigger's entire volume argument rests
+ * on. The plural is therefore banned by name rather than trusted not to appear.
+ */
+function queuesOneAtATime(code: string): boolean {
+  return /\baddJob\(/.test(code) && !/\baddJobs\b/.test(code);
+}
+
+const PLANTED_BULK_ENQUEUE = `
+  await helpers.addJobs([
+    { identifier: TASK.ANALYSIS_ONBOARDING, payload: { projectId } },
+  ]);
+`;
+
+const PLANTED_DEDUPE_MODE = `
+  await helpers.addJob(TASK.ANALYSIS_ONBOARDING, { projectId }, {
+    jobKey: key,
+    jobKeyMode: "unsafe_dedupe",
+  });
+`;
+
+const PLANTED_REPLACE_MODE = `
+  await helpers.addJob(TASK.ANALYSIS_ONBOARDING, { projectId }, {
+    jobKey: key,
+    jobKeyMode: "replace",
+  });
+`;
+
+const CLEAN_ENQUEUE = `
+  await helpers.addJob(TASK.ANALYSIS_ONBOARDING, { projectId }, {
+    jobKey: key,
+    jobKeyMode: "preserve_run_at",
+  });
+`;
+
+test("the onboarding analysis task is registered and is deliberately never cronned", () => {
+  expect(taskList[TASK.ANALYSIS_ONBOARDING]).toBeDefined();
+
+  // QUEUED, NEVER SCHEDULED. A cron line here would run this task on a timer
+  // for every installation — the opposite of a trigger that fires seconds after
+  // one founder's own broken request landed, and a second analysis pass nobody
+  // asked for.
+  const scheduled = crontab
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.trim().split(/\s+/)[5]);
+
+  expect(scheduled).not.toContain(TASK.ANALYSIS_ONBOARDING);
+});
+
+test("the onboarding trigger enqueues one job at a time, never the bulk API", () => {
+  expect(queuesOneAtATime(PLANTED_BULK_ENQUEUE)).toBe(false);
+  expect(queuesOneAtATime(CLEAN_ENQUEUE)).toBe(true);
+
+  expect(queuesOneAtATime(indexCode())).toBe(true);
+});
+
+test("the onboarding trigger queues under preserve_run_at, never replace and never unsafe_dedupe", () => {
+  expect(preservesRunAt(PLANTED_DEDUPE_MODE)).toBe(false);
+  expect(preservesRunAt(PLANTED_REPLACE_MODE)).toBe(false);
+  expect(preservesRunAt(CLEAN_ENQUEUE)).toBe(true);
+
+  expect(preservesRunAt(indexCode())).toBe(true);
+});
+
+test("the onboarding job key is built from the task constant and the project id", () => {
+  // The key is what collapses N pending asks for ONE project into one job. A
+  // key that omitted the project id would collapse every project's trigger into
+  // a single job — one customer's broken request silently swallowing another's
+  // — and a key naming the task as a raw string would drift the day the task is
+  // renamed, which is the hazard this whole file exists for.
+  expect(indexCode()).toContain("jobKey: `${TASK.ANALYSIS_ONBOARDING}:${projectId}`");
+});
+
 test("every crontab line's command is a registered, well-formed task name", () => {
   const registered = new Set(Object.keys(taskList));
 

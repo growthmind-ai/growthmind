@@ -19,18 +19,26 @@
 // THE REPOSITORY IS PUBLIC. Every token, channel id and email below is an
 // obviously-fake placeholder. Nothing here is or resembles real credential
 // material.
+import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { schema } from "@growthmind/db";
 import type { PersistFindingInput } from "@growthmind/db";
 import { createAnalysisRunsRepo, createFindingsRepo } from "@growthmind/db";
 import type { TestDb } from "@growthmind/db/testing";
-import { credentialAad, encryptSecret, keyIdOf, type CredentialKey } from "@growthmind/shared";
+import {
+  credentialAad,
+  encryptSecret,
+  keyIdOf,
+  parseServerEnv,
+  type CredentialKey,
+} from "@growthmind/shared";
 import type {
   DeliveryPoster,
   PostFailureCode,
   PostRequest,
   PostResult,
+  ServerEnv,
   TenantContext,
 } from "@growthmind/shared";
 
@@ -140,6 +148,31 @@ export const SLACK_TEST_KEY: CredentialKey = {
 export const FAKE_BOT_TOKEN = "xoxb-fixture-only-never-a-real-token";
 
 /**
+ * A `ServerEnv` whose `GROWTHMIND_ENCRYPTION_KEY` IS `SLACK_TEST_KEY`, derived
+ * from those same 32 bytes rather than pasted beside them.
+ *
+ * `makePosterFor(db, env)` (../src/index.ts, AD-14) resolves its key through
+ * the shipped `resolveCredentialKey(env)` gate — inherited, never
+ * re-implemented — so a suite that wants a poster resolved against a seeded
+ * envelope must hand it an environment carrying the key that envelope was
+ * sealed under. Deriving it here means the sealing key and the configured key
+ * cannot drift into disagreeing, which would show up as a `posterFor` that
+ * silently answers `null` and reads as "this organization has no connection".
+ *
+ * `NODE_ENV=test`, so `resolveCredentialKey` takes the non-production branch;
+ * the production insecure-default refusal is its own suite's subject, not this
+ * one's.
+ */
+export function slackTestServerEnv(): ServerEnv {
+  return parseServerEnv({
+    NODE_ENV: "test",
+    DATABASE_URL: "postgres://fake:fake@localhost:5432/fake",
+    BETTER_AUTH_SECRET: "o008-fixture-only-secret-not-a-real-one",
+    GROWTHMIND_ENCRYPTION_KEY: Buffer.from(SLACK_TEST_KEY.bytes).toString("base64"),
+  });
+}
+
+/**
  * AD-20: the AAD's second argument is the LITERAL `"slack"`, never a project id
  * — this connection is ORG-SCOPED and has no project.
  */
@@ -205,6 +238,39 @@ export interface SeedFindingParams {
   at: Date;
 }
 
+/** The seeded finding's denominator: the kept sessions every count below rests
+ *  on. One number, used by both counts and by the basis, because
+ *  `measuredCount` refuses a denominator its own basis does not account for and
+ *  the Slack renderer refuses two counts measured over different bases. */
+const SEEDED_KEPT_SESSIONS = 28;
+
+/**
+ * The two counts a `funnel_dropoff` finding carries, IN EMISSION ORDER —
+ * `[reached_surface, left_without_continuing]`, exactly as `COUNT_ROLES`
+ * declares them and exactly as `toCountRows` persists them.
+ *
+ * Written as full `MeasuredCountRow`s (`timeframe` AND `basis`, no `role`)
+ * because that is the shape `findings.persist` parses on the way in and the
+ * delivery lane source rebuilds on the way out. A count without them is not a
+ * count this pipeline could ever have written — it is refused at the wire, and
+ * a fixture that cannot be persisted proves nothing about delivery.
+ */
+function seededCounts(at: Date): PersistFindingInput["counts"] {
+  const timeframe = { start: new Date(at.getTime() - 7 * 24 * 60 * 60 * 1_000), end: at };
+  const basis = { totalInWindow: SEEDED_KEPT_SESSIONS, kept: SEEDED_KEPT_SESSIONS, setAside: [] };
+
+  return [
+    {
+      numerator: SEEDED_KEPT_SESSIONS,
+      denominator: SEEDED_KEPT_SESSIONS,
+      unit: "sessions",
+      timeframe,
+      basis,
+    },
+    { numerator: 3, denominator: SEEDED_KEPT_SESSIONS, unit: "sessions", timeframe, basis },
+  ];
+}
+
 /**
  * A persisted finding, written through the REAL repositories against real SQL.
  *
@@ -237,35 +303,32 @@ export async function seedFinding(
     runId: opened.run.id,
     signature,
     signatureVersion: 1,
-    summarySource: "floor_no_key_configured",
+    // `model_rendered`, and NOT a floor member, because `context` is what these
+    // suites steer. The Slack renderer only carries a finding's own prose on
+    // the model arm — every `floor_*` member is an ABSENCE STATEMENT ABOUT THE
+    // EXPLANATION, and the renderer supplies its own fixed sentence for it. A
+    // fixture seeding an email address into `context` under a floor source
+    // would render a message that never contained the address, and the
+    // residual-PII row would pass for the wrong reason: nothing was scanned.
+    summarySource: "model_rendered",
     headline: params.headline ?? "The payment step is losing sessions",
     context: params.context ?? ["Sessions reached the payment step and left without finishing."],
     finalClass: "confusing",
     surface,
     surfaceNormalisationVersion: 1,
-    counts: [
-      {
-        role: "reached_surface",
-        numerator: 28,
-        denominator: 28,
-        unit: "sessions",
-      },
-      {
-        role: "left_without_continuing",
-        numerator: 3,
-        denominator: 28,
-        unit: "sessions",
-      },
-    ],
+    counts: seededCounts(params.at),
     confidenceBasis: "threshold_met",
     windowStart: new Date(params.at.getTime() - 7 * 24 * 60 * 60 * 1_000),
     windowEnd: params.at,
     evidenceShape: `{"detector":"funnel_dropoff","surface":"${surface}","v":1}`,
     evidenceShapeVersion: 1,
-    resolvedModelId: null,
+    // Non-null BECAUSE `summary_source` is `model_rendered`: the column's rule
+    // is "null iff no call was attempted", so a model-written summary with a
+    // null model id is a row this pipeline can never produce.
+    resolvedModelId: "fixture-model-v1",
     tokensIn: null,
     tokensOut: null,
-  } as unknown as PersistFindingInput;
+  };
 
   const row = await findings.persist(input);
 

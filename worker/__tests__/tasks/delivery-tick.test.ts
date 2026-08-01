@@ -330,26 +330,47 @@ interface Harness {
   ledger: FakeLedger;
   posted: PostRequest[];
   logs: RecordingLogger;
+  /** Every context the poster resolver was asked about, IN ORDER. AD-13's
+   * central claim is a claim about this list: the resolver sees a tenant
+   * context and nothing else. */
+  resolved: TenantContext[];
 }
 
 function harness(input: {
   lanes: readonly DeliveryLane[];
   ledger?: FakeLedger;
   answer?: (request: PostRequest) => PostResult;
+  /** Organizations with a live connection. Any other organization resolves
+   * `null` — the per-org absence AD-13 introduces, distinct from the
+   * installation-wide one ../src/index.ts decides. Absent means "every
+   * organization is connected", which is what every pre-AD-13 test assumed
+   * when it passed a single poster. */
+  connectedOrgIds?: readonly string[];
 }): Harness {
   const ledger = input.ledger ?? createFakeLedger();
   const poster = createFakePoster(input.answer);
   const logs = createRecordingLogger();
+  const resolved: TenantContext[] = [];
 
   const deps: DeliveryTickDeps = {
     lanes: { listDueLanes: () => Promise.resolve(input.lanes) },
     deliveriesFor: ledger.repoFor,
-    poster: poster.poster,
+    // AD-13: ONE ARGUMENT, and it is a tenant context. The fake records what it
+    // was handed rather than ignoring it, because "the credential is resolved
+    // from the context, never from the message" is only checkable if the
+    // resolver's input is kept.
+    posterFor: (ctx: TenantContext) => {
+      resolved.push(ctx);
+      if (input.connectedOrgIds !== undefined && !input.connectedOrgIds.includes(ctx.organizationId)) {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve(poster.poster);
+    },
     now: () => NOW,
     logger: logs.logger,
   };
 
-  return { run: () => runDeliveryTick(deps), ledger, posted: poster.posts, logs };
+  return { run: () => runDeliveryTick(deps), ledger, posted: poster.posts, logs, resolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -652,10 +673,99 @@ test("a tick with no due lanes is a clean no-op", async () => {
     blockedByPii: 0,
     nothingToday: 0,
     notClaimed: 0,
+    notConnected: 0,
     lanesErrored: 0,
   });
   expect(scene.posted.length).toBe(0);
   expect(scene.ledger.rows()).toEqual([]);
+  // Nothing to deliver means no credential is opened for anybody. A tick that
+  // resolved a poster per organization before it had a lane would decrypt a bot
+  // token every fifteen minutes for nothing.
+  expect(scene.resolved).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// The poster is resolved per lane, from the lane's own context (AD-13)
+// ---------------------------------------------------------------------------
+
+test("the poster is resolved from the lane's tenant context and never from the message", async () => {
+  // Correction C-C, made checkable. The rejected alternative — a dispatching
+  // poster mapping `channelId` → org — would key a CREDENTIAL LOOKUP on a value
+  // that travels WITH the message, which is the D7 shape the taxonomy warns
+  // about. So the resolver's whole input is enumerated here.
+  const scene = harness({ lanes: [lane()] });
+
+  await scene.run();
+
+  expect(scene.resolved).toHaveLength(1);
+
+  const ctx = scene.resolved[0] as TenantContext;
+  expect(ctx.organizationId).toBe(ORG);
+  // Serialised whole rather than field-checked, so a channel smuggled onto a
+  // nested property is caught too.
+  expect(JSON.stringify(ctx)).not.toContain("channelId");
+  expect(JSON.stringify(ctx)).not.toContain(CHANNEL);
+});
+
+test("a lane whose poster resolves null is skipped before anything is claimed, not failed", async () => {
+  // The organization revoked Slack between the lane read and the post — AD-13's
+  // exact scenario. It is an ORDINARY STATE on a multi-org installation, so it
+  // may not appear in `lanesErrored` (which is the number a reader uses to
+  // decide whether something is broken) nor in `failed` (which is a claim about
+  // a delivery that was attempted).
+  const scene = harness({
+    lanes: [lane({ candidates: [finding("finding-1")] })],
+    connectedOrgIds: [],
+  });
+
+  const summary = await scene.run();
+
+  expect(summary.notConnected).toBe(1);
+  expect(summary.lanesErrored).toBe(0);
+  expect(summary.failed).toBe(0);
+  expect(summary.posted).toBe(0);
+  expect(scene.posted.length).toBe(0);
+
+  // NOTHING WAS CLAIMED. A `pending` row for a message that can never be sent
+  // is the stuck state that jams this project's lane forever (D8) — which is
+  // why the resolution happens before the claim rather than after it.
+  expect(scene.ledger.rows()).toEqual([]);
+
+  // And the skip is SAID OUT LOUD, naming the organization, so a reader of a
+  // multi-org installation's logs can tell WHICH customer is unconnected.
+  expect(scene.logs.all().some((line) => line.includes(ORG))).toBe(true);
+});
+
+test("one organization with no channel does not cost a sibling organization its delivery", async () => {
+  // AD-13's whole reason for existing, from the tick's side: one poster
+  // instance bound to one workspace's token at construction could not serve
+  // both of these lanes, and a tick that gave up on the first would deliver
+  // nothing to the second.
+  const scene = harness({
+    lanes: [
+      lane({
+        organizationId: "org-gone",
+        projectId: "project-gone",
+        candidates: [finding("finding-gone")],
+      }),
+      lane({ candidates: [finding("finding-live")] }),
+    ],
+    connectedOrgIds: [ORG],
+  });
+
+  const summary = await scene.run();
+
+  expect(summary.lanesConsidered).toBe(2);
+  expect(summary.notConnected).toBe(1);
+  expect(summary.posted).toBe(1);
+  expect(summary.lanesErrored).toBe(0);
+  expect(summary.failed).toBe(0);
+
+  // BOTH lanes were asked — the first one's absence did not short-circuit the
+  // loop — and only the connected one produced a row.
+  expect(scene.resolved.map((ctx) => ctx.organizationId)).toEqual(["org-gone", ORG]);
+  expect(scene.ledger.rowFor("finding-gone")).toBeUndefined();
+  expect(scene.ledger.rowFor("finding-live")?.status).toBe("posted");
 });
 
 // ---------------------------------------------------------------------------

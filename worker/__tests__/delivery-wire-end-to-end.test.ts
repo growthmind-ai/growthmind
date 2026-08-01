@@ -421,10 +421,17 @@ test("a residual-PII block holds the post back and marks the delivery, not the f
   // rendered message that carries text nobody vetted, which is exactly what the
   // residual scanner exists for — and a finding's own numbers never look like
   // this, so a hit here has no legitimate source in this product.
+  //
+  // NO COHORT NOUN ANYWHERE IN THIS SENTENCE, DELIBERATELY — not even inside
+  // the domain. `renderSlackMessage` drops model prose that calls sessions
+  // people, and prose it drops is prose the residual gate never gets to refuse:
+  // a domain of `<prefix>customer.example` renders the numbers-only form, the
+  // address never reaches a block, and this row would pass its own `poster.posted
+  // === []` assertion while proving nothing at all.
   const org = await seedOrgWithFinding({
     label: "payment",
     channelId: CHANNEL_A,
-    context: [`Sessions from buyer@${PREFIX}customer.example left without finishing.`],
+    context: [`Sessions from buyer@${PREFIX}northwind-shop.example left without finishing.`],
   });
 
   const poster = createRecordingPoster();
