@@ -61,6 +61,26 @@ export const serverEnvSchema = z.object({
   POSTHOG_PROJECT_API_KEY: z.string().min(1).optional(),
   POSTHOG_PERSONAL_API_KEY: z.string().min(1).optional(),
   POSTHOG_PROJECT_ID: z.string().min(1).optional(),
+  /**
+   * The Slack app's OAuth credentials, behind the one-click "Add to Slack" path. Optional
+   * is the decision, not a default nobody got round to tightening: self-host is
+   * first-class (AGENTS.md, Conventions), so a clean clone with neither variable set must
+   * sign up, boot and pass the full gate identically to one that has both. Absent, the
+   * Add-to-Slack control does not render and the pasted-token form is the primary path.
+   * Never a boot failure, and never a Slack step that presents itself as broken.
+   *
+   * Both or neither, because one alone cannot complete the round trip. That check belongs
+   * to the composition root that reads them together (apps/web/lib/slack/oauth.ts), the
+   * same way the worker branches on ANTHROPIC_API_KEY being absent rather than this
+   * schema deciding for it.
+   *
+   * Server-only, and there is no NEXT_PUBLIC_ twin. Read from a client component the
+   * value is undefined in the browser, so the control would hide itself from the
+   * deployments that did configure a Slack app — availability is computed on the server
+   * and passed down as a prop.
+   */
+  SLACK_CLIENT_ID: z.string().min(1).optional(),
+  SLACK_CLIENT_SECRET: z.string().min(1).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
