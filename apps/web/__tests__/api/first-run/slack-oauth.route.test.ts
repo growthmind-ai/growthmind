@@ -177,6 +177,36 @@ let credentialKey: CredentialKeyResolution;
 let key: CredentialKey;
 const priorEnv = new Map<string, string | undefined>();
 
+/**
+ * Longer than bun's 5s default, and it is not a slow test being tolerated.
+ *
+ * THE BUDGET IS FOR THE BOOT, NOT FOR THE ASSERTIONS. This hook boots a real
+ * PGlite and runs the migrations. Measured warm on this machine it costs ~1.4s
+ * — the SMALLEST warm figure in this directory, because this hook seeds no
+ * members at all, and therefore the most misleading one. The cold cost is in
+ * the wasm image being decompressed rather than reused, not in Better Auth's
+ * deliberately slow password hashing, so seeding nothing buys no headroom
+ * whatsoever: a COLD boot was measured at ~5.4s and blew straight through
+ * bun's 5s default. Two agents reproduced that independently with their own
+ * files excluded.
+ *
+ * What makes it worth a named constant rather than a shrug: the failure is an
+ * UNNAMED `a beforeEach/afterEach hook timed out`. It names no route, no
+ * contract and no owner, and it would collapse all twenty-four named Wave 0
+ * reds in this file — each one currently saying WHICH route Wave 5 has yet to
+ * write — into one piece of infrastructure noise that reads exactly like a
+ * product bug. Somebody then spends an afternoon hunting one that does not
+ * exist.
+ *
+ * It also only bites when a single file is run — the batch run shares the warm
+ * image and hides it — so it is invisible until the one moment it is expensive.
+ *
+ * Same figure and same reasoning as `discover.route.test.ts`,
+ * `analytics.route.test.ts` and `lifecycle.route.test.ts`; keep them in
+ * agreement.
+ */
+const COLD_BOOT_BUDGET_MS = 60_000;
+
 beforeAll(async () => {
   bed = await createFirstRunTestBed("oauth");
 
@@ -202,7 +232,7 @@ beforeAll(async () => {
     SLACK_CLIENT_SECRET: "fixture-client-secret-never-real",
     BETTER_AUTH_URL: APP_URL,
   });
-});
+}, COLD_BOOT_BUDGET_MS);
 
 afterAll(async () => {
   restoreEnv();
@@ -274,6 +304,13 @@ const slackApi = {
   channels: [] as { readonly id: string; readonly name: string }[],
 };
 
+/**
+ * Deliberately NOT given `COLD_BOOT_BUDGET_MS`, and that is not an oversight.
+ * The budget above exists for one specific cost — booting PGlite — and this
+ * hook is synchronous, touches no I/O and no database, and resets four
+ * in-memory fields. It cannot approach 5s by any path, so a budget here would
+ * buy nothing and would blur what the constant means for whoever reads it next.
+ */
 beforeEach(() => {
   outbound.length = 0;
   slackApi.botToken = BOT_TOKEN;

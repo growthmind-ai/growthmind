@@ -67,13 +67,39 @@ let bed: FirstRunTestBed;
 let owner: SeededMemberScope;
 let teammate: SeededMemberScope;
 
+/**
+ * Longer than bun's 5s default, and it is not a slow test being tolerated.
+ *
+ * THE BUDGET IS FOR THE BOOT, NOT FOR THE ASSERTIONS. This hook boots a real
+ * PGlite, runs the migrations, and signs two members up through Better Auth
+ * (whose password hashing is deliberately slow). Measured warm on this machine
+ * it costs ~1.6s — comfortable-looking, and misleading: a COLD boot, where the
+ * wasm image is decompressed rather than reused, was measured at ~5.4s and blew
+ * straight through bun's 5s default. Two agents reproduced that independently
+ * with their own files excluded.
+ *
+ * What makes it worth a named constant rather than a shrug: the failure is an
+ * UNNAMED `a beforeEach/afterEach hook timed out`. It names no route, no
+ * contract and no owner, and it collapses every named row in this file into one
+ * piece of infrastructure noise that reads exactly like a product bug. Somebody
+ * then spends an afternoon hunting one that does not exist.
+ *
+ * It also only bites when a single file is run — the batch run shares the warm
+ * image and hides it — so it is invisible until the one moment it is expensive.
+ *
+ * Same figure and same reasoning as `discover.route.test.ts`,
+ * `analytics.route.test.ts` and `lifecycle.route.test.ts`; keep them in
+ * agreement.
+ */
+const COLD_BOOT_BUDGET_MS = 60_000;
+
 beforeAll(async () => {
   bed = await createFirstRunTestBed("slack");
   owner = await bed.member("owner");
   // AC-O17 / EC-O2: the teammate who set nothing up. ORG MEMBERSHIP IS THE
   // WHOLE FLOOR — this member is a `member`, never an `owner`.
   teammate = await bed.member("mate", owner.organizationId);
-});
+}, COLD_BOOT_BUDGET_MS);
 
 afterAll(async () => {
   await bed?.close();
