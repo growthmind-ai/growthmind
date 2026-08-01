@@ -81,6 +81,17 @@ export const STAGE = entry("apps/web/components/first-run/Stage.tsx", OWNER_7B);
 /** The append-only log — the polite live region (UX §5's announcement table). */
 export const WAIT_LOG = entry("apps/web/components/first-run/WaitLog.tsx", OWNER_7B);
 
+/**
+ * Step 3's card — the delivery step. Named because AD-6's wire test reads this
+ * ONE file, and finding it by `.endsWith("ConnectSlackForm.tsx")` inside the
+ * array below would be a second, private answer to "where does the delivery
+ * card live" — the exact duplication this manifest exists to hold once.
+ */
+export const CONNECT_SLACK_FORM = entry(
+  "apps/web/components/first-run/ConnectSlackForm.tsx",
+  OWNER_7A,
+);
+
 /** The payoff. `role="status"`, announced once on arrival. */
 export const FINDING_CARD = entry("apps/web/components/first-run/FindingCard.tsx", OWNER_7B);
 
@@ -106,7 +117,7 @@ export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
   entry("apps/web/components/first-run/ConnectAnalyticsForm.tsx", OWNER_7A),
   COUNTER_GRID,
   entry("apps/web/components/first-run/PrivacyReceipt.tsx", OWNER_7A),
-  entry("apps/web/components/first-run/ConnectSlackForm.tsx", OWNER_7A),
+  CONNECT_SLACK_FORM,
   entry("apps/web/components/first-run/FirstRunClient.tsx", OWNER_7B),
   entry("apps/web/components/first-run/Strip.tsx", OWNER_7B),
   STAGE,
