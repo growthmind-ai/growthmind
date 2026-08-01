@@ -40,8 +40,10 @@ import type { ReactNode } from "react";
 
 import { createFirstRunRepo, ensureProject } from "@growthmind/db";
 import {
+  COMING_NEXT_DESCRIPTORS,
   deriveStepStates,
-  STEP_DESCRIPTORS,
+  displayOrdinal,
+  LIVE_STEP_DESCRIPTORS,
   type StepSequenceFacts,
   type StepView,
   type WorkStep,
@@ -52,8 +54,8 @@ import { ConnectSlackForm } from "@/components/first-run/ConnectSlackForm";
 import { CounterGrid } from "@/components/first-run/CounterGrid";
 import { FirstRunClient } from "@/components/first-run/FirstRunClient";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
+import { Roadmap } from "@/components/first-run/Roadmap";
 import { StepRow } from "@/components/first-run/StepRow";
-import { StubStep } from "@/components/first-run/StubStep";
 import { getDb } from "@/lib/db";
 import { echoFirstRunStatus, type FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
@@ -143,34 +145,35 @@ export default async function FirstRunPage() {
           it, because it was already a subtree. */}
       <FirstRunClient status={status}>
         <Stack gap="md">
-          {STEP_DESCRIPTORS.map((descriptor) => {
-            const view = views.get(descriptor.id);
-            if (view === undefined) {
-              return null;
-            }
+          {/* ONLY THE STEPS THAT CAN BE DONE, NUMBERED 1..n BY DISPLAY POSITION.
+              The stage is not among them: it is rendered above by the client
+              island, in both phases, which is the inversion this rebuild is.
+              A row numbered 5 with no body was where the payoff used to sit. */}
+          {LIVE_STEP_DESCRIPTORS.filter((descriptor) => descriptor.kind !== "stage").map(
+            (descriptor) => {
+              const view = views.get(descriptor.id);
+              if (view === undefined) {
+                return null;
+              }
 
-            // A stub holds its place at its own ordinal and renders no surface
-            // at all. It neither advances nor blocks the sequence.
-            if (descriptor.kind === "coming-next") {
-              return <StubStep key={descriptor.id} step={descriptor} />;
-            }
+              return (
+                <StepRow
+                  key={descriptor.id}
+                  ordinal={displayOrdinal(descriptor.id)}
+                  title={descriptor.title}
+                  helper={descriptor.kind === "work" ? descriptor.helper : null}
+                  state={view.state}
+                  open={view.open}
+                >
+                  {descriptor.kind === "work" ? workBody({ step: descriptor, view, status }) : null}
+                </StepRow>
+              );
+            },
+          )}
 
-            return (
-              <StepRow
-                key={descriptor.id}
-                ordinal={descriptor.ordinal}
-                title={descriptor.title}
-                helper={descriptor.kind === "work" ? descriptor.helper : null}
-                state={view.state}
-                open={view.open}
-              >
-                {/* Step 5 is the stage, and its body is Wave 7b's. Until then it
-                  is a title-only row, which is exactly what UX §3 renders for
-                  a step whose turn has not come. */}
-                {descriptor.kind === "work" ? workBody({ step: descriptor, view, status }) : null}
-              </StepRow>
-            );
-          })}
+          {/* Under the flow, not above it. Same two sentences, same honesty,
+              no longer the first thing anybody reads. */}
+          <Roadmap steps={COMING_NEXT_DESCRIPTORS} />
         </Stack>
       </FirstRunClient>
     </Container>

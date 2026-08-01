@@ -391,6 +391,11 @@ export {
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,
   STEP_AGENT_FILLER,
+  ROADMAP_LEAD,
+  SETUP_SEEING_HEADING,
+  SETUP_NEXT_ANALYTICS,
+  SETUP_NEXT_DELIVERY,
+  SETUP_NEXT_CHANNEL,
   STEP_MOMENT_TITLE,
   START_WATCHING_LABEL,
   WATCH_AGAIN_LABEL,
@@ -422,6 +427,10 @@ export {
   ALL_ONBOARDING_MESSAGES,
 } from "./onboarding/messages";
 export {
+  isAnalyticsAttached,
+  LIVE_STEP_DESCRIPTORS,
+  COMING_NEXT_DESCRIPTORS,
+  displayOrdinal,
   stepStateSchema,
   stepIdSchema,
   confirmationIdSchema,
@@ -439,6 +448,14 @@ export {
   type StepSequenceFacts,
   type StepView,
 } from "./onboarding/steps";
+export {
+  nextBlocker,
+  canArm,
+  SETUP_BLOCKERS,
+  type SetupBlocker,
+  type SetupBlockerId,
+  type SetupFacts,
+} from "./onboarding/blockers";
 export { toOnboardingCounterView } from "./onboarding/counter-view";
 export {
   buildPrivacyReceipt,
