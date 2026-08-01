@@ -133,6 +133,31 @@ export const NO_CHANNEL_CONNECTED: FirstRunGateRefusal = Object.freeze({
 });
 
 /**
+ * A test message asked for while the workspace is attached and no channel has
+ * been chosen (AD-4).
+ *
+ * DISTINCT FROM `NO_CHANNEL_CONNECTED`, and the distinction is the whole reason
+ * this constant exists. Connect-then-choose-later makes the mid-OAuth window
+ * precisely when somebody presses "Send a test message": the row is there, the
+ * token is real, `getActiveForOrg` returns it, and the only thing missing is the
+ * address. Telling that founder to "connect Slack first" sends them back through
+ * a consent screen they already completed and leaves them exactly where they
+ * were. So this names the one remaining act — choose a channel — and says why
+ * nothing was sent.
+ *
+ * 409 rather than 400: the request was fine, the organization's state is not
+ * ready for it, which is the same reading `NO_CHANNEL_CONNECTED` and
+ * `SECOND_CHANNEL` take.
+ */
+export const NO_CHANNEL_CHOSEN: FirstRunGateRefusal = Object.freeze({
+  code: "no_channel_chosen",
+  message:
+    "Slack is connected, but no channel has been chosen yet, so there was nowhere to send a " +
+    "message. Choose a channel, then try the test message.",
+  status: 409,
+});
+
+/**
  * This installation cannot open a delivery channel at all.
  *
  * DISTINCT FROM "nothing is connected". One is a customer who has not finished

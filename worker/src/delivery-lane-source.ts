@@ -23,6 +23,11 @@
 // There is nowhere for a caller to put one, which makes the cross-organization
 // post IMPOSSIBLE rather than merely forbidden.
 //
+// Since AD-4 that channel can be NULL — a workspace attached with no channel
+// chosen yet — so `listDueLanes` puts every organization through
+// `isDeliveryTarget` before a lane is built for it. Everything downstream of
+// that one call, this file's two channel reads included, sees a plain `string`.
+//
 // Every read below is org-scoped BY CONSTRUCTION: the only unscoped call is
 // `listOrgsWithActiveSlackConnection`, which is the population itself, and
 // every repository underneath it is built from a `TenantContext` derived from
@@ -56,9 +61,11 @@ import {
   createDeliveriesRepo,
   createFindingsRepo,
   createProjectsRepo,
+  isDeliveryTarget,
   isSignatureHex,
   signatureHex,
 } from "@growthmind/db";
+import type { DeliveryTarget } from "@growthmind/db";
 import type { SlackDeliveryOrganization } from "@growthmind/db/system";
 import {
   SYSTEM_ACTOR,
@@ -412,9 +419,16 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
    * is a lane with empty `candidates`, which the scheduler already names as
    * `no_findings_ready`, and collapsing the two would make a broken read
    * indistinguishable from a quiet product.
+   *
+   * THE PARAMETER TYPE IS THE AD-4 GUARD, not a comment about it. A
+   * `DeliveryTarget<SlackDeliveryOrganization>` is an organization whose channel
+   * `isDeliveryTarget` has already proven to be a string, so both channel reads
+   * below are plain string reads and neither needs a null check of its own. A
+   * future caller that has not consulted the guard cannot reach this function at
+   * all — the narrowing is the argument.
    */
   async function laneFor(
-    organization: SlackDeliveryOrganization,
+    organization: DeliveryTarget<SlackDeliveryOrganization>,
     ctx: TenantContext,
     projectId: string,
     at: Date,
@@ -444,6 +458,14 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
         // the SAME tuple the claim conflicts on, so "have we sent this?" is
         // asked of exactly the row the tick will write (D2 stamp/filter
         // symmetry).
+        //
+        // AND THIS IS WHY `findFor` STILL TAKES A `string` (AD-4, row 7). A null
+        // channel would not error here; it would match ZERO ROWS, so
+        // `isSpokenFor` returns false, the tick concludes the finding was never
+        // sent, and the customer receives it again every week — a dedup key
+        // forked by a null, with nothing in a log. The channel arrives already
+        // proven by this function's parameter type, so the failure is a compile
+        // error at the caller rather than silence here.
         const delivery = await deliveries.findFor(finding.id, organization.channelId);
 
         if (wasPostedInWindow(delivery, windowStart, at)) {
@@ -489,6 +511,27 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       const lanes: DeliveryLane[] = [];
 
       for (const organization of organizations) {
+        // AD-4, AND THE ONLY PLACE THIS TICK ANSWERS THE NULL CHANNEL. The
+        // population is "who has an active Slack installation", which since
+        // migration 0010 includes an organization mid-OAuth: a real bot token
+        // and no address yet. A lane is the thing that gets posted, so the
+        // narrowing happens HERE, before one is built — `DeliveryLane.channelId`
+        // stays `string` and "refuse to post" is a compile-time funnel rather
+        // than a runtime check somebody forgets at the next call site.
+        //
+        // `info`, NEVER `error`. A founder between consent and channel choice is
+        // mid-setup, not broken, and a tick that logged this as a fault would
+        // teach an operator to ignore the line that also reports a real one. The
+        // line exists because "this customer received nothing" must be
+        // answerable from the log rather than inferred from silence.
+        if (!isDeliveryTarget(organization)) {
+          deps.logger.info(
+            `delivery lane source: organization ${organization.organizationId} has a Slack ` +
+              `workspace attached and no channel chosen, so there is nowhere to deliver`,
+          );
+          continue;
+        }
+
         // The context build and the project list are BOTH inside the isolation,
         // and the context is built ONCE per organization. `systemContextFor`
         // parses through `tenantContextSchema` and can refuse — an organization

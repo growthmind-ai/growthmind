@@ -207,6 +207,16 @@ export {
   type SlackConnectionSummary,
   type InsertActiveSlackConnectionInput,
 } from "./repositories/slack-connections.repo";
+// AD-4's guard, and the reason `SlackConnectionSummary.channelId` could be
+// widened to `string | null` without every consumer quietly compiling against a
+// lie. It is exported from this barrel rather than from "./system" because both
+// the worker's lane source and the web app's test-post route consult it, and
+// the system subpath is deliberately unreachable from `apps/`.
+export {
+  isDeliveryTarget,
+  type ChannelBearingConnection,
+  type DeliveryTarget,
+} from "./services/delivery-channel-guard";
 // The AAD this table's credential is sealed under has EXACTLY ONE PRODUCER, and
 // it is re-exported here so every consumer reaches it through the barrel rather
 // than deep-importing the schema module. It takes a `TenantContext` and no

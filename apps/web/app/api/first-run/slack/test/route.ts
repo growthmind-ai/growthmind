@@ -35,7 +35,12 @@
 // `openCredentialForOrg`, nothing here holds a decrypted token, and the port
 // is the shipped `DeliveryPoster` rather than a second one built for this step
 // (AD-20, FR-O11's "no new poster").
-import { createSlackConnectionsRepo, ensureProject, findUserNameById } from "@growthmind/db";
+import {
+  createSlackConnectionsRepo,
+  ensureProject,
+  findUserNameById,
+  isDeliveryTarget,
+} from "@growthmind/db";
 import {
   describeTestPostOutcome,
   firstRunSlackTestInputSchema,
@@ -46,6 +51,7 @@ import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/dep
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
 import {
   CHANNEL_UNAVAILABLE,
+  NO_CHANNEL_CHOSEN,
   NO_CHANNEL_CONNECTED,
   refusalResponse,
 } from "@/lib/first-run/refusals";
@@ -70,6 +76,17 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   const connection = await createSlackConnectionsRepo(deps.db, gate.ctx).getActiveForOrg();
   if (connection === null) {
     return refusalResponse(NO_CHANNEL_CONNECTED);
+  }
+
+  // AD-4: THE ROW EXISTS AND THERE IS STILL NOWHERE TO POST. Since the OAuth
+  // path stores a bot token before a channel is chosen, `getActiveForOrg`
+  // returns a real connection during the whole mid-OAuth window — so the refusal
+  // above never fires for it, and without this one the address handed to the
+  // poster below is a null that interpolates into the four characters "null".
+  // The guard is the same predicate the delivery tick consults, and its type
+  // narrowing is what lets both reads below stay plain string reads.
+  if (!isDeliveryTarget(connection)) {
+    return refusalResponse(NO_CHANNEL_CHOSEN);
   }
 
   // "Nothing is connected" and "we cannot open what is connected" are
