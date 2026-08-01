@@ -1,18 +1,16 @@
-// The Slack renderer (O-007). Every test name is an INVARIANT — the message a
-// founder reads is the product's whole surface (product decisions §10), so
-// these are the rows the renderer is judged against, not a description of its
-// functions.
+// The Slack renderer. Every test name is an invariant. The message a founder reads is
+// the product's whole surface (product decisions), so these are the rows the renderer
+// is judged against, not a description of its functions.
 //
-// FIXTURE TIME IS INJECTED, ALWAYS. `Date.now()` and no-arg `new Date()` appear
-// nowhere here: a time-dependent test fails at 23:59 and looks exactly like a
-// genuine red state.
+// Fixture time is injected, always. `Date.now` and no-arg `new Date` appear nowhere
+// here: a time-dependent test fails at 23:59 and looks exactly like a genuine red
+// state.
 //
-// THE VOCABULARY IS A FIXTURE, AND ITS KEY SET IS ASSERTED. `packages/shared`
-// exposes one entry point, so this package cannot import
-// `src/delivery/messages.ts` directly — the renderer takes the vocabulary as an
-// argument. The fixture below is therefore hand-written English, and the first
-// test pins its key set against the SHARED enum, so a reason added upstream
-// fails here rather than rendering nothing.
+// The VOCABULARY is a fixture, and its key set is asserted. `packages/shared` exposes
+// one entry point, so this package cannot import `src/delivery/messages.ts` directly.
+// The renderer takes the vocabulary as an argument. The fixture below is therefore
+// hand-written English, and the first test pins its key set against the shared enum, so
+// a reason added upstream fails here rather than rendering nothing.
 import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
 import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
 import type { ExclusionReason, NothingTodayReason } from "@growthmind/shared";
@@ -37,7 +35,7 @@ import type {
   SlackMessageInput,
 } from "../../src/delivery/slack-message";
 
-// --- fixtures ---------------------------------------------------------------
+// -- fixtures
 
 const FIXTURE_WINDOW = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -55,7 +53,7 @@ const KEPT_BASIS: CountBasis = {
   setAside: [setAside("automation_known_agent", 9), setAside("internal_domain", 3)],
 };
 
-/** ES-7: every session set aside. `kept = 0`, and 0 + 31 + 9 === 40. */
+/** : every session set aside. `kept = 0`, and 0 + 31 + 9 === 40. */
 const ALL_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 0,
@@ -80,8 +78,8 @@ function observation(numerator: number, label = LABEL, basis = KEPT_BASIS): Obse
 
 /**
  * The shape `DELIVERY_VOCABULARY` in `packages/shared/src/delivery/messages.ts`
- * satisfies. Written out as a literal so the `Record<NothingTodayReason, …>`
- * type is what makes it total — a new reason is a COMPILE error here.
+ * satisfies. Written out as a literal so the `Record<NothingTodayReason, …>` type is
+ * what makes it total. A new reason is a compile error here.
  */
 const VOCABULARY: DeliveryVocabulary = {
   nothingTodayLead:
@@ -114,7 +112,7 @@ function deliver(overrides: {
   };
 }
 
-// --- the count sentence -----------------------------------------------------
+// -- the count sentence
 
 describe("renderCountSentence — a count never travels without its denominator", () => {
   test("renders a count with its denominator, never a bare number", () => {
@@ -128,9 +126,9 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("should not render a session count as a people count", () => {
-    // `../../src/counts/measured-count.ts:60-69` — identity stitching does not
-    // exist in this product, so "3 of 28" means 3 of 28 SESSIONS. The unit is a
-    // literal type on the count itself; this asserts the rendering obeys it.
+    // `../../src/counts/measured-count.ts:60-69`, identity stitching does not exist in
+    // this product, so "3 of 28" means 3 of 28 sessions. The unit is a literal type on
+    // the count itself; this asserts the rendering obeys it.
     const sentence = renderCountSentence(observation(3), VOCABULARY);
 
     expect(sentence).toContain("sessions");
@@ -140,9 +138,9 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("should not print 0% when every session in the window was set aside", () => {
-    // ES-7. A zero denominator is a real reportable state, so `rateOf` returns
-    // `no_rate` and this sentence says so — never "0%", never NaN, never a
-    // hidden divide.
+    // . A zero denominator is a real reportable state, so `rateOf` returns
+    // `no_rate` and this sentence says so, never "0%", never NaN, never a hidden
+    // divide.
     const sentence = renderCountSentence(observation(0, LABEL, ALL_SET_ASIDE_BASIS), VOCABULARY);
 
     expect(sentence).toBe(VOCABULARY.noRate);
@@ -152,8 +150,8 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("should not print 0% for a numerator that rounds to zero", () => {
-    // "3 of 900 sessions (0%)" reads as a rendering fault, and a founder who
-    // reads it stops trusting every number beside it.
+    // "3 of 900 sessions" reads as a rendering fault, and a founder who reads it
+    // stops trusting every number beside it.
     const basis: CountBasis = { totalInWindow: 900, kept: 900, setAside: [] };
     const sentence = renderCountSentence(observation(3, LABEL, basis), VOCABULARY);
 
@@ -176,7 +174,7 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 });
 
-// --- the deliver arm --------------------------------------------------------
+// -- the deliver arm
 
 describe("renderSlackMessage — the deliver arm", () => {
   test("renders the surface, the numbers, the written explanation and the window", () => {
@@ -195,11 +193,10 @@ describe("renderSlackMessage — the deliver arm", () => {
   });
 
   test("renders each count as its own sentence with its own denominator", () => {
-    // SAC-11 (`packages/shared/src/summary/messages.ts:23-61`): two clauses may
-    // be about the same SURFACE and never about the same sessions. Each line
-    // carries its own number, and this renderer inserts no connective between
-    // them — no "then", no "and then", no pronoun handing one count the other's
-    // behaviour.
+    // SAC-11 (`packages/shared/src/summary/messages.ts:23-61`): two clauses may be
+    // about the same surface and never about the same sessions. Each line carries its
+    // own number, and this renderer inserts no connective between them. No "then", no
+    // "and then", no pronoun handing one count the other's behaviour.
     const message = renderSlackMessage(
       deliver({
         observations: [observation(3), observation(5, "came back to this page more than once")],
@@ -220,9 +217,9 @@ describe("renderSlackMessage — the deliver arm", () => {
   });
 
   test("renders a complete message when no written explanation exists", () => {
-    // A `floor_*` source means "numbers only" — the finding is identical, only
-    // the prose is absent, and the message must still read as whole sentences
-    // rather than as a gap where a paragraph should be.
+    // A `floor_*` source means "numbers only". The finding is identical, only the prose
+    // is absent, and the message must still read as whole sentences rather than as a
+    // gap where a paragraph should be.
     const input: SlackMessageInput = {
       decision: "deliver",
       surfacePath: "/checkout/payment",
@@ -245,10 +242,10 @@ describe("renderSlackMessage — the deliver arm", () => {
   });
 
   test("drops model prose that calls sessions people and falls back to the numbers-only form", () => {
-    // FAIL DIRECTION, deliberately different from the label rule below: the
-    // finding is true and the prose is not, so we keep the finding and lose the
-    // prose. `floor_model_text_rejected` is the member that exists for exactly
-    // this — "generated, but did not pass our accuracy check".
+    // Fail direction, deliberately different from the label rule below: the finding is
+    // true and the prose is not, so we keep the finding and lose the prose.
+    // `floor_model_text_rejected` is the member that exists for exactly this.
+    // "generated, but did not pass our accuracy check".
     const input: SlackMessageInput = {
       decision: "deliver",
       surfacePath: "/checkout/payment",
@@ -270,9 +267,9 @@ describe("renderSlackMessage — the deliver arm", () => {
   });
 
   test("renders a customer's own path verbatim even when it contains a word our vocabulary bans", () => {
-    // The jargon list governs OUR English. A customer's page is theirs: a
-    // finding about a page we renamed is a finding nobody can act on, and the
-    // cohort-noun guard never scans a path for the same reason.
+    // The jargon list governs our English. A customer's page is theirs: a finding about
+    // a page we renamed is a finding nobody can act on, and the cohort-noun guard never
+    // scans a path for the same reason.
     const message = renderSlackMessage(
       deliver({ surfacePath: "/policy/users/step-2" }),
       VOCABULARY,
@@ -358,13 +355,13 @@ describe("renderSlackMessage — the deliver arm", () => {
   });
 });
 
-// --- refusals ---------------------------------------------------------------
+// -- refusals
 
 describe("renderSlackMessage — what it refuses to render", () => {
   test("refuses an observation label that describes sessions as people", () => {
-    // FAIL DIRECTION: refuse. A label is OUR OWN code's vocabulary, so one
-    // naming people would make every count it decorates a claim this product
-    // cannot support. That is a caller bug, not a model's word choice.
+    // Fail direction: refuse. A label is our own code's vocabulary, so one naming
+    // people would make every count it decorates a claim this product cannot support.
+    // That is a caller bug, not a model's word choice.
     expect(() =>
       renderSlackMessage(
         deliver({ observations: [observation(3, "users left without finishing")] }),
@@ -402,9 +399,9 @@ describe("renderSlackMessage — what it refuses to render", () => {
   });
 
   test("refuses a count that was not built with its denominator", () => {
-    // The brand check, from the untyped side: a structurally identical object
-    // literal is not a `MeasuredCount`, and the renderer must not be the place
-    // that first admits one.
+    // The brand check, from the untyped side: a structurally identical object literal
+    // is not a `MeasuredCount`, and the renderer must not be the place that first
+    // admits one.
     const untyped: unknown = {
       decision: "deliver",
       surfacePath: "/checkout/payment",
@@ -431,13 +428,13 @@ describe("renderSlackMessage — what it refuses to render", () => {
   });
 });
 
-// --- the nothing-today arm --------------------------------------------------
+// -- the nothing-today arm
 
 describe("renderSlackMessage — the nothing-today arm", () => {
   test("renders a real message for a quiet day, never an empty one", () => {
-    // `packages/shared/src/delivery/types.ts:16-32`: "we looked and there is
-    // nothing for you today" is a POSITIVE answer a customer is owed. An empty
-    // render would be the silence that union exists to prevent.
+    // `packages/shared/src/delivery/types.ts:16-32`: "we looked and there is nothing
+    // for you today" is a positive answer a customer is owed. An empty render would be
+    // the silence that union exists to prevent.
     for (const reason of nothingTodayReasonSchema.options) {
       const message = renderSlackMessage({ decision: "nothing_today", reason }, VOCABULARY);
 
@@ -458,17 +455,17 @@ describe("renderSlackMessage — the nothing-today arm", () => {
   });
 
   test("the fixture vocabulary is total over the reasons the shared enum declares", () => {
-    // Non-vacuity for every test above: if the shared union grows a member, the
-    // fixture is stale and this fails rather than a reason rendering nothing.
+    // Non-vacuity for every test above: if the shared union grows a member, the fixture
+    // is stale and this fails rather than a reason rendering nothing.
     expect(Object.keys(VOCABULARY.nothingToday).toSorted()).toEqual(
       [...nothingTodayReasonSchema.options].toSorted(),
     );
   });
 });
 
-// --- the cohort-noun gate ---------------------------------------------------
+// -- the cohort-noun gate
 
-describe("describesPeople — the D10 gate on prose that would re-label a session", () => {
+describe("describesPeople — the gate on prose that would re-label a session", () => {
   test("flags every cohort noun the exported list names", () => {
     expect(COHORT_NOUNS.length).toBeGreaterThan(0);
     for (const noun of COHORT_NOUNS) {
@@ -477,8 +474,8 @@ describe("describesPeople — the D10 gate on prose that would re-label a sessio
   });
 
   test("should not flag a word that merely contains a cohort noun", () => {
-    // Whole-word matching. A gate that fires on "superusers" or "reusable"
-    // would withhold true prose, and withholding is not free here.
+    // Whole-word matching. A gate that fires on "superusers" or "reusable" would
+    // withhold true prose, and withholding is not free here.
     for (const text of [
       "these sessions were reusable",
       "the superusers table was not read",
@@ -489,8 +486,8 @@ describe("describesPeople — the D10 gate on prose that would re-label a sessio
   });
 
   test("does not decide anything about a surface path", () => {
-    // Stated as a test rather than a comment: the renderer never routes a path
-    // through this gate, so a real `/users/profile` page renders untouched.
+    // Stated as a test rather than a comment: the renderer never routes a path through
+    // this gate, so a real `/users/profile` page renders untouched.
     expect(describesPeople("/users/profile")).toBe(true);
     expect(
       renderSlackMessage(deliver({ surfacePath: "/users/profile" }), VOCABULARY).text,

@@ -1,45 +1,42 @@
-// The String Assertion Contract, SAC-1…SAC-12 (O-005 D-11, FR-F9).
+// The String Assertion Contract, SAC-1…SAC-12.
 //
-// WHY THIS FILE EXISTS AT ALL, and it is not documentation. SAC-1…SAC-10 lived
-// only in `tasks/cold-start-analysis-lane/prd.md` and SAC-11 only in
-// `docs/adds/cold-start-analysis-lane.md`. BOTH ARE GITIGNORED. One `/prune-ai`
-// run, one `rm -rf tasks/`, and the rules governing the most customer-facing
-// string this product produces would have been gone with no trace in history.
-// Transcribing them into a git-tracked module is the whole point; the typed
-// partition below is what stops the transcription rotting.
+// Why this file exists at all, and it is not documentation. SAC-1…SAC-10 lived only in
+// `tasks/cold-start-analysis-lane/prd.md` and SAC-11 only in
+// `docs/adds/cold-start-analysis-lane.md`. Both are gitignored. One `/prune-ai` run,
+// one `rm -rf tasks/`, and the rules governing the most customer-facing string this
+// product produces would have been gone with no trace in history. Transcribing them
+// into a git-tracked module is the whole point; the typed partition below is what stops
+// the transcription rotting.
 //
-// THE RULE THE CONTRACT YIELDS, stated once so it survives paraphrase:
+// The rule the contract yields, stated once so it survives paraphrase:
 //
-//   The summary is a rendering of a proof. Every assertion in it must be
-//   traceable to a field on the `CandidateFinding` or to the gate's own reason
-//   table. A sentence that is true only on the path its author imagined is a
-//   false sentence on every other path, and it will ship.
+// The summary is a rendering of a proof. Every assertion in it must be traceable to a
+// field on the `CandidateFinding` or to the gate's own reason table. A sentence that is
+// true only on the path its author imagined is a false sentence on every other path,
+// and it will ship.
 //
-// WHY NOT `messages.ts`. The plain-English audit at
-// `packages/shared/__tests__/summary/messages.test.ts:79-97` derives its corpus
-// from that module's exported strings and objects-of-strings. The row prose
-// below uses "schema", "enum", "payload" and "null" — all on the jargon
-// denylist — so folding it in would fail an audit it is not a subject of. A
-// sibling module stays git-tracked, stays in `shared` (importable by `core` and
-// by a future worker), and keeps `messages.ts` the pure vocabulary layer.
+// Why not `messages.ts`. The plain-English audit at
+// `packages/shared/__tests__/summary/messages.test.ts:79-97` derives its corpus from
+// that module's exported strings and objects-of-strings. The row prose below uses
+// "schema", "enum", "payload" and "null" (all on the jargon denylist) so folding it in
+// would fail an audit it is not a subject of. A sibling module stays git-tracked, stays
+// in `shared` (importable by `core` and by a future worker), and keeps `messages.ts`
+// the pure vocabulary layer.
 //
-// THE PARTITION IS COMPILE-TOTAL. `UnenforcedSacId` is `Exclude<SacId,
-// EnforcedSacId>`, so a `SacId` that appears in neither record fails
-// `bun run typecheck` before any test runs. A row cannot quietly present as
-// enforced, and a row with no enforcing test cannot be written at all — the
-// tuple type below requires at least one citation.
+// The partition is compile-total. `UnenforcedSacId` is `Exclude<SacId, EnforcedSacId>`,
+// so a `SacId` that appears in neither record fails `bun run typecheck` before any test
+// runs. A row cannot quietly present as enforced, and a row with no enforcing test
+// cannot be written at all. The tuple type below requires at least one citation.
 //
-// NO ROW MAY FABRICATE A CITATION. ONE row honestly cannot cite a test: SAC-9
-// has no scanned generated text to make a claim about. Forcing a citation on it
-// would manufacture a false claim inside the one module whose entire purpose is
-// eliminating false claims — so it lives in `SAC_NOT_YET_ENFORCED`, naming why
-// and who inherits it.
+// No row may fabricate a citation. One row honestly cannot cite a test: SAC-9 has no
+// scanned generated text to make a claim about. Forcing a citation on it would
+// manufacture a false claim inside the one module whose entire purpose is eliminating
+// false claims, so it lives in `SAC_NOT_YET_ENFORCED`, naming why and who inherits it.
 //
-// SAC-10 MOVED, and the move is the point of the partition. O-011 builds the
-// per-project cap and the analysis tick that exhausts it, so the row that could
-// not cite a test in O-005 now cites the two that enforce it. A row leaves
-// `SAC_NOT_YET_ENFORCED` when its enforcing test exists — never before, and
-// never by rewording the reason it could not.
+// SAC-10 moved, and the move is the point of the partition. builds the per-project cap
+// and the analysis tick that exhausts it, so the row that could not cite a test in now
+// cites the two that enforce it. A row leaves `SAC_NOT_YET_ENFORCED` when its enforcing
+// test exists, never before, and never by rewording the reason it could not.
 
 /** Every row id in the contract. */
 export type SacId =
@@ -74,10 +71,10 @@ export const SAC_IDS: readonly SacId[] = [
 /**
  * A named test that enforces a row.
  *
- * `test` is the VERBATIM string passed to `test(...)`, and `file` is the
+ * `test` is the verbatim string passed to `test`, and `file` is the
  * workspace-relative path it lives in. Both are resolved mechanically by
- * `packages/shared/__tests__/summary/assertion-contract.test.ts` — a citation
- * naming a test that does not exist is a failure, never a skip.
+ * `packages/shared/__tests__/summary/assertion-contract.test.ts`. A citation naming a
+ * test that does not exist is a failure, never a skip.
  */
 export type EnforcingTest = { readonly test: string; readonly file: string };
 
@@ -95,14 +92,14 @@ export type EnforcedSacId =
   | "SAC-11"
   | "SAC-12";
 
-/** The partition is TOTAL by construction — this is derived, never written. */
+/** The partition is total by construction. This is derived, never written. */
 export type UnenforcedSacId = Exclude<SacId, EnforcedSacId>;
 
 export type EnforcedSacRow = {
   readonly id: EnforcedSacId;
   readonly mayAssert: string;
   readonly mayNotAssert: string;
-  /** Non-empty TUPLE — a row with no cited test is a COMPILE error. */
+  /** Non-empty tuple, a row with no cited test is a compile error. */
   readonly enforcedBy: readonly [EnforcingTest, ...EnforcingTest[]];
 };
 
@@ -110,7 +107,7 @@ export type UnenforcedSacRow = {
   readonly id: UnenforcedSacId;
   readonly mayAssert: string;
   readonly mayNotAssert: string;
-  /** Why no test can exist yet. Never "TODO" — the reason is the row's value. */
+  /** Why no test can exist yet. Never "TODO", the reason is the row's value. */
   readonly notEnforcedBecause: string;
   /** Who inherits the obligation, by outcome id. */
   readonly inheritedBy: string;
@@ -124,13 +121,13 @@ const ANALYSIS_TICK_TESTS = "worker/__tests__/tasks/analysis-tick.test.ts";
 /**
  * The structural proof SAC-11 rests on.
  *
- * SAC-11 claims the dropped and struggling cohorts are *provably* disjoint. That
- * claim is itself an assertion, so it carries its own citation: if the proof
- * test were renamed or deleted, "provably disjoint" would silently become an
- * unsupported claim inside the contract that forbids unsupported claims.
+ * SAC-11 claims the dropped and struggling cohorts are *provably* disjoint. That claim
+ * is itself an assertion, so it carries its own citation: if the proof test were
+ * renamed or deleted, "provably disjoint" would silently become an unsupported claim
+ * inside the contract that forbids unsupported claims.
  */
 export const SAC_11_DISJOINTNESS_PROOF: EnforcingTest = {
-  test: "D-2a — the dropped and struggling cohorts are structurally disjoint",
+  test: "the dropped and struggling cohorts are structurally disjoint",
   file: FUNNEL_TESTS,
 };
 

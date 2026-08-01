@@ -38,10 +38,10 @@ import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
 /**
- * The process-wide database pool and parsed environment, built on FIRST USE
- * rather than at import time. `taskList` is a module constant that tests and
- * the registry check import for its shape alone — constructing a pool the
- * moment this module is imported would open a socket for every one of them.
+ * The process-wide database pool and parsed environment, built on first use rather than
+ * at import time. `taskList` is a module constant that tests and the registry check
+ * import for its shape alone. Constructing a pool the moment this module is imported
+ * would open a socket for every one of them.
  */
 let resources: { db: ScopedDb; env: ServerEnv } | null = null;
 
@@ -53,8 +53,8 @@ function resolveResources(): { db: ScopedDb; env: ServerEnv } {
   return resources;
 }
 
-/** The two effects the delivery tick cannot construct for itself: which
- * projects are due, and — per organization — where to post. */
+/** The two effects the delivery tick cannot construct for itself: where to post (per
+ * organization), and which projects are due. */
 type DeliveryComposition = {
   posterFor: DeliveryPosterFor;
   lanes: DeliveryLaneSource;
@@ -189,67 +189,66 @@ async function resolveDeliveryComposition(): Promise<DeliveryComposition | null>
 }
 
 /**
- * The two effects the analysis tick cannot construct for itself: which projects
- * have gate-passed candidates waiting, and — only if this installation
- * configured one — the port that writes them up in plain English.
+ * The two effects the analysis tick cannot construct for itself: which projects have
+ * gate-passed candidates waiting, and (only if this installation configured one) the
+ * port that writes them up in plain English.
  */
 type AnalysisComposition = {
   /**
-   * `null` ⇒ NO WRITTEN-EXPLANATION CAPABILITY IS CONFIGURED HERE, and that is
-   * a decision this function takes rather than a failure anything catches
-   * (AD-15). `runAnalysisTick` accepts the null, selects `floor_no_key_configured`
-   * before it claims anything, and therefore makes ZERO model calls — see the
-   * header below for why the branch has to live at this end of the wire.
+   * `null` ⇒ no written-explanation capability is configured here, and that is a
+   * decision this function takes rather than a failure anything catches.
+   * `runAnalysisTick` accepts the null, selects `floor_no_key_configured` before it
+   * claims anything, and therefore makes zero model calls. See the header below for why
+   * the branch has to live at this end of the wire.
    */
   summariser: ConfiguredSummariser | null;
   lanes: AnalysisLaneSource;
 };
 
 /**
- * THE NO-KEY BRANCH. It lives at this end of the wire and nowhere else
- * (AD-15, FR-M12).
+ * The no-key branch. It lives at this end of the wire and nowhere else.
  *
- * `null` IFF `env.ANTHROPIC_API_KEY` is absent. That branch SELECTS the lane; it
- * never tries a port and swallows the failure. With no key there is no provider
- * constructed and no port passed, so a candidate reaches `floor_no_key_configured`
- * BEFORE the cap is claimed and the count of model calls attempted is
- * structurally zero — not zero because an error was caught, zero because nothing
- * was ever called. `packages/adapters/__tests__/anthropic/probe.test.ts:181-203`
- * is why it has to be this way round: `createAnthropic({})` does NOT throw
- * without a key, and neither does obtaining a model from it, so the absence would
- * otherwise surface as a failed call at the network edge — billed as a cap claim,
- * reported as `floor_model_call_failed`, and telling a self-hoster their model
- * call broke when in truth they simply never configured one.
+ * `null` iff `env.ANTHROPIC_API_KEY` is absent. That branch selects the lane; it never
+ * tries a port and swallows the failure. With no key there is no provider constructed
+ * and no port passed, so a candidate reaches `floor_no_key_configured` before the cap
+ * is claimed and the count of model calls attempted is structurally zero, not zero
+ * because an error was caught, zero because nothing was ever called.
+ * `packages/adapters/__tests__/anthropic/probe.test.ts:181-203` is why it has to be
+ * this way round: `createAnthropic` does not throw without a key, and neither does
+ * obtaining a model from it, so the absence would otherwise surface as a failed call at
+ * the network edge. Billed as a cap claim, reported as `floor_model_call_failed`, and
+ * telling a self-hoster their model call broke when in truth they simply never
+ * configured one.
  *
  * This is the self-host promise `packages/shared/src/env.ts:31-39` and
- * `.env.example:36-41` already made in writing: `docker compose up` from a clean
- * clone, with no key anywhere, must reach a working pipeline. Every finding still
- * ships, carrying its numbers, with no written explanation attached. A worker that
+ * `.env.example:36-41` already made in writing: `docker compose up` from a clean clone,
+ * with no key anywhere, must reach a working pipeline. Every finding still ships,
+ * carrying its numbers, with no written explanation attached. A worker that
  * crash-looped because no model key was configured would take the whole analysis
  * pipeline down over an optional feature.
  *
- * THE API KEY IS READ ONLY HERE. It is never logged, never persisted, never
- * echoed into an error message and never handed to the task body, which reads no
- * environment variable by any route. It travels exactly one function call, into
- * `createAnthropicModel` (`@growthmind/adapters`), which is where the SDK lives —
- * NO file under `worker/` may import `ai` or `@ai-sdk/anthropic` (ADD §9, task
- * 4.1), and passing the bare model id string instead would typecheck and then
- * resolve through the Vercel AI Gateway rather than Anthropic. What reaches a run
- * row is the resolved MODEL ID, which is configuration, not a credential.
+ * The API key is read only here. It is never logged, never persisted, never echoed into
+ * an error message and never handed to the task body, which reads no environment
+ * variable by any route. It travels exactly one function call, into
+ * `createAnthropicModel` (`@growthmind/adapters`), which is where the SDK lives. NO
+ * file under `worker/` may import `ai` or `@ai-sdk/anthropic`, and passing the bare
+ * model id string instead would typecheck and then resolve through the Vercel AI
+ * Gateway rather than Anthropic. What reaches a run row is the resolved model ID, which
+ * is configuration, not a credential.
  *
- * The model id is RESOLVED here and hardcoded nowhere (AD-3): configuration
- * first, then the one default that lives beside the adapter that speaks to the
- * vendor. The same resolved id goes to the provider, to the port, AND to the
- * lane beside the port, so the id a run row names is always the id the call
- * addressed — on every path, including the defensive one where the port throws
- * and no result comes back to read an id off. Returning the port alone is what
- * used to leave that path writing a null `resolved_model_id` beside a non-zero
- * `model_calls_attempted`, contradicting both columns' documented rule; the
- * pairing is `ConfiguredSummariser` and it exists so the two cannot separate.
+ * The model id is resolved here and hardcoded nowhere: configuration first, then the
+ * one default that lives beside the adapter that speaks to the vendor. The same
+ * resolved id goes to the provider, to the port, and to the lane beside the port, so
+ * the id a run row names is always the id the call addressed. On every path, including
+ * the defensive one where the port throws and no result comes back to read an id off.
+ * Returning the port alone is what used to leave that path writing a null
+ * `resolved_model_id` beside a non-zero `model_calls_attempted`, contradicting both
+ * columns' documented rule; the pairing is `ConfiguredSummariser` and it exists so the
+ * two cannot separate.
  *
- * `outputSchema` is core's, injected (AD-16). `packages/adapters` may never
- * import `packages/core`, so the anti-invention shape keeps one home and this is
- * the seam where the two meet.
+ * `outputSchema` is core's, injected. `packages/adapters` may never import
+ * `packages/core`, so the anti-invention shape keeps one home and this is the seam
+ * where the two meet.
  */
 function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
   const apiKey = env.ANTHROPIC_API_KEY;
@@ -270,20 +269,18 @@ function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
 }
 
 /**
- * Which projects have candidates to consider — THE WIRE, LANDED (O-012,
- * closing O-011 ADD AD-0 / R-9's TODO exactly where it said the change would
- * happen, and nowhere else).
+ * Which projects have candidates to consider. The wire, landed (closing add / R-9's
+ * TODO exactly where it said the change would happen, and nowhere else).
  *
- * `createAnalysisLaneSource` is the adapter this port waited for: every
- * project with an active connection, its corpus read over the producer's
- * trailing window, both T1 detectors run, every proposal through the evidence
- * gate, and the survivors assembled into one lane per project. From this line
- * on, the tick's graceful-absence log means "no projects connected" — never
- * "no producer written".
+ * `createAnalysisLaneSource` is the adapter this port waited for: every project with an
+ * active connection, its corpus read over the producer's trailing window, both T1
+ * detectors run, every proposal through the evidence gate, and the survivors assembled
+ * into one lane per project. From this line on, the tick's graceful-absence log means
+ * "no projects connected", never "no producer written".
  *
- * The logger here is the console pair rather than a Graphile helper because
- * this composition happens once per process, outside any task closure; the
- * per-tick logger the handler receives still carries every lane-level line.
+ * The logger here is the console pair rather than a Graphile helper because this
+ * composition happens once per process, outside any task closure; the per-tick logger
+ * the handler receives still carries every lane-level line.
  */
 function resolveAnalysisLanes(): AnalysisLaneSource | null {
   const { db } = resolveResources();
@@ -301,14 +298,14 @@ function resolveAnalysisLanes(): AnalysisLaneSource | null {
  * O-012 landed the producer this port was waiting for.
  *
  * The two halves are resolved independently above and they fail differently, on
- * purpose. A missing lane source means there is nothing to analyse and the tick
- * has no work at all. A missing API key means there is work and it will be done
- * — the deterministic floor writes every finding, carrying its numbers, with no
- * written explanation attached. Collapsing those into one "not configured" would
- * throw away the distinction the whole lane's vocabulary exists to keep.
+ * purpose. A missing lane source means there is nothing to analyse and the tick has no
+ * work at all. A missing API key means there is work and it will be done. The
+ * deterministic floor writes every finding, carrying its numbers, with no written
+ * explanation attached. Collapsing those into one "not configured" would throw away the
+ * distinction the whole lane's vocabulary exists to keep.
  *
- * The lane source is resolved FIRST so that an installation with nothing to
- * analyse never constructs a provider it would not use.
+ * The lane source is resolved first so that an installation with nothing to analyse
+ * never constructs a provider it would not use.
  *
  * ── THE `null` BRANCH IS UNREACHABLE TODAY, AND STAYS ANYWAY ────────────────
  * `resolveAnalysisLanes()` returns `createAnalysisLaneSource` unconditionally,
@@ -387,13 +384,13 @@ export const taskList: TaskList = {
     helpers.logger.info(heartbeatMessage(new Date()));
     return Promise.resolve();
   },
-  // THE ONLY QUEUE-AWARE LINE IN THE POLL PATH. Every effect the handler has
-  // — the clock, sleeping, the network, randomness, the logger — is assembled
-  // HERE and injected, which is what lets the wire proof drive the same plain
-  // function this closure calls, with fakes, and prove the chain end to end.
+  // The only queue-aware line in the poll path. Every effect the handler has. The
+  // clock, sleeping, the network, randomness, the logger. Is assembled here and
+  // injected, which is what lets the wire proof drive the same plain function this
+  // closure calls, with fakes, and prove the chain end to end.
   //
-  // There is no payload: the task is cron-triggered, and the handler derives
-  // its tenant scope from each claimed connection row instead (D-10).
+  // There is no payload: the task is cron-triggered, and the handler derives its tenant
+  // scope from each claimed connection row instead.
   [TASK.SESSION_SOURCE_POLL_SCHEDULE]: async (_payload, helpers) => {
     const { db, env } = resolveResources();
 
@@ -439,20 +436,20 @@ export const taskList: TaskList = {
       },
     });
   },
-  // THE ONLY QUEUE-AWARE LINE IN THE DELIVERY PATH, and the only place a
-  // concrete poster is ever chosen. The handler takes the poster and the lane
-  // source as ports, so this closure is where a vendor could be named and the
-  // task file is where it never can be.
+  // The only queue-aware line in the delivery path, and the only place a concrete
+  // poster is ever chosen. The handler takes the poster and the lane source as ports,
+  // so this closure is where a vendor could be named and the task file is where it
+  // never can be.
   //
-  // There is no payload: the task is cron-triggered, and each lane's tenant
-  // scope comes from the lane row the source read (D7).
+  // There is no payload: the task is cron-triggered, and each lane's tenant scope comes
+  // from the lane row the source read.
   [TASK.DELIVERY_TICK]: async (_payload, helpers) => {
     const composed = await resolveDeliveryComposition();
 
     if (composed === null) {
-      // Graceful absence, said out loud once per tick rather than swallowed. A
-      // silent return here would be indistinguishable from a lane that ran and
-      // found nothing — the one distinction this vocabulary exists to keep.
+      // Graceful absence, said out loud once per tick rather than swallowed. A silent
+      // return here would be indistinguishable from a lane that ran and found nothing.
+      // The one distinction this vocabulary exists to keep.
       helpers.logger.info(
         "delivery tick: no delivery channel is connected on this installation, so there is nothing to post",
       );
@@ -463,8 +460,8 @@ export const taskList: TaskList = {
 
     await runDeliveryTick({
       lanes: composed.lanes,
-      // The ledger, org-scoped per lane from the context the handler builds out
-      // of the lane row — never from a payload.
+      // The ledger, org-scoped per lane from the context the handler builds out of the
+      // lane row, never from a payload.
       deliveriesFor: (ctx) => createDeliveriesRepo(db, ctx),
       // The poster, resolved PER LANE from the lane's own context (AD-13) —
       // never one instance shared across organizations, because a Slack poster
@@ -475,23 +472,22 @@ export const taskList: TaskList = {
       logger: helpers.logger,
     });
   },
-  // THE ONLY QUEUE-AWARE LINE IN THE ANALYSIS PATH, and the only place a model
-  // vendor could ever be named. `runAnalysisTick` takes the lane source and the
-  // summariser as ports and imports neither `ai` nor `@ai-sdk/anthropic` — the
-  // whole SDK surface is reachable from `@growthmind/adapters` alone.
+  // The only queue-aware line in the analysis path, and the only place a model vendor
+  // could ever be named. `runAnalysisTick` takes the lane source and the summariser as
+  // ports and imports neither `ai` nor `@ai-sdk/anthropic`. The whole SDK surface is
+  // reachable from `@growthmind/adapters` alone.
   //
-  // There is no payload: the task is cron-triggered, and the handler reads none
-  // by any route — a stronger guarantee than parsing a value cron never sends,
-  // and the same shape both ticks above use. Each lane's tenant scope comes from
-  // the lane ROW the source read (D7), never from anything a caller supplies.
+  // There is no payload: the task is cron-triggered, and the handler reads none by any
+  // route. A stronger guarantee than parsing a value cron never sends, and the same
+  // shape both ticks above use. Each lane's tenant scope comes from the lane row the
+  // source read, never from anything a caller supplies.
   [TASK.ANALYSIS_TICK]: async (_payload, helpers) => {
     const composed = resolveAnalysisComposition();
 
     if (composed === null) {
-      // Graceful absence, said out loud once per tick rather than swallowed. A
-      // silent return here would be indistinguishable from a tick that ran and
-      // found no project due — the one distinction this lane's whole vocabulary
-      // exists to keep.
+      // Graceful absence, said out loud once per tick rather than swallowed. A silent
+      // return here would be indistinguishable from a tick that ran and found no
+      // project due. The one distinction this lane's whole vocabulary exists to keep.
       helpers.logger.info(
         "analysis tick: no analysis lane is wired on this installation, so there is nothing to check",
       );
@@ -534,51 +530,49 @@ export const taskList: TaskList = {
 };
 
 /**
- * Cron lines, one per scheduled task. `?fill` backfills runs missed while
- * the worker was down — the reason Graphile Worker was chosen: a skipped
- * rollup would otherwise be a permanent hole in a retention curve.
+ * Cron lines, one per scheduled task. `?fill` backfills runs missed while the worker
+ * was down. The reason Graphile Worker was chosen: a skipped rollup would otherwise be
+ * a permanent hole in a retention curve.
  *
- * The poll schedule carries NO `?fill`, deliberately. Its own claim is
- * time-based (`is_active AND next_poll_at <= now`), so a connection that went
- * unpolled while the worker was down is simply overdue and is claimed by the
- * next ordinary tick. Backfilling would queue a burst of redundant ticks that
- * the claim would immediately collapse into one anyway.
+ * The poll schedule carries NO `?fill`, deliberately. Its own claim is time-based
+ * (`is_active AND next_poll_at <= now`), so a connection that went unpolled while the
+ * worker was down is simply overdue and is claimed by the next ordinary tick.
+ * Backfilling would queue a burst of redundant ticks that the claim would immediately
+ * collapse into one anyway.
  *
- * `crontab` is MULTI-LINE from here on. The registry test parses it line by
- * line — if it ever stops handling that, extend the parser rather than
- * collapsing these back onto one line.
+ * `crontab` is multi-line from here on. The registry test parses it line by line. If it
+ * ever stops handling that, extend the parser rather than collapsing these back onto
+ * one line.
  */
 /**
- * The delivery tick carries NO `?fill` either, and for a sharper reason than
- * the poll's: a backfilled burst of delivery ticks is a burst of POSTS. The
- * lane's pacing (one open finding at a time, a weekly ceiling) would collapse
- * them, but the guarantee must not rest on that — a scheduler whose restraint
- * depends on a downstream check is one bug away from posting a week of findings
- * in a second. A tick missed while the worker was down means a finding goes out
- * fifteen minutes late, which is not a fact anybody can observe.
+ * The delivery tick carries NO `?fill` either, and for a sharper reason than the
+ * poll's: a backfilled burst of delivery ticks is a burst of posts. The lane's pacing
+ * (one open finding at a time, a weekly ceiling) would collapse them, but the guarantee
+ * must not rest on that. A scheduler whose restraint depends on a downstream check is
+ * one bug away from posting a week of findings in a second. A tick missed while the
+ * worker was down means a finding goes out fifteen minutes late, which is not a fact
+ * anybody can observe.
  *
- * Every fifteen minutes, not daily: the cadence is not the pacing. `decideDelivery`
- * is what decides whether anything goes out, and it is deliberately unaware of
- * the clock beyond the instant it is handed. A frequent tick only means a
- * finding reaches the founder promptly once the previous one is answered —
- * which is the product behaviour §7's backpressure is for, rather than a queue
- * that drains on a timetable.
+ * Every fifteen minutes, not daily: the cadence is not the pacing. `decideDelivery` is
+ * what decides whether anything goes out, and it is deliberately unaware of the clock
+ * beyond the instant it is handed. A frequent tick only means a finding reaches the
+ * founder promptly once the previous one is answered, which is the product behaviour
+ * the backpressure is for, rather than a queue that drains on a timetable.
  */
 /**
- * The analysis tick carries NO `?fill`, and here the reason stops being about
- * tidiness and starts being about money: A BACKFILLED BURST OF ANALYSIS TICKS IS
- * A BURST OF MODEL CALLS. Twelve hours of downtime would queue twelve ticks that
- * all fire at once, each one free to spend a project's whole cap, and the bill
- * for a worker restart is not a thing anybody should be able to run up by
- * accident. The per-project cap and the run row's single-writer index would
- * collapse most of that — but a spend ceiling that only holds because something
- * downstream collapsed a burst is not a ceiling, it is a coincidence, and it is
- * one bug away from being a real invoice.
+ * The analysis tick carries NO `?fill`, and here the reason stops being about tidiness
+ * and starts being about money: A backfilled burst of analysis ticks is a burst of
+ * model calls. Twelve hours of downtime would queue twelve ticks that all fire at once,
+ * each one free to spend a project's whole cap, and the bill for a worker restart is
+ * not a thing anybody should be able to run up by accident. The per-project cap and the
+ * run row's single-writer index would collapse most of that, but a spend ceiling that
+ * only holds because something downstream collapsed a burst is not a ceiling, it is a
+ * coincidence, and it is one bug away from being a real invoice.
  *
  * Hourly, not every fifteen minutes: a check that reads a window of sessions has
- * nothing new to say four times an hour, and every tick that finds nothing still
- * opens and closes a run. A tick missed while the worker was down means a
- * project is checked an hour late, which costs a founder nothing observable.
+ * nothing new to say four times an hour, and every tick that finds nothing still opens
+ * and closes a run. A tick missed while the worker was down means a project is checked
+ * an hour late, which costs a founder nothing observable.
  */
 export const crontab = [
   `*/15 * * * * ${TASK.HEARTBEAT} ?fill=1d`,

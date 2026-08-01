@@ -1,19 +1,18 @@
 import { z } from "zod";
 
 /**
- * The DTO boundary for a read credential (O-009, ADD D-1/D-2): metadata only.
+ * The DTO boundary for a read credential: metadata only.
  *
- * There is deliberately NO `keyHash` and no raw-material field. The repository
- * builds this shape as an explicit field-by-field pick, never a spread of the
- * persisted row — a `...row` spread would leak the digest through every list
- * and mint response with nothing else failing, so a named test asserts this
- * schema's exact key list.
+ * There is deliberately NO `keyHash` and no raw-material field. The repository builds
+ * this shape as an explicit field-by-field pick, never a spread of the persisted row. A
+ * `...row` spread would leak the digest through every list and mint response with
+ * nothing else failing, so a named test asserts this schema's exact key list.
  *
- * There is also deliberately no `projectId` (D-1). `write_keys` is dual-stamped
- * with an organisation AND a project because a write key addresses one
- * project's ingest; a read credential addresses one ORGANISATION's findings,
- * and `list_open_fixes` already takes an optional project argument that a
- * credential-borne project id would silently override or contradict.
+ * There is also deliberately no `projectId`. `write_keys` is dual-stamped with an
+ * organisation and a project because a write key addresses one project's ingest; a read
+ * credential addresses one organisation's findings, and `list_open_fixes` already takes
+ * an optional project argument that a credential-borne project id would silently
+ * override or contradict.
  */
 export const apiKeyMetadataSchema = z.object({
   id: z.string(),
@@ -21,7 +20,7 @@ export const apiKeyMetadataSchema = z.object({
   /** Operator-supplied label, so a person can tell two agents' keys apart. */
   name: z.string(),
   keyPrefix: z.string(),
-  /** Non-null means revoked — the resolver's `isNull` predicate reads this. */
+  /** Non-null means revoked, the resolver's `isNull` predicate reads this. */
   revokedAt: z.date().nullable(),
   createdAt: z.date(),
 });

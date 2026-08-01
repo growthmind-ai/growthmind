@@ -1,17 +1,16 @@
-// Service tests for `createEventsCounterService` — ADD §9 items 98–104.
+// Service tests for `createEventsCounterService`, items 98–104.
 //
-// This is the data path behind onboarding step 2's "events seen" counter.
-// O-008 builds the screen; every state that screen needs must be expressible
-// and distinguishable HERE, and every number must carry its denominator.
+// This is the data path behind onboarding step 2's "events seen" counter. builds the
+// screen; every state that screen needs must be expressible and distinguishable here,
+// and every number must carry its denominator.
 //
-// The counter is a HAND-WRITTEN AGGREGATION, so it must carry
-// `organization_id` itself rather than lean on a repository's auto-injection —
-// asserted below both by inspecting the query and by driving a second org
-// against the first org's project.
+// The counter is a hand-written aggregation, so it must carry `organization_id` itself
+// rather than lean on a repository's auto-injection. Asserted below both by inspecting
+// the query and by driving a second org against the first org's project.
 //
-// WAVE 0: `createEventsCounterService` is a typed stub that throws. Every test
-// below MUST fail with "TYPED STUB (O-003 scaffold)" — never a compile error,
-// a missing table, or a fixture collision.
+// Wave 0: `createEventsCounterService` is a typed stub that throws. Every test below
+// must fail with "typed stub (scaffold)", never a compile error, a missing table, or a
+// fixture collision.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -138,9 +137,9 @@ describe("createEventsCounterService", () => {
   });
 
   /**
-   * A mixed project: 3 kept events across 2 kept sessions, 2 events from the
-   * customer's own team, 1 from a headless browser, and 2 items the boundary
-   * parser could not read.
+   * A mixed project: 3 kept events across 2 kept sessions, 2 events from the customer's
+   * own team, 1 from a headless browser, and 2 items the boundary parser could not
+   * read.
    */
   async function seedMixedProject(label: string): Promise<CounterTarget> {
     const target = await seedConnectedProject(db, label, {
@@ -197,7 +196,7 @@ describe("createEventsCounterService", () => {
     return target;
   }
 
-  // --- item 98 -------------------------------------------------------------
+  // -- item 98
 
   test("totalReceived equals kept plus every set-aside reason plus droppedUnreadable", async () => {
     const target = await seedMixedProject("identity");
@@ -235,7 +234,7 @@ describe("createEventsCounterService", () => {
     expect(counter.setAside.map((row) => row.reason)).not.toContain("none");
   });
 
-  // --- item 99 -------------------------------------------------------------
+  // -- item 99
 
   test("a project with no attachment reads as not_connected", async () => {
     const ws = await seedWorkspace(db, "state-absent");
@@ -309,11 +308,11 @@ describe("createEventsCounterService", () => {
       ).state.status,
     ];
 
-    // All three read "0 events" — and all three mean something different.
+    // All three read "0 events", and all three mean something different.
     expect(new Set(statuses).size).toBe(3);
   });
 
-  // --- item 100 ------------------------------------------------------------
+  // -- item 100
 
   test("asOf is the completion time of the most recent SUCCESSFUL poll — not the newest event's time, and not now", async () => {
     const target = await seedConnectedProject(db, "as-of", {
@@ -348,7 +347,7 @@ describe("createEventsCounterService", () => {
       finishedAt: new Date("2026-07-30T11:00:00.000Z"),
       withEvents: true,
     });
-    // …and a LATER run failed at 11:30. A failed run is not an as-of.
+    // …and a later run failed at 11:30. A failed run is not an as-of.
     await recordRun(db, target, {
       kind: "failed",
       startedAt: new Date("2026-07-30T11:29:00.000Z"),
@@ -366,7 +365,7 @@ describe("createEventsCounterService", () => {
     expect(counter.asOf?.getTime()).toBeLessThan(before.getTime());
   });
 
-  // --- item 101 ------------------------------------------------------------
+  // -- item 101
 
   test("set-aside is broken down by reason, each row carrying the customer-facing label", async () => {
     const target = await seedMixedProject("breakdown-labels");
@@ -377,9 +376,9 @@ describe("createEventsCounterService", () => {
 
     expect(counter.setAside.length).toBeGreaterThan(0);
     for (const row of counter.setAside) {
-      // An invisible exclusion reads as a broken product: "the counter says 3
-      // but my analytics says 8". The reason has to be in the customer's own
-      // terms, on the same screen.
+      // An invisible exclusion reads as a broken product: "the counter says 3 but my
+      // analytics says 8". The reason has to be in the customer's own terms, on the
+      // same screen.
       expect(row.label).toBe(EXCLUSION_REASON_LABELS[row.reason]);
       expect(row.label.length).toBeGreaterThan(0);
     }
@@ -392,12 +391,12 @@ describe("createEventsCounterService", () => {
       target.connection.projectId,
     );
 
-    // One kept session had an unresolved identity. The headless session's
-    // identity was `absent` — a COMPLETED lookup proving no email, which is a
-    // fact, not a gap — and it was set aside anyway.
+    // One kept session had an unresolved identity. The headless session's identity was
+    // `absent`. A completed lookup proving no email, which is a fact, not a gap, and it
+    // was set aside anyway.
     expect(counter.keptIdentityUnverified).toBe(1);
-    // Reported SEPARATELY: "we could not check" is never laundered into the
-    // kept total, and never subtracted from it either.
+    // Reported separately: "we could not check" is never laundered into the kept total,
+    // and never subtracted from it either.
     expect(counter.keptIdentityUnverified).toBeLessThanOrEqual(counter.kept);
   });
 
@@ -446,7 +445,7 @@ describe("createEventsCounterService", () => {
     expect(counter.setAside.length).toBeGreaterThanOrEqual(2);
   });
 
-  // --- item 102 ------------------------------------------------------------
+  // -- item 102
 
   test("the window is named explicitly, never implied", async () => {
     const target = await seedMixedProject("window");
@@ -467,8 +466,8 @@ describe("createEventsCounterService", () => {
       target.connection.projectId,
     );
 
-    // `kept` on its own is a number nobody can act on. It only means anything
-    // beside the total it came out of.
+    // `kept` on its own is a number nobody can act on. It only means anything beside
+    // the total it came out of.
     expect(counter.totalReceived).toBeGreaterThanOrEqual(counter.kept);
     expect(counter.totalReceived).toBeGreaterThanOrEqual(sumSetAside(counter));
     expect(counter.totalReceived).toBeGreaterThanOrEqual(counter.droppedUnreadable);
@@ -490,13 +489,13 @@ describe("createEventsCounterService", () => {
     ];
 
     for (const value of strings) {
-      // No overlap window can make a poll on client-declared event time
-      // complete, so we never say "live".
+      // No overlap window can make a poll on client-declared event time complete, so we
+      // never say "live".
       expect(value).not.toMatch(/\blive\b/i);
     }
   });
 
-  // --- item 103 ------------------------------------------------------------
+  // -- item 103
 
   test("the aggregation names the organization itself rather than relying on auto-injection", () => {
     const source = readFileSync(
@@ -511,8 +510,8 @@ describe("createEventsCounterService", () => {
       "utf8",
     );
 
-    // An aggregation that establishes tenancy by joining is one refactor away
-    // from establishing none. This one has to say the org out loud.
+    // An aggregation that establishes tenancy by joining is one refactor away from
+    // establishing none. This one has to say the org out loud.
     expect(source).toContain("ctx.organizationId");
   });
 
@@ -531,7 +530,7 @@ describe("createEventsCounterService", () => {
     expect(counter.droppedUnreadable).toBe(0);
   });
 
-  // --- item 104 ------------------------------------------------------------
+  // -- item 104
 
   test("a project with zero connections is the not_connected state, distinct from a counted zero", async () => {
     const absent = await seedWorkspace(db, "zero-connections");

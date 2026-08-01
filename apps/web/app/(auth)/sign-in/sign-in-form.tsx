@@ -9,18 +9,18 @@ import { useState, type FormEvent } from "react";
 import { signIn } from "@/lib/auth-client";
 import { ROUTES } from "@/lib/routes";
 
-// Copy is normative (UX spec §3, First-Run Checklist row 8) — shipped
-// verbatim. Never surface a raw Zod message or a Better Auth error code.
+// Copy is normative (UX spec, First-Run Checklist row 8). Shipped verbatim. Never
+// surface a raw Zod message or a Better Auth error code.
 const PENDING_LABEL = "Signing you in…";
 const CREDENTIAL_MISMATCH_MESSAGE = "That email and password don't match — try again?";
 const NETWORK_FAILURE_MESSAGE = "Couldn't reach the server — check your connection and try again.";
 
 /**
- * Better Auth's `/sign-in/email` route throws the SAME code —
- * `INVALID_EMAIL_OR_PASSWORD` — whether the email is unknown or the
- * password is wrong (verified in `better-auth`'s `sign-in.mjs`), which is
- * exactly the "never reveal which was wrong" contract this form must honor.
- * Read defensively via `unknown`, mirroring `sign-up-form.tsx`'s helper.
+ * Better Auth's `/sign-in/email` route throws the same code
+ * (`INVALID_EMAIL_OR_PASSWORD`) whether the email is unknown or the password is wrong
+ * (verified in `better-auth`'s `sign-in.mjs`), which is exactly the "never reveal which
+ * was wrong" contract this form must honor. Read defensively via `unknown`, mirroring
+ * `sign-up-form.tsx`'s helper.
  */
 function readErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") {
@@ -49,8 +49,8 @@ export function SignInForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isPending) {
-      // Belt: the button + fields are also disabled while pending, so this
-      // guards only a synthetic/programmatic re-submit.
+      // Belt: the button + fields are also disabled while pending, so this guards only
+      // a synthetic/programmatic re-submit.
       return;
     }
 
@@ -60,9 +60,9 @@ export function SignInForm() {
 
     const parsed = signInSchema.safeParse({ email, password });
     if (!parsed.success) {
-      // Client-side presence/format validation only — never the
-      // wrong-credential case, so field-level display here does not
-      // violate the "never reveal which was wrong" rule.
+      // Client-side presence/format validation only, never the wrong-credential case,
+      // so field-level display here does not violate the "never reveal which was wrong"
+      // rule.
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
         if (field === "email") {
@@ -90,10 +90,10 @@ export function SignInForm() {
       if (code === "INVALID_EMAIL_OR_PASSWORD") {
         setFormError(CREDENTIAL_MISMATCH_MESSAGE);
       } else {
-        // Unknown/malformed failure and genuine network failure land on the
-        // same plain-English message — neither a raw message nor a code
-        // ever reaches the screen, and the credential message is reserved
-        // for the exact case Better Auth confirms is a credential mismatch.
+        // Unknown/malformed failure and genuine network failure land on the same
+        // plain-English message. Neither a raw message nor a code ever reaches the
+        // screen, and the credential message is reserved for the exact case Better Auth
+        // confirms is a credential mismatch.
         setFormError(NETWORK_FAILURE_MESSAGE);
       }
     } catch {
@@ -109,6 +109,7 @@ export function SignInForm() {
         <TextInput
           label="Email"
           type="email"
+          size="md"
           value={email}
           onChange={(event) => setEmail(event.currentTarget.value)}
           error={emailError}
@@ -117,6 +118,7 @@ export function SignInForm() {
         />
         <PasswordInput
           label="Password"
+          size="md"
           value={password}
           onChange={(event) => setPassword(event.currentTarget.value)}
           error={passwordError}
@@ -128,17 +130,16 @@ export function SignInForm() {
             {formError}
           </Text>
         ) : null}
-        <Button type="submit" fullWidth loading={isPending}>
+        <Button type="submit" size="md" fullWidth loading={isPending}>
           {isPending ? PENDING_LABEL : "Sign in"}
         </Button>
+        {/* The open-source imprint moved to the route group's layout — it
+            belongs to both pages, and one copy is one place to change it. */}
         <Text size="sm" ta="center">
           New here?{" "}
           <Anchor component={Link} href={ROUTES.signUp}>
             Create an account
           </Anchor>
-        </Text>
-        <Text size="xs" c="dimmed" ta="center">
-          Growthmind is open source — github.com/growthmind-ai/growthmind
         </Text>
       </Stack>
     </form>

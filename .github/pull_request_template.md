@@ -22,11 +22,21 @@ what is the self-host path or graceful absence?
 ## Tests
 
 <!-- Pure logic (extractors, scorers, resolvers, diff utilities) ships with
-unit tests — point at them. If there is deliberately no test, say why. -->
+unit tests, point at them. If there is deliberately no test, say why. -->
+
+## How this was built
+
+<!-- If a coding agent wrote part of this, say which and roughly how much
+(CONTRIBUTING.md, AI-assisted contributions). It tells a reviewer where to look
+hardest. You are responsible for the whole diff either way. Delete this section
+if you wrote it all by hand. -->
 
 ## Checklist
 
 - [ ] `bun run check` passes locally (typecheck + lint + format + test + build)
+- [ ] I ran the change, not just the tests (.agents/skills/verify-a-change)
 - [ ] No product decision in docs/product-decisions.md is violated
 - [ ] Customer-facing strings are plain English; counts carry denominators
 - [ ] New dependencies had their LICENSE read (docs/stack.md, standing rules)
+- [ ] Edge cases swept for the surfaces this touches (.agents/skills/edge-sweep);
+      anything handled-but-untested is named above

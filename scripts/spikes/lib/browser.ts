@@ -1,7 +1,7 @@
-// Recording-leg browser automation (ADD D-2, §4 file 9). Impure shell:
-// `existsSync` probes and `Bun.spawn` live here and ONLY here — the trial
-// loop owns all decision logic (marker matching, outcome classification).
-// `process.env` is never read in this module; the entrypoint passes env in.
+// Recording-leg browser automation (file 9). Impure shell: `existsSync` probes and
+// `Bun.spawn` live here and only here. The trial loop owns all decision logic (marker
+// matching, outcome classification). `process.env` is never read in this module; the
+// entrypoint passes env in.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,10 +53,10 @@ function windowsCandidates(env: Record<string, string | undefined>): string[] {
 }
 
 /**
- * Locates a Chromium-family browser executable (ADD D-2 step 2).
- * Order: `CHROME_PATH` override (if set AND the file exists), then well-known
- * Windows / macOS / Linux install paths. Returns the first existing path, or
- * null — the caller (recording leg) decides whether null means manual mode.
+ * Locates a Chromium-family browser executable (add step 2). Order: `CHROME_PATH`
+ * override (if set and the file exists), then well-known Windows / macOS / Linux
+ * install paths. Returns the first existing path, or null. The caller (recording leg)
+ * decides whether null means manual mode.
  */
 export function findBrowser(env: Record<string, string | undefined>): string | null {
   const override = env[ENV_VARS.CHROME_PATH];
@@ -79,11 +79,11 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Runs one headless-browser recording trial (ADD D-2 step 3): fresh temp
- * user-data-dir (fresh posthog-js session → one recording per trial), spawn,
- * let the page run `durationMs`, hard kill. Never throws — spawn failures come
- * back as `{ ok: false, reason }`; cleanup failures (Windows file locks) are
- * swallowed. No classification here — the trial loop owns outcomes.
+ * Runs one headless-browser recording trial (add step 3): fresh temp user-data-dir
+ * (fresh posthog-js session → one recording per trial), spawn, let the page run
+ * `durationMs`, hard kill. Never throws, spawn failures come back as `{ ok: false,
+ * reason }`; cleanup failures (Windows file locks) are swallowed. No classification
+ * here, the trial loop owns outcomes.
  */
 export async function runRecordingTrial(
   browserPath: string,
@@ -118,7 +118,7 @@ export async function runRecordingTrial(
     try {
       proc.kill();
     } catch {
-      // Already exited — the point was that it stops; nothing to do.
+      // Already exited, the point was that it stops; nothing to do.
     }
     try {
       await proc.exited;
@@ -132,7 +132,7 @@ export async function runRecordingTrial(
     try {
       rmSync(userDataDir, { recursive: true, force: true });
     } catch {
-      // Best-effort cleanup — Windows file locks can hold the profile dir.
+      // Best-effort cleanup, Windows file locks can hold the profile dir.
     }
   }
 }

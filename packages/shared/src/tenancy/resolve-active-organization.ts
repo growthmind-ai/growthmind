@@ -1,11 +1,10 @@
 import type { Membership } from "./context";
 
 /**
- * OQ-4 rule (ADD D-C): the session's active organization if it matches a
- * live membership; otherwise the oldest membership by `createdAt`, tie-broken
- * by organization id (deterministic); otherwise `null` (the self-heal
- * trigger state — zero memberships). Session state is a hint; persisted
- * membership is the truth (D4).
+ * OQ-4 rule: the session's active organization if it matches a live membership;
+ * otherwise the oldest membership by `createdAt`, tie-broken by organization id
+ * (deterministic); otherwise `null` (the self-heal trigger state. Zero memberships).
+ * Session state is a hint; persisted membership is the truth.
  *
  * Pure. Implemented in a later wave against the test names in
  * `packages/shared/__tests__/tenancy/resolve-active-organization.test.ts`.

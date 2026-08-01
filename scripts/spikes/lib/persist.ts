@@ -1,9 +1,8 @@
-// Impure shell: incremental atomic persistence of the run file (ADD D-6, §4 file 11).
-// One file per run under gitignored local/spikes/; rewritten atomically after
-// EVERY trial so a crash preserves completed trials. Writes only RunFile-typed
-// data — credentials cannot reach disk by construction (RunMetadata carries a
-// host region string only). No filesystem effect happens at module load; only
-// save() touches disk.
+// Impure shell: incremental atomic persistence of the run file (file 11). One file per
+// run under gitignored local/spikes/; rewritten atomically after every trial so a crash
+// preserves completed trials. Writes only RunFile-typed data. Credentials cannot reach
+// disk by construction (RunMetadata carries a host region string only). No filesystem
+// effect happens at module load; only save touches disk.
 
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -28,14 +27,14 @@ function errorCode(err: unknown): string | undefined {
 }
 
 /**
- * Fix the run file's target path from the run's start timestamp (colons are
- * not filename-safe on Windows → dashes) and return an atomic saver.
+ * Fix the run file's target path from the run's start timestamp (colons are not
+ * filename-safe on Windows → dashes) and return an atomic saver.
  *
- * save() ensures `local/spikes/` exists, serialises the RunFile with 2-space
- * indentation, writes to `<path>.tmp`, then renames over `<path>`. On Windows
- * a rename over an existing file can throw EEXIST/EPERM — in that case the
- * target is unlinked and the rename retried. Genuine fs failures propagate to
- * the caller (the entrypoint decides how to surface them).
+ * save ensures `local/spikes/` exists, serialises the RunFile with 2-space indentation,
+ * writes to `<path>.tmp`, then renames over `<path>`. On Windows a rename over an
+ * existing file can throw eexist/eperm. In that case the target is unlinked and the
+ * rename retried. Genuine fs failures propagate to the caller (the entrypoint decides
+ * how to surface them).
  */
 export function createRunPersister(runStartedAtIso: string): RunPersister {
   const fileSafeIso = runStartedAtIso.replaceAll(":", "-");

@@ -2,7 +2,7 @@
 
 > The smallest product that produces the moment worth building everything else for:
 > **break your own product, and within seconds watch Growthmind tell you what
-> happened — with evidence.** This document is the cut line. Everything in
+> happened, with evidence.** This document is the cut line. Everything in
 > [`architecture.md`](architecture.md) still governs _how_ the pieces are built;
 > this document decides _which_ pieces exist first and which deliberately do not.
 > A deviation from [`product-decisions.md`](product-decisions.md) is only allowed
@@ -51,7 +51,7 @@ Step 5 is the demo of the product; steps 1–4 are the product being honest abou
 what it needs. If any step takes more than a couple of minutes, that step is a
 bug.
 
-## 3. The gating spike — run before anything is built
+## 3. The gating spike, run before anything is built
 
 The 5–20 second promise is the riskiest assumption in this document, and it is
 testable in an afternoon:
@@ -65,29 +65,29 @@ The decision tree it feeds:
 
 - **Events retrievable in seconds** → build on the PostHog adapter as planned.
   The summary ships from _events_ (failed request, error, rage click); the
-  replay clip follows later if and when the recording lands — the finding does
+  replay clip follows later if and when the recording lands. The finding does
   not wait for the clip, exactly as T-4 in the architecture already allows.
 - **Events take minutes** → the glue moment cannot ride the pull adapter. Fall
   back to a minimal first-party capture path (rrweb events-only, no replay) for
   the onboarding moment, keeping PostHog as the historical/backfill source.
   This is the only scenario in which the MVP builds capture code.
 
-Either way the `SessionSource` port is the boundary — the spike changes which
+Either way the `SessionSource` port is the boundary. The spike changes which
 implementation ships first, never the shape of the pipeline behind it.
 
 ## 4. What is in, what is out
 
-**In — and not thinned, because they are the product's identity:**
+**In, and not thinned, because they are the product's identity:**
 
-- **Evidence gate** (D-3). A summary without deterministic proof predicates is an
+- **Evidence gate**. A summary without deterministic proof predicates is an
   AI narrating a session, which §6 exists to prevent. Pure functions, cheap,
   non-negotiable.
-- **Signature ledger** (D-2). Two tables and a hash. Never-twice and
+- **Signature ledger**. Two tables and a hash. Never-twice and
   dismissed-forever must be true from the first finding, or early testers see
   the same finding twice and the credibility the MVP exists to test is gone.
-- **Delivery scheduler** (D-4), minimal: one open finding, nothing-today state.
+- **Delivery scheduler**, minimal: one open finding, nothing-today state.
   The token bucket can start as a constant.
-- **Slack renderer** with the legibility budget — plain English, denominators,
+- **Slack renderer** with the legibility budget. Plain English, denominators,
   no product jargon (§10).
 - **Cold-start synchronous lane** (T-1) as the _only_ analysis lane. The MVP is
   permanently cold-start; the Batch lane arrives with scale, not before.
@@ -102,16 +102,16 @@ implementation ships first, never the shape of the pipeline behind it.
 
 - **Surfaces are URL paths**, not code-derived nodes. Good enough for signatures
   and for addressing findings; the ts-morph derivation replaces it later without
-  changing the signature scheme (surface-id ancestry, D-2, absorbs the swap).
+  changing the signature scheme (surface-id ancestry, absorbs the swap).
 - **Exclusions run at the adapter**, not at capture, because capture is
   PostHog's. Internal-domain and bot filtering happen on pull, with the same
-  declared fail directions (§4 / D-1 of the architecture). The free-mail guard
+  declared fail directions (§4 / of the architecture). The free-mail guard
   on domain inference applies from day one.
 - **T1 detection on events only:** failed requests, error events, rage clicks,
   dead clicks, funnel drop-off on path transitions. No recording analysis in
   the scoring tier.
 
-**Out — with the milestone that brings each back:**
+**Out, with the milestone that brings each back:**
 
 | Cut                                                                     | Returns in                                                                   |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -141,7 +141,7 @@ PostHog (their project)
 
 One port, one implementation. `SessionSource` is defined in `packages/adapters`
 exactly as §4.3 specifies; PostHog is its only implementation until a customer
-forces a second. No adapter registry, no plugin machinery — the interface
+forces a second. No adapter registry, no plugin machinery, the interface
 existing is what protects extensibility, and a speculative second implementation
 is just maintenance.
 
@@ -156,14 +156,14 @@ Thinning scope does not thin these:
   never posts two.
 - **§5 PII:** PostHog masking config is verified during onboarding step 2.
   Generated finding text must pass the residual scanner before it is pushed or
-  posted — **a requirement the MVP has not met yet.** O-011 ships the first
+  posted, **a requirement the MVP has not met yet.** ships the first
   model-written text and guards it for assertion accuracy, not for residual
   personal data; wiring `scanResidualPii` over that text is SAC-9's promotion and
   is owed before delivery goes live. No recording clip ships in the MVP, which
   shrinks this surface to text.
-- **§10 language:** plain English, no jargon, counts with denominators — in the
+- **§10 language:** plain English, no jargon, counts with denominators, in the
   onboarding push and the Slack message equally.
-- **§11 source of truth:** the MVP is _born_ compliant — it runs entirely off a
+- **§11 source of truth:** the MVP is _born_ compliant. It runs entirely off a
   third-party source and stores only derived state.
 - **§12 cost:** the synchronous lane has a hard per-project cap, exactly as T-1
   specifies. The MVP never runs a model over every event.
@@ -176,13 +176,13 @@ Three, each scoped and with an expiry:
    non-dashboard rule, scoped to first-run: the surface appears during
    onboarding only, is never linkable back to, and holds no history. Expiry:
    never expands; anything resembling a findings list in the app is a design
-   bug per D-6.
+   bug per.
 2. **Findings are pushed to a screen before Slack is verified.** If Slack
    connection (step 3) is skipped, the onboarding moment still works, but the
    product states plainly that nothing further will arrive until Slack is
-   connected — an honest degraded mode, not a silent one.
+   connected, an honest degraded mode, not a silent one.
 3. **No taxonomy means §2/§3 are dormant** (events tied to code lines, drift
-   detection). Dormant, not violated — PostHog event names are used as-is and
+   detection). Dormant, not violated, PostHog event names are used as-is and
    never re-authored, so no second source of truth is created. Expiry: M1
    proper.
 4. **The 5–20 second promise is withdrawn and replaced by a measured bar.**

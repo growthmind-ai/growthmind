@@ -1,37 +1,33 @@
 #!/usr/bin/env bun
 /**
- * Revokes one read credential, and lists them so you can find the one to
- * revoke (O-009 FR-17, ADD D-10).
+ * Revokes one read credential, and lists them so you can find the one to revoke.
  *
- * READS AND WRITES A REAL DATABASE. NO NETWORK BEYOND IT, NO MODEL.
+ * Reads and writes a real database. No network beyond it, no model.
  *
- * THIN BY CONSTRUCTION, exactly as `mint-api-key.ts` is, and gated by the same
- * committed source scan (`packages/db/__tests__/admin/reachability.test.ts`,
- * "CLI purity"): no random material, no digest, no query builder, no
- * `drizzle-orm` import. Revocation is one `UPDATE … RETURNING` inside
- * `createApiKeysRepo`, keyed on `(organisation, key id)`, so a foreign or
- * nonexistent id matches zero rows and comes back `null` — nothing revoked,
- * nothing mutated, and this script reports exactly that and exits non-zero. A
- * zero-row write reported as success is the class O-006's retro named
- * CRITICAL.
+ * Thin by construction, exactly as `mint-api-key.ts` is, and gated by the same
+ * committed source scan (`packages/db/__tests__/admin/reachability.test.ts`, "CLI
+ * purity"): no random material, no digest, no query builder, no `drizzle-orm` import.
+ * Revocation is one `UPDATE … RETURNING` inside `createApiKeysRepo`, keyed on
+ * `(organisation, key id)`, so a foreign or nonexistent id matches zero rows and comes
+ * back `null`. Nothing revoked, nothing mutated, and this script reports exactly that
+ * and exits non-zero. A zero-row write reported as success is the class the retro named
+ * critical.
  *
- * REVOCATION IS LIVE ON THE VERY NEXT REQUEST. Nothing caches a resolved
- * credential, by requirement (ADD D-11): the read path looks the digest up on
- * every presentation, and the revocation filter shares one predicate with it.
+ * Revocation is live on the very next request. Nothing caches a resolved credential, by
+ * requirement: the read path looks the digest up on every presentation, and the
+ * revocation filter shares one predicate with it.
  *
- * THERE IS NO GUARD ON REVOKING YOUR LAST KEY (OQ-5). If you are here because
- * a key leaked, blocking the response to protect uptime is the wrong default.
+ * There is no guard on revoking your last key. If you are here because a key
+ * leaked, blocking the response to protect uptime is the wrong default.
  *
- * SEPARATE FILE FROM MINTING ON PURPOSE: the destructive verb has its own
- * filename, so it can never be reached by a typo in a flag on the mint path.
+ * Separate file from minting on purpose: the destructive verb has its own filename, so
+ * it can never be reached by a typo in a flag on the mint path.
  *
- * Usage:
- *   bun scripts/revoke-api-key.ts --list
- *   bun scripts/revoke-api-key.ts --key-id <id>
- *   bun scripts/revoke-api-key.ts --key-id <id> --org <id-or-slug>
+ * Usage: bun scripts/revoke-api-key.ts --list bun scripts/revoke-api-key.ts --key-id
+ * <id> bun scripts/revoke-api-key.ts --key-id <id> --org <id-or-slug>
  */
-// Imported by RELATIVE PATH — see the note in `mint-api-key.ts`. `scripts/` is
-// the one caller allowed to reach the "./admin" subpath (ADD D-9).
+// Imported by relative path. See the note in `mint-api-key.ts`. `scripts/` is the one
+// caller allowed to reach the "./admin" subpath.
 import {
   resolveOrganizationForCli,
   type AdminOrganizationCandidate,
@@ -103,9 +99,9 @@ function write(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-/** This script's own candidate printer — duplicated from `mint-api-key.ts` by
- * decision (ADD D-10), so neither script imports the other and neither puts
- * operator-facing presentation inside `packages/db`. */
+/** This script's own candidate printer. Duplicated from `mint-api-key.ts` by decision,
+ * so neither script imports the other and neither puts operator-facing presentation
+ * inside `packages/db`. */
 function printCandidates(candidates: readonly AdminOrganizationCandidate[]): void {
   for (const candidate of candidates) {
     const owner = candidate.ownerEmail ?? "no owner";
@@ -175,8 +171,8 @@ async function main(): Promise<number> {
 
     const organisation = resolved.organization;
 
-    // The same real owner context a signed-in request builds. No system or
-    // bypass actor exists in this path, and none is imported.
+    // The same real owner context a signed-in request builds. No system or bypass actor
+    // exists in this path, and none is imported.
     const ctx = tenantContextSchema.parse({
       userId: organisation.ownerUserId,
       organizationId: organisation.id,
@@ -202,16 +198,15 @@ async function main(): Promise<number> {
       return 0;
     }
 
-    // `--key-id` is guaranteed present here by the check above; the local keeps
-    // that obvious to a reader rather than relying on it.
+    // `--key-id` is guaranteed present here by the check above; the local keeps that
+    // obvious to a reader rather than relying on it.
     const keyId = args.keyId ?? "";
     const revoked = await keys.revoke(keyId);
 
     if (revoked === null) {
-      // Zero rows matched: another organisation's key id, or one that never
-      // existed. Both answers are the same sentence and the same exit code —
-      // a CLI that distinguished them would tell a caller whether a key id
-      // exists somewhere else.
+      // Zero rows matched: another organisation's key id, or one that never existed.
+      // Both answers are the same sentence and the same exit code. A CLI that
+      // distinguished them would tell a caller whether a key id exists somewhere else.
       write("No key with that id in this organisation — nothing was revoked.");
       write("Run with --list to see the ids you do have.");
       return 1;
@@ -230,15 +225,15 @@ async function main(): Promise<number> {
   }
 }
 
-/** Turns the one failure a person actually hits — the database not being up —
- * into a sentence rather than a stack trace. Never prints the connection
- * string, which carries a password.
+/** Turns the one failure a person actually hits (the database not being up) into a
+ * sentence rather than a stack trace. Never prints the connection string, which carries
+ * a password.
  *
- * The whole `cause` chain is inspected — messages AND the `code` property —
- * not just the top message. The query layer wraps a connection refusal in its
- * own "Failed query: …" error whose cause is an `AggregateError` with an EMPTY
- * message carrying `code: "ECONNREFUSED"`, so a message-only scan finds
- * nothing and the operator sees SQL they did not write. */
+ * The whole `cause` chain is inspected (messages and the `code` property) not just the
+ * top message. The query layer wraps a connection refusal in its own "Failed query: …"
+ * error whose cause is an `AggregateError` with an empty message carrying `code:
+ * "ECONNREFUSED"`, so a message-only scan finds nothing and the operator sees SQL they
+ * did not write. */
 function describeFailure(error: unknown): string {
   const messages: string[] = [];
   const signals: string[] = [];
@@ -258,13 +253,12 @@ function describeFailure(error: unknown): string {
   return `Nothing was revoked: ${firstLine(messages[0] ?? String(error))}`;
 }
 
-/** Everything the operator is shown from an unrecognised failure, and no more.
- * The query layer's message is `"Failed query: <sql>\nparams: <values>"`, so
- * anything past the first newline is the statement's bound parameters — the
- * organisation id and the key id here. Duplicated from `mint-api-key.ts` by the
- * same decision that duplicates `printCandidates` (ADD D-10): neither script
- * imports the other. The first line still names the failure well enough to act
- * on. */
+/** Everything the operator is shown from an unrecognised failure, and no more. The
+ * query layer's message is `"Failed query: <sql>\nparams: <values>"`, so anything past
+ * the first newline is the statement's bound parameters. The organisation id and the
+ * key id here. Duplicated from `mint-api-key.ts` by the same decision that duplicates
+ * `printCandidates`: neither script imports the other. The first line still names the
+ * failure well enough to act on. */
 function firstLine(message: string): string {
   return message.split("\n")[0] ?? message;
 }

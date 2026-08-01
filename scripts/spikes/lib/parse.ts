@@ -1,7 +1,6 @@
-// Pure parsers for the three read-API response shapes (ADD §4 file 6, D-3).
-// Fail directions (D-5): malformed / missing-field input → named
-// `{ ok: false, reason }`; an empty results array is a valid empty match,
-// never a failure; nothing here ever throws on bad input.
+// Pure parsers for the three read-API response shapes (file 6). Fail directions:
+// malformed / missing-field input → named `{ ok: false, reason }`; an empty results
+// array is a valid empty match, never a failure; nothing here ever throws on bad input.
 
 import { MARKER_PROP } from "./constants";
 import type { ParseResult } from "./types";
@@ -11,7 +10,7 @@ export interface CandidateEvent {
   /** Event name, e.g. "gm_spike_custom_event" or "$exception". */
   readonly event: string;
   readonly distinctId?: string;
-  /** Raw properties — marker matching reads MARKER_PROP from here. */
+  /** Raw properties, marker matching reads MARKER_PROP from here. */
   readonly properties: Readonly<Record<string, unknown>>;
 }
 
@@ -21,7 +20,7 @@ export interface CandidateRecording {
   readonly distinctId?: string;
 }
 
-/** Anything `matchesMarker` can test — an event or a recording. */
+/** Anything `matchesMarker` can test. An event or a recording. */
 export type MarkerCandidate = CandidateEvent | CandidateRecording;
 
 /** Narrowing guard: a plain object usable as a string-keyed record. */
@@ -47,7 +46,7 @@ function resultsArray(body: unknown): ParseResult<readonly unknown[]> {
   return { ok: true, value: results };
 }
 
-/** Parses `GET /api/projects/:id/events` response body (D-3 primary). */
+/** Parses `GET /api/projects/:id/events` response body (primary). */
 export function parseEventsResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
@@ -78,7 +77,7 @@ export function parseEventsResponse(body: unknown): ParseResult<readonly Candida
   return { ok: true, value: candidates };
 }
 
-/** Parses `POST /api/projects/:id/query` HogQL response body (D-3 secondary). */
+/** Parses `POST /api/projects/:id/query` HogQL response body (secondary). */
 export function parseQueryResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
@@ -152,10 +151,10 @@ export function parseRecordingsResponse(body: unknown): ParseResult<readonly Can
 }
 
 /**
- * The D3-multiplicity guard: true only when the candidate carries THIS trial's
- * marker — events match on the MARKER_PROP property, recordings on
- * distinct_id. An event with the right name but a prior trial's/run's marker
- * must NOT match (the false-near-zero-latency guard).
+ * The D3-multiplicity guard: true only when the candidate carries this trial's marker.
+ * Events match on the MARKER_PROP property, recordings on distinct_id. An event with
+ * the right name but a prior trial's/run's marker must not match (the
+ * false-near-zero-latency guard).
  */
 export function matchesMarker(candidate: MarkerCandidate, marker: string): boolean {
   if ("properties" in candidate) {

@@ -1,14 +1,12 @@
-// The connection lifecycle: attach, read state, detach (O-003 D-1, D-7,
-// FR-8/FR-9/FR-11).
+// The connection lifecycle: attach, read state, detach.
 //
-// WHY THE SOURCE FACTORY IS INJECTED. packages/db must never depend on
-// packages/adapters — that would invert the layering and drag a vendor
-// implementation into the data layer. So the service takes a `CreateSourceFn`
-// as a dependency, typed structurally against the shapes both packages
-// already share via @growthmind/shared. `SessionSource` from
-// packages/adapters satisfies `AttachableSource` structurally, with no import
-// and no cast. The same injection is what makes every test here run against a
-// fake source with no network at all (FR-2).
+// Why the source factory is injected. packages/db must never depend on
+// packages/adapters. That would invert the layering and drag a vendor implementation
+// into the data layer. So the service takes a `CreateSourceFn` as a dependency, typed
+// structurally against the shapes both packages already share via @growthmind/shared.
+// `SessionSource` from packages/adapters satisfies `AttachableSource` structurally,
+// with no import and no cast. The same injection is what makes every test here run
+// against a fake source with no network at all.
 import type {
   ConnectInput,
   ConnectResult,
@@ -46,9 +44,9 @@ import { deriveConnectionState, findLatestConnection } from "./connection-state"
 import { persistPullResult } from "./intake.service";
 
 /**
- * The structural shape this service needs from a source. Deliberately narrower
- * than `SessionSource` — it does not name `kind` — so nothing here can branch
- * on a vendor name. The vendor name does not exist below the composition root.
+ * The structural shape this service needs from a source. Deliberately narrower than
+ * `SessionSource` (it does not name `kind`) so nothing here can branch on a vendor
+ * name. The vendor name does not exist below the composition root.
  */
 export interface AttachableSource {
   validate(): Promise<SessionSourceValidation>;
@@ -67,83 +65,78 @@ export type CreateSourceFn = (config: SourceConnectionConfig) => AttachableSourc
 export interface ConnectionsServiceDeps {
   createSource: CreateSourceFn;
   /**
-   * The resolved credential key, or the named refusal. A
-   * `{ ok: false, reason: "insecure_default_key" }` here becomes a
-   * `misconfigured` connect refusal whose message names the one step to fix
-   * it — the D-1 gate the insecure-defaults bypass cannot open. Boot still
-   * succeeds; storing a customer's secret does not.
+   * The resolved credential key, or the named refusal. A `{ ok: false, reason:
+   * "insecure_default_key" }` here becomes a `misconfigured` connect refusal whose
+   * message names the one step to fix it. The gate the insecure-defaults bypass cannot
+   * open. Boot still succeeds; storing a customer's secret does not.
    */
   credentialKey: CredentialKeyResolution;
   now: () => Date;
 }
 
-// M-3 (security audit). `ConnectInput` and its runtime `connectInputSchema`
-// live in `@growthmind/shared` (`session-source/types.ts`), alongside every
-// other cross-boundary shape this file already imports rather than defines —
-// re-exported here so existing callers of `@growthmind/db` keep importing
-// both from the same place. See that file for why the schema exists:
-// `connect()` is the boundary this data layer exposes to whatever calls it,
-// and a bare TypeScript interface is not a runtime check.
+//  (security audit). `ConnectInput` and its runtime `connectInputSchema` live in
+// `@growthmind/shared` (`session-source/types.ts`), alongside every other
+// cross-boundary shape this file already imports rather than defines. Re-exported here
+// so existing callers of `@growthmind/db` keep importing both from the same place. See
+// that file for why the schema exists: `connect` is the boundary this data layer
+// exposes to whatever calls it, and a bare TypeScript interface is not a runtime check.
 export { connectInputSchema };
 export type { ConnectInput };
 
 export interface ConnectionsService {
   /**
    * The attach flow, in this order:
-   *   1. Resolve the credential key; a refusal short-circuits to
-   *      `misconfigured` with NO row written and NO request made.
-   *   2. `validate()` through the INJECTED source factory. A failure records
-   *      a terminal health state and never leaves an active row behind (D8) —
-   *      wrong-credentials, wrong-project, and unreachable stay distinct.
-   *   3. Encrypt the key under the `(organizationId, projectId)` additional
-   *      authenticated data and insert. A second source is refused by the
-   *      partial unique index, never by a prior read (D6), and the refusal
-   *      names the existing attachment and the cutover path.
-   *   4. Infer the internal domain from the org creator's email and record
-   *      its provenance. No resolvable creator email ⇒ infer nothing (F-2).
-   *   5. ONE bounded inline first pull, so the counter is non-zero the moment
-   *      onboarding step 2 completes — this serves the glue moment better
-   *      than any faster background tick would.
+   * 1. Resolve the credential key; a refusal short-circuits to
+   *  `misconfigured` with NO row written and NO request made.
+   * 2. `validate` through the injected source factory. A failure records
+   *  a terminal health state and never leaves an active row behind —
+   *  wrong-credentials, wrong-project, and unreachable stay distinct.
+   * 3. Encrypt the key under the `(organizationId, projectId)` additional
+   *  authenticated data and insert. A second source is refused by the
+   *  partial unique index, never by a prior read, and the refusal
+   *  names the existing attachment and the cutover path.
+   * 4. Infer the internal domain from the org creator's email and record
+   *  its provenance. No resolvable creator email ⇒ infer nothing.
+   * 5. One bounded inline first pull, so the counter is non-zero the moment
+   *  onboarding step 2 completes — this serves the glue moment better
+   *  than any faster background tick would.
    */
   connect(input: ConnectInput): Promise<ConnectResult>;
   /**
-   * The seven-state read O-008 renders. `not_connected` (no row at all),
-   * `connected_never_polled` (null watermark), and
-   * `connected_no_events_yet` (polled, found nothing) are three DIFFERENT
-   * answers and are never collapsed into one.
+   * The seven-state read renders. `not_connected` (no row at all),
+   * `connected_never_polled` (null watermark), and `connected_no_events_yet` (polled,
+   * found nothing) are three different answers and are never collapsed into one.
    */
   getState(projectId: string): Promise<ConnectionState>;
   /**
-   * Deactivates the project's attachment. Requires organization membership
-   * only — matching the shipped member-vs-non-member floor. A role gate is a
-   * named future decision, deliberately not designed in here, and the shape
-   * above admits one without a redesign.
+   * Deactivates the project's attachment. Requires organization membership only.
+   * Matching the shipped member-vs-non-member floor. A role gate is a named future
+   * decision, deliberately not designed in here, and the shape above admits one without
+   * a redesign.
    *
-   * Every session and event already collected is KEPT.
+   * Every session and event already collected is kept.
    */
   disconnect(projectId: string): Promise<ConnectionState>;
 }
 
-/** Postgres' `unique_violation`. The partial index on
- * `(project_id) WHERE is_active` is the ONLY unique constraint an
- * `insertActive` can trip — the primary key is a freshly generated uuid — so
- * this class of write refusal is exactly the second-source case. */
+/** Postgres' `unique_violation`. The partial index on `(project_id) WHERE is_active` is
+ * the only unique constraint an `insertActive` can trip (the primary key is a freshly
+ * generated uuid) so this class of write refusal is exactly the second-source case. */
 const UNIQUE_VIOLATION = "23505";
 
-/** The index name, so the branch is on an identifier rather than on parsed
- * prose (D9). Kept as a fallback for drivers that surface the name only
- * inside the message. */
+/** The index name, so the branch is on an identifier rather than on parsed prose. Kept
+ * as a fallback for drivers that surface the name only inside the message. */
 const ACTIVE_PROJECT_INDEX = "project_connections_active_project_uidx";
 
-/** One page. The inline first pull exists to make the counter non-zero, not
- * to backfill history — the scheduler owns the walk from here (D-7). */
+/** One page. The inline first pull exists to make the counter non-zero, not to backfill
+ * history. The scheduler owns the walk from here. */
 const FIRST_PULL_MAX_PAGES = 1;
 
 /**
- * Mirrors `project_connections.poll_interval_seconds`'s schema default. The
- * insert does not set that column, so the row takes the default — and the
- * first `nextPollAt` must be one interval out, not immediate, so the cron
- * cannot claim the row while the inline first pull is still running.
+ * Mirrors `project_connections.poll_interval_seconds`'s schema default. The insert does
+ * not set that column, so the row takes the default, and the first `nextPollAt` must be
+ * one interval out, not immediate, so the cron cannot claim the row while the inline
+ * first pull is still running.
  */
 const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 
@@ -152,13 +145,12 @@ function refuse(code: ConnectRefusalCode, message?: string): ConnectResult {
 }
 
 /**
- * The source's own `message` is DELIBERATELY DROPPED here, not scrubbed.
- * FR-7's bar is that no key material reaches a customer surface in ANY
- * encoding, and a leaky upstream can echo a key back URL-encoded,
- * JSON-escaped or truncated — three forms an exact-string scrub misses. Only
- * the CODE crosses this boundary; the sentence comes from the one home every
- * customer-facing string in this sprint lives in. A vendor stack trace cannot
- * reach a customer through a channel that never carries vendor text.
+ * The source's own `message` is deliberately dropped here, not scrubbed. the bar is
+ * that no key material reaches a customer surface in any encoding, and a leaky upstream
+ * can echo a key back URL-encoded, JSON-escaped or truncated. Three forms an
+ * exact-string scrub misses. Only the code crosses this boundary; the sentence comes
+ * from the one home every customer-facing string in this sprint lives in. A vendor
+ * stack trace cannot reach a customer through a channel that never carries vendor text.
  */
 function refusalFor(failure: SourceFailure): ConnectResult {
   return refuse(failure.code);
@@ -172,8 +164,8 @@ function isSecondSourceViolation(error: ConnectionWriteError): boolean {
   );
 }
 
-/** Same host, same vendor project, same kind ⇒ the SAME attachment being
- * re-keyed, which is an update rather than the second source FR-8 refuses. */
+/** Same host, same vendor project, same kind ⇒ the same attachment being re-keyed,
+ * which is an update rather than the second source refuses. */
 function isSameSource(existing: ConnectionSummary, input: ConnectInput): boolean {
   return (
     existing.sourceKind === input.sourceKind &&
@@ -194,10 +186,10 @@ export function createConnectionsService(
   const events = createEventsRepo(db, ctx);
 
   /**
-   * The two persisted facts `deriveConnectionState` needs. Both are reads of
-   * stored rows — never of anything this request happened to observe — so a
-   * customer landing after the fact sees what happened rather than a state
-   * frozen at whatever the last live signal said (D4).
+   * The two persisted facts `deriveConnectionState` needs. Both are reads of stored
+   * rows, never of anything this request happened to observe, so a customer landing
+   * after the fact sees what happened rather than a state frozen at whatever the last
+   * live signal said.
    */
   async function stateOf(connection: ConnectionSummary | null): Promise<ConnectionState> {
     if (!connection) {
@@ -216,33 +208,31 @@ export function createConnectionsService(
   }
 
   /**
-   * The inline first pull and everything that records it. Isolated from the
-   * attach itself (D8): the attachment is valid the moment validation
-   * succeeded, so a pull that fails afterwards downgrades health and finishes
-   * its run row honestly — it never turns a successful attach into a refusal
-   * and never leaves a run stuck `running`.
+   * The inline first pull and everything that records it. Isolated from the attach
+   * itself: the attachment is valid the moment validation succeeded, so a pull that
+   * fails afterwards downgrades health and finishes its run row honestly. It never
+   * turns a successful attach into a refusal and never leaves a run stuck `running`.
    */
   async function performFirstPull(
     connection: ConnectionSummary,
     source: AttachableSource,
   ): Promise<{ connection: ConnectionSummary; eventsSeen: number }> {
-    // D8, actually enforced. The docstring above always claimed this was
-    // isolated from the attach, but nothing caught: a throw anywhere below
-    // (the pull, the persist, either finish) propagated out of `connect()`
-    // AFTER the row and ciphertext were written — surfacing a successful
-    // attach as an error and leaving the run row `running` forever, which is
-    // exactly what the poll-runs schema says must never happen.
+    // Actually enforced. The docstring above always claimed this was isolated from the
+    // attach, but nothing caught: a throw anywhere below (the pull, the persist, either
+    // finish) propagated out of `connect` after the row and ciphertext were written.
+    // Surfacing a successful attach as an error and leaving the run row `running`
+    // forever, which is exactly what the poll-runs schema says must never happen.
     try {
       return await runFirstPull(connection, source);
     } catch (error) {
-      // No credential is in scope here — `error` is a persistence/transport
-      // fault and the adapter never puts key material on a thrown value.
+      // No credential is in scope here, `error` is a persistence/transport fault and
+      // the adapter never puts key material on a thrown value.
       console.error(
         `connections.connect: first pull failed after the attachment was stored (connection ${connection.id})`,
         error,
       );
-      // The attachment is real and valid — validation already passed before
-      // the row was written. The scheduler will poll it on the next tick.
+      // The attachment is real and valid. Validation already passed before the row was
+      // written. The scheduler will poll it on the next tick.
       return { connection, eventsSeen: 0 };
     }
   }
@@ -259,8 +249,8 @@ export function createConnectionsService(
     });
 
     const result = await source.pull({
-      // A brand-new attachment has never been polled, so there is no window to
-      // resume from and nothing to overlap against.
+      // A brand-new attachment has never been polled, so there is no window to resume
+      // from and nothing to overlap against.
       watermarkAt: connection.watermarkAt,
       backfillBefore: connection.backfillBefore,
       maxPages: FIRST_PULL_MAX_PAGES,
@@ -278,9 +268,9 @@ export function createConnectionsService(
     let current = connection;
     let watermarkAdvancedTo: Date | null = null;
 
-    // ALL OR NOTHING (D-6d). The watermark moves only when the walk provably
-    // covered its window; a page-capped walk leaves it where it was so the
-    // next pass re-reads rather than silently skipping.
+    // All or nothing. The watermark moves only when the walk provably covered its
+    // window; a page-capped walk leaves it where it was so the next pass re-reads
+    // rather than silently skipping.
     if (result.ok && result.contiguous && result.newestObservedAt) {
       const advanced = await connections.advanceWatermark(connection.id, {
         watermarkAt: result.newestObservedAt,
@@ -291,23 +281,21 @@ export function createConnectionsService(
         watermarkAdvancedTo = result.newestObservedAt;
       }
     } else if (result.ok && !result.contiguous) {
-      // CR-1 FIX. This attachment has never been polled — `watermarkAt` is
-      // null — so a page-capped inline first pull used to have nowhere to
-      // record its resume cursor: `advanceWatermark` writes both columns in
-      // one statement and needs an existing watermark to hold steady.
-      // `setBackfillCursor` touches `backfill_before` alone, so the resume
-      // point survives even with no watermark yet, and the scheduler's next
-      // tick can continue the walk instead of silently restarting it from
-      // the newest event forever.
+      // Fix. This attachment has never been polled (`watermarkAt` is null) so a
+      // page-capped inline first pull used to have nowhere to record its resume cursor:
+      // `advanceWatermark` writes both columns in one statement and needs an existing
+      // watermark to hold steady. `setBackfillCursor` touches `backfill_before` alone,
+      // so the resume point survives even with no watermark yet, and the scheduler's
+      // next tick can continue the walk instead of silently restarting it from the
+      // newest event forever.
       //
-      // CR-3 FIX: this now writes even when `result.resumeBefore` is `null`.
-      // `FIRST_PULL_MAX_PAGES = 1` means a RE-KEY whose connection already
-      // carried a `backfillBefore` from an earlier partial walk can hit the
-      // adapter's CR-11 "this walk got zero of the one-page budget" case
-      // (an earlier walk in the same pull already exhausted the old backlog
-      // using the whole budget). A `null` resume value there means "nothing
-      // left to resume from that direction", not "leave the stale cursor in
-      // place" — the mirror of the same fix in
+      // Fix: this now writes even when `result.resumeBefore` is `null`.
+      // `FIRST_PULL_MAX_PAGES = 1` means a re-key whose connection already carried a
+      // `backfillBefore` from an earlier partial walk can hit the adapter's "this walk
+      // got zero of the one-page budget" case (an earlier walk in the same pull already
+      // exhausted the old backlog using the whole budget). A `null` resume value there
+      // means "nothing left to resume from that direction", not "leave the stale cursor
+      // in place". The mirror of the same fix in
       // worker/src/tasks/session-source-poll.ts's `applyCursors`.
       const held = await connections.setBackfillCursor(connection.id, result.resumeBefore);
       if (held) {
@@ -329,8 +317,8 @@ export function createConnectionsService(
       await pollRuns.finish(run.id, {
         status: "completed",
         finishedAt,
-        // An empty page is never authoritative, so it is recorded DISTINCTLY
-        // rather than as an absent outcome (D-6g).
+        // An empty page is never authoritative, so it is recorded distinctly rather
+        // than as an absent outcome.
         outcome: counts.eventsReceived > 0 ? "with_events" : "no_new_events",
         watermarkAdvancedTo,
         ...telemetry,
@@ -342,14 +330,14 @@ export function createConnectionsService(
       status: "failed",
       finishedAt,
       failureCode: result.failure.code,
-      // Our sentence, never the vendor's — see `refusalFor`.
+      // Our sentence, never the vendor's, see `refusalFor`.
       failureMessage: CONNECT_REFUSAL_MESSAGES[result.failure.code],
       ...telemetry,
     });
 
-    // The last thing we know about this attachment is that a fetch failed, so
-    // that is what the customer is told. The attach itself still succeeded —
-    // the key is stored and the scheduler will retry on its own cadence.
+    // The last thing we know about this attachment is that a fetch failed, so that is
+    // what the customer is told. The attach itself still succeeded. The key is stored
+    // and the scheduler will retry on its own cadence.
     const failed = await connections.recordHealth(connection.id, {
       health: "failing",
       reasonCode: result.failure.code,
@@ -360,9 +348,9 @@ export function createConnectionsService(
     return { connection: failed ?? current, eventsSeen: counts.eventsReceived };
   }
 
-  /** F-2: a missing creator email infers NOTHING. A wrong internal domain
-   * silently excludes the customer's entire user base, so a guess costs more
-   * than an absent value ever can. */
+  /** F-2: a missing creator email infers nothing. A wrong internal domain silently
+   * excludes the customer's entire user base, so a guess costs more than an absent
+   * value ever can. */
   async function applyInferredInternalDomain(
     connection: ConnectionSummary,
   ): Promise<ConnectionSummary> {
@@ -372,8 +360,8 @@ export function createConnectionsService(
     }
 
     const updated = await connections.setInferredInternalDomain(connection.id, {
-      // The value AND how it was arrived at, so O-008 can show the customer
-      // what we inferred before it takes effect rather than after.
+      // The value and how it was arrived at, so can show the customer what we inferred
+      // before it takes effect rather than after.
       domain,
       provenance: "org_creator_email",
     });
@@ -383,43 +371,41 @@ export function createConnectionsService(
 
   return {
     async connect(rawInput: ConnectInput): Promise<ConnectResult> {
-      // (0) M-3, before everything else, including the D-1 gate below: a
-      // shape violation on the way in — malformed JSON from a future
-      // untrusted API route, a caller bug, a wrong-cased sourceKind — throws
-      // HERE rather than reaching an encryption call site or a database
-      // write with a value nothing has actually validated. Zod is this
-      // repo's single source of truth for shapes; this is the one entry
-      // point where a value from outside a typed caller can reach this
-      // service at all.
+      // , before everything else, including the gate below: a shape violation on
+      // the way in. Malformed JSON from a future untrusted API route, a caller bug, a
+      // wrong-cased sourceKind. Throws here rather than reaching an encryption call
+      // site or a database write with a value nothing has actually validated. Zod is
+      // this repo's single source of truth for shapes; this is the one entry point
+      // where a value from outside a typed caller can reach this service at all.
       const input = connectInputSchema.parse(rawInput);
 
-      // (1) D-1, FIRST and unconditionally. An installation that cannot store
-      // an outside key safely makes NO request and writes NO row — the check
-      // that `GROWTHMIND_ALLOW_INSECURE_DEFAULTS` cannot open sits here, at
-      // the encryption call site, precisely so boot stays possible and
-      // storing a customer's secret does not.
+      // , first and unconditionally. An installation that cannot store an outside
+      // key safely makes NO request and writes NO row. The check that
+      // `GROWTHMIND_ALLOW_INSECURE_DEFAULTS` cannot open sits here, at the encryption
+      // call site, precisely so boot stays possible and storing a customer's secret
+      // does not.
       if (!deps.credentialKey.ok) {
         return refuse("misconfigured");
       }
       const key: CredentialKey = deps.credentialKey.key;
 
-      // D7. Ownership is established before a single byte leaves the process,
-      // so a foreign project id cannot even make this service call the
-      // customer's analytics account on its behalf.
+      // Ownership is established before a single byte leaves the process, so a
+      // foreign project id cannot even make this service call the customer's analytics
+      // account on its behalf.
       const project = await projects.findById(input.projectId);
       if (!project) {
         throw new Error("connect: project not found in this organization");
       }
 
       const existing = await connections.getActiveForProject(input.projectId);
-      // A re-key of the SAME attachment is an update, not FR-8's second
-      // source. This read ROUTES; it never decides the refusal — that stays
-      // with the database (D6), so two concurrent attaches cannot both win.
+      // A re-key of the same attachment is an update, not the second source. This read
+      // routes; it never decides the refusal. That stays with the database, so two
+      // concurrent attaches cannot both win.
       const isRekey = existing !== null && isSameSource(existing, input);
 
-      // (2) Validation, through the injected factory. This service never
-      // constructs a vendor client of its own — that is what keeps
-      // packages/db independent of packages/adapters.
+      //  Validation, through the injected factory. This service never constructs a
+      // vendor client of its own. That is what keeps packages/db independent of
+      // packages/adapters.
       const source = deps.createSource({
         host: input.host,
         sourceProjectId: input.sourceProjectId,
@@ -429,8 +415,8 @@ export function createConnectionsService(
 
       if (!validation.ok) {
         if (isRekey && existing) {
-          // A TERMINAL state, always. Parking a customer on `validating`
-          // forever is the stuck-state shape the transparency rule forbids.
+          // A terminal state, always. Parking a customer on `validating` forever is the
+          // stuck-state shape the transparency rule forbids.
           await connections.recordHealth(existing.id, {
             health: "failing",
             reasonCode: validation.failure.code,
@@ -438,15 +424,15 @@ export function createConnectionsService(
             checkedAt: validation.checkedAt,
           });
         }
-        // A NEW attach that fails validation writes NOTHING. There is no
-        // half-written row to leave the customer locked out of their own
-        // project by a typo, and `not_connected` is itself terminal — the one
-        // state this path can produce is never `validating`.
+        // A new attach that fails validation writes nothing. There is no half-written
+        // row to leave the customer locked out of their own project by a typo, and
+        // `not_connected` is itself terminal. The one state this path can produce is
+        // never `validating`.
         return refusalFor(validation.failure);
       }
 
-      // (3) Encrypt under the AAD binding this ciphertext to this org's row,
-      // then let the DATABASE settle whether a second source is allowed.
+      //  Encrypt under the aad binding this ciphertext to this org's row, then let
+      // the database settle whether a second source is allowed.
       const credentialCiphertext = encryptSecret(
         input.personalApiKey,
         key,
@@ -476,26 +462,25 @@ export function createConnectionsService(
             credentialKeyId,
             health: "healthy",
             connectedAt: deps.now(),
-            // NOT due immediately. `performFirstPull` below covers the glue
-            // moment inline; marking the row due at the same instant lets the
-            // every-minute cron claim it WHILE that inline pull is still in
-            // flight (measured pull p90 ~25s against a 60s tick, so this is
-            // reachable on a large fraction of first connects).
+            // Not due immediately. `performFirstPull` below covers the glue moment
+            // inline; marking the row due at the same instant lets the every-minute
+            // cron claim it while that inline pull is still in flight (measured pull
+            // p90 ~25s against a 60s tick, so this is reachable on a large fraction of
+            // first connects).
             //
             // The race loses customer history: the cron reads a snapshot with
-            // `backfillBefore = null`, the inline pull page-caps and writes a
-            // backfill cursor, then the cron's contiguous pass advances the
-            // watermark with its stale `backfillBefore: null` and overwrites
-            // that cursor back to NULL. The unfinished backward walk's resume
-            // point is gone and every later tick restarts from newest —
-            // permanently, silently. (O-003 edge sweep, D3/D6.)
+            // `backfillBefore = null`, the inline pull page-caps and writes a backfill
+            // cursor, then the cron's contiguous pass advances the watermark with its
+            // stale `backfillBefore: null` and overwrites that cursor back to NULL. The
+            // unfinished backward walk's resume point is gone and every later tick
+            // restarts from newest. Permanently, silently. (edge sweep, /.)
             nextPollAt: new Date(deps.now().getTime() + DEFAULT_POLL_INTERVAL_SECONDS * 1000),
           });
         } catch (error) {
           if (error instanceof ConnectionWriteError && isSecondSourceViolation(error)) {
-            // The refusal NAMES THE EXISTING ATTACHMENT, so the customer knows
-            // which one to detach rather than filing a support ticket. Read
-            // after the violation, never before it.
+            // The refusal names the existing attachment, so the customer knows which
+            // one to detach rather than filing a support ticket. Read after the
+            // violation, never before it.
             const blocking = existing ?? (await connections.getActiveForProject(input.projectId));
             return refuse(
               "second_source",
@@ -518,10 +503,10 @@ export function createConnectionsService(
         checkedAt: validation.checkedAt,
       });
 
-      // (4) then (5): the domain must be stamped BEFORE the first pull, or the
-      // first pull's sessions would be classified against a domain we already
-      // knew and had not yet written — a stamp whose provenance disagrees with
-      // the row that produced it.
+      //  then: the domain must be stamped before the first pull, or the first
+      // pull's sessions would be classified against a domain we already knew and had
+      // not yet written. A stamp whose provenance disagrees with the row that produced
+      // it.
       const withDomain = await applyInferredInternalDomain(checked ?? attached);
 
       const pulled = await performFirstPull(withDomain, source);
@@ -534,9 +519,9 @@ export function createConnectionsService(
     },
 
     async getState(projectId: string): Promise<ConnectionState> {
-      // Answered from PERSISTED state alone. No source is constructed here —
-      // reading what a project is doing must never depend on the customer's
-      // analytics account being reachable.
+      // Answered from persisted state alone. No source is constructed here. Reading
+      // what a project is doing must never depend on the customer's analytics account
+      // being reachable.
       return stateOf(await findLatestConnection(db, ctx, projectId));
     },
 
@@ -546,8 +531,8 @@ export function createConnectionsService(
         return stateOf(await findLatestConnection(db, ctx, projectId));
       }
 
-      // Everything already collected is KEPT — `deactivate` clears the flag
-      // and sets health, and touches no session or event row.
+      // Everything already collected is kept, `deactivate` clears the flag and sets
+      // health, and touches no session or event row.
       const detached = await connections.deactivate(active.id);
       return stateOf(detached ?? active);
     },

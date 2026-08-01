@@ -1,7 +1,7 @@
 # Security
 
-Growthmind handles customer session data, and its core privacy claims — no
-PII in the stream, masking at capture, exclusions by construction — are only
+Growthmind handles customer session data, and its core privacy claims, no
+PII in the stream, masking at capture, exclusions by construction, are only
 as good as the scrutiny they get. Security reports are genuinely welcome.
 
 ## Reporting a vulnerability
@@ -21,7 +21,7 @@ reporters who want credit once it ships.
 - The hosted service at growthmind.ai
 
 Please do not test against production infrastructure in ways that degrade
-service for others, and do not access data that is not yours — a proof of
+service for others, and do not access data that is not yours. A proof of
 concept against your own self-hosted instance (`docker compose up`) is always
 in scope and always safe.
 

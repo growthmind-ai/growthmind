@@ -1,22 +1,20 @@
-// The String Assertion Contract's own guard (O-005 D-11, FR-F9c/d).
+// The String Assertion Contract's own guard.
 //
-// WHAT THIS SUITE IS FOR, in one sentence: a contract whose rows cite tests is
-// worth exactly as much as the citations are true, and nothing but a machine
-// can keep them true across a rename.
+// What this suite is for, in one sentence: a contract whose rows cite tests is worth
+// exactly as much as the citations are true, and nothing but a machine can keep them
+// true across a rename.
 //
-// THE CITATIONS ARE RESOLVED MECHANICALLY, NEVER BY EYE. Every `enforcedBy`
-// entry names a test string and a workspace-relative file; this suite opens
-// that file and looks for the verbatim `test("…")` declaration. A citation
-// naming a test that does not exist is a FAILURE, never a skip — a skip would
-// turn a broken citation into a green run, which is the exact failure mode the
-// contract exists to prevent one level up.
+// The citations are resolved mechanically, never by eye. Every `enforcedBy` entry names
+// a test string and a workspace-relative file; this suite opens that file and looks for
+// the verbatim `test` declaration. A citation naming a test that does not exist is
+// a failure, never a skip. A skip would turn a broken citation into a green run, which
+// is the exact failure mode the contract exists to prevent one level up.
 //
-// WHY THIS FILE MAY USE `node:fs` WHEN `packages/core`'s TESTS MAY NOT.
-// `packages/core` holds a package-wide purity property asserted over `src/`,
-// and its suites stay on `Bun.file`/`Bun.Glob` so they do not become the
-// offender they police. `shared`'s test lane has no such property and already
-// reads source with `node:fs` (`messages.test.ts:13`). Nothing here is
-// imported by production code.
+// Why this file may use `node:fs` when `packages/core`'s tests may not. `packages/core`
+// holds a package-wide purity property asserted over `src/`, and its suites stay on
+// `Bun.file`/`Bun.Glob` so they do not become the offender they police. `shared`'s test
+// lane has no such property and already reads source with `node:fs`
+// (`messages.test.ts:13`). Nothing here is imported by production code.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -36,12 +34,12 @@ function workspacePath(relativePath: string): string {
 }
 
 /**
- * True when the cited test exists VERBATIM in the cited file.
+ * True when the cited test exists verbatim in the cited file.
  *
- * Matches on `test("<name>"` rather than on the bare name, so a citation that
- * happens to appear in a comment or in a denylist array does not count as an
- * enforcing test. A missing FILE throws rather than returning false — that is a
- * broken citation too, and it deserves a message naming the path.
+ * Matches on `test("<name>"` rather than on the bare name, so a citation that happens
+ * to appear in a comment or in a denylist array does not count as an enforcing test. A
+ * missing file throws rather than returning false. That is a broken citation too, and
+ * it deserves a message naming the path.
  */
 function citationResolves(citation: EnforcingTest): boolean {
   const source = readFileSync(workspacePath(citation.file), "utf8");
@@ -55,15 +53,15 @@ const ALL_CITATIONS: readonly EnforcingTest[] = Object.values(SAC_CONTRACT).flat
 
 describe("the String Assertion Contract", () => {
   test("every assertion-contract row cites a test name that exists verbatim in the tree", () => {
-    // NON-VACUITY, BEFORE ANY "ALL RESOLVE" CLAIM. A contract that had lost its
-    // rows would pass an every() over nothing.
+    // Non-vacuity, before any "all resolve" claim. A contract that had lost its rows
+    // would pass an every over nothing.
     expect(Object.keys(SAC_CONTRACT).length).toBeGreaterThan(0);
     expect(ALL_CITATIONS.length).toBeGreaterThan(0);
 
     const unresolved = ALL_CITATIONS.filter((citation) => !citationResolves(citation));
 
-    // Reported as the citations themselves, not a count: a failure here must
-    // name the test that moved.
+    // Reported as the citations themselves, not a count: a failure here must name the
+    // test that moved.
     expect(unresolved).toEqual([]);
   });
 
@@ -75,40 +73,40 @@ describe("the String Assertion Contract", () => {
 
     expect(citationResolves(planted)).toBe(false);
 
-    // And the control, so the guard is not simply always-false: a real citation
-    // from the contract resolves against the same reader.
+    // And the control, so the guard is not simply always-false: a real citation from
+    // the contract resolves against the same reader.
     const real = ALL_CITATIONS[0];
     if (!real) throw new Error("the contract must carry at least one citation");
     expect(citationResolves(real)).toBe(true);
   });
 
   test("the assertion contract has a row for every SAC id it claims to cover", () => {
-    // The partition observed at RUNTIME. The compiler already proves it is
-    // total — `UnenforcedSacId` is `Exclude<SacId, EnforcedSacId>` — and this
-    // is the second, independent statement of the same fact, so a hand-edited
-    // `SAC_IDS` that drifted from the union is caught too.
+    // The partition observed at runtime. The compiler already proves it is total,
+    // `UnenforcedSacId` is `Exclude<SacId, EnforcedSacId>`, and this is the second,
+    // independent statement of the same fact, so a hand-edited `SAC_IDS` that drifted
+    // from the union is caught too.
     const covered = [...Object.keys(SAC_CONTRACT), ...Object.keys(SAC_NOT_YET_ENFORCED)];
 
     expect(covered.toSorted()).toEqual([...SAC_IDS].toSorted());
 
-    // Disjoint, not merely covering: a row in both halves would present as
-    // enforced and unenforced at once.
+    // Disjoint, not merely covering: a row in both halves would present as enforced and
+    // unenforced at once.
     const enforced = new Set(Object.keys(SAC_CONTRACT));
     const overlap = Object.keys(SAC_NOT_YET_ENFORCED).filter((id) => enforced.has(id));
     expect(overlap).toEqual([]);
   });
 
   test("the disjointness proof this contract cites exists verbatim in the detector suite", () => {
-    // SAC-11's "structurally disjoint" is itself an assertion. If the proof
-    // test were renamed or deleted, the contract that forbids unsupported
-    // claims would be making one.
+    // SAC-11's "structurally disjoint" is itself an assertion. If the proof test were
+    // renamed or deleted, the contract that forbids unsupported claims would be making
+    // one.
     expect(SAC_11_DISJOINTNESS_PROOF.file).toBe(
       "packages/core/__tests__/detect/funnel-dropoff.test.ts",
     );
     expect(citationResolves(SAC_11_DISJOINTNESS_PROOF)).toBe(true);
 
-    // ...and it is actually cited BY the SAC-11 row, not merely exported beside
-    // it — a proof nothing references would be decoration.
+    // ..and it is actually cited BY the SAC-11 row, not merely exported beside it. A
+    // proof nothing references would be decoration.
     const sac11 = SAC_CONTRACT["SAC-11"];
     expect(sac11.enforcedBy).toContainEqual(SAC_11_DISJOINTNESS_PROOF);
   });
@@ -121,8 +119,8 @@ describe("the String Assertion Contract", () => {
       expect(row.notEnforcedBecause.trim().length).toBeGreaterThan(0);
       expect(row.inheritedBy.trim().length).toBeGreaterThan(0);
 
-      // The inheritor is named by OUTCOME ID, not by a vague promise — "later"
-      // and "TODO" are how an unenforced row becomes permanent.
+      // The inheritor is named by outcome ID, not by a vague promise. "later" and
+      // "TODO" are how an unenforced row becomes permanent.
       expect(row.inheritedBy).toMatch(/O-\d+/);
       expect(row.notEnforcedBecause.toUpperCase()).not.toContain("TODO");
     }

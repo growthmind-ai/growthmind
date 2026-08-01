@@ -1,17 +1,16 @@
 import { z } from "zod";
 
 /**
- * Validation shapes for the sign-up/sign-in forms and the P1 workspace
- * rename action (ADD D-H). Forms render these failures as plain-English
- * strings from the UX spec — raw Zod messages never reach the screen — but
- * the messages below still carry sensible defaults for any caller that
- * surfaces them directly (e.g. server-action logging).
+ * Validation shapes for the sign-up/sign-in forms and the P1 workspace rename action.
+ * Forms render these failures as plain-English strings from the UX spec (raw Zod
+ * messages never reach the screen) but the messages below still carry sensible defaults
+ * for any caller that surfaces them directly (e.g. server-action logging).
  */
 
-// Upper bounds are storage/DoS guards, not product rules: without them an
-// arbitrarily large string flows into a `text` column and back out in every
-// response that renders it. The 72-byte password cap matches the bcrypt-family
-// input limit, so nothing silently truncates below the hash boundary.
+// Upper bounds are storage/DoS guards, not product rules: without them an arbitrarily
+// large string flows into a `text` column and back out in every response that renders
+// it. The 72-byte password cap matches the bcrypt-family input limit, so nothing
+// silently truncates below the hash boundary.
 export const signUpSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(200, "That name is too long"),
   email: z.email("Enter a valid email address"),

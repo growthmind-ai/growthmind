@@ -10,10 +10,9 @@ import { signOut } from "../../lib/auth-client";
 import { ROUTES } from "../../lib/routes";
 
 /**
- * Flow C (UX §2): Landing → "Sign out" → `/sign-in`. Better Auth's client
- * `signOut` clears the session; the redirect is our own (no middleware,
- * ADD D-G), so it runs after the client call resolves rather than relying on
- * `fetchOptions.onSuccess` alone.
+ * Flow C: Landing → "Sign out" → `/sign-in`. Better Auth's client `signOut`
+ * clears the session; the redirect is our own (no middleware), so it runs after the
+ * client call resolves rather than relying on `fetchOptions.onSuccess` alone.
  */
 export function SignOutButton() {
   const router = useRouter();

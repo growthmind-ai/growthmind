@@ -1,5 +1,5 @@
-// Repository for the `session_source_poll_runs` table. D-B: org-scoped at
-// construction, no organization id parameter, mutations keyed on `(org, id)`.
+// Repository for the `session_source_poll_runs` table: org-scoped at construction, no
+// organization id parameter, mutations keyed on `(org, id)`.
 import type { PollRunOutcome, SourceFailureCode, TenantContext } from "@growthmind/shared";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -14,8 +14,8 @@ export interface StartPollRunInput {
   startedAt: Date;
 }
 
-/** Counters every terminal path reports, so a failed run is as informative
- * as a successful one. */
+/** Counters every terminal path reports, so a failed run is as informative as a
+ * successful one. */
 export interface PollRunCounts {
   eventsReceived: number;
   eventsPersisted: number;
@@ -26,17 +26,17 @@ export interface PollRunCounts {
 }
 
 /**
- * A run is `completed` or `failed` — there is no third shape and no way to
- * express a non-terminal finish. Every exit path in the handler produces one
- * of these, which is what keeps a stuck "running" from being shippable (D8).
+ * A run is `completed` or `failed`. There is no third shape and no way to express a
+ * non-terminal finish. Every exit path in the handler produces one of these, which is
+ * what keeps a stuck "running" from being shippable.
  */
 export type PollRunTerminal =
   | ({
       status: "completed";
       finishedAt: Date;
-      /** `no_new_events` is recorded DISTINCTLY from `with_events`: an empty
-       * page is never authoritative, so a permanently-zero connection must be
-       * visible rather than indistinguishable from a quiet healthy one. */
+      /** `no_new_events` is recorded distinctly from `with_events`: an empty page is
+       * never authoritative, so a permanently-zero connection must be visible rather
+       * than indistinguishable from a quiet healthy one. */
       outcome: PollRunOutcome;
       /** Non-null only when the walk was provably contiguous. */
       watermarkAdvancedTo: Date | null;
@@ -56,15 +56,15 @@ export interface PollRunAggregate {
   totalDroppedMalformed: number;
   totalEventsReceived: number;
   totalEventsPersisted: number;
-  /** The completion time of the most recent SUCCESSFUL run — the counter's
-   * `asOf` anchor. Not wall-clock now, and not the newest event's own
-   * declared time. `null` when no run has ever succeeded. */
+  /** The completion time of the most recent successful run. The counter's `asOf`
+   * anchor. Not wall-clock now, and not the newest event's own declared time. `null`
+   * when no run has ever succeeded. */
   lastSuccessfulFinishedAt: Date | null;
 }
 
 export interface PollRunsRepo {
   start(input: StartPollRunInput): Promise<PollRunRecord>;
-  /** Keyed on `(org, id)` — `null` for a foreign org's run id. */
+  /** Keyed on `(org, id)`, `null` for a foreign org's run id. */
   finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null>;
   /** The most recent run with `status = "completed"`, or `null`. */
   latestCompletedFor(connectionId: string): Promise<PollRunRecord | null>;
@@ -72,18 +72,17 @@ export interface PollRunsRepo {
 }
 
 /** `::int` already yields a JS number through both drivers; this exists so an
- * unexpected driver-side numeric-as-string can never reach a caller doing
- * arithmetic on the counter. */
+ * unexpected driver-side numeric-as-string can never reach a caller doing arithmetic on
+ * the counter. */
 function toCount(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRepo {
-  /** Newest completed run first. `nulls last` because a `finished_at` of NULL
-   * is a run that never reached a terminal state, and Postgres would sort it
-   * to the FRONT of a plain `desc` — the stuck-run row masquerading as the
-   * latest success. */
+  /** Newest completed run first. `nulls last` because a `finished_at` of NULL is a run
+   * that never reached a terminal state, and Postgres would sort it to the front of a
+   * plain `desc`. The stuck-run row masquerading as the latest success. */
   function completedForConnection(connectionId: string) {
     return db
       .select()
@@ -121,9 +120,9 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
     },
 
     async finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null> {
-      // The two terminal shapes are written EXHAUSTIVELY — each clears the
-      // other's columns rather than leaving them stale, so a run that failed
-      // after a previous attempt set an outcome cannot read as half-successful.
+      // The two terminal shapes are written exhaustively. Each clears the other's
+      // columns rather than leaving them stale, so a run that failed after a previous
+      // attempt set an outcome cannot read as half-successful.
       const columns =
         terminal.status === "completed"
           ? {
@@ -158,20 +157,19 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
           and(
             eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
             eq(sessionSourcePollRuns.id, id),
-            // A run is finished ONCE. Without this, a terminal row can be
-            // rewritten — a `completed` run whose non-critical health write
-            // then threw was being overwritten to `failed` with every count
-            // zeroed and `watermarkAdvancedTo` nulled, while its events were
-            // in fact persisted and its watermark had already advanced. The
-            // audit trail then lies in the one direction that matters.
-            // (O-003 edge sweep, D8.)
+            // A run is finished once. Without this, a terminal row can be rewritten. A
+            // `completed` run whose non-critical health write then threw was being
+            // overwritten to `failed` with every count zeroed and `watermarkAdvancedTo`
+            // nulled, while its events were in fact persisted and its watermark had
+            // already advanced. The audit trail then lies in the one direction that
+            // matters. (edge sweep,.)
             eq(sessionSourcePollRuns.status, "running"),
           ),
         )
         .returning();
 
-      // `null` here means the row was already terminal (or not this org's) —
-      // both callers treat a finish as best-effort, so it is not thrown on.
+      // `null` here means the row was already terminal (or not this org's). Both
+      // callers treat a finish as best-effort, so it is not thrown on.
       return row ?? null;
     },
 
@@ -181,10 +179,10 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
     },
 
     async aggregateFor(connectionId: string): Promise<PollRunAggregate> {
-      // A HAND-WRITTEN AGGREGATION CARRIES ITS OWN ORG FILTER (§9). Nothing
-      // about an aggregate inherits tenancy, so `organization_id` is in the
-      // WHERE clause explicitly and the totals are zeros — never another org's
-      // numbers — for a connection id this context does not own.
+      // A hand-written aggregation carries its own org filter. Nothing about an
+      // aggregate inherits tenancy, so `organization_id` is in the where clause
+      // explicitly and the totals are zeros (never another org's numbers) for a
+      // connection id this context does not own.
       const [totals] = await db
         .select({
           runsCompleted: sql<number>`coalesce(sum(case when ${sessionSourcePollRuns.status} = 'completed' then 1 else 0 end), 0)::int`,
@@ -201,8 +199,8 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
           ),
         );
 
-      // Read through the typed column rather than a raw `max(…)` expression so
-      // the driver hands back a real `Date`, not a driver-dependent string.
+      // Read through the typed column rather than a raw `max` expression so the
+      // driver hands back a real `Date`, not a driver-dependent string.
       const [latest] = await completedForConnection(connectionId);
 
       return {

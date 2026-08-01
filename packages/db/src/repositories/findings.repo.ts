@@ -1,5 +1,4 @@
-// Repository for the `findings` table (O-011 FR-M7 / FR-M9 / FR-M14 / FR-M19,
-// ADD AD-1/AD-5/AD-8/AD-12/AD-18).
+// Repository for the `findings` table.
 //
 // ── THE O-011 DEFERRAL IS DISCHARGED: THIS TABLE HAS READERS (O-008 FR-O25) ──
 // O-011 recorded, here and on `../schema/findings.ts`, that the `delivery-tick`
@@ -15,31 +14,30 @@
 // door — the org-scope rule in the next paragraph governs both, and there is
 // still no method here that takes an organization id.
 //
-// ── ORG SCOPE COMES FROM THE CONTEXT, AND FROM NOWHERE ELSE (D2, D7) ─────────
-// Same shape as `deliveries.repo.ts`: `createFindingsRepo(db, ctx)`. No method
-// takes an organization id, so there is no id-only write path onto this table.
-// The writer is a Graphile Worker task running with NO USER — the exact "path
-// that steps outside the tenant context flow" — so the explicit
-// `organization_id` predicate on every statement here IS the entire tenant
-// boundary for this lane. No system/bypass context is reachable from this file.
+// Org scope comes from the context, and from nowhere else Same shape as
+// `deliveries.repo.ts`: `createFindingsRepo(db, ctx)`. No method takes an organization
+// id, so there is no id-only write path onto this table. The writer is a Graphile
+// Worker task running with no user. The exact "path that steps outside the tenant
+// context flow", so the explicit `organization_id` predicate on every statement here IS
+// the entire tenant boundary for this lane. No system/bypass context is reachable from
+// this file.
 //
-// ── JSONB IS PARSED ON WRITE **AND** ON READ (D5, AD-18) ────────────────────
-// `context` and `counts` are `unknown` at the schema level on purpose. A jsonb
-// column holds every shape ever written, not the shape today's code writes, so
-// both directions go through Zod. `summary_source` is parsed through the shared
-// union BEFORE the write for the same reason: a value forged past the types at
-// runtime (a stale enqueued payload, a hand-run script) is refused at the wire
-// rather than persisted as a state no message table has a sentence for.
+// JSONB is parsed on write **and** on read `context` and `counts` are `unknown` at the
+// schema level on purpose. A jsonb column holds every shape ever written, not the shape
+// today's code writes, so both directions go through Zod. `summary_source` is parsed
+// through the shared union before the write for the same reason: a value forged past
+// the types at runtime (a stale enqueued payload, a hand-run script) is refused at the
+// wire rather than persisted as a state no message table has a sentence for.
 //
-// ── NULL MEANS NOT REPORTED, NEVER ZERO (FR-M9, AD-5) ───────────────────────
-// `tokensIn`/`tokensOut` arrive as `null`/`undefined` when the SDK metered
-// nothing, and land as SQL NULL. Never coalesced to `0`: a candidate the model
-// touched but did not meter must not look identical to one that cost nothing.
-// `surfaceNormalisationVersion` is nullable for the same reason and not a
-// weaker one: the candidate contract declares it `z.number().int().nullable()`
-// and NOT `.positive()` (`core/src/findings/candidate.ts:93`), so `0` is a
-// version a normaliser may legitimately report and cannot also stand for "none
-// recorded" — least of all on a column that feeds D12 identity comparisons.
+// NULL means not reported, never zero `tokensIn`/`tokensOut` arrive as
+// `null`/`undefined` when the SDK metered nothing, and land as SQL NULL. Never
+// coalesced to `0`: a candidate the model touched but did not meter must not look
+// identical to one that cost nothing. `surfaceNormalisationVersion` is nullable for the
+// same reason and not a weaker one: the candidate contract declares it
+// `z.number.int.nullable` and not `.positive`
+// (`core/src/findings/candidate.ts:93`), so `0` is a version a normaliser may
+// legitimately report and cannot also stand for "none recorded". Least of all on a
+// column that feeds identity comparisons.
 import { summarySourceSchema, type SummarySource, type TenantContext } from "@growthmind/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -51,15 +49,15 @@ import type { ScopedDb } from "./types";
 /**
  * The persisted form of a `MeasuredCount` (`@growthmind/core`).
  *
- * Structural, NOT the branded type. The brand is a module-private symbol that
- * only `measuredCount()` can stamp and that no round-trip through jsonb can
- * recreate — so a repository that claimed to return `MeasuredCount` would be
- * lying about every read. A consumer that needs the branded value re-runs the
- * constructor over this row; the boundary's job is to prove the SHAPE survived.
+ * Structural, not the branded type. The brand is a module-private symbol that only
+ * `measuredCount` can stamp and that no round-trip through jsonb can recreate, so a
+ * repository that claimed to return `MeasuredCount` would be lying about every read. A
+ * consumer that needs the branded value re-runs the constructor over this row; the
+ * boundary's job is to prove the shape survived.
  *
- * `timeframe` is coerced rather than declared `z.date()`: JSON has no Date, so
- * these two fields leave as `Date` and come back as ISO strings. `z.coerce.date`
- * accepts both, which is what lets ONE schema guard both directions.
+ * `timeframe` is coerced rather than declared `z.date`: JSON has no Date, so these
+ * two fields leave as `Date` and come back as ISO strings. `z.coerce.date` accepts
+ * both, which is what lets one schema guard both directions.
  */
 export const measuredCountRowSchema = z.object({
   numerator: z.number().int().nonnegative(),
@@ -80,16 +78,16 @@ export const measuredCountRowSchema = z.object({
 });
 export type MeasuredCountRow = z.infer<typeof measuredCountRowSchema>;
 
-/** One sentence per element (AD-8) — never a blob to be re-split downstream. */
+/** One sentence per element, never a blob to be re-split downstream. */
 export const findingContextSchema = z.array(z.string());
 
 const countsSchema = z.array(measuredCountRowSchema);
 
 type FindingRow = typeof findings.$inferSelect;
 
-/** A finding as this repository hands it out: the row, with its two jsonb
- * columns replaced by their PARSED values. Nothing downstream re-parses, and
- * nothing downstream is handed an `unknown`. */
+/** A finding as this repository hands it out: the row, with its two jsonb columns
+ * replaced by their parsed values. Nothing downstream re-parses, and nothing downstream
+ * is handed an `unknown`. */
 export type FindingRecord = Omit<FindingRow, "context" | "counts"> & {
   readonly context: readonly string[];
   readonly counts: readonly MeasuredCountRow[];
@@ -98,21 +96,20 @@ export type FindingRecord = Omit<FindingRow, "context" | "counts"> & {
 export interface PersistFindingInput {
   readonly projectId: string;
   readonly runId: string;
-  /** THE FINDING'S IDENTITY (ADD v2 AD-20, D12), and the value the unique
-   * index conflicts on. Derived by the caller through the ONE producer,
-   * `computeFindingSignature` — this repository accepts it, never mints it, and
-   * nothing here re-implements the hash. */
+  /** The finding's identity, and the value the unique index conflicts on. Derived by
+   * the caller through the one producer, `computeFindingSignature`. This repository
+   * accepts it, never mints it, and nothing here re-implements the hash. */
   readonly signature: string;
-  /** Which tuple serialisation produced `signature`. Stored beside it so
-   * provenance is read rather than guessed at. */
+  /** Which tuple serialisation produced `signature`. Stored beside it so provenance is
+   * read rather than guessed at. */
   readonly signatureVersion: number;
   readonly summarySource: SummarySource;
   readonly headline: string;
   readonly context: readonly string[];
   readonly finalClass: string;
   readonly surface: string;
-  /** `null` = NO VERSION WAS RECORDED. Never `0`, which is a version a producer
-   * may legitimately emit — see the header. */
+  /** `null` = no version was recorded. Never `0`, which is a version a producer may
+   * legitimately emit. See the header. */
   readonly surfaceNormalisationVersion: number | null;
   readonly counts: readonly MeasuredCountRow[];
   readonly confidenceBasis: string;
@@ -120,11 +117,11 @@ export interface PersistFindingInput {
   readonly windowEnd: Date;
   readonly evidenceShape: string;
   readonly evidenceShapeVersion: number;
-  /** Null iff NO call was attempted for this candidate — including on the
-   * defensive path where the port throws, which carries the model id the
-   * composition root resolved rather than a null. */
+  /** Null iff NO call was attempted for this candidate, including on the defensive path
+   * where the port throws, which carries the model id the composition root resolved
+   * rather than a null. */
   readonly resolvedModelId: string | null;
-  /** `null`/`undefined` = NOT REPORTED. Never written as `0` (FR-M9). */
+  /** `null`/`undefined` = not reported. Never written as `0`. */
   readonly tokensIn?: number | null;
   readonly tokensOut?: number | null;
 }
@@ -135,36 +132,35 @@ export interface ListFindingsOptions {
 
 export interface FindingsRepo {
   /**
-   * Idempotent BY CONSTRUCTION (D4). One `INSERT … ON CONFLICT
-   * (organization_id, project_id, signature) DO NOTHING`, never a
-   * check-then-write: a Graphile Worker replay of the analysis task — or a
-   * later tick that re-derives the same identity — conflicts and reads the row
-   * it already wrote, rather than minting a second finding that would be
+   * Idempotent by construction. One `INSERT … ON CONFLICT (organization_id, project_id,
+   * signature) DO NOTHING`, never a check-then-write: a Graphile Worker replay of the
+   * analysis task, or a later tick that re-derives the same identity. Conflicts and
+   * reads the row it already wrote, rather than minting a second finding that would be
    * delivered twice.
    *
-   * Refuses — throws, before any statement runs — a `summary_source`, a
-   * `context` or a `counts` value the shared shapes never declared (AD-18).
+   * Refuses (throws, before any statement runs) a `summary_source`, a `context` or a
+   * `counts` value the shared shapes never declared.
    */
   persist(input: PersistFindingInput): Promise<FindingRecord>;
-  /** Org- AND project-scoped. `null` for a signature that does not exist,
-   * belongs to another project, or belongs to another org. */
+  /** Org- and project-scoped. `null` for a signature that does not exist, belongs to
+   * another project, or belongs to another org. */
   findBySignature(projectId: string, signature: string): Promise<FindingRecord | null>;
-  /** Org- AND project-scoped, newest first. */
+  /** Org- and project-scoped, newest first. */
   listForProject(projectId: string, options: ListFindingsOptions): Promise<FindingRecord[]>;
 }
 
-/** The unique tuple every persist conflicts on (D4). Org-first: a signature is
- * CONTENT-DERIVED (ADD v2 AD-20), and nothing about a customer's own funnel
- * shape makes it unique across customers — so two organizations with the same
- * problem on the same page path WILL produce the same string. */
+/** The unique tuple every persist conflicts on. Org-first: a signature is
+ * content-derived, and nothing about a customer's own funnel shape makes it unique
+ * across customers, so two organizations with the same problem on the same page path
+ * will produce the same string. */
 export const FINDING_CONFLICT_TARGET = [
   findings.organizationId,
   findings.projectId,
   findings.signature,
 ];
 
-/** Both jsonb columns, parsed on the way OUT. A row written by an older shape
- * is refused here rather than handed to a caller as an `unknown` it will cast. */
+/** Both jsonb columns, parsed on the way out. A row written by an older shape is
+ * refused here rather than handed to a caller as an `unknown` it will cast. */
 function toRecord(row: FindingRow): FindingRecord {
   return {
     ...row,
@@ -175,15 +171,15 @@ function toRecord(row: FindingRow): FindingRecord {
 
 export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRepo {
   /**
-   * `project_id` is CLIENT-SUPPLIED on every write here, and the org column
-   * alone does not constrain it (D7/FR-M14). Without this, a caller handing
-   * another org's project id would mint a row stamped with ITS OWN org and the
-   * FOREIGN project — not a cross-tenant read, but a finding attributed to a
-   * product it did not come from, and one its owner can never see.
+   * `project_id` is client-supplied on every write here, and the org column alone does
+   * not constrain it. Without this, a caller handing another org's project id would
+   * mint a row stamped with its own org and the foreign project, not a cross-tenant
+   * read, but a finding attributed to a product it did not come from, and one its owner
+   * can never see.
    *
-   * This is a GUARD, not a claim, so it is not the D6 check-then-write hazard:
-   * a project's owning organization is immutable, so there is no window in
-   * which the answer changes between this read and the insert.
+   * This is a guard, not a claim, so it is not the check-then-write hazard: a project's
+   * owning organization is immutable, so there is no window in which the answer changes
+   * between this read and the insert.
    */
   async function assertProjectIsOurs(projectId: string): Promise<void> {
     const [owned] = await db
@@ -199,9 +195,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
 
   return {
     async persist(input: PersistFindingInput): Promise<FindingRecord> {
-      // Parsed BEFORE the write. A refusal here leaves the table untouched —
-      // which is what "refused at the wire" means, as against "thrown after a
-      // partial write landed".
+      // Parsed before the write. A refusal here leaves the table untouched, which is
+      // what "refused at the wire" means, as against "thrown after a partial write
+      // landed".
       const summarySource = summarySourceSchema.parse(input.summarySource);
       const context = findingContextSchema.parse(input.context);
       const counts = countsSchema.parse(input.counts);
@@ -228,9 +224,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
           evidenceShape: input.evidenceShape,
           evidenceShapeVersion: input.evidenceShapeVersion,
           resolvedModelId: input.resolvedModelId,
-          // `?? null` — NOT `?? 0`. An unreported count lands as SQL NULL, so
-          // "the model touched this and reported nothing" stays distinguishable
-          // from "this cost nothing" forever (FR-M9).
+          // `?? null`, not `?? 0`. An unreported count lands as SQL NULL, so "the model
+          // touched this and reported nothing" stays distinguishable from "this cost
+          // nothing" forever.
           tokensIn: input.tokensIn ?? null,
           tokensOut: input.tokensOut ?? null,
         })
@@ -241,9 +237,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
         return toRecord(inserted);
       }
 
-      // The replay branch. Read back under OUR org — the conflicting row is
-      // ours by construction (we inserted `ctx.organizationId`), so this can
-      // never surface another tenant's finding.
+      // The replay branch. Read back under our org. The conflicting row is ours by
+      // construction (we inserted `ctx.organizationId`), so this can never surface
+      // another tenant's finding.
       const [existing] = await db
         .select()
         .from(findings)
@@ -257,9 +253,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
         .limit(1);
 
       if (!existing) {
-        // The conflicting row vanished between the insert and this read (an
-        // org/project cascade landing in the gap). Loud, because a caller that
-        // treated this as success would report a finding that does not exist.
+        // The conflicting row vanished between the insert and this read (an org/project
+        // cascade landing in the gap). Loud, because a caller that treated this as
+        // success would report a finding that does not exist.
         throw new Error("findings: persist conflicted but no row was found to return");
       }
 
@@ -286,9 +282,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
       projectId: string,
       options: ListFindingsOptions,
     ): Promise<FindingRecord[]> {
-      // `projectId` NARROWS — it is never a substitute for the org predicate,
-      // and the org predicate is never a substitute for it. A dropped project
-      // filter would attribute a finding to a product it did not come from.
+      // `projectId` narrows, it is never a substitute for the org predicate, and the
+      // org predicate is never a substitute for it. A dropped project filter would
+      // attribute a finding to a product it did not come from.
       const rows = await db
         .select()
         .from(findings)

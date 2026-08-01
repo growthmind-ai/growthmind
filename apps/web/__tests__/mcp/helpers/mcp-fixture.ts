@@ -1,55 +1,50 @@
-// The fixture the MCP suites drive the REAL entry point with (O-009).
+// The fixture the MCP suites drive the real entry point with.
 //
-// WHAT THIS FILE IS AND IS NOT. It is a two-organization store behind the real
+// What this file is and is not. It is a two-organization store behind the real
 // `McpReadPort` interface, and a credential source behind the real
-// `McpCredentialSource` interface. It is NOT a re-implementation of the route:
-// every test calls `handleMcpRequest` with a real `Request` and asserts on a
-// real `Response`, so what is proven is the handler's behaviour and not a
-// replica's.
+// `McpCredentialSource` interface. It is not a re-implementation of the route: every
+// test calls `handleMcpRequest` with a real `Request` and asserts on a real `Response`,
+// so what is proven is the handler's behaviour and not a replica's.
 //
-// THE FAKE READ PORT ENFORCES THE PORT'S OWN CONTRACT, deliberately. Its header
-// requires that an implementation filter by organization in the SAME predicate
-// as the id, so the fake does exactly that — one `find` over one condition,
-// with no "look it up then check who owns it" step anywhere. A fake that
-// checked ownership separately would be modelling the bug the contract forbids,
-// and the cross-tenant suite would then be proving the fake rather than the
-// route.
+// The fake read port enforces the port's own contract, deliberately. Its header
+// requires that an implementation filter by organization in the same predicate as the
+// id, so the fake does exactly that, one `find` over one condition, with no "look it up
+// then check who owns it" step anywhere. A fake that checked ownership separately would
+// be modelling the bug the contract forbids, and the cross-tenant suite would then be
+// proving the fake rather than the route.
 //
-// FIXTURE TIME IS A CONSTANT. Nothing here reads a clock, so a rendered spec is
-// the same string on every run and in every timezone.
+// Fixture time is a constant. Nothing here reads a clock, so a rendered spec is the
+// same string on every run and in every timezone.
 //
-// ---------------------------------------------------------------------------
-// EVERY REQUEST MINTED HERE IS A LEGACY-LEG REQUEST (O-013, D-13)
-// ---------------------------------------------------------------------------
+// Every request minted here is a legacy-leg request
 //
-// The transport serves TWO protocol eras from one handler, and which era a
-// request lands on is decided by the request itself, not by a server option. A
-// request is MODERN if and only if it carries the `_meta` claim keys
-// (`io.modelcontextprotocol/protocolVersion`, `…/clientInfo`,
-// `…/clientCapabilities`) together with matching `Mcp-Method` and — for a tool
-// call — `Mcp-Name` headers. NOTHING IN THIS FILE MINTS ANY OF THAT, so
-// everything it produces classifies LEGACY.
+// The transport serves two protocol eras from one handler, and which era a request
+// lands on is decided by the request itself, not by a server option. A request is
+// modern if and only if it carries the `_meta` claim keys
+// (`io.modelcontextprotocol/protocolVersion`, `…/clientInfo`, `…/clientCapabilities`)
+// together with matching `Mcp-Method` and (for a tool call) `Mcp-Name` headers. Nothing
+// in this file mints any of that, so everything it produces classifies legacy.
 //
 // That is deliberate and it is load-bearing, not an accident of convenience:
 //
-//   - Legacy is the leg a STOCK client meets. `new Client({name, version})`
-//     with no options negotiates `2025-11-25` and connects — measured. The
-//     north star is about that client, so the fixture-driven suite asserts
-//     against the leg that client actually reaches.
-//   - The two legs answer with DIFFERENT BYTES. A modern result carries
-//     `resultType:"complete"` and `_meta.serverInfo` that the legacy frame does
-//     not. Roughly forty rows across four other test files fingerprint the
-//     whole body, so a helper that quietly grew a modern envelope would move
-//     every one of them onto a different string while they kept passing.
-//   - `WIRE-G6` asserts the `Accept` 406, which fires on the LEGACY leg only —
-//     the modern leg answers 200 to `application/json` alone. Minted modern,
-//     that row would pass for the wrong reason.
+// Legacy is the leg a stock client meets. `new Client({name, version})`
+//  with no options negotiates `2025-11-25` and connects — measured. The
+//  north star is about that client, so the fixture-driven suite asserts
+//  against the leg that client actually reaches.
+// The two legs answer with different bytes. A modern result carries
+//  `resultType:"complete"` and `_meta.serverInfo` that the legacy frame does
+//  not. Roughly forty rows across four other test files fingerprint the
+//  whole body, so a helper that quietly grew a modern envelope would move
+//  every one of them onto a different string while they kept passing.
+// `WIRE-G6` asserts the `Accept` 406, which fires on the legacy leg only —
+//  the modern leg answers 200 to `application/json` alone. Minted modern,
+//  that row would pass for the wrong reason.
 //
-// SO: DO NOT ADD A MODERN-ENVELOPE VARIANT TO THIS FILE WITHOUT A DECISION.
-// The modern leg is exercised where it belongs — through a real `Client` in
-// `../real-client.test.ts` — and nowhere else.
+// SO: Do not add a modern-envelope variant to this file without a decision. The modern
+// leg is exercised where it belongs. Through a real `Client` in
+// `../real-client.test.ts`, and nowhere else.
 //
-// Lane prefix `mcp` — shared with no other suite.
+// Lane prefix `mcp`, shared with no other suite.
 import type { CandidateFinding, DetectorCoverage, MeasuredCount } from "@growthmind/core";
 import { candidateFindingSchema, measuredCount, traceEntry } from "@growthmind/core";
 import { createApiKeysRepo, type ScopedDb } from "@growthmind/db";
@@ -68,9 +63,7 @@ import type {
   OpenFixRow,
 } from "../../../lib/mcp/read-port";
 
-// ---------------------------------------------------------------------------
 // Frozen fixture time and identities
-// ---------------------------------------------------------------------------
 
 export const WINDOW_START = new Date("2026-06-01T00:00:00.000Z");
 export const WINDOW_END = new Date("2026-06-08T00:00:00.000Z");
@@ -78,8 +71,8 @@ export const WINDOW_END = new Date("2026-06-08T00:00:00.000Z");
 export const ORG_A = "org-mcp-a";
 export const ORG_B = "org-mcp-b";
 
-/** Presented credential material. Opaque strings: the fake credential source
- * matches them exactly, the way a real one matches a stored hash. */
+/** Presented credential material. Opaque strings: the fake credential source matches
+ * them exactly, the way a real one matches a stored hash. */
 export const KEY_A = "mcp-fixture-key-org-a";
 export const KEY_B = "mcp-fixture-key-org-b";
 
@@ -89,9 +82,7 @@ const LEFT = 12;
 
 const CLEAN_COVERAGE: DetectorCoverage = { truncated: false, eventsWithoutUrlPath: 0 };
 
-// ---------------------------------------------------------------------------
 // Counts
-// ---------------------------------------------------------------------------
 
 function coreCount(numerator: number): MeasuredCount {
   return measuredCount({
@@ -104,9 +95,9 @@ function coreCount(numerator: number): MeasuredCount {
 }
 
 /**
- * The WIRE mirror of a count — parsed through `mcpMeasuredCountSchema`, so a
- * fixture cannot carry a count the contract would refuse and quietly make a
- * test pass on a shape production could never produce.
+ * The wire mirror of a count. Parsed through `mcpMeasuredCountSchema`, so a fixture
+ * cannot carry a count the contract would refuse and quietly make a test pass on a
+ * shape production could never produce.
  */
 export function wireCount(numerator: number): McpMeasuredCount {
   return mcpMeasuredCountSchema.parse({
@@ -118,15 +109,13 @@ export function wireCount(numerator: number): McpMeasuredCount {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Records
-// ---------------------------------------------------------------------------
 
 /**
- * A `CandidateFinding` PARSED through its own schema, so no fixture here can
- * drift from the contract `renderFixSpec` is typed against. Shaped after the
- * funnel fixture in `packages/core/__tests__/fixes/fix-spec.test.ts`: two
- * counts in declared role order with different numerators.
+ * A `CandidateFinding` parsed through its own schema, so no fixture here can drift from
+ * the contract `renderFixSpec` is typed against. Shaped after the funnel fixture in
+ * `packages/core/__tests__/fixes/fix-spec.test.ts`: two counts in declared role order
+ * with different numerators.
  */
 export function candidateFor(surface: string): CandidateFinding {
   const counts = [coreCount(REACHED), coreCount(LEFT)];
@@ -208,14 +197,12 @@ export function findingRecordFor(input: {
   };
 }
 
-// ---------------------------------------------------------------------------
 // The fake credential source
-// ---------------------------------------------------------------------------
 
 /**
- * Presented material to organization, by exact match — the fake mirror of a
- * hash lookup. Anything not in the map resolves to `null`, which is the
- * fail-closed direction the port's contract requires.
+ * Presented material to organization, by exact match. The fake mirror of a hash lookup.
+ * Anything not in the map resolves to `null`, which is the fail-closed direction the
+ * port's contract requires.
  */
 export function fakeCredentials(byMaterial: Readonly<Record<string, string>>): McpCredentialSource {
   return {
@@ -226,28 +213,26 @@ export function fakeCredentials(byMaterial: Readonly<Record<string, string>>): M
   };
 }
 
-// ---------------------------------------------------------------------------
 // A real credential, minted the way a person mints one
-// ---------------------------------------------------------------------------
 
-/** What a minted read credential gives a test: the material to present, and the
- * id to revoke it by. Never the hash — `MintedApiKey.key` carries no secret,
- * and neither does this. */
+/** What a minted read credential gives a test: the material to present, and the id to
+ * revoke it by. Never the hash, `MintedApiKey.key` carries no secret, and neither does
+ * this. */
 export interface MintedTestApiKey {
   readonly raw: string;
   readonly id: string;
 }
 
 /**
- * Mints a REAL `api_keys` row through the production repository — the same call
- * `scripts/mint-api-key.ts` makes, against a real database with real
- * migrations. This is deliberately NOT a fake: the suites that use it are
- * proving the production resolution path (`isApiKeyFormat`, the hash lookup,
- * the revocation predicate), which a hand-built row could not exercise.
+ * Mints a real `api_keys` row through the production repository, the same call
+ * `scripts/mint-api-key.ts` makes, against a real database with real migrations. This
+ * is deliberately not a fake: the suites that use it are proving the production
+ * resolution path (`isApiKeyFormat`, the hash lookup, the revocation predicate), which
+ * a hand-built row could not exercise.
  *
- * `apps/web` has no `drizzle-orm` and no `zod` dependency and must not gain
- * one, so every seeded credential in this lane goes through `@growthmind/db`'s
- * factories rather than through a query written here.
+ * `apps/web` has no `drizzle-orm` and no `zod` dependency and must not gain one, so
+ * every seeded credential in this lane goes through `@growthmind/db`'s factories rather
+ * than through a query written here.
  */
 export async function mintRealApiKey(
   db: ScopedDb,
@@ -258,8 +243,8 @@ export async function mintRealApiKey(
   return { raw: minted.raw, id: minted.key.id };
 }
 
-/** A credential source that throws — the "credential store unreachable" path,
- * which must fail closed rather than open. */
+/** A credential source that throws. The "credential store unreachable" path, which must
+ * fail closed rather than open. */
 export function throwingCredentials(): McpCredentialSource {
   return {
     resolve(): Promise<McpCredential | null> {
@@ -268,9 +253,7 @@ export function throwingCredentials(): McpCredentialSource {
   };
 }
 
-// ---------------------------------------------------------------------------
 // The fake read port
-// ---------------------------------------------------------------------------
 
 /** One stored open fix, with the organization and project it belongs to. */
 export interface StoredOpenFix {
@@ -295,9 +278,8 @@ export interface FakeReadStore {
   readonly findings?: readonly StoredFinding[];
 }
 
-/** Every organization id the handler asked this port about, in order. The
- * cross-tenant suite asserts this never contains an organization other than the
- * credential's. */
+/** Every organization id the handler asked this port about, in order. The cross-tenant
+ * suite asserts this never contains an organization other than the credential's. */
 export interface RecordingReadPort {
   readonly port: McpReadPort;
   readonly organizationsAsked: readonly string[];
@@ -313,9 +295,9 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
     listOpenFixes(query: ListOpenFixesQuery): Promise<OpenFixPage> {
       organizationsAsked.push(query.organizationId);
 
-      // ONE PREDICATE, both conditions — the port contract's rule 1 and 3. A
-      // project id belonging to another organization matches nothing here
-      // because the organization condition is in the same test.
+      // One predicate, both conditions. The port contract's rule 1 and 3. A project id
+      // belonging to another organization matches nothing here because the organization
+      // condition is in the same test.
       const matching = openFixes.filter(
         (stored) =>
           stored.organizationId === query.organizationId &&
@@ -356,19 +338,17 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
 }
 
 /**
- * A read port whose every method REJECTS — the "the database is not answering"
- * path.
+ * A read port whose every method rejects. The "the database is not answering" path.
  *
- * Lives here rather than in one test file because three separate §6 rows need
- * the same fake: `WIRE-S5` (a read that throws still comes back as a refusal
- * value, never an exception and never a `Response`), `WIRE-B1` (the fault is
- * logged and the caller gets a detail-free answer) and `WIRE-B2` (nothing
- * escapes the mounted handler as an unhandled rejection). Three hand-rolled
- * copies would be three chances to throw a subtly different thing and prove
- * three different properties.
+ * Lives here rather than in one test file because three separate rows need the same
+ * fake: `WIRE-S5` (a read that throws still comes back as a refusal value, never an
+ * exception and never a `Response`), `WIRE-B1` (the fault is logged and the caller gets
+ * a detail-free answer) and `WIRE-B2` (nothing escapes the mounted handler as an
+ * unhandled rejection). Three hand-rolled copies would be three chances to throw a
+ * subtly different thing and prove three different properties.
  *
- * The message names the fixture so a leaked stack frame is obvious in the row
- * that scans a response for one.
+ * The message names the fixture so a leaked stack frame is obvious in the row that
+ * scans a response for one.
  */
 function unreachableRead(): Promise<never> {
   return Promise.reject(new Error("mcp fixture: the read port is unreachable"));
@@ -382,30 +362,28 @@ export function throwingReadPort(): McpReadPort {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Driving the real entry point
-// ---------------------------------------------------------------------------
 
 export const MCP_URL = "http://localhost:3000/api/mcp";
 
 /**
- * The headers EVERY minted request carries, in one constant applied by all
- * three constructors so that no test can forget one.
+ * The headers every minted request carries, in one constant applied by all three
+ * constructors so that no test can forget one.
  *
- * ⚠️ BOTH `accept` VALUES ARE REQUIRED BY THE TRANSPORT ON THE LEGACY LEG.
- * Sending `application/json` alone is answered HTTP 406 there —
+ * ⚠️ both `accept` values are required by the transport on the legacy leg. Sending
+ * `application/json` alone is answered HTTP 406 there,
  * `{"error":{"code":-32000,"message":"Not Acceptable: Client must accept both
- * application/json and text/event-stream"}}` — before the body is parsed and
- * before any tool is resolved. Measured, twice: it is a LEGACY-leg behaviour
- * (the modern leg answers 200 to `application/json` alone), and the pinned
- * `responseMode` does NOT relax it.
+ * application/json and text/event-stream"}}`. Before the body is parsed and before any
+ * tool is resolved. Measured, twice: it is a legacy-leg behaviour (the modern leg
+ * answers 200 to `application/json` alone), and the pinned `responseMode` does not
+ * relax it.
  *
- * This is the truthful default rather than a workaround: a real MCP client
- * sends both values too. Around forty rows across four other files assert
- * against what these constructors mint, and without this header every one of
- * them would be asserting against the transport's 406 instead of the refusal,
- * result or error frame it names. If you are here to "simplify" the second
- * media type away, that is the thing you would be breaking.
+ * This is the truthful default rather than a workaround: a real MCP client sends both
+ * values too. Around forty rows across four other files assert against what these
+ * constructors mint, and without this header every one of them would be asserting
+ * against the transport's 406 instead of the refusal, result or error frame it names.
+ * If you are here to "simplify" the second media type away, that is the thing you would
+ * be breaking.
  */
 export const WIRE_HEADERS = {
   "content-type": "application/json",
@@ -413,17 +391,16 @@ export const WIRE_HEADERS = {
 } as const;
 
 /**
- * A deliberate, per-row deviation from `WIRE_HEADERS` — never a default.
+ * A deliberate, per-row deviation from `WIRE_HEADERS`, never a default.
  *
- * Three §6 rows exist precisely to prove a header gate: `WIRE-G1` sends an
- * `Origin`, `WIRE-G3` sends the wrong `content-type`, and `WIRE-G6(a)` sends a
- * narrowed `accept`. They start from `WIRE_HEADERS` and override one entry, so
- * the deviation is visible at the call site and everything else stays truthful.
+ * Three rows exist precisely to prove a header gate: `WIRE-G1` sends an `Origin`,
+ * `WIRE-G3` sends the wrong `content-type`, and `WIRE-G6` sends a narrowed `accept`.
+ * They start from `WIRE_HEADERS` and override one entry, so the deviation is visible at
+ * the call site and everything else stays truthful.
  *
- * ⚠️ NOT A DOOR TO THE MODERN LEG. `Mcp-Method` / `Mcp-Name` are half of the
- * modern classification and the `_meta` claim keys — the other half — are not
- * reachable through this at all, because the body is built below. See the file
- * header.
+ * ⚠️ not a door to the modern leg. `Mcp-Method` / `Mcp-Name` are half of the modern
+ * classification and the `_meta` claim keys (the other half) are not reachable through
+ * this at all, because the body is built below. See the file header.
  */
 export type WireHeaderOverrides = Readonly<Record<string, string>>;
 
@@ -441,14 +418,14 @@ function wireHeaders(key: string | null | undefined, overrides?: WireHeaderOverr
 /**
  * A `tools/call` as a real `Request`. `key` omitted means no credential at all.
  *
- * ⚠️ `id` DEFAULTS TO 1, AND THAT DEFAULT IS WHY THE EXCLUSION LIST IS EMPTY
- * (D-6 rule 4). The identity rows compare two responses byte for byte over
- * `await response.text()`; the JSON-RPC id is echoed into every answer, so two
- * requests can only be byte-identical if they shared an id. Defaulting it here
- * means a test has to go out of its way to vary it, and no row has to remember
- * to pin it. Measured: nothing else in a response varies between two identical
- * requests — no SSE `id:` line is emitted on either leg under any
- * `responseMode` — so with the id held constant there is nothing to exclude.
+ * ⚠️ `id` defaults to 1, and that default is why the exclusion list is empty (rule 4).
+ * The identity rows compare two responses byte for byte over `await response.text`;
+ * the JSON-RPC id is echoed into every answer, so two requests can only be
+ * byte-identical if they shared an id. Defaulting it here means a test has to go out of
+ * its way to vary it, and no row has to remember to pin it. Measured: nothing else in a
+ * response varies between two identical requests. No SSE `id:` line is emitted on
+ * either leg under any `responseMode`, so with the id held constant there is nothing to
+ * exclude.
  */
 export function toolCallRequest(input: {
   tool: string;
@@ -472,14 +449,14 @@ export function toolCallRequest(input: {
 /**
  * Any JSON-RPC message, for the envelope suite.
  *
- * `params` is OMITTED from the body when it is not given, rather than sent as
- * `null` or `{}` — `WIRE-W6` asserts that a request with no params at all is
- * answered rather than thrown on, and a helper that always sent a params key
- * would make that row untestable through the fixture.
+ * `params` is omitted from the body when it is not given, rather than sent as `null` or
+ * `{}`, `WIRE-W6` asserts that a request with no params at all is answered rather than
+ * thrown on, and a helper that always sent a params key would make that row untestable
+ * through the fixture.
  *
- * `id` follows `toolCallRequest`'s rule and defaults to 1. Pass `null`
- * explicitly for `WIRE-W2` (a null id is answered rather than dropped); use
- * `notificationRequest` for a message carrying no id key at all.
+ * `id` follows `toolCallRequest`'s rule and defaults to 1. Pass `null` explicitly for
+ * `WIRE-W2` (a null id is answered rather than dropped); use `notificationRequest` for
+ * a message carrying no id key at all.
  */
 export function rpcRequest(input: {
   method: string;
@@ -505,13 +482,13 @@ export function rpcRequest(input: {
 }
 
 /**
- * A JSON-RPC NOTIFICATION — a message with no `id` key at all, which the
- * protocol answers with no message in the body.
+ * A JSON-RPC notification, a message with no `id` key at all, which the protocol
+ * answers with no message in the body.
  *
- * Separate from `rpcRequest` rather than a fourth state of its `id` parameter,
- * because "no id" and "id: null" are different messages on the wire and
- * `WIRE-W2` and `WIRE-W4` assert different things about them. One name each is
- * cheaper than one parameter that means three things.
+ * Separate from `rpcRequest` rather than a fourth state of its `id` parameter, because
+ * "no id" and "id: null" are different messages on the wire and `WIRE-W2` and `WIRE-W4`
+ * assert different things about them. One name each is cheaper than one parameter that
+ * means three things.
  */
 export function notificationRequest(input: {
   method: string;
@@ -532,12 +509,11 @@ export function notificationRequest(input: {
 }
 
 /**
- * A request on a verb other than POST — for the rows that prove nothing else is
- * mounted (`WIRE-R7`, `WIRE-M2`) and the ones that sweep every answer for a
- * header (`WIRE-G5`).
+ * A request on a verb other than POST. For the rows that prove nothing else is mounted
+ * (`WIRE-R7`, `WIRE-M2`) and the ones that sweep every answer for a header (`WIRE-G5`).
  *
- * No body, and the same headers as everything else: a verb row must fail on the
- * verb, never on a header the helper forgot.
+ * No body, and the same headers as everything else: a verb row must fail on the verb,
+ * never on a header the helper forgot.
  */
 export function verbRequest(input: {
   method: string;
@@ -551,18 +527,17 @@ export function verbRequest(input: {
 }
 
 /**
- * A request whose body is whatever string you hand it — not JSON at all, a
- * JSON-RPC message missing a required field, or a batch array.
+ * A request whose body is whatever string you hand it, not JSON at all, a JSON-RPC
+ * message missing a required field, or a batch array.
  *
- * ⚠️ THIS CARRIES `accept` TOO, AND THAT WAS A CORRECTION. The first draft
- * marked this constructor unchanged; without both media types the transport
- * answers 406 BEFORE the parser is reached, and `WIRE-R2` / `WIRE-W7` — which
- * exist to prove a parse error — would assert against a content-negotiation
- * refusal instead.
+ * ⚠️ this carries `accept` too, and that was a correction. The first draft marked this
+ * constructor unchanged; without both media types the transport answers 406 before the
+ * parser is reached, and `WIRE-R2` / `WIRE-W7` (which exist to prove a parse error)
+ * would assert against a content-negotiation refusal instead.
  *
- * `key` accepts `null` so the anonymous-caller rows (`WIRE-O1`, `WIRE-R22`) can
- * mint through the same place as everything else rather than hand-rolling a
- * `Request` that would forget the header this constructor exists to remember.
+ * `key` accepts `null` so the anonymous-caller rows (`WIRE-O1`, `WIRE-R22`) can mint
+ * through the same place as everything else rather than hand-rolling a `Request` that
+ * would forget the header this constructor exists to remember.
  */
 export function rawBodyRequest(
   body: string,
@@ -579,30 +554,29 @@ export function rawBodyRequest(
 /**
  * Everything about a response that a caller could tell two answers apart by.
  *
- * The identity assertions compare THIS, not a parsed body: two responses that
- * differ in status, in content type, or in one byte of text are
- * distinguishable, and comparing parsed objects would hide exactly the
- * differences that matter.
+ * The identity assertions compare this, not a parsed body: two responses that differ in
+ * status, in content type, or in one byte of text are distinguishable, and comparing
+ * parsed objects would hide exactly the differences that matter.
  *
- * ⚠️ UNCHANGED, ON PURPOSE, AND THE BODY STAYS A RAW STRING. This is the first
- * of the mechanisms that stop a future reader loosening the crown-jewel
- * comparison: a parsed comparison is not reachable from this helper at all, so
- * loosening one would mean hand-rolling `JSON.parse` in a test file — which the
- * source scanner in `../refusal-identity-guard.test.ts` fails on. Do not
- * "improve" this into returning a parsed object.
+ * ⚠️ unchanged, on purpose, and the body stays a raw string. This is the first of the
+ * mechanisms that stop a future reader loosening the crown-jewel comparison: a parsed
+ * comparison is not reachable from this helper at all, so loosening one would mean
+ * hand-rolling `JSON.parse` in a test file, which the source scanner in
+ * `../refusal-identity-guard.test.ts` fails on. Do not "improve" this into returning a
+ * parsed object.
  *
- * NO EXCLUSION LIST, AND NONE IS NEEDED. Measured on both protocol legs under
- * `auto` / `sse` / `json`: no SSE `id:` line is ever emitted, two identical
- * requests are byte-identical, and a foreign-org id is byte-identical to an id
- * that does not exist. The empty exclusion list is a property of the package,
- * not a consequence of a framing choice.
+ * No exclusion list, and none is needed. Measured on both protocol legs under `auto` /
+ * `sse` / `json`: no SSE `id:` line is ever emitted, two identical requests are
+ * byte-identical, and a foreign-org id is byte-identical to an id that does not exist.
+ * The empty exclusion list is a property of the package, not a consequence of a framing
+ * choice.
  *
- * `contentType` reads one of TWO BANDS and both are asserted:
- *   - `text/event-stream` where the SDK rendered the answer;
- *   - `application/json;charset=utf-8` where our own `refusalResponse` did,
- *     before the SDK was ever in the call stack (every 401, and the 405).
- * A third value exists and is not a band: a `202` notification answer carries
- * NO content-type at all, so a sweep over every response gets `null` there.
+ * `contentType` reads one of two bands and both are asserted:
+ * `text/event-stream` where the SDK rendered the answer;
+ * `application/json;charset=utf-8` where our own `refusalResponse` did,
+ *  before the SDK was ever in the call stack (every 401, and the 405).
+ * A third value exists and is not a band: a `202` notification answer carries NO
+ * content-type at all, so a sweep over every response gets `null` there.
  */
 export interface ResponseFingerprint {
   readonly status: number;
@@ -618,32 +592,28 @@ export async function fingerprint(response: Response): Promise<ResponseFingerpri
   };
 }
 
-// ---------------------------------------------------------------------------
 // Reading an SSE frame without parsing it
-// ---------------------------------------------------------------------------
 
 /**
- * The `data:` payloads of an SSE frame, in order, BY STRING OPERATIONS ONLY.
+ * The `data:` payloads of an SSE frame, in order, by string operations only.
  *
- * Under the pinned `responseMode: "sse"` every SDK-rendered answer arrives as
- * `event: message\ndata: {…}\n\n`, so a row that wants to assert on the
- * JSON-RPC message rather than on the whole frame needs the `data:` line out of
- * it. `split` and `startsWith` — never `JSON.parse`, never a regex that could
- * be mistaken for one.
+ * Under the pinned `responseMode: "sse"` every SDK-rendered answer arrives as `event:
+ * message\ndata: {…}\n\n`, so a row that wants to assert on the JSON-RPC message rather
+ * than on the whole frame needs the `data:` line out of it. `split` and `startsWith`,
+ * never `JSON.parse`, never a regex that could be mistaken for one.
  *
- * WHY THIS LIVES HERE RATHER THAN IN EACH TEST FILE. Four separate test files
- * need it, and `JSON.parse(` is a BANNED TOKEN in all four
- * (`../refusal-identity-guard.test.ts` scans their source text for it). Four
- * hand-rolled extractors is four chances for one of them to reach for the
- * obvious parse; one extractor here is one place to get it right. The ADD's
- * D-13 says extraction happens "inside the test, never in the helper" — that
- * sentence is about not letting a helper perform a PARSED COMPARISON, which
- * this does not do: it returns strings and compares nothing. Task 3.1 item 7
+ * Why this lives here rather than in each test file. Four separate test files need it,
+ * and `JSON.parse(` is a banned token in all four (`../refusal-identity-guard.test.ts`
+ * scans their source text for it). Four hand-rolled extractors is four chances for one
+ * of them to reach for the obvious parse; one extractor here is one place to get it
+ * right. The That decision says extraction happens "inside the test, never in the
+ * helper". That sentence is about not letting a helper perform a parsed comparison,
+ * which this does not do: it returns strings and compares nothing. Task 3.1 item 7
  * makes the placement explicit.
  *
- * Returns `[]` for a body that is not an SSE frame — a pre-SDK refusal, say —
- * so a row that reached for this on the wrong band gets an empty array it must
- * assert about, rather than a silently plausible string.
+ * Returns `[]` for a body that is not an SSE frame (a pre-SDK refusal, say) so a row
+ * that reached for this on the wrong band gets an empty array it must assert about,
+ * rather than a silently plausible string.
  */
 export function sseDataLines(frame: string): readonly string[] {
   const payloads: string[] = [];
@@ -660,9 +630,9 @@ export function sseDataLines(frame: string): readonly string[] {
 /**
  * The single `data:` payload of a one-message SSE frame.
  *
- * Throws when there is not exactly one, naming how many it found — an answer
- * that suddenly carries two messages, or none, should fail the row that assumed
- * one rather than silently compare against `undefined`.
+ * Throws when there is not exactly one, naming how many it found. An answer that
+ * suddenly carries two messages, or none, should fail the row that assumed one rather
+ * than silently compare against `undefined`.
  */
 export function sseDataLine(frame: string): string {
   const payloads = sseDataLines(frame);

@@ -1,12 +1,11 @@
-// Pure renderers (ADD §4 file 12, D-9). Plain-English bar throughout: every
-// count carries its denominator; "p50"/"p90" appear only alongside their
-// plain-English equivalents. Renderers distinguish "0 of N retrieved",
-// "leg failed", and "leg not run" (D-5).
+// Pure renderers (file 12). Plain-English bar throughout: every count carries its
+// denominator; "p50"/"p90" appear only alongside their plain-English equivalents.
+// Renderers distinguish "0 of N retrieved", "leg failed", and "leg not run".
 
 import { computeStats } from "./stats";
 import type { LegResult, SignalType, StatsResult, TrialRecord } from "./types";
 
-/** Plain-English display names for the three signal legs (FR-12). */
+/** Plain-English display names for the three signal legs. */
 const SIGNAL_LABELS: Record<SignalType, string> = {
   "custom-event": "custom events",
   exception: "exceptions",
@@ -19,16 +18,16 @@ function seconds(ms: number): string {
 }
 
 /**
- * The timeout cap (in ms) the leg's trials ran under, read off the first
- * trial's recorded poll params. Undefined when the leg has no trials.
+ * The timeout cap the leg's trials ran under, read off the first trial's
+ * recorded poll params. Undefined when the leg has no trials.
  */
 function legTimeoutMs(leg: LegResult): number | undefined {
   return leg.trials[0]?.pollParams.timeoutMs;
 }
 
 /**
- * One per-trial progress line — the CLI's "loading state" during long runs
- * (D-6), e.g. trial index, outcome, and elapsed ms.
+ * One per-trial progress line. The cli's "loading state" during long runs, e.g. trial
+ * index, outcome, and elapsed ms.
  */
 export function renderTrialProgressLine(record: TrialRecord): string {
   const label = SIGNAL_LABELS[record.signalType];
@@ -53,10 +52,10 @@ export function renderTrialProgressLine(record: TrialRecord): string {
 }
 
 /**
- * FR-12 verdict line, e.g. "custom events: retrievable in 3.2s median across
- * 20 trials (worst: 8.1s, 2 timed out at 120s)". For failed / not-run legs it
- * says so explicitly instead of rendering numbers; a completed leg with zero
- * retrieved trials reports "0 of N" from the leg's own records (D-5).
+ * verdict line, e.g. "custom events: retrievable in 3.2s median across 20 trials
+ * (worst: 8.1s, 2 timed out at 120s)". For failed / not-run legs it says so explicitly
+ * instead of rendering numbers; a completed leg with zero retrieved trials reports "0
+ * of N" from the leg's own records.
  */
 export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   const label = SIGNAL_LABELS[leg.signalType];
@@ -71,8 +70,8 @@ export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   }
 
   if (stats.kind === "no-data") {
-    // Completed leg, zero retrieved: counts come from the leg's own records,
-    // never from the no-data marker (D-5).
+    // Completed leg, zero retrieved: counts come from the leg's own records, never from
+    // the no-data marker.
     const attempted = leg.trials.length;
     const timeoutMs = legTimeoutMs(leg);
     const cap = timeoutMs !== undefined ? ` at the ${seconds(timeoutMs)} timeout` : "";
@@ -93,9 +92,9 @@ export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
 }
 
 /**
- * FR-13 summary table across all legs. Values are recomputed from each leg's
- * own trial records via the stats helper, so the table can never drift from
- * the persisted JSON (report.test.ts asserts the round-trip).
+ * summary table across all legs. Values are recomputed from each leg's own trial
+ * records via the stats helper, so the table can never drift from the persisted JSON
+ * (report.test.ts asserts the round-trip).
  */
 export function renderSummaryTable(legs: readonly LegResult[]): string {
   const header = [
@@ -174,11 +173,10 @@ function renderLegDocSection(leg: LegResult): string {
 
 /**
  * The paste-ready markdown results block for
- * docs/decisions/0001-posthog-retrieval-latency.md (D-9): per-leg p50/p90/max
- * with plain-English equivalents and every count carrying its denominator.
- * Run date and host region are left as fill-in slots — this renderer sees only
- * leg results, and the run file carries a region string only (never keys,
- * never the project ID).
+ * docs/decisions/0001-posthog-retrieval-latency.md: per-leg p50/p90/max with
+ * plain-English equivalents and every count carrying its denominator. Run date and host
+ * region are left as fill-in slots. This renderer sees only leg results, and the run
+ * file carries a region string only (never keys, never the project ID).
  */
 export function renderDecisionDocBlock(legs: readonly LegResult[]): string {
   const sections = legs.map((leg) => renderLegDocSection(leg));

@@ -33,7 +33,7 @@ export {
   type WorkspaceName,
 } from "./forms";
 
-// --- O-003: credential encryption at rest -----------------------------------
+// --: credential encryption at rest
 export {
   credentialAad,
   keyIdOf,
@@ -53,7 +53,7 @@ export {
   type CredentialKeyResolution,
 } from "./crypto/credential-key";
 
-// --- O-003: the SessionSource port's shapes ---------------------------------
+// --: the SessionSource port's shapes
 export {
   sessionSourceKindSchema,
   sourceFailureCodeSchema,
@@ -109,12 +109,12 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES,
 } from "./session-source/messages";
 
-// --- O-004: the evidence gate's plain-English reasons (D-19) ----------------
-// Defined here so `ALL_CUSTOMER_FACING_MESSAGES` (and the plain-English audit
-// that scans it) covers them; `packages/core` imports them back for the trace.
+// --: the evidence gate's plain-English reasons Defined here so
+// `ALL_CUSTOMER_FACING_MESSAGES` (and the plain-English audit that scans it) covers
+// them; `packages/core` imports them back for the trace.
 export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
 
-// --- O-003: exclusions ------------------------------------------------------
+// --: exclusions
 export {
   exclusionReasonSchema,
   type ExclusionReason,
@@ -136,7 +136,7 @@ export {
   CURRENT_EXCLUSION_RULE_SET,
 } from "./exclusions/classify";
 
-// --- O-003: session assembly ------------------------------------------------
+// --: session assembly
 export {
   deriveSessionKey,
   SESSION_GROUPING_VERSION,
@@ -154,7 +154,7 @@ export {
   type IdentityHmacKey,
 } from "./sessions/identity-key";
 
-// --- O-003: the onboarding counter ------------------------------------------
+// --: the onboarding counter
 export {
   expectedLagSchema,
   setAsideBreakdownSchema,
@@ -169,7 +169,7 @@ export {
   POSTHOG_MAX_RETRIEVAL_SECONDS,
 } from "./counter/lag";
 
-// --- O-005: the cold-start lane's shapes ------------------------------------
+// --: the cold-start lane's shapes
 export {
   analysisRunStatusSchema,
   analysisOutcomeSchema,
@@ -186,12 +186,12 @@ export {
   type SummaryUsage,
   type SummaryRenderResult,
 } from "./summary/types";
-// The three `FLOOR_*` tables are re-exported as DATA and their three key unions
-// are NOT. `packages/shared/src/summary/messages.ts` restates `FindingClass`,
-// `ConfidenceBasis` and `CountRole` locally because `shared` may not import
-// `core`; a consumer importing a restatement instead of the real union would
-// defeat the compile error that reconciles the two (D-3), so the restatements
-// stay module-local and `core` annotates its own import with its own union.
+// The three `FLOOR_*` tables are re-exported as data and their three key unions are
+// not. `packages/shared/src/summary/messages.ts` restates `FindingClass`,
+// `ConfidenceBasis` and `CountRole` locally because `shared` may not import `core`; a
+// consumer importing a restatement instead of the real union would defeat the compile
+// error that reconciles the two, so the restatements stay module-local and `core`
+// annotates its own import with its own union.
 export {
   ANALYSIS_RUN_STATUS_MESSAGES,
   ANALYSIS_OUTCOME_MESSAGES,
@@ -205,7 +205,7 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES as SUMMARY_ALL_CUSTOMER_FACING_MESSAGES,
 } from "./summary/messages";
 
-// --- O-006: the signature ledger's shapes -----------------------------------
+// --: the signature ledger's shapes
 export {
   suppressionReasonCodeSchema,
   ancestryReasonSchema,
@@ -223,7 +223,7 @@ export {
   FORBIDDEN_PRODUCT_JARGON,
 } from "./signatures/messages";
 
-// --- O-007: the delivery lane's shapes --------------------------------------
+// --: the delivery lane's shapes
 export {
   deliveryDecisionSchema,
   nothingTodayReasonSchema,
@@ -257,7 +257,7 @@ export {
 } from "./delivery/poster";
 export { POST_FAILURE_MESSAGES } from "./delivery/messages";
 
-// --- O-009: the read-only MCP surface ----------------------------------------
+// --: the read-only MCP surface
 export {
   MCP_TOOL,
   MCP_TOOL_NAMES,
@@ -306,11 +306,10 @@ export {
   type GetFindingOutput,
 } from "./mcp/types";
 
-// --- O-009: the read credential that authenticates against that surface ------
-// Its own family, not a `WriteKeyKind` member: a stolen write key is junk
-// telemetry in one project, a stolen read credential is every finding in the
-// organisation. `gmak_` differs from `gmwk_` at index 2 so neither family's
-// gate can ever fire on the other's material.
+// --: the read credential that authenticates against that surface Its own family, not a
+// `WriteKeyKind` member: a stolen write key is junk telemetry in one project, a stolen
+// read credential is every finding in the organisation. `gmak_` differs from `gmwk_` at
+// index 2 so neither family's gate can ever fire on the other's material.
 export { apiKeyMetadataSchema, type ApiKeyMetadata } from "./api-keys/types";
 export {
   API_KEY_PREFIX,

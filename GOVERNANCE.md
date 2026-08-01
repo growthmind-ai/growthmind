@@ -6,8 +6,8 @@ request.
 
 ## Who decides
 
-The maintainers — `@growthmind-ai/founders` in
-[.github/CODEOWNERS](.github/CODEOWNERS) — have the final call on what ships.
+The maintainers, `@growthmind-ai/founders` in
+[.github/CODEOWNERS](.github/CODEOWNERS), have the final call on what ships.
 There is no committee, no vote, and no technical steering group. The people
 who wrote [docs/product-decisions.md](docs/product-decisions.md) are
 accountable for whether the product it describes actually works, so they own
@@ -21,20 +21,20 @@ foundation. If that is a dealbreaker for you, better to know now.
 
 Nearly all of the actual work:
 
-- **Code** — the app, the SDK, the worker, the analysis pipeline, performance,
+- **Code**, the app, the SDK, the worker, the analysis pipeline, performance,
   refactors that make a subsystem easier to reason about.
-- **Tests** — especially for pure logic. Extractors, scorers, resolvers, and
+- **Tests**, especially for pure logic. Extractors, scorers, resolvers, and
   diff utilities are where correctness lives.
-- **Docs** — anything wrong, unclear, or out of date. Corrections to `docs/`
+- **Docs**, anything wrong, unclear, or out of date. Corrections to `docs/`
   are welcome; changing what the decisions _say_ is a different thing (below).
-- **Adapters and integrations** — analytics sources, model providers,
+- **Adapters and integrations**. Analytics sources, model providers,
   deployment targets. Product decision §11 leaves the adapter pattern an open
   question on purpose.
-- **Self-host paths** — anything that makes `docker compose up` from a clean
+- **Self-host paths**, anything that makes `docker compose up` from a clean
   clone work in more places.
 - **Bug reports and security reports.** Both are genuinely useful.
   Vulnerabilities go through [SECURITY.md](SECURITY.md), never a public issue.
-- **Arguments with our decisions.** See below — this is a first-class
+- **Arguments with our decisions.** See below. This is a first-class
   contribution, not a tolerated one.
 
 ## What is not open
@@ -46,7 +46,7 @@ subsystem that enforces it; [docs/stack.md](docs/stack.md) records which
 dependencies were rejected and why, so those aren't re-litigated either.
 
 A change to a product decision is a product decision, not a docs edit. We
-will change them — several are wrong and we don't know which yet — but the
+will change them (several are wrong and we don't know which yet) but the
 change happens in the open, as a decision, before any code depends on it.
 
 ## How to change our mind
@@ -62,7 +62,7 @@ matter how good it is, and that is a waste of your afternoon we would rather
 prevent than perform.
 
 The strongest form of the argument is a concrete scenario where following the
-decision produces a worse product than your alternative — plus what the
+decision produces a worse product than your alternative. Plus what the
 alternative costs. If you convince us, the decision changes first and the code
 follows. If you don't, we will say why in the issue and it stays there in
 public for the next person.
@@ -89,7 +89,7 @@ start.
 what you write. Inbound equals outbound: contributions are licensed under the
 [MIT License](LICENSE), the same terms as the project, which is what
 [CONTRIBUTING.md](CONTRIBUTING.md) already says. Opening a pull request is the
-whole ceremony — no form to sign, no bot to satisfy.
+whole ceremony, no form to sign, no bot to satisfy.
 
 Because it is MIT, a decision you're certain we got wrong is forkable. We'd
 rather that than pretend the boundary isn't there.
@@ -101,10 +101,10 @@ because there is no track record to judge anyone against yet.
 
 What we would actually look for, honestly stated: a run of merged pull
 requests in one area of the codebase, useful review comments on other
-people's work, and judgement about the contract — someone who spots that a
+people's work, and judgement about the contract. Someone who spots that a
 change violates a decision before we do. That earns review rights in that
 area first, then commit access. There is no PR count that buys it, and asking
-is not presumptuous — open an issue and ask.
+is not presumptuous, open an issue and ask.
 
 If that changes, it changes here.
 

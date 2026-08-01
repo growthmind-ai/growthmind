@@ -1,15 +1,15 @@
-// Wave 0b (RED) — lane L3, fixture seed prefix `db-`.
-// ADD tasks/session-source-posthog-adapter/add.md §9 items 71–72.
+// Wave 0b (red), lane L3, fixture seed prefix `db-`. Add
+// tasks/session-source-posthog-adapter/add.md items 71–72.
 //
-// FR-6's idempotency key is `(project_id, source_event_id)`, enforced by a
-// unique index and applied with `ON CONFLICT DO NOTHING` — never a
-// check-then-insert. The overlap window (D-6e) deliberately re-requests events
-// we already hold, so "a replay yields exactly one row per event" is the
-// property that makes a retried poll safe, and it has to be proved against
-// real SQL rather than against a fake that would simply do what it was told.
+// the idempotency key is `(project_id, source_event_id)`, enforced by a unique index
+// and applied with `ON CONFLICT DO NOTHING`, never a check-then-insert. The overlap
+// window deliberately re-requests events we already hold, so "a replay yields exactly
+// one row per event" is the property that makes a retried poll safe, and it has to be
+// proved against real SQL rather than against a fake that would simply do what it was
+// told.
 //
-// `createEventsRepo` is a typed-stub throw today, so every test fails on
-// "not implemented".
+// `createEventsRepo` is a typed-stub throw today, so every test fails on "not
+// implemented".
 import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
@@ -51,7 +51,7 @@ describe("events repository", () => {
     await close();
   });
 
-  // --- item 71 -------------------------------------------------------------
+  // -- item 71
   it("inserts one row per event when the same source event id is applied twice", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("replay"),
@@ -84,15 +84,15 @@ describe("events repository", () => {
     ];
 
     expect(await repo.insertManyIgnoringDuplicates(rows)).toBe(1);
-    // The replay a 15-minute overlap window makes routine. Not an error, and
-    // not a second row.
+    // The replay a 15-minute overlap window makes routine. Not an error, and not a
+    // second row.
     expect(await repo.insertManyIgnoringDuplicates(rows)).toBe(0);
 
     const listed = await repo.listForProject(project.id, { limit: 50 });
     expect(listed.filter((event) => event.sourceEventId === "db-ev-replay-0001")).toHaveLength(1);
   });
 
-  // --- item 71 (duplicate within one batch) --------------------------------
+  // -- item 71 (duplicate within one batch)
   it("inserts one row when a single batch carries the same source event id twice", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("batch-dupe"),
@@ -134,7 +134,7 @@ describe("events repository", () => {
     expect(listed).toHaveLength(2);
   });
 
-  // --- item 72 -------------------------------------------------------------
+  // -- item 72
   it("keeps the dedup key project-scoped — the same source event id in two projects is two rows", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("two-projects"),
@@ -196,7 +196,7 @@ describe("events repository", () => {
     expect(listedTwo.map((event) => event.sourceEventId)).toEqual([sharedSourceEventId]);
   });
 
-  // --- item 72 (session-scoped read) --------------------------------------
+  // -- item 72 (session-scoped read)
   it("lists a session's events without crossing into another session in the same project", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("per-session"),
@@ -244,18 +244,17 @@ describe("events repository", () => {
     expect(forSessionOne.map((event) => event.sourceEventId)).toEqual(["db-ev-per-session-0001"]);
   });
 
-  // --- ES-14 / ADD §D-15 ---------------------------------------------------
-  // `url_path_normalisation_version` is nullable AND NEVER COERCED. `null`
-  // carries a specific claim — "written before versions were recorded, so the
-  // redaction status of this row's `url_path` is unknown" — which is not the
-  // same claim as version `0`. A `.default(0)` on the column, a `?? 0` in the
-  // repository's insert value map, or a `?? 0` on the read would each silently
-  // assert a version we never wrote, and would erase the only signal a §5
-  // remediation migration has: `WHERE url_path_normalisation_version IS NULL`.
+  // -- / `url_path_normalisation_version` is nullable and never coerced. `null`
+  // carries a specific claim. "written before versions were recorded, so the redaction
+  // status of this row's `url_path` is unknown", which is not the same claim as version
+  // `0`. A `.default` on the column, a `?? 0` in the repository's insert value map,
+  // or a `?? 0` on the read would each silently assert a version we never wrote, and
+  // would erase the only signal a remediation migration has: `WHERE
+  // url_path_normalisation_version IS NULL`.
   //
-  // The stamped sibling in the same batch is the control. Without it, a read
-  // path that returned `null` for EVERY row would pass the null half of this
-  // test while proving nothing.
+  // The stamped sibling in the same batch is the control. Without it, a read path that
+  // returned `null` for every row would pass the null half of this test while proving
+  // nothing.
   it("reads back a null normalisation version as null, never coerced to a version", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("norm-version"),

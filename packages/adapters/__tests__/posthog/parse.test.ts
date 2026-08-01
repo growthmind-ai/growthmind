@@ -1,10 +1,9 @@
-// ADD §9 items 34–38 — the boundary parser.
+// items 34–38, the boundary parser.
 //
-// The headline is item 34: PER-ITEM degradation. The spike's parser rejects
-// the whole page when one entry is malformed — correct for a measurement
-// harness, FATAL for a poller, where one weird event would stall a connection
-// forever. Here one bad item is skipped, COUNTED, and the rest of the page is
-// returned.
+// The headline is item 34: Per-item degradation. The spike's parser rejects the whole
+// page when one entry is malformed. Correct for a measurement harness, fatal for a
+// poller, where one weird event would stall a connection forever. Here one bad item is
+// skipped, counted, and the rest of the page is returned.
 import { describe, expect, test } from "bun:test";
 
 import { parseEventsPage, parsePersonsResponse } from "../../src/posthog/parse";
@@ -14,12 +13,12 @@ const AD_ID_GOOD_1 = "019fb42c-fc4b-70e5-b634-4af26cb7b6b7";
 const AD_ID_GOOD_2 = "019fb42c-fc4b-70e5-b634-4af26cb7b6c8";
 
 describe("parseEventsPage", () => {
-  // Item 34 — FR-3 / D5. THE LIVENESS HAZARD.
+  // Item 34, /. The liveness hazard.
   test("skips ONE malformed item, counts the drop, and returns the rest of the page", () => {
     const page = adEventsPage([
       adEventItem({ id: AD_ID_GOOD_1, timestamp: "2026-07-30T17:57:49.891000+00:00" }),
-      // Malformed: no `id`, and a timestamp nothing can parse. One bad item
-      // must never cost the other two.
+      // Malformed: no `id`, and a timestamp nothing can parse. One bad item must never
+      // cost the other two.
       { distinct_id: "ad-broken", timestamp: "not-a-date", person: null },
       adEventItem({ id: AD_ID_GOOD_2, timestamp: "2026-07-30T17:57:48.891000+00:00" }),
     ]);
@@ -28,14 +27,13 @@ describe("parseEventsPage", () => {
 
     expect(parsed.events.map((event) => event.id)).toEqual([AD_ID_GOOD_1, AD_ID_GOOD_2]);
     expect(parsed.droppedMalformed).toBe(1);
-    // A malformed item in the MIDDLE of the page is not the page's claimed
-    // newest — `firstItemDropped` names specifically whether `results[0]`
-    // itself survived (CR-8).
+    // A malformed item in the middle of the page is not the page's claimed newest,
+    // `firstItemDropped` names specifically whether `results[0]` itself survived.
     expect(parsed.firstItemDropped).toBe(false);
   });
 
-  // CR-8 — the genuinely newest item on the page (index 0) is the one this
-  // adapter's own watermark logic can never afford to silently skip past.
+  // The genuinely newest item on the page (index 0) is the one this adapter's own
+  // watermark logic can never afford to silently skip past.
   test("firstItemDropped is true only when results[0] itself could not be parsed", () => {
     const droppedFirst = parseEventsPage(
       adEventsPage([
@@ -52,8 +50,8 @@ describe("parseEventsPage", () => {
     const empty = parseEventsPage(adEventsPage([], null));
     expect(empty.firstItemDropped).toBe(false);
 
-    // An unreadable envelope (not even an array) has no readable `results[0]`
-    // either — it is reported as one dropped envelope, not a dropped item 0.
+    // An unreadable envelope (not even an array) has no readable `results[0]` either.
+    // It is reported as one dropped envelope, not a dropped item 0.
     const unreadable = parseEventsPage({ next: null, results: "not-an-array" });
     expect(unreadable.firstItemDropped).toBe(false);
     expect(unreadable.droppedMalformed).toBe(1);
@@ -63,15 +61,15 @@ describe("parseEventsPage", () => {
     expect(clean.firstItemDropped).toBe(false);
   });
 
-  // Item 35 — ROW 1.
+  // Item 35, row 1.
   test("returns next: null for a literal null cursor and does not treat a short page as the end", () => {
-    // `next` is LITERAL null on the final page — never absent, never "".
+    // `next` is literal null on the final page, never absent, never "".
     const finalPage = parseEventsPage(adEventsPage([adEventItem()], null));
     expect(finalPage.next).toBeNull();
 
-    // A page far shorter than `limit` is NOT an end signal. The server-encoded
-    // cursor is returned VERBATIM — reconstructing it would drop the filter and
-    // the exclusive `before` the server already encoded.
+    // A page far shorter than `limit` is not an end signal. The server-encoded cursor
+    // is returned verbatim. Reconstructing it would drop the filter and the exclusive
+    // `before` the server already encoded.
     const serverCursor =
       "https://ph.ad-fake.invalid/api/projects/424242/events?limit=200&properties=%5B%5D&before=2026-07-30T17%3A57%3A49.891000%2B00%3A00";
     const shortPage = parseEventsPage(adEventsPage([adEventItem()], serverCursor));
@@ -79,15 +77,15 @@ describe("parseEventsPage", () => {
     expect(shortPage.next).toBe(serverCursor);
   });
 
-  // Item 36 — D5.
+  // Item 36 —.
   test("handles an empty result set, a missing properties object, an absent user agent, and an absent url path", () => {
     const empty = parseEventsPage(adEventsPage([], null));
     expect(empty.events).toEqual([]);
     expect(empty.droppedMalformed).toBe(0);
     expect(empty.next).toBeNull();
 
-    // No `properties` key at all — a shape a minimal or server-side SDK
-    // produces. Absent is normal, not malformed (SEC-A/B/C).
+    // No `properties` key at all. A shape a minimal or server-side SDK produces. Absent
+    // is normal, not malformed (sec-a/B/C).
     const bare = parseEventsPage(
       adEventsPage([
         {
@@ -118,9 +116,9 @@ describe("parseEventsPage", () => {
     expect(noUaNoPath.events[0]?.urlPath).toBeNull();
   });
 
-  // Item 37 — ROW 6, the dead-code guard. `person` is null on 165/165 items,
-  // so any code reading `event.person.properties.email` is dead code. This
-  // test proves the key is never even READ, not merely that a null tolerates.
+  // Item 37, row 6, the dead-code guard. `person` is null on 165/165 items, so any code
+  // reading `event.person.properties.email` is dead code. This test proves the key is
+  // never even read, not merely that a null tolerates.
   test("never reads event.person — a null person is not a parse failure", () => {
     let personWasRead = false;
     const item = adEventItem({ id: AD_ID_GOOD_1 });
@@ -142,9 +140,9 @@ describe("parseEventsPage", () => {
 });
 
 describe("parsePersonsResponse", () => {
-  // Item 38 — pins the ASSUMED §7 row. The persons envelope beyond this one
-  // field was never pinned, so the parser must require only that `results` is
-  // an array and `results[0]?.properties?.email` is an optional string.
+  // Item 38, pins the assumed row. The persons envelope beyond this one field was never
+  // pinned, so the parser must require only that `results` is an array and
+  // `results[0]?.properties?.email` is an optional string.
   test("tolerates a full, a minimal, and an empty envelope", () => {
     const full = {
       count: 1,
@@ -172,8 +170,8 @@ describe("parsePersonsResponse", () => {
     // Empty: a completed lookup that found nobody.
     expect(parsePersonsResponse({ results: [] })).toBeNull();
 
-    // Unexpected shapes are tolerated, never thrown — anything stricter turns
-    // an unpinned envelope into a liveness risk.
+    // Unexpected shapes are tolerated, never thrown. Anything stricter turns an
+    // unpinned envelope into a liveness risk.
     expect(parsePersonsResponse({})).toBeNull();
     expect(parsePersonsResponse(null)).toBeNull();
     expect(parsePersonsResponse({ results: [{ properties: { email: 42 } }] })).toBeNull();

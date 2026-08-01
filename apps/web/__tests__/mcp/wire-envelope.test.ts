@@ -1,59 +1,49 @@
-// EIGHT ENVELOPE SHAPES THIS SURFACE HAS TO HAVE AN ANSWER FOR — WIRE-W1…W8
-// (O-013, lane W0-T-A, the D5 data-shape suite).
+// Eight envelope shapes this surface has to have an answer for. WIRE-W1…W8 (lane, the
+// data-shape suite).
 //
-// Once a surface speaks JSON-RPC, the set of things a caller can put on the
-// wire stops being "our envelope, or nothing". A batch arrives as an array. An
-// id arrives as `null`. `jsonrpc` goes missing. A notification carries no id at
-// all. A method nobody implemented is asked for. `params` is absent. The body
-// is not JSON. Every one of those has a defined answer in the protocol, and a
-// surface that answers any of them with a 500 — or with an exception nobody
-// caught — is a surface a coding agent cannot use, because the agent cannot
-// tell "I sent that wrong" from "this server is broken".
+// Once a surface speaks JSON-RPC, the set of things a caller can put on the wire stops
+// being "our envelope, or nothing". A batch arrives as an array. An id arrives as
+// `null`. `jsonrpc` goes missing. A notification carries no id at all. A method nobody
+// implemented is asked for. `params` is absent. The body is not JSON. Every one of
+// those has a defined answer in the protocol, and a surface that answers any of them
+// with a 500 (or with an exception nobody caught) is a surface a coding agent cannot
+// use, because the agent cannot tell "I sent that wrong" from "this server is broken".
 //
-// ---------------------------------------------------------------------------
-// WHAT THESE ROWS ASSERT, AND WHAT THEY DELIBERATELY DO NOT
-// ---------------------------------------------------------------------------
+// What these rows assert, and what they deliberately do not
 //
-// The protocol-level codes below — `-32700`, `-32600`, `-32601` — are the
-// TRANSPORT'S TO EMIT, never ours (D-7). These rows therefore assert WHAT
-// ARRIVES and never that we authored it: each one names a code from
-// `../../lib/mcp/wire-constants.ts`'s `JSON_RPC_ERROR_CODE` — which exists as a
-// tripwire rather than a vocabulary in use — and looks for it in the answer.
-// If a row here ever tempts someone to hand-roll an error object in
-// `server.ts`, the row has been misread: the fix is always to let the transport
-// frame it.
+// The protocol-level codes below are the transport's to
+// emit, never ours. These rows therefore assert what arrives and never that we authored
+// it: each one names a code from `../../lib/mcp/wire-constants.ts`'s
+// `JSON_RPC_ERROR_CODE`, which exists as a tripwire rather than a vocabulary in use,
+// and looks for it in the answer. If a row here ever tempts someone to hand-roll an
+// error object in `server.ts`, the row has been misread: the fix is always to let the
+// transport frame it.
 //
-// ---------------------------------------------------------------------------
-// EVERY REQUEST IS LEGACY-LEG AND FIXTURE-MINTED (D-13)
-// ---------------------------------------------------------------------------
+// Every request is legacy-leg and fixture-minted
 //
-// Nothing here builds a `Request` by hand. The fixture's constructors carry
-// `accept: application/json, text/event-stream` on every request, and the
-// legacy leg — the one a stock client actually negotiates — refuses anything
-// less with a 406 before the body is parsed. A hand-rolled `Request` would make
-// most of this file assert against a content-negotiation refusal instead of the
-// envelope answer it names.
+// Nothing here builds a `Request` by hand. The fixture's constructors carry `accept:
+// application/json, text/event-stream` on every request, and the legacy leg (the one a
+// stock client actually negotiates) refuses anything less with a 406 before the body is
+// parsed. A hand-rolled `Request` would make most of this file assert against a
+// content-negotiation refusal instead of the envelope answer it names.
 //
-// ---------------------------------------------------------------------------
-// ALL EIGHT ARE GREEN, AND THE ONE RULE THAT MADE THEM GREEN STILL BINDS
-// ---------------------------------------------------------------------------
+// All eight are green, and the one rule that made them green still binds
 //
 // These rows were authored red against the Wave 0 route, which read its own
-// pre-protocol `{tool, input}` envelope and answered every JSON-RPC message
-// minted here with an HTTP 400. Waves 7–8 handed the request to the transport
-// and all eight pass.
+// pre-protocol `{tool, input}` envelope and answered every JSON-RPC message minted here
+// with an HTTP 400. Waves 7–8 handed the request to the transport and all eight pass.
 //
-// DO NOT MAKE A FUTURE ONE GREEN BY TEACHING `server.ts` TO RECOGNISE JSON-RPC
-// BY HAND. A second parser written to satisfy this file is exactly the drift
-// this sprint removed, and it is the reason every row above asserts WHAT
-// ARRIVES rather than that we authored it.
+// Do not make a future one green by teaching `server.ts` to recognise JSON-RPC by hand.
+// A second parser written to satisfy this file is exactly the drift this sprint
+// removed, and it is the reason every row above asserts what arrives rather than that
+// we authored it.
 //
-// ⚠️ ONE GATE OF OURS NOW SITS IN FRONT OF THE TRANSPORT, AND IT IS NOT A
-// PARSER. `server.ts` refuses a body over a byte ceiling and a body whose first
-// non-whitespace byte opens an array — a size and a shape, decided on raw
-// bytes, with no envelope read and no `JSON.parse` anywhere in that file. Both
-// are availability bounds rather than protocol opinions; `./wire-bounds.test.ts`
-// owns them, and `WIRE-W1` below explains what the second one changed.
+// ⚠️ one gate of ours now sits in front of the transport, and it is not a parser.
+// `server.ts` refuses a body over a byte ceiling and a body whose first non-whitespace
+// byte opens an array. A size and a shape, decided on raw bytes, with no envelope read
+// and no `JSON.parse` anywhere in that file. Both are availability bounds rather than
+// protocol opinions; `./wire-bounds.test.ts` owns them, and `WIRE-W1` below explains
+// what the second one changed.
 import { MCP_TOOL } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
@@ -75,9 +65,9 @@ import { watchForUnhandledRejections } from "./helpers/wire-probes";
 
 const CREDENTIALS = fakeCredentials({ [KEY_A]: ORG_A });
 
-/** A credential that resolves and a store that records every organization it is
- * asked about. The store is EMPTY in every row here: none of these rows is
- * about data, and several are about the port never being reached at all. */
+/** A credential that resolves and a store that records every organization it is asked
+ * about. The store is empty in every row here: none of these rows is about data, and
+ * several are about the port never being reached at all. */
 function spyDeps(): { readonly spy: RecordingReadPort; readonly deps: McpServerDeps } {
   const spy = fakeReadPort();
   return { spy, deps: { credentials: CREDENTIALS, reads: spy.port } };
@@ -86,55 +76,50 @@ function spyDeps(): { readonly spy: RecordingReadPort; readonly deps: McpServerD
 /**
  * The marker that says an answer is a JSON-RPC message at all.
  *
- * Matched as a SUBSTRING OF THE RAW BODY rather than by parsing, for the reason
- * `WIRE-R10` bans parsing in the identity suites: what these rows care about is
- * what came back on the wire, and a parse would discard the framing that is
- * half of it. The transport serialises with `JSON.stringify`, so the envelope
- * field is always exactly this, in both bands — measured on both legs.
+ * Matched as a substring of the raw body rather than by parsing, for the reason
+ * `WIRE-R10` bans parsing in the identity suites: what these rows care about is what
+ * came back on the wire, and a parse would discard the framing that is half of it. The
+ * transport serialises with `JSON.stringify`, so the envelope field is always exactly
+ * this, in both bands. Measured on both legs.
  */
 const JSONRPC_MARKER = '"jsonrpc":"2.0"';
 
-/** The wire form of a protocol error code, as it appears inside a serialised
- * JSON-RPC error object. */
+/** The wire form of a protocol error code, as it appears inside a serialised JSON-RPC
+ * error object. */
 function errorCodeMarker(code: number): string {
   return `"code":${code}`;
 }
 
 /**
- * The content type of every answer the SDK rendered, under the pinned
- * `responseMode: "sse"` (D-4/D-6). Measured, exactly: no charset suffix.
+ * The content type of every answer the SDK rendered, under the pinned `responseMode:
+ * "sse"`. Measured, exactly: no charset suffix.
  */
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 
-// ---------------------------------------------------------------------------
-// WIRE-W1 — a batch body
-// ---------------------------------------------------------------------------
+// WIRE-W1, a batch body
 
 describe("WIRE-W1 — a batch request is answered without crashing the handler", () => {
   /**
-   * ⚠️ THE WEAKEST ROW IN THE FILE, ON PURPOSE, AND ITS ANSWER HAS MOVED TWICE.
+   * ⚠️ the weakest row in the file, on purpose, and its answer has moved twice.
    *
-   * A JSON-RPC batch is an ARRAY, and the revision this surface negotiates
-   * removed batching — so the only thing this row is entitled to claim is that
-   * an array is a shape the surface HAS an answer for, below 500, with
-   * something in it. That claim has survived both moves, which is why the row
-   * is unchanged.
+   * A JSON-RPC batch is an array, and the revision this surface negotiates removed
+   * batching, so the only thing this row is entitled to claim is that an array is a
+   * shape the surface has an answer for, below 500, with something in it. That claim
+   * has survived both moves, which is why the row is unchanged.
    *
-   * ⚠️ THE ORIGINAL VERSION OF THIS COMMENT SAID THE ANSWER WAS "our
-   * pre-protocol `MALFORMED_BODY`, and after wave 8 whatever the transport
-   * frames". BOTH HALVES WERE WRONG BY THE END OF THE SPRINT, AND THE SECOND
-   * ONE HID A HOLE. Measured after wave 8: the transport did not refuse an
-   * array at all — it PROCESSED it. A 500-message batch executed 500 tool calls
-   * and returned 500 frames from one POST, which against a real repository is
-   * 500 database round-trips bought with one read-only credential.
+   * ⚠️ the original version of this comment said the answer was "our pre-protocol
+   * `MALFORMED_BODY`, and after wave 8 whatever the transport frames". Both halves were
+   * wrong by the end of the sprint, and the second one hid a hole. Measured after wave
+   * 8: the transport did not refuse an array at all. It processed it. A 500-message
+   * batch executed 500 tool calls and returned 500 frames from one POST, which against
+   * a real repository is 500 database round-trips bought with one read-only credential.
    *
-   * WHAT ANSWERS IT TODAY is `server.ts`'s batch gate, added by the post-sprint
-   * audit: a body whose first non-whitespace byte is `[` is refused 400 with
-   * `MALFORMED_BODY` — whose sentence already began "Send a single JSON-RPC
-   * message" — before the transport is reached. `./wire-bounds.test.ts`'s
-   * `WIRE-L3` is where that behaviour is pinned, with the fan-out measurement
-   * beside it; this row deliberately stays the weak one, so it cannot go red
-   * for a reason that says nothing about the surface.
+   * What answers it today is `server.ts`'s batch gate, added by the post-sprint audit:
+   * a body whose first non-whitespace byte is `[` is refused 400 with `MALFORMED_BODY`,
+   * whose sentence already began "Send a single JSON-RPC message". Before the transport
+   * is reached. `./wire-bounds.test.ts`'s `WIRE-L3` is where that behaviour is pinned,
+   * with the fan-out measurement beside it; this row deliberately stays the weak one,
+   * so it cannot go red for a reason that says nothing about the surface.
    */
   test("an array body comes back as a response below 500, with something in it", async () => {
     const { deps } = spyDeps();
@@ -149,24 +134,22 @@ describe("WIRE-W1 — a batch request is answered without crashing the handler",
 
     expect(print.status).toBeLessThan(500);
     expect(print.body.length).toBeGreaterThan(0);
-    // The half that is not vacuous today: an array is the shape most likely to
-    // reach a `.map` that assumed an object, and a rejection nobody handled
-    // would be invisible to the status assertion above.
+    // The half that is not vacuous today: an array is the shape most likely to reach a
+    // `.map` that assumed an object, and a rejection nobody handled would be invisible
+    // to the status assertion above.
     expect(watched.unhandled).toEqual([]);
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W2 — a null id
-// ---------------------------------------------------------------------------
+// WIRE-W2, a null id
 
 describe("WIRE-W2 — a request with a null id is answered rather than dropped", () => {
   /**
-   * `id: null` is a REQUEST, not a notification. The difference is one byte on
-   * the wire and the whole of what a caller gets back: a notification is
-   * answered with nothing (WIRE-W4), and a null-id request must be answered
-   * with a message. A surface that treats them alike leaves a client waiting
-   * forever for an answer that was never framed.
+   * `id: null` is a request, not a notification. The difference is one byte on the wire
+   * and the whole of what a caller gets back: a notification is answered with nothing
+   * (WIRE-W4), and a null-id request must be answered with a message. A surface that
+   * treats them alike leaves a client waiting forever for an answer that was never
+   * framed.
    */
   test("id: null comes back as a JSON-RPC message, not an empty body", async () => {
     const { deps } = spyDeps();
@@ -182,9 +165,7 @@ describe("WIRE-W2 — a request with a null id is answered rather than dropped",
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W3 — a body with no `jsonrpc` field
-// ---------------------------------------------------------------------------
+// WIRE-W3, a body with no `jsonrpc` field
 
 describe("WIRE-W3 — a body missing the jsonrpc field is refused as an invalid request", () => {
   test("carries the invalid-request code and never a 500", async () => {
@@ -201,17 +182,15 @@ describe("WIRE-W3 — a body missing the jsonrpc field is refused as an invalid 
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W4 — a notification
-// ---------------------------------------------------------------------------
+// WIRE-W4, a notification
 
 describe("WIRE-W4 — a notification with no id is answered with no JSON-RPC message", () => {
   /**
-   * `notifications/initialized` is the second of the three requests a real
-   * client's `connect()` makes, and it is answered 202 with an EMPTY BODY and no
-   * content-type at all — measured. So this row asserts the absence of a message
-   * rather than the presence of one, and the status half is what stops that
-   * absence from being satisfied by a refusal that happened to be empty.
+   * `notifications/initialized` is the second of the three requests a real client's
+   * `connect` makes, and it is answered 202 with an empty body and no content-type at
+   * all. Measured. So this row asserts the absence of a message rather than the
+   * presence of one, and the status half is what stops that absence from being
+   * satisfied by a refusal that happened to be empty.
    */
   test("yields a zero-length body and a status below 300", async () => {
     const { deps } = spyDeps();
@@ -227,16 +206,14 @@ describe("WIRE-W4 — a notification with no id is answered with no JSON-RPC mes
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W5 — an unknown method
-// ---------------------------------------------------------------------------
+// WIRE-W5, an unknown method
 
 describe("WIRE-W5 — an unknown method is refused with method-not-found and never a 500", () => {
   /**
-   * `tools/destroy` is chosen rather than a nonsense string because it is the
-   * shape of the mistake that actually happens: a method that looks like one of
-   * ours, on a surface that only reads. The port half is the important one — an
-   * unknown method must not reach anything that touches data.
+   * `tools/destroy` is chosen rather than a nonsense string because it is the shape of
+   * the mistake that actually happens: a method that looks like one of ours, on a
+   * surface that only reads. The port half is the important one. An unknown method must
+   * not reach anything that touches data.
    */
   test("answers tools/destroy with method-not-found, below 500, and asks the port nothing", async () => {
     const { spy, deps } = spyDeps();
@@ -253,20 +230,18 @@ describe("WIRE-W5 — an unknown method is refused with method-not-found and nev
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W6 — no params at all
-// ---------------------------------------------------------------------------
+// WIRE-W6, no params at all
 
 describe("WIRE-W6 — a request with no params at all is answered rather than thrown on", () => {
   /**
-   * `params` ABSENT is not `params: {}`. A handler that reaches for
-   * `params.name` on a message that carries no `params` key throws a
-   * `TypeError` inside the framing layer, which is the least useful failure
-   * available: no code, no sentence, and a 500 for a request that was legal.
+   * `params` absent is not `params: {}`. A handler that reaches for `params.name` on a
+   * message that carries no `params` key throws a `TypeError` inside the framing layer,
+   * which is the least useful failure available: no code, no sentence, and a 500 for a
+   * request that was legal.
    *
-   * Both halves are asserted because the two paths are different code: one
-   * method takes no arguments by design, the other takes them and must refuse
-   * their absence in a way a caller can act on.
+   * Both halves are asserted because the two paths are different code: one method takes
+   * no arguments by design, the other takes them and must refuse their absence in a way
+   * a caller can act on.
    */
   test("tools/list with no params comes back as a JSON-RPC message", async () => {
     const { deps } = spyDeps();
@@ -288,15 +263,13 @@ describe("WIRE-W6 — a request with no params at all is answered rather than th
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W7 — malformed JSON
-// ---------------------------------------------------------------------------
+// WIRE-W7, malformed JSON
 
 describe("WIRE-W7 — malformed JSON is refused as a parse error before any tool is resolved", () => {
   /**
-   * The port half is the ordering claim, one layer below `WIRE-O1`'s: a body
-   * that cannot be parsed cannot have named a tool, so nothing that touches
-   * data may have run by the time the answer is framed.
+   * The port half is the ordering claim, one layer below `WIRE-O1`'s: a body that
+   * cannot be parsed cannot have named a tool, so nothing that touches data may have
+   * run by the time the answer is framed.
    */
   test("answers with the parse-error code and asks the port nothing", async () => {
     const { spy, deps } = spyDeps();
@@ -312,32 +285,29 @@ describe("WIRE-W7 — malformed JSON is refused as a parse error before any tool
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-W8 — two identical calls, two identical answers, one effect each
-// ---------------------------------------------------------------------------
+// WIRE-W8, two identical calls, two identical answers, one effect each
 
 describe("WIRE-W8 — two identical tool calls produce two identical answers and no second effect", () => {
   /**
-   * D4, and the row that guards the whole identity mechanism from underneath.
+   * And the row that guards the whole identity mechanism from underneath.
    *
-   * The cross-tenant proof rests on two DIFFERENT requests answering with the
-   * same bytes. That proof is worthless if the same request twice does not — so
-   * this row asserts the floor the others stand on. The fixture defaults the
-   * JSON-RPC id to 1 precisely so both calls share one, because the id is echoed
-   * into every answer and two answers can only be byte-identical if it was held
-   * constant.
+   * The cross-tenant proof rests on two different requests answering with the same
+   * bytes. That proof is worthless if the same request twice does not, so this row
+   * asserts the floor the others stand on. The fixture defaults the JSON-RPC id to 1
+   * precisely so both calls share one, because the id is echoed into every answer and
+   * two answers can only be byte-identical if it was held constant.
    *
-   * ⚠️ SDK-RENDERED BAND: `text/event-stream`, NOT `application/json`. Round 1
-   * pinned `responseMode: "json"` and this row was authored to it; round 2
-   * measured that the mode is INERT on the legacy leg and pinned `"sse"`, which
-   * moved the whole SDK-rendered band. §6's per-row line still carries the stale
-   * text; the band paragraph and D-6 win.
+   * ⚠️ sdk-rendered band: `text/event-stream`, not `application/json`. Round 1 pinned
+   * `responseMode: "json"` and this row was authored to it; round 2 measured that the
+   * mode is inert on the legacy leg and pinned `"sse"`, which moved the whole
+   * SDK-rendered band. the per-row line still carries the stale text; the band
+   * paragraph and win.
    *
-   * WHAT THIS ROW NOW GUARDS is the measured ABSENCE of a per-event `id:` line.
-   * Nothing in this package emits one today, on either leg under any mode — so
-   * the byte-identity exclusion list is empty. If a `bun update` starts emitting
-   * event ids, two identical requests stop being byte-identical and this row
-   * goes red first, which is exactly why `WIRE-K6(c)` stands beside it.
+   * What this row now guards is the measured absence of a per-event `id:` line. Nothing
+   * in this package emits one today, on either leg under any mode, so the byte-identity
+   * exclusion list is empty. If a `bun update` starts emitting event ids, two identical
+   * requests stop being byte-identical and this row goes red first, which is exactly
+   * why `WIRE-K6` stands beside it.
    */
   test("two calls with the same id are byte-identical, and the port is read exactly twice", async () => {
     const { spy, deps } = spyDeps();
@@ -354,22 +324,22 @@ describe("WIRE-W8 — two identical tool calls produce two identical answers and
     const firstPrint = await fingerprint(first);
     const secondPrint = await fingerprint(second);
 
-    // The band, asserted before the comparison: two answers that were both the
-    // wrong kind of answer would compare equal to each other all day.
+    // The band, asserted before the comparison: two answers that were both the wrong
+    // kind of answer would compare equal to each other all day.
     expect(firstPrint.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
     expect(firstPrint).toEqual(secondPrint);
 
-    // Two reads, one per call, both against the credential's organization —
-    // never a cache that answered the second from the first, and never a second
-    // read the caller did not ask for.
+    // Two reads, one per call, both against the credential's organization, never a
+    // cache that answered the second from the first, and never a second read the caller
+    // did not ask for.
     expect(spy.organizationsAsked).toEqual([ORG_A, ORG_A]);
   });
 
   /**
-   * "No second effect" is a claim about writes, and the strongest form of it is
-   * that there is no write to make: the port this surface has is three reads.
-   * Asserted structurally rather than by counting, so a fourth method that could
-   * write fails here the day it is added rather than the day it is called.
+   * "No second effect" is a claim about writes, and the strongest form of it is that
+   * there is no write to make: the port this surface has is three reads. Asserted
+   * structurally rather than by counting, so a fourth method that could write fails
+   * here the day it is added rather than the day it is called.
    */
   test("the only port the surface has is the read port, and it has three read methods", () => {
     const { spy } = spyDeps();

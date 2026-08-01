@@ -1,20 +1,17 @@
-// Test doubles for the Slack delivery adapter. Fakes, never mocks: a fake
-// `fetch` that serves canned responses and records exactly what was sent.
+// Test doubles for the Slack delivery adapter. Fakes, never mocks: a fake `fetch` that
+// serves canned responses and records exactly what was sent.
 //
-// NOTHING HERE TOUCHES THE NETWORK. Every test in this directory drives the
-// REAL `createSlackDeliveryPoster` — the injected `fetch` is the only impure
-// thing the adapter can reach, so a fake for it is total rather than
-// best-effort.
+// Nothing here touches the network. Every test in this directory drives the real
+// `createSlackDeliveryPoster`. The injected `fetch` is the only impure thing the
+// adapter can reach, so a fake for it is total rather than best-effort.
 //
-// FIXTURE SEED PREFIX: `ad-`, matching `../helpers/fakes.ts`. Every token,
-// channel id and team id below is an obviously-fake placeholder — this repo is
-// public.
+// Fixture seed prefix: `ad-`, matching `../helpers/fakes.ts`. Every token, channel id
+// and team id below is an obviously-fake placeholder. This repo is public.
 import type { PostRequest } from "@growthmind/shared";
 
 import type { SlackPosterConfig, SlackPosterDeps } from "../../src/slack/deps";
 
-/** Obviously fake, and long enough that a substring assertion on it means
- * something. */
+/** Obviously fake, and long enough that a substring assertion on it means something. */
 export const AD_SLACK_BOT_TOKEN = "xoxb-ad-fake-not-a-real-bot-token-000000000000";
 
 export const AD_SLACK_CHANNEL_ID = "C0ADFAKECHANNEL";
@@ -43,7 +40,7 @@ export interface FakeSlackResponseSpec {
   readonly status?: number;
   /** Serialised to the body. Ignored when `text` is given. */
   readonly json?: unknown;
-  /** Raw body text — for bodies that are not JSON at all. */
+  /** Raw body text, for bodies that are not JSON at all. */
   readonly text?: string;
   readonly headers?: Record<string, string>;
   /** `fetch` itself rejects: the network is down. */
@@ -58,16 +55,15 @@ export interface FakeSlackFetch {
 }
 
 /**
- * Serves ONE canned response to every call, and records what was sent.
+ * Serves one canned response to every call, and records what was sent.
  *
- * Deliberately not a sequenced fake. This adapter makes at most one request per
- * `post` — it has no retry loop by design (`../../src/slack/deps.ts`) — so a
- * response SEQUENCE would be a helper no test could ever justify, and the
- * request recorder is what proves the "at most one" claim instead.
+ * Deliberately not a sequenced fake. This adapter makes at most one request per `post`.
+ * It has no retry loop by design (`../../src/slack/deps.ts`), so a response sequence
+ * would be a helper no test could ever justify, and the request recorder is what proves
+ * the "at most one" claim instead.
  *
- * `preconnect` is carried over from the real `fetch` purely to satisfy the
- * platform's own signature — it is never called, so no connection is ever
- * opened.
+ * `preconnect` is carried over from the real `fetch` purely to satisfy the platform's
+ * own signature. It is never called, so no connection is ever opened.
  */
 export function createFakeSlackFetch(spec: FakeSlackResponseSpec): FakeSlackFetch {
   const requests: RecordedSlackRequest[] = [];
@@ -95,10 +91,10 @@ export function createFakeSlackFetch(spec: FakeSlackResponseSpec): FakeSlackFetc
     }
 
     const body = spec.text ?? (spec.json === undefined ? "" : JSON.stringify(spec.json));
-    // An empty body is passed as `null`, not `""`: the platform's `Response`
-    // refuses a non-null body on a null-body status (204, 304), and a test
-    // asking for "an empty 204" wants an empty 204, not a constructor throw
-    // that would arrive at the adapter looking like a transport fault.
+    // An empty body is passed as `null`, not `""`: the platform's `Response` refuses a
+    // non-null body on a null-body status, and a test asking for "an empty
+    // 204" wants an empty 204, not a constructor throw that would arrive at the adapter
+    // looking like a transport fault.
     return new Response(body.length === 0 ? null : body, {
       status: spec.status ?? 200,
       headers: { "content-type": "application/json", ...spec.headers },
@@ -109,10 +105,10 @@ export function createFakeSlackFetch(spec: FakeSlackResponseSpec): FakeSlackFetc
 }
 
 /**
- * A `Response` whose own accessors misbehave — the shape a resilient reader is
- * supposed to survive and a naive one is not. `headers` throwing covers a
- * platform/polyfill fault before the body is touched; `text` throwing covers a
- * connection that dies mid-body.
+ * A `Response` whose own accessors misbehave. The shape a resilient reader is supposed
+ * to survive and a naive one is not. `headers` throwing covers a platform/polyfill
+ * fault before the body is touched; `text` throwing covers a connection that dies
+ * mid-body.
  */
 export function createBrokenResponseFetch(broken: "headers" | "text"): SlackPosterDeps["fetch"] {
   const handler = async (): Promise<Response> => {

@@ -1,41 +1,38 @@
-// THE SEAM, PROVED FROM BOTH SIDES — WIRE-S1…S5 (O-013, lane W0-T-D).
+// The seam, proved from both sides, WIRE-S1…S5.
 //
-// This sprint's whole structural claim is one sentence: THE SDK RENDERS, AND IT
-// NEVER DECIDES. `apps/web/lib/mcp/call-tool.ts` is the deciding half and
-// `apps/web/lib/mcp/wire.ts` is the rendering half, and the value of the split
-// is only real while the two stay apart.
+// This sprint's whole structural claim is one sentence: The SDK renders, and it never
+// decides. `apps/web/lib/mcp/call-tool.ts` is the deciding half and
+// `apps/web/lib/mcp/wire.ts` is the rendering half, and the value of the split is only
+// real while the two stay apart.
 //
 // Five rows hold it:
-//   S1  the deciding half cannot even NAME a transport (source text)
-//   S2  the organization it reads with comes from the credential, structurally
-//   S3  the v1 SDK is imported nowhere in the workspace (source text)
-//   S4  the transport package is named in exactly ONE source file (source text)
-//   S5  the deciding half returns a value for every failure and never throws
+// S1 the deciding half cannot even name a transport (source text)
+// S2 the organization it reads with comes from the credential, structurally
+// S3 the v1 SDK is imported nowhere in the workspace (source text)
+// S4 the transport package is named in exactly one source file (source text)
+// S5 the deciding half returns a value for every failure and never throws
 //
-// Three of the five read source text rather than behaviour, deliberately. A
-// behavioural test can only cover the paths someone remembered to write a case
-// for; "this file may not name the wire" is total, and only a scan can say so.
+// Three of the five read source text rather than behaviour, deliberately. A behavioural
+// test can only cover the paths someone remembered to write a case for; "this file may
+// not name the wire" is total, and only a scan can say so.
 //
-// ---------------------------------------------------------------------------
-// ALL FIVE ARE GREEN, AND THEY GO RED FOR DIFFERENT REASONS
-// ---------------------------------------------------------------------------
+// All five are green, and they go red for different reasons
 //
-// S2 and S5 were authored against a signature-only stub whose body threw, so
-// they ran red until task 7.1 moved the real logic down out of `./server.ts`.
-// It did. `callTool` is implemented, and all five rows pass.
+// S2 and S5 were authored against a signature-only stub whose body threw, so they ran
+// red until task 7.1 moved the real logic down out of `./server.ts`. It did. `callTool`
+// is implemented, and all five rows pass.
 //
-// WHAT A FAILURE MEANS NOW. S1, S3 and S4 are source scans: red means somebody
-// gave the deciding half a name from the transport, or reintroduced the v1
-// package, or added a second file that names the transport — three edits with a
-// visible diff and no ambiguity about the fix. S2 and S5 are behavioural: red
-// means the tool core started throwing, or started taking its organization
-// from somewhere other than the credential, which is a security regression and
-// not a build one.
+// What a failure means now. S1, S3 and S4 are source scans: red means somebody gave the
+// deciding half a name from the transport, or reintroduced the v1 package, or added a
+// second file that names the transport. Three edits with a visible diff and no
+// ambiguity about the fix. S2 and S5 are behavioural: red means the tool core started
+// throwing, or started taking its organization from somewhere other than the
+// credential, which is a security regression and not a build one.
 //
-// THE ONE WRONG FIX IS STILL THE WRONG FIX. Nothing in `call-tool.ts` may grow
-// a second copy of a decision that lives in a schema or a refusal constant to
-// make a row here pass; a reference implementation written to satisfy a test is
-// the drift this sprint removed.
+// The one wrong fix is still the wrong fix. Nothing in `call-tool.ts` may grow a second
+// copy of a decision that lives in a schema or a refusal constant to make a row here
+// pass; a reference implementation written to satisfy a test is the drift this sprint
+// removed.
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,46 +53,43 @@ const REPO_ROOT = path.resolve(
 );
 
 /**
- * THE TWO PACKAGE SPECIFIERS THIS FILE REASONS ABOUT ARE BUILT AT RUNTIME, AND
- * THAT IS NOT A STYLE CHOICE.
+ * The two package specifiers this file reasons about are built at runtime, and that is
+ * not a style choice.
  *
- * `WIRE-S3` scans `apps/web/**` for the v1 specifier and `apps/web/__tests__`
- * is inside `apps/web`. Spelling the v1 name as a literal anywhere in this file
- * would make the scan find THIS FILE and go red on its own text — the row would
- * fail for the most confusing reason available. The same applies to `WIRE-S4`'s
- * non-vacuity half, which asserts the scanner finds the v2 name where it
- * legitimately lives: a literal here would put a second, spurious entry in the
- * result.
+ * `WIRE-S3` scans `apps/web/**` for the v1 specifier and `apps/web/__tests__` is inside
+ * `apps/web`. Spelling the v1 name as a literal anywhere in this file would make the
+ * scan find this file and go red on its own text. The row would fail for the most
+ * confusing reason available. The same applies to `WIRE-S4`'s non-vacuity half, which
+ * asserts the scanner finds the v2 name where it legitimately lives: a literal here
+ * would put a second, spurious entry in the result.
  *
- * `apps/web/lib/mcp/wire.ts`'s header makes the same move for the same reason
- * and says so out loud. If you came here to "tidy" these into constants, the
- * tidying is what would break.
+ * `apps/web/lib/mcp/wire.ts`'s header makes the same move for the same reason and says
+ * so out loud. If you came here to "tidy" these into constants, the tidying is what
+ * would break.
  */
 const SDK_SCOPE = "@modelcontextprotocol";
 const V1_SDK_SPECIFIER = [SDK_SCOPE, "sdk"].join("/");
 const TRANSPORT_SPECIFIER = [SDK_SCOPE, "server"].join("/");
 
-// ---------------------------------------------------------------------------
 // A self-enumerating source walk
-// ---------------------------------------------------------------------------
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"] as const;
 const SKIPPED_DIRECTORIES = ["node_modules", ".next", "dist", "build", ".turbo"] as const;
 
 /**
- * Every source file under `relativeRoot`, DISCOVERED rather than listed.
+ * Every source file under `relativeRoot`, discovered rather than listed.
  *
- * The enumeration is the point of `WIRE-S3` and `WIRE-S4`: a hard-coded file
- * list is a guard that silently stops covering whatever was added after it was
- * written, which is exactly the file most likely to reach for the wrong import.
- * Paths come back repo-relative with forward slashes, so an assertion reads the
- * way a person would type it on any platform.
+ * The enumeration is the point of `WIRE-S3` and `WIRE-S4`: a hard-coded file list is a
+ * guard that silently stops covering whatever was added after it was written, which is
+ * exactly the file most likely to reach for the wrong import. Paths come back
+ * repo-relative with forward slashes, so an assertion reads the way a person would type
+ * it on any platform.
  *
- * Descends by hand rather than with a recursive `readdirSync` so a skipped
- * directory is never WALKED, only never reported — `apps/web/node_modules` and
- * `apps/web/.next` between them hold more files than the rest of the repository
- * by two orders of magnitude, and a scan that reads them all before filtering
- * turns a guard row into a slow one.
+ * Descends by hand rather than with a recursive `readdirSync` so a skipped directory is
+ * never walked, only never reported, `apps/web/node_modules` and `apps/web/.next`
+ * between them hold more files than the rest of the repository by two orders of
+ * magnitude, and a scan that reads them all before filtering turns a guard row into a
+ * slow one.
  */
 function sourceFilesUnder(relativeRoot: string): readonly string[] {
   const files: string[] = [];
@@ -134,25 +128,21 @@ const isTestFile = (relative: string): boolean =>
   relative.endsWith(".test.ts") ||
   relative.endsWith(".test.tsx");
 
-// ---------------------------------------------------------------------------
-// WIRE-S1 — the tool core names no transport
-// ---------------------------------------------------------------------------
+// WIRE-S1, the tool core names no transport
 
 describe("WIRE-S1 — the tool core names no transport", () => {
   const CALL_TOOL_SRC = "apps/web/lib/mcp/call-tool.ts";
   const SERVER_SRC = "apps/web/lib/mcp/server.ts";
 
   /**
-   * Not an import list — a WORD list, scanned over the raw source including
-   * comments.
+   * Not an import list. A word list, scanned over the raw source including comments.
    *
-   * Deliberately stricter than `refusal-identity-guard.test.ts`, which strips
-   * comments before scanning. That row asks "did an assertion get loosened",
-   * and prose about an assertion is not an assertion. THIS row asks something
-   * else: "does this file know it is behind a wire at all". A file whose
-   * comments discuss envelopes and status codes is a file whose next author
-   * will branch on one. The cheapest moment to stop that is while it is still
-   * only a sentence.
+   * Deliberately stricter than `refusal-identity-guard.test.ts`, which strips comments
+   * before scanning. That row asks "did an assertion get loosened", and prose about an
+   * assertion is not an assertion. This row asks something else: "does this file know
+   * it is behind a wire at all". A file whose comments discuss envelopes and status
+   * codes is a file whose next author will branch on one. The cheapest moment to stop
+   * that is while it is still only a sentence.
    */
   const FORBIDDEN_WORDS = [
     SDK_SCOPE,
@@ -172,10 +162,10 @@ describe("WIRE-S1 — the tool core names no transport", () => {
     expect(named).toEqual([]);
   });
 
-  // NON-VACUITY. The scanner is a substring test, and a substring test that has
-  // silently stopped reading its file matches nothing forever. `server.ts` is
-  // the transport-facing neighbour and is full of `Response`; if the scanner
-  // cannot find it there, the assertion above proves nothing.
+  // Non-vacuity. The scanner is a substring test, and a substring test that has
+  // silently stopped reading its file matches nothing forever. `server.ts` is the
+  // transport-facing neighbour and is full of `Response`; if the scanner cannot find it
+  // there, the assertion above proves nothing.
   test("the same scan finds a transport word in the neighbouring file that legitimately has one", () => {
     const source = readFileSync(path.join(REPO_ROOT, SERVER_SRC), "utf8");
 
@@ -184,28 +174,26 @@ describe("WIRE-S1 — the tool core names no transport", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-S2 — the organization comes from the credential and from nowhere else
-// ---------------------------------------------------------------------------
+// WIRE-S2, the organization comes from the credential and from nowhere else
 
 describe("WIRE-S2 — callTool takes the credential separately and reads the organization from nowhere else", () => {
   const CREDENTIAL_ORG = "org-from-the-credential";
   const FOREIGN_ORG = "org-from-the-request";
 
   /**
-   * D7, proved at the CORE rather than at the route.
+   * Proved at the core rather than at the route.
    *
    * The route-level cross-tenant suites prove a caller cannot reach another
    * organization's rows. This proves something narrower and more durable: the
    * organization id `callTool` hands the read port is the credential's, and an
-   * `organizationId` sitting in the tool ARGUMENTS is inert. It is inert
-   * structurally — `input` is `unknown` until a tool's own schema parses it, no
-   * tool schema declares an organization key, and the port requires one — so
-   * the only value that can satisfy the port is the credential's.
+   * `organizationId` sitting in the tool arguments is inert. It is inert structurally,
+   * `input` is `unknown` until a tool's own schema parses it, no tool schema declares
+   * an organization key, and the port requires one, so the only value that can satisfy
+   * the port is the credential's.
    *
-   * Sent on all three tools in one row because the claim is about the
-   * signature, not about any one tool's arm, and a per-tool split would let a
-   * fourth arm be added with nothing covering it.
+   * Sent on all three tools in one row because the claim is about the signature, not
+   * about any one tool's arm, and a per-tool split would let a fourth arm be added with
+   * nothing covering it.
    */
   test("asks the read port only about the credential's organization, on all three tools", async () => {
     const spy = fakeReadPort();
@@ -229,9 +217,7 @@ describe("WIRE-S2 — callTool takes the credential separately and reads the org
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-S3 / WIRE-S4 — where the transport package may be named
-// ---------------------------------------------------------------------------
+// WIRE-S3 / WIRE-S4, where the transport package may be named
 
 describe("WIRE-S3 — the v1 SDK is imported nowhere in the workspace", () => {
   const scanned = [...sourceFilesUnder("apps/web"), ...sourceFilesUnder("packages")];
@@ -240,9 +226,9 @@ describe("WIRE-S3 — the v1 SDK is imported nowhere in the workspace", () => {
     expect(filesContaining(scanned, V1_SDK_SPECIFIER)).toEqual([]);
   });
 
-  // NON-VACUITY, two halves: the walk found files at all, and the same
-  // substring machinery does find the v2 package where it legitimately is. A
-  // scan over an empty file list would pass the assertion above forever.
+  // Non-vacuity, two halves: the walk found files at all, and the same substring
+  // machinery does find the v2 package where it legitimately is. A scan over an empty
+  // file list would pass the assertion above forever.
   test("the same scan finds the transport package where it legitimately is", () => {
     expect(scanned.length).toBeGreaterThan(0);
     expect(filesContaining(scanned, TRANSPORT_SPECIFIER)).toContain("apps/web/lib/mcp/wire.ts");
@@ -251,19 +237,18 @@ describe("WIRE-S3 — the v1 SDK is imported nowhere in the workspace", () => {
 
 describe("WIRE-S4 — the SDK is named in exactly one source file", () => {
   /**
-   * ⚠️ EXACTLY ONE ENTRY. NOT TWO.
+   * ⚠️ exactly one entry. Not two.
    *
-   * The ADD's D-4 file table says `wire-constants.ts` imports the SDK
-   * "type-only, for WIRE-K3/K4". THAT CELL IS WRONG, and Wave 2 deliberately
-   * did not follow it: a type-only import still puts the package name in the
-   * file's source text, so following it would make this list return two files
-   * and this row go red. `WIRE-K3`/`WIRE-K4` import the package in their TEST
-   * file, which this scan excludes.
+   * The file table says `wire-constants.ts` imports the SDK "type-only, for
+   * WIRE-K3/K4". That cell is wrong, and Wave 2 deliberately did not follow it: a
+   * type-only import still puts the package name in the file's source text, so
+   * following it would make this list return two files and this row go red.
+   * `WIRE-K3`/`WIRE-K4` import the package in their test file, which this scan
+   * excludes.
    *
-   * SO: IF THIS ROW EVER GOES RED WITH `wire-constants.ts` AS THE SECOND ENTRY,
-   * THE FIX IS TO REMOVE THAT IMPORT — NEVER TO WIDEN THIS EXPECTATION. The
-   * confinement is what makes "the transport could be swapped out" a fact
-   * rather than a hope.
+   * SO: If this row ever goes red with `wire-constants.ts` as the second entry, the fix
+   * is to remove that import, never to widen this expectation. The confinement is what
+   * makes "the transport could be swapped out" a fact rather than a hope.
    */
   test("only wire.ts names the transport package across apps/web/lib and apps/web/app", () => {
     const scanned = [
@@ -274,8 +259,8 @@ describe("WIRE-S4 — the SDK is named in exactly one source file", () => {
     expect(filesContaining(scanned, TRANSPORT_SPECIFIER)).toEqual(["apps/web/lib/mcp/wire.ts"]);
   });
 
-  // NON-VACUITY. The filter above removes test files; if it removed everything,
-  // the single-entry assertion would be an accident rather than a proof.
+  // Non-vacuity. The filter above removes test files; if it removed everything, the
+  // single-entry assertion would be an accident rather than a proof.
   test("the scan covers the shipped source it claims to, with test files excluded", () => {
     const scanned = [
       ...sourceFilesUnder("apps/web/lib"),
@@ -288,9 +273,7 @@ describe("WIRE-S4 — the SDK is named in exactly one source file", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-S5 — every failure is a value
-// ---------------------------------------------------------------------------
+// WIRE-S5, every failure is a value
 
 describe("WIRE-S5 — callTool returns a refusal union and never a Response, and never throws", () => {
   const credential: McpCredential = { organizationId: "org-s5" };
@@ -298,16 +281,16 @@ describe("WIRE-S5 — callTool returns a refusal union and never a Response, and
   /**
    * Four failure shapes, one guarantee.
    *
-   * `callTool` is the only place that decides, so it is the only place that can
-   * refuse — and a refusal has to be a VALUE, because the layer above renders
-   * it and cannot render an exception. An unknown name, arguments that do not
-   * fit, a row that is not there and a read that broke are four very different
-   * events that must all arrive as `{ ok: false, refusal }`.
+   * `callTool` is the only place that decides, so it is the only place that can refuse,
+   * and a refusal has to be a value, because the layer above renders it and cannot
+   * render an exception. An unknown name, arguments that do not fit, a row that is not
+   * there and a read that broke are four very different events that must all arrive as
+   * `{ ok: false, refusal }`.
    *
-   * The `instanceof Response` half looks redundant against the declared return
-   * type, and is not: the seam is enforceable in the type system only while
-   * nobody reaches for `any`, and this row is what turns "the type says so"
-   * into "the runtime says so".
+   * The `instanceof Response` half looks redundant against the declared return type,
+   * and is not: the seam is enforceable in the type system only while nobody reaches
+   * for `any`, and this row is what turns "the type says so" into "the runtime says
+   * so".
    */
   const cases: readonly { readonly name: string; readonly run: () => Promise<unknown> }[] = [
     {
@@ -335,8 +318,8 @@ describe("WIRE-S5 — callTool returns a refusal union and never a Response, and
 
       expect((outcome as { readonly ok: unknown }).ok).toBe(false);
       expect("refusal" in (outcome as object)).toBe(true);
-      // Cast through `unknown` because the declared union makes the comparison
-      // vacuous to the compiler — which is exactly the assumption being tested.
+      // Cast through `unknown` because the declared union makes the comparison vacuous
+      // to the compiler, which is exactly the assumption being tested.
       expect((outcome as unknown) instanceof Response).toBe(false);
     });
   }

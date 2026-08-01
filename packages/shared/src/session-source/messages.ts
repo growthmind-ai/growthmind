@@ -1,27 +1,25 @@
-// EVERY customer-facing string this sprint produces lives here (O-003 D-13).
+// Every customer-facing string this sprint produces lives here.
 //
-// One home, for three reasons. (a) The plain-English audit and the "live"
-// grep become a single-file review instead of a repo sweep. (b) O-008
-// IMPORTS these rather than re-authoring them, so there is no wire between a
-// producer and a consumer to sever (D11). (c) The honesty rule from D-6f is
-// enforceable: the word "live" appears in no string this sprint produces,
-// because no overlap window can make a poll on client-declared event time
-// complete, and we do not claim otherwise.
+// One home, for three reasons. The plain-English audit and the "live" grep become a
+// single-file review instead of a repo sweep. imports these rather than
+// re-authoring them, so there is no wire between a producer and a consumer to sever.
+//  The honesty rule from That decision is enforceable: the word "live" appears in no
+// string this sprint produces, because no overlap window can make a poll on
+// client-declared event time complete, and we do not claim otherwise.
 //
 // House rules these strings obey, each asserted by a named test:
-//   - no "live" as a freshness claim;
-//   - no product jargon and no bare HTTP status number;
-//   - every connection state and every connect refusal reads distinctly, so
-//     a screen can never show two situations the same way;
-//   - the vendor's name never appears — the pipeline behind the port does not
-//     learn it, and neither does the customer-facing copy.
+// No "live" as a freshness claim;
+// No product jargon and no bare HTTP status number;
+// Every connection state and every connect refusal reads distinctly, so
+//  a screen can never show two situations the same way;
+// The vendor's name never appears. The pipeline behind the port does not
+//  learn it, and neither does the customer-facing copy.
 //
-// O-004 D-19: the evidence gate's eight reason sentences are DEFINED in
-// `../gate/messages` (they are `core`'s data, and `core` imports them back)
-// and re-exported through this module on purpose — the completeness test below
-// derives its scan from THIS module's exports, so a re-export here is what puts
-// them under the four audits above without a second copy of either the strings
-// or the audit.
+// The evidence gate's eight reason sentences are defined in `../gate/messages` (they
+// are `core`'s data, and `core` imports them back) and re-exported through this module
+// on purpose. The completeness test below derives its scan from this module's exports,
+// so a re-export here is what puts them under the four audits above without a second
+// copy of either the strings or the audit.
 import { GATE_REASON_MESSAGES } from "../gate/messages";
 import type { ExclusionReason } from "../exclusions/types";
 import type { ConnectRefusalCode, ConnectionStateStatus } from "./types";
@@ -29,7 +27,7 @@ import type { ConnectRefusalCode, ConnectionStateStatus } from "./types";
 export { GATE_REASON_MESSAGES };
 export type { GateReasonKey } from "../gate/messages";
 
-/** The seven states O-008 renders. Pairwise distinct by construction. */
+/** The seven states renders. Pairwise distinct by construction. */
 export const CONNECTION_STATE_MESSAGES: Record<ConnectionStateStatus, string> = {
   not_connected:
     "No analytics account is attached to this project yet. Attach one to start seeing what people do in your product.",
@@ -55,10 +53,10 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
     "The key worked, but we could not find that project. Check the project number in your analytics settings.",
   unreachable:
     "We could not reach that address. Check the region address, confirm it is reachable from this machine, then try again.",
-  // Validation is a real call to the customer's analytics account, so every
-  // way that call can fail has to be sayable to them — throttling included.
-  // This is the ONE home for the sentence; `mapFailure` in the PostHog source
-  // imports it rather than keeping a second copy to drift (D-13 / D11).
+  // Validation is a real call to the customer's analytics account, so every way that
+  // call can fail has to be sayable to them. Throttling included. This is the one home
+  // for the sentence; `mapFailure` in the PostHog source imports it rather than keeping
+  // a second copy to drift.
   rate_limited:
     "Your analytics account asked us to slow down, so we stopped this check early. We will pick up where we left off on the next one — nothing already collected is lost.",
   misconfigured:
@@ -66,9 +64,9 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
 };
 
 /**
- * The second-source refusal with the existing attachment named, so the
- * customer knows exactly which one to detach — the cutover path in one
- * sentence rather than a support ticket.
+ * The second-source refusal with the existing attachment named, so the customer knows
+ * exactly which one to detach. The cutover path in one sentence rather than a support
+ * ticket.
  */
 export function secondSourceRefusalMessage(existing: {
   host: string;
@@ -97,35 +95,34 @@ export const COUNTER_LABELS = {
 } as const;
 
 /**
- * The window statement. Named explicitly rather than implied — a count with
- * an unstated window is a count nobody can act on.
+ * The window statement. Named explicitly rather than implied. A count with an unstated
+ * window is a count nobody can act on.
  */
 export const COUNTER_WINDOW_STATEMENT =
   "Counted since you attached this project. This is not a rolling window.";
 
 /**
- * The honesty statement (D-6f). PostHog stores the time the customer's own
- * browser declared, and exposes no arrival time by any route, so an event
- * that arrives late or from a device with a slow clock can land behind
- * everything we have already read. We say what we have seen; we never claim
- * to have seen everything.
+ * The honesty statement. PostHog stores the time the customer's own browser declared,
+ * and exposes no arrival time by any route, so an event that arrives late or from a
+ * device with a slow clock can land behind everything we have already read. We say what
+ * we have seen; we never claim to have seen everything.
  */
 export const COUNTER_COMPLETENESS_STATEMENT =
   "This is what we have seen so far. Events that arrive late, or from a device whose clock is behind, can take longer to show up.";
 
-/** Shown when a project has no attachment at all — distinct from a zero
- * count, which means we looked and found nothing. */
+/** Shown when a project has no attachment at all. Distinct from a zero count, which
+ * means we looked and found nothing. */
 export const SOURCE_ABSENT_NOTICE =
   "Nothing is attached to this project, so there is nothing to count yet.";
 
-/** Shown when the last check failed but earlier numbers are still on screen,
- * so a stale number is never presented as a current one. */
+/** Shown when the last check failed but earlier numbers are still on screen, so a stale
+ * number is never presented as a current one. */
 export const SOURCE_DEGRADED_NOTICE =
   "The last check did not finish, so these numbers may be behind what your product has recorded.";
 
 /**
- * Plain-English duration. Switches to minutes before the number gets big
- * enough to read like a code rather than a length of time.
+ * Plain-English duration. Switches to minutes before the number gets big enough to read
+ * like a code rather than a length of time.
  */
 function describeDurationEnglish(seconds: number): string {
   if (seconds < 90) {
@@ -136,8 +133,8 @@ function describeDurationEnglish(seconds: number): string {
 }
 
 /**
- * The freshness sentence attached to the counter. States a MEASUREMENT, never
- * a promise, and never the word this file exists to keep out.
+ * The freshness sentence attached to the counter. States a measurement, never a
+ * promise, and never the word this file exists to keep out.
  */
 export function expectedLagStatement(input: {
   typicalSeconds: number;
@@ -151,17 +148,16 @@ export function expectedLagStatement(input: {
 }
 
 /**
- * Every fixed customer-facing string in this module, in one array, so the
- * plain-English audit is TOTAL rather than best-effort: a new constant that
- * is not added here is caught by the audit's own completeness check instead
- * of quietly escaping review.
+ * Every fixed customer-facing string in this module, in one array, so the plain-English
+ * audit is total rather than best-effort: a new constant that is not added here is
+ * caught by the audit's own completeness check instead of quietly escaping review.
  */
 export const ALL_CUSTOMER_FACING_MESSAGES: readonly string[] = [
   ...Object.values(CONNECTION_STATE_MESSAGES),
   ...Object.values(CONNECT_REFUSAL_MESSAGES),
   ...Object.values(EXCLUSION_REASON_LABELS),
   ...Object.values(COUNTER_LABELS),
-  // O-004 D-19 — the gate's reason sentences audited alongside everything else.
+  // The gate's reason sentences audited alongside everything else.
   ...Object.values(GATE_REASON_MESSAGES),
   COUNTER_WINDOW_STATEMENT,
   COUNTER_COMPLETENESS_STATEMENT,

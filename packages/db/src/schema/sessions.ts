@@ -7,7 +7,7 @@ import { organization } from "./auth";
 import { projectConnections } from "./project-connections";
 import { projects } from "./projects";
 
-// Enum tuples compile-pinned to @growthmind/shared's Zod unions (D9).
+// Enum tuples compile-pinned to @growthmind/shared's Zod unions.
 const IDENTITY_RESOLUTIONS = ["resolved", "absent", "unresolved"] as const satisfies readonly [
   IdentityResolution,
   ...IdentityResolution[],
@@ -24,14 +24,13 @@ const EXCLUSION_REASONS = [
 ] as const satisfies readonly [ExclusionReason, ...ExclusionReason[]];
 
 /**
- * An assembled session (O-003 D-9).
+ * An assembled session.
  *
- * `tier_reached` and `cost_cents` — which architecture §6 names on this table
- * — deliberately do NOT land yet: no write path in this sprint stamps either,
- * and a column nobody writes is exactly the "filter returns zero rows and
- * reads as no-data" failure architecture §6 rule 1 exists to name. Adding
- * them later is `ALTER TABLE … ADD COLUMN … NULL`, generated, with no data
- * migration. Asymmetric, so deferred.
+ * `tier_reached` and `cost_cents` (which architecture names on this table) deliberately
+ * do not land yet: no write path in this sprint stamps either, and a column nobody
+ * writes is exactly the "filter returns zero rows and reads as no-data" failure
+ * architecture rule 1 exists to name. Adding them later is `ALTER TABLE … ADD COLUMN …
+ * NULL`, generated, with no data migration. Asymmetric, so deferred.
  */
 export const sessions = pgTable(
   "sessions",
@@ -51,40 +50,39 @@ export const sessions = pgTable(
     /** From `deriveSessionKey`. Versioned by `groupingVersion` below. */
     sessionKey: text("session_key").notNull(),
     /**
-     * A project-salted sha256 hash of PostHog's raw `distinct_id` — never the
-     * raw value itself (CR-5, product-decisions §5, PRD FR-16). Named
-     * `identity_key`, NOT `identity_id`: architecture §6's `identity_id`
-     * implies the `identities` table that full stitching creates and this
-     * sprint does not. A `_id` column with no referent would make a later
-     * wave write a join to a table that does not exist, and would turn the
-     * real `identities` table into a rename migration. The later stitcher
-     * maps this key — which is exactly FR-26's "nothing keyed in a way a
-     * later real stitcher cannot re-derive".
+     * A project-salted sha256 hash of PostHog's raw `distinct_id`, never the raw value
+     * itself (product-decisions, prd). Named `identity_key`, not `identity_id`:
+     * architecture the `identity_id` implies the `identities` table that full stitching
+     * creates and this sprint does not. A `_id` column with no referent would make a
+     * later wave write a join to a table that does not exist, and would turn the real
+     * `identities` table into a rename migration. The later stitcher maps this key,
+     * which is exactly the "nothing keyed in a way a later real stitcher cannot
+     * re-derive".
      */
     identityKey: text("identity_key"),
-    /** DOMAIN ONLY, never the address (product-decisions §5). */
+    /** Domain only, never the address (product-decisions). */
     identityEmailDomain: text("identity_email_domain"),
     /** Three-state, notNull: "we did not check" is a value, not an absence. */
     identityResolution: text("identity_resolution", { enum: IDENTITY_RESOLUTIONS }).notNull(),
-    /** SEC-A: SDK-set and may be absent. An absent UA classifies as `none`,
-     * never as automation (F-7). */
+    /** Sec-a: SDK-set and may be absent. An absent UA classifies as `none`, never as
+     * automation. */
     userAgent: text("user_agent"),
     entryUrlPath: text("entry_url_path"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     lastEventAt: timestamp("last_event_at", { withTimezone: true }).notNull(),
-    /** This sprint's only writer stamps `real`; `synthetic` arrives with
-     * simulation. Reuses the EXISTING shared `originSchema` — not redefined. */
+    /** This sprint's only writer stamps `real`; `synthetic` arrives with simulation.
+     * Reuses the existing shared `originSchema`, not redefined. */
     origin: text("origin", { enum: ORIGINS }).notNull(),
     /**
-     * NOT NULL, with an explicit `none` member. A nullable column would make
-     * "classified and kept" and "never classified" the same value — precisely
-     * the failure where absence reads as a result. Classification is total.
+     * Not NULL, with an explicit `none` member. A nullable column would make
+     * "classified and kept" and "never classified" the same value. Precisely the
+     * failure where absence reads as a result. Classification is total.
      */
     exclusionReason: text("exclusion_reason", { enum: EXCLUSION_REASONS }).notNull(),
-    /** What the classifier saw at stamp time — the PROVENANCE of the stamp.
-     * Reproducing a stored stamp uses this; the future backfill uses the
-     * project's current domain. Both are expressible from persisted data with
-     * zero vendor access, which is the whole property FR-14 preserves. */
+    /** What the classifier saw at stamp time. The provenance of the stamp. Reproducing
+     * a stored stamp uses this; the future backfill uses the project's current domain.
+     * Both are expressible from persisted data with zero vendor access, which is the
+     * whole property preserves. */
     internalDomainAtStamp: text("internal_domain_at_stamp"),
     exclusionRuleSetVersion: integer("exclusion_rule_set_version").notNull(),
     groupingVersion: integer("grouping_version").notNull(),
@@ -95,8 +93,8 @@ export const sessions = pgTable(
       .notNull(),
   },
   (table) => [
-    // The upsert conflict target. Re-applying a pull is idempotent by
-    // construction rather than by a prior existence check (D6).
+    // The upsert conflict target. Re-applying a pull is idempotent by construction
+    // rather than by a prior existence check.
     uniqueIndex("sessions_project_session_key_uidx").on(table.projectId, table.sessionKey),
     index("sessions_organization_id_idx").on(table.organizationId),
     index("sessions_project_started_at_idx").on(table.projectId, table.startedAt),

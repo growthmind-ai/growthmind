@@ -1,44 +1,39 @@
-// Wave 2 RED tests for the T1 event-vocabulary probe's PURE core
-// (O-004 FR-21, ADD §6.3 / §7). Asserts the public contract of
-// scripts/spikes/lib/t1-vocabulary.ts. Every body there throws
-// "not implemented" — these tests MUST fail until Wave 6 fills them in.
+// Wave 2 red tests for the T1 event-vocabulary probe's pure core. Asserts the public
+// contract of scripts/spikes/lib/t1-vocabulary.ts. Every body there throws "not
+// implemented". These tests must fail until Wave 6 fills them in.
 //
-// -------------------------------------------------------------------------
-// WHY THE FIRST TEST IN THIS FILE IS THE ONE THAT MATTERS (ESC-2)
-// -------------------------------------------------------------------------
-// When the probe ran (ADD §2), the project's entire history was 220 events,
-// ALL synthetic: `gm_*` markers written by this repo's own spikes plus
-// PostHog-reserved names our spikes deliberately captured. No `posthog-js`
-// has ever touched that project. Rows A-2…A-5 (`$rageclick`, `$dead_click`,
-// `$autocapture`, `$pageview`) therefore returned ZERO observations.
+// Why the first test in this file is the one that matters When the probe ran, the
+// project's entire history was 220 events, all synthetic: `gm_*` markers written by
+// this repo's own spikes plus PostHog-reserved names our spikes deliberately captured.
+// No `posthog-js` has ever touched that project. Rows … (`$rageclick`,
+// `$dead_click`, `$autocapture`, `$pageview`) therefore returned zero observations.
 //
-// Zero observations of a browser event, in a corpus containing zero
-// browser-originated events, measures OUR OWN SYNTHETIC WRITES — not the
-// customer's client config. Calling that `PINNED — absent` would be declaring
-// a detector unbuildable on evidence that says nothing at all. That is why
-// those rows are `FAILED-TO-PIN`, and why `rage_click` / `dead_click` are NOT
-// BUILT this sprint rather than built on an assumption (D-17).
+// Zero observations of a browser event, in a corpus containing zero browser-originated
+// events, measures our own synthetic writes, not the customer's client config. Calling
+// that `PINNED — absent` would be declaring a detector unbuildable on evidence that
+// says nothing at all. That is why those rows are `FAILED-TO-PIN`, and why `rage_click`
+// / `dead_click` are not built this sprint rather than built on an assumption.
 //
 // Over-claiming absence is the failure mode this module exists to prevent.
-// Over-claiming inconclusiveness costs a re-run. Every fixture below is
-// written so a miss lands on the second cost, never the first.
+// Over-claiming inconclusiveness costs a re-run. Every fixture below is written so a
+// miss lands on the second cost, never the first.
 //
-// SCOPE, per the binding PL rulings on Wave 1:
-//   - Ruling 8:  the probe pins event NAMES only. Nothing here asserts on
-//                property keys — `$exception_list` / `$pathname` are not this
-//                module's business, and a field with no consumer is a dead wire.
-//   - Ruling 10: a read/auth failure exits 1 in the shell ("no events were
-//                readable — this is NOT an absence result"). It never becomes a
-//                `FAILED-TO-PIN` row, so no test here constructs that arm.
-//   - Ruling 11: `BROWSER_ORIGIN_LIBS_V1` is an ALLOW-list — an unrecognised
-//                `$lib` must fail toward `FAILED-TO-PIN`, never toward a false
-//                absence. Two tests below pin that direction.
-//   - Ruling 12: `EventNameHistogram.window` is EVIDENCE, not a gate condition.
-//                It is asserted as carried output only; nothing asserts it gates
-//                a verdict.
+// Scope, per the binding PL rulings on Wave 1:
+// Ruling 8: the probe pins event names only. Nothing here asserts on
+//  property keys — `$exception_list` / `$pathname` are not this
+//  module's business, and a field with no consumer is a dead wire.
+// Ruling 10: a read/auth failure exits 1 in the shell ("no events were
+//  readable — this is not an absence result"). It never becomes a
+//  `FAILED-TO-PIN` row, so no test here constructs that arm.
+// Ruling 11: `BROWSER_ORIGIN_LIBS_V1` is an allow-list, an unrecognised
+//  `$lib` must fail toward `FAILED-TO-PIN`, never toward a false
+//  absence. Two tests below pin that direction.
+// Ruling 12: `EventNameHistogram.window` is evidence, not a gate condition.
+//  It is asserted as carried output only; nothing asserts it gates
+//  a verdict.
 //
-// Fixture time is a required parameter throughout (ADD §6.5): every instant
-// derives from the `T0` constant. There is no `Date.now()` in this file.
+// Fixture time is a required parameter throughout: every instant derives from the `T0`
+// constant. There is no `Date.now` in this file.
 
 import { describe, expect, test } from "bun:test";
 
@@ -63,9 +58,7 @@ import {
   type VocabularyRow,
 } from "../lib/t1-vocabulary";
 
-// ---------------------------------------------------------------------------
-// Fixture time — injected, never read from a clock
-// ---------------------------------------------------------------------------
+// Fixture time, injected, never read from a clock
 
 /** The fixture epoch. Every instant below is `T0 + offset`. */
 const T0 = new Date("2026-06-01T09:00:00.000Z");
@@ -74,9 +67,7 @@ function at(offsetMs: number): Date {
   return new Date(T0.getTime() + offsetMs);
 }
 
-// ---------------------------------------------------------------------------
 // Fixture builders
-// ---------------------------------------------------------------------------
 
 function observed(name: string, lib: string | null, offsetMs: number): ObservedEvent {
   return { name, lib, occurredAt: at(offsetMs) };
@@ -95,17 +86,16 @@ function eventsNamed(
 }
 
 /**
- * The `$lib` ADD §2's corpus actually carried. Deliberately NOT on the
- * allow-list: it is this repo's own spike writing to the project.
+ * The `$lib` the corpus actually carried. Deliberately not on the allow-list: it is
+ * this repo's own spike writing to the project.
  */
 const SYNTHETIC_LIB = "gm-shape-probe";
 
 /**
- * A stand-in for ADD §2's real corpus: 220 events, every one of them ours.
- * 177 `gm_*` markers, 20 `$exception` and 1 `$identify` that our spikes
- * deliberately captured, 22 further markers carrying no `$lib` at all.
- * Zero browser-originated events. This is the sample that must never license
- * an absence claim.
+ * A stand-in for the real corpus: 220 events, every one of them ours. 177 `gm_*`
+ * markers, 20 `$exception` and 1 `$identify` that our spikes deliberately captured, 22
+ * further markers carrying no `$lib` at all. Zero browser-originated events. This is
+ * the sample that must never license an absence claim.
  */
 const SYNTHETIC_CORPUS: readonly ObservedEvent[] = [
   ...eventsNamed(177, "gm_shape_probe", SYNTHETIC_LIB, 0),
@@ -118,15 +108,15 @@ const SYNTHETIC_CORPUS: readonly ObservedEvent[] = [
 const BROWSER_LIB = BROWSER_ORIGIN_LIBS_V1[0] ?? "web";
 
 /**
- * A sample of real browser traffic that could plausibly have contained the
- * event under test — `browserEventCount` browser-originated events, none of
- * them named by any A-row we ask about here.
+ * A sample of real browser traffic that could plausibly have contained the event under
+ * test, `browserEventCount` browser-originated events, none of them named by any A-row
+ * we ask about here.
  */
 function browserCorpus(browserEventCount: number): readonly ObservedEvent[] {
   return [
     ...eventsNamed(browserEventCount, "product_viewed", BROWSER_LIB, 0),
-    // A little of our own traffic alongside it: present in the denominator,
-    // absent from the browser-originated count.
+    // A little of our own traffic alongside it: present in the denominator, absent from
+    // the browser-originated count.
     ...eventsNamed(5, "gm_shape_probe", SYNTHETIC_LIB, 900_000),
   ];
 }
@@ -137,9 +127,7 @@ function row(id: string): VocabularyRow {
   return found;
 }
 
-// ---------------------------------------------------------------------------
-// Verdict narrowing — the union is the contract, so narrow explicitly
-// ---------------------------------------------------------------------------
+// Verdict narrowing, the union is the contract, so narrow explicitly
 
 type PresentVerdict = Extract<RowVerdict, { label: "PINNED — present" }>;
 type AbsentVerdict = Extract<RowVerdict, { label: "PINNED — absent" }>;
@@ -166,28 +154,26 @@ function asFailed(verdict: RowVerdict): FailedVerdict {
   return verdict;
 }
 
-// ===========================================================================
-// verdictForRow — ESC-2's lesson, and the asymmetry between present and absent
-// ===========================================================================
+// verdictForRow, the lesson, and the asymmetry between present and absent
 
 describe("verdictForRow", () => {
   test("should return FAILED-TO-PIN when the sample contains zero browser-originated events", () => {
-    // ADD §2's corpus, reproduced: 220 events, all ours, no browser client.
+    // the corpus, reproduced: 220 events, all ours, no browser client.
     expect(SYNTHETIC_CORPUS).toHaveLength(220);
 
     const histogram = buildEventNameHistogram(SYNTHETIC_CORPUS);
     const gate = judgeRepresentativeness(SYNTHETIC_CORPUS, CURRENT_REPRESENTATIVENESS_RULES);
 
-    // The sample cannot carry an absence claim, and it says WHICH of the two
-    // reasons applies: nothing browser-originated at all, as distinct from
-    // some real browser traffic that merely fell under the bar.
+    // The sample cannot carry an absence claim, and it says which of the two reasons
+    // applies: nothing browser-originated at all, as distinct from some real browser
+    // traffic that merely fell under the bar.
     expect(gate.kind).toBe("not_representative");
     const verdict = asFailed(verdictForRow(row("A-2"), histogram, gate));
     expect(verdict.basis.reason).toBe("no_browser_originated_events");
     expect(verdict.basis.reason).not.toBe("below_minimum_browser_denominator");
 
-    // The evidence travels with the verdict: 0 of 220, with the bar it was
-    // judged against, so the line reads as a ratio rather than as a zero.
+    // The evidence travels with the verdict: 0 of 220, with the bar it was judged
+    // against, so the line reads as a ratio rather than as a zero.
     expect(verdict.denominator).toBe(220);
     expect(verdict.basis.basis.totalEvents).toBe(220);
     expect(verdict.basis.basis.browserOriginatedEvents).toBe(0);
@@ -195,15 +181,15 @@ describe("verdictForRow", () => {
       MINIMUM_BROWSER_ORIGINATED_EVENTS_V1,
     );
 
-    // Every A-row that asks about browser-only vocabulary lands the same way
-    // against this sample — this is the whole reason rage_click/dead_click are
-    // NOT BUILT rather than built on an assumption.
+    // Every A-row that asks about browser-only vocabulary lands the same way against
+    // this sample. This is the whole reason rage_click/dead_click are not built rather
+    // than built on an assumption.
     for (const id of ["A-3", "A-4", "A-5"]) {
       expect(verdictForRow(row(id), histogram, gate).label).toBe("FAILED-TO-PIN");
     }
 
-    // The near-miss the reason has to be distinguishable FROM: a project with
-    // some genuine browser traffic, just not enough of it.
+    // The near-miss the reason has to be distinguishable from: a project with some
+    // genuine browser traffic, just not enough of it.
     const thinBrowserSample = browserCorpus(3);
     const thinGate = judgeRepresentativeness(thinBrowserSample, CURRENT_REPRESENTATIVENESS_RULES);
     const thinVerdict = asFailed(
@@ -213,8 +199,8 @@ describe("verdictForRow", () => {
 
     // The compile-time half of the same rule: a NonRepresentativeSample is not
     // assignable to the absent arm's `basis`, so `PINNED — absent` cannot be
-    // constructed from a sample like this one at all. This stops compiling the
-    // day someone widens that arm.
+    // constructed from a sample like this one at all. This stops compiling the day
+    // someone widens that arm.
     const nonRepresentativeIsNotAnAbsentBasis: NonRepresentativeSample extends AbsentVerdict["basis"]
       ? false
       : true = true;
@@ -222,9 +208,9 @@ describe("verdictForRow", () => {
   });
 
   test("should return PINNED — absent only when a representative browser-traffic denominator is met", () => {
-    // Exactly on the bar. D-6: every boundary in this sprint is inclusive, so a
-    // sample sitting on the minimum passes; the fail direction is carried by the
-    // magnitude of the bar, never by the strictness of the comparison.
+    // Exactly on the bar: every boundary in this sprint is inclusive, so a sample
+    // sitting on the minimum passes; the fail direction is carried by the magnitude of
+    // the bar, never by the strictness of the comparison.
     const onBar = browserCorpus(MINIMUM_BROWSER_ORIGINATED_EVENTS_V1);
     const onBarGate = judgeRepresentativeness(onBar, CURRENT_REPRESENTATIVENESS_RULES);
     expect(onBarGate.kind).toBe("representative");
@@ -233,8 +219,8 @@ describe("verdictForRow", () => {
     }
     expect(onBarGate.basis.browserOriginatedEvents).toBe(MINIMUM_BROWSER_ORIGINATED_EVENTS_V1);
 
-    // The runtime behaviour must match the type: the absent arm's basis accepts
-    // only a RepresentativeSample, and this assignment is that proof in code.
+    // The runtime behaviour must match the type: the absent arm's basis accepts only a
+    // RepresentativeSample, and this assignment is that proof in code.
     const absentBasis: AbsentVerdict["basis"] = onBarGate;
     expect(absentBasis.kind).toBe("representative");
 
@@ -242,8 +228,8 @@ describe("verdictForRow", () => {
     expect(absent.basis.kind).toBe("representative");
     expect(absent.denominator).toBe(onBar.length);
 
-    // One below the bar is the mirror: the same zero observations, no absence
-    // claim. Without this half the test name means nothing.
+    // One below the bar is the mirror: the same zero observations, no absence claim.
+    // Without this half the test name means nothing.
     const belowBar = browserCorpus(MINIMUM_BROWSER_ORIGINATED_EVENTS_V1 - 1);
     const belowBarGate = judgeRepresentativeness(belowBar, CURRENT_REPRESENTATIVENESS_RULES);
     expect(belowBarGate.kind).toBe("not_representative");
@@ -254,9 +240,9 @@ describe("verdictForRow", () => {
   });
 
   test("should return PINNED — present with the exact observed literal", () => {
-    // Presence is deliberately ASYMMETRIC: one sighting settles a row, and the
-    // gate is not consulted at all. The sample here is NOT representative — the
-    // verdict must still be present.
+    // Presence is deliberately asymmetric: one sighting settles a row, and the gate is
+    // not consulted at all. The sample here is not representative. The verdict must
+    // still be present.
     const sample: readonly ObservedEvent[] = [
       ...SYNTHETIC_CORPUS,
       ...eventsNamed(3, "$rageclick", BROWSER_LIB, 500_000),
@@ -272,8 +258,8 @@ describe("verdictForRow", () => {
   });
 
   test("should carry only the observed literal when a row names a family of event names", () => {
-    // A-3 asks about `$dead_click` AND `$dead_swipe`. Only one was observed, so
-    // only one may appear — a verdict must never report a literal it did not see.
+    //  asks about `$dead_click` and `$dead_swipe`. Only one was observed, so only
+    // one may appear. A verdict must never report a literal it did not see.
     const a3 = row("A-3");
     expect(a3.eventNames).toContain("$dead_click");
     expect(a3.eventNames).toContain("$dead_swipe");
@@ -290,15 +276,13 @@ describe("verdictForRow", () => {
   });
 });
 
-// ===========================================================================
-// judgeRepresentativeness / isBrowserOriginated — the allow-list's fail direction
-// ===========================================================================
+// judgeRepresentativeness / isBrowserOriginated, the allow-list's fail direction
 
 describe("isBrowserOriginated", () => {
   test("should not count an unrecognised or absent $lib as browser-originated", () => {
-    // Ruling 11: BROWSER_ORIGIN_LIBS_V1 is an ALLOW-list. Anything it has not
-    // learned — including a future posthog-js `$lib` value — is not browser
-    // traffic, which withholds an absence claim rather than manufacturing one.
+    // Ruling 11: BROWSER_ORIGIN_LIBS_V1 is an allow-list. Anything it has not learned
+    // (including a future posthog-js `$lib` value) is not browser traffic, which
+    // withholds an absence claim rather than manufacturing one.
     const rules = CURRENT_REPRESENTATIVENESS_RULES;
 
     for (const lib of BROWSER_ORIGIN_LIBS_V1) {
@@ -313,15 +297,14 @@ describe("isBrowserOriginated", () => {
 
 describe("judgeRepresentativeness", () => {
   test("should fail toward FAILED-TO-PIN when an unrecognised $lib carries most of the sample", () => {
-    // The dangerous shape: plenty of events, but the bulk of them from a `$lib`
-    // the allow-list does not know. Counting those as browser traffic would let
-    // a false absence through; not counting them costs a re-run.
+    // The dangerous shape: plenty of events, but the bulk of them from a `$lib` the
+    // allow-list does not know. Counting those as browser traffic would let a false
+    // absence through; not counting them costs a re-run.
     const rules: RepresentativenessRules = {
       version: CURRENT_REPRESENTATIVENESS_RULES.version,
       browserOriginLibs: CURRENT_REPRESENTATIVENESS_RULES.browserOriginLibs,
-      // Bar moved deliberately: the rules arrive as a PARAMETER, so a test can
-      // move them. A gate that read a module constant internally could only be
-      // agreed with.
+      // Bar moved deliberately: the rules arrive as a parameter, so a test can move
+      // them. A gate that read a module constant internally could only be agreed with.
       minimumBrowserOriginatedEvents: 10,
     };
     const sample: readonly ObservedEvent[] = [
@@ -337,8 +320,8 @@ describe("judgeRepresentativeness", () => {
     expect(gate.basis.browserOriginatedEvents).toBe(5);
     expect(gate.basis.minimumBrowserOriginatedEvents).toBe(10);
 
-    // The unrecognised lib is REPORTED, not silently dropped — that line is what
-    // tells a re-runner the allow-list needs a new entry (ruling 11).
+    // The unrecognised lib is reported, not silently dropped. That line is what tells a
+    // re-runner the allow-list needs a new entry (ruling 11).
     expect(gate.basis.observedLibs).toContain("posthog-js-lite-next");
     expect(gate.basis.observedLibs).toContain(BROWSER_LIB);
 
@@ -362,14 +345,12 @@ describe("judgeRepresentativeness", () => {
   });
 });
 
-// ===========================================================================
-// buildEventNameHistogram — a count is only a count with its denominator
-// ===========================================================================
+// buildEventNameHistogram, a count is only a count with its denominator
 
 describe("buildEventNameHistogram", () => {
   test("should build an event-name histogram with its denominator", () => {
-    // Offsets deliberately out of order so the window cannot be read off the
-    // first and last elements. One event carries no timestamp at all (D5).
+    // Offsets deliberately out of order so the window cannot be read off the first and
+    // last elements. One event carries no timestamp at all.
     const sample: readonly ObservedEvent[] = [
       observed("$pageview", BROWSER_LIB, 5_000),
       observed("$autocapture", BROWSER_LIB, 3_000),
@@ -384,12 +365,12 @@ describe("buildEventNameHistogram", () => {
 
     const histogram = buildEventNameHistogram(sample);
 
-    // The denominator every count is over — the whole point of the shape.
+    // The denominator every count is over. The whole point of the shape.
     expect(histogram.denominator).toBe(9);
     const total = histogram.counts.reduce((sum, entry) => sum + entry.count, 0);
     expect(total).toBe(histogram.denominator);
 
-    // Count DESCENDING, ties broken by name ASCENDING (code-unit order).
+    // Count descending, ties broken by name ascending (code-unit order).
     expect(histogram.counts).toEqual([
       { name: "$pageview", count: 3 },
       { name: "$autocapture", count: 2 },
@@ -397,9 +378,9 @@ describe("buildEventNameHistogram", () => {
       { name: "gm_spike_marker", count: 2 },
     ]);
 
-    // The window is EVIDENCE the sample carries, spanning the earliest and
-    // latest usable timestamps — never the first and last array positions, and
-    // (ruling 12) never a condition on any verdict.
+    // The window is evidence the sample carries, spanning the earliest and latest
+    // usable timestamps, never the first and last array positions, and (ruling 12)
+    // never a condition on any verdict.
     const span = histogram.window;
     if (span === null) throw new Error("expected a window over a sample carrying timestamps");
     expect(span.earliest.toISOString()).toBe(at(1_000).toISOString());
@@ -407,8 +388,8 @@ describe("buildEventNameHistogram", () => {
   });
 
   test("should return a zero denominator and no window for an empty sample", () => {
-    // Never a throw, and never a fabricated zero-count row for a name nobody
-    // observed — an invented row would read as an observation.
+    // Never a throw, and never a fabricated zero-count row for a name nobody observed.
+    // An invented row would read as an observation.
     const histogram = buildEventNameHistogram([]);
     expect(histogram.denominator).toBe(0);
     expect(histogram.counts).toEqual([]);
@@ -416,16 +397,14 @@ describe("buildEventNameHistogram", () => {
   });
 });
 
-// ===========================================================================
-// toObservedEvents — every drop shrinks the denominator, i.e. fails safe
-// ===========================================================================
+// toObservedEvents, every drop shrinks the denominator, i.e. fails safe
 
 describe("toObservedEvents", () => {
   test("should drop a raw item with no string event name rather than defaulting it", () => {
-    // A live project holds every payload shape ever written to it, so nothing
-    // here trusts a declared type. A dropped item shrinks the denominator, which
-    // pushes the sample further from "representative" — away from an absence
-    // claim we cannot support.
+    // A live project holds every payload shape ever written to it, so nothing here
+    // trusts a declared type. A dropped item shrinks the denominator, which pushes the
+    // sample further from "representative". Away from an absence claim we cannot
+    // support.
     const rawItems: readonly unknown[] = [
       { event: "$pageview", properties: { $lib: BROWSER_LIB }, timestamp: at(1_000).toISOString() },
       { event: "$rageclick", properties: {}, timestamp: "not-a-timestamp" },
@@ -445,8 +424,8 @@ describe("toObservedEvents", () => {
     expect(first.lib).toBe(BROWSER_LIB);
     expect(first.occurredAt?.toISOString()).toBe(at(1_000).toISOString());
 
-    // A missing `$lib` and an unparseable timestamp become null — only the name
-    // is required, and neither absence removes the event from the denominator.
+    // A missing `$lib` and an unparseable timestamp become null. Only the name is
+    // required, and neither absence removes the event from the denominator.
     const second = sample[1];
     if (second === undefined) throw new Error("expected the second retained event");
     expect(second.lib).toBeNull();
@@ -456,9 +435,7 @@ describe("toObservedEvents", () => {
   });
 });
 
-// ===========================================================================
-// buildVocabularyReport — the gate is judged ONCE for the sample
-// ===========================================================================
+// buildVocabularyReport, the gate is judged once for the sample
 
 describe("buildVocabularyReport", () => {
   test("should judge representativeness once and hold every verdict to that one judgement", () => {
@@ -472,14 +449,14 @@ describe("buildVocabularyReport", () => {
     expect(report.rulesVersion).toBe(REPRESENTATIVENESS_RULES_VERSION);
     expect(report.histogram.denominator).toBe(SYNTHETIC_CORPUS.length);
 
-    // Representativeness is a property of the SAMPLE, not of a row: re-deriving
-    // it per row is how the two drift apart.
+    // Representativeness is a property of the sample, not of a row: re-deriving it per
+    // row is how the two drift apart.
     expect(report.representativeness).toEqual(
       judgeRepresentativeness(SYNTHETIC_CORPUS, CURRENT_REPRESENTATIVENESS_RULES),
     );
 
-    // One verdict per row, in the rows' own order, each carrying the same
-    // denominator — so no verdict can be read without the number behind it.
+    // One verdict per row, in the rows' own order, each carrying the same denominator,
+    // so no verdict can be read without the number behind it.
     expect(report.verdicts.map((verdict) => verdict.row.id)).toEqual(
       VOCABULARY_ROWS.map((vocabularyRow) => vocabularyRow.id),
     );
@@ -487,21 +464,19 @@ describe("buildVocabularyReport", () => {
       expect(verdict.denominator).toBe(report.histogram.denominator);
     }
 
-    // A-1 is present in this corpus (our spikes captured 20 `$exception`);
-    // A-2…A-5 are inconclusive, which is exactly ADD §2's published table.
+    //  is present in this corpus (our spikes captured 20 `$exception`); … are
+    // inconclusive, which is exactly the published table.
     const a1 = report.verdicts.find((verdict) => verdict.row.id === "A-1");
     if (a1 === undefined) throw new Error("expected a verdict for row A-1");
     expect(asPresent(a1).observed).toEqual([{ name: "$exception", count: 20 }]);
   });
 });
 
-// ===========================================================================
-// formatVerdictLine — every printed byte passes through redaction first
-// ===========================================================================
+// formatVerdictLine, every printed byte passes through redaction first
 
 /**
- * Fake credential material. These are fixtures, not secrets: this repo is
- * public and no real key may ever appear in it.
+ * Fake credential material. These are fixtures, not secrets: this repo is public and no
+ * real key may ever appear in it.
  */
 const FIXTURE_SECRETS: RedactionSecrets = {
   personalApiKey: "phx_fixtureFIXTUREfixture0123456789",
@@ -509,18 +484,18 @@ const FIXTURE_SECRETS: RedactionSecrets = {
   projectId: "9174233",
 };
 
-/** A key SHAPE this process never held — the pattern arm, not the exact arm. */
+/** A key shape this process never held. The pattern arm, not the exact arm. */
 const CUSTOMER_KEY_SHAPED_EVENT = "checkout_phs_A1b2C3d4E5f6G7h8I9j0K1l2";
 /** A customer event name that happens to embed the project id. */
 const CUSTOMER_PROJECT_ID_EVENT = `signup_${FIXTURE_SECRETS.projectId}_step2`;
 
 describe("formatVerdictLine", () => {
   test("should redact identifier-shaped values from every printed line", () => {
-    // Event names are CUSTOMER-AUTHORED text. `formatVerdictLine` is pure and
-    // prints the literals it was given; it is not trusted to be safe on its own,
-    // which is why the entrypoint pipes every line through `lib/redact.ts`
-    // before stdout or disk. This test asserts that composition, over every
-    // line, including the FAILED-TO-PIN arm.
+    // Event names are customer-authored text. `formatVerdictLine` is pure and prints
+    // the literals it was given; it is not trusted to be safe on its own, which is why
+    // the entrypoint pipes every line through `lib/redact.ts` before stdout or disk.
+    // This test asserts that composition, over every line, including the failed-to-pin
+    // arm.
     const rows: readonly VocabularyRow[] = [
       {
         id: "R-1",
@@ -557,9 +532,8 @@ describe("formatVerdictLine", () => {
       expect(line).not.toContain(FIXTURE_SECRETS.projectApiKey);
     }
 
-    // Over-redaction is the accepted fail direction, but it must not erase the
-    // evidence the line exists to carry: the row id, the label, and the
-    // denominator survive.
+    // Over-redaction is the accepted fail direction, but it must not erase the evidence
+    // the line exists to carry: the row id, the label, and the denominator survive.
     const printed = rawLines.map((raw) => redactSecrets(raw, FIXTURE_SECRETS));
     expect(printed.some((line) => line.includes("R-1"))).toBe(true);
     expect(printed.some((line) => line.includes("FAILED-TO-PIN"))).toBe(true);

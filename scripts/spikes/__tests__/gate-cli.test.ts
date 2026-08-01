@@ -1,9 +1,8 @@
-// Wave 1 RED integration tests for the credential gate at the CLI boundary
-// (ADD §Wave 0 "Integration tests", D-8, D10, FR-2, Human Acceptance Test
-// Part A). Spawns the REAL entrypoint with a scrubbed env — network-free by
-// construction: the gate exits before any network call or filesystem write.
-// The entrypoint is currently a stub printing "not implemented" → these tests
-// MUST fail (message assertions) until Wave 4 implements the gate.
+// Wave 1 red integration tests for the credential gate at the CLI boundary (Wave 0
+// "Integration tests", Human Acceptance Test Part A). Spawns the real entrypoint with a
+// scrubbed env. Network-free by construction: the gate exits before any network call or
+// filesystem write. The entrypoint is currently a stub printing "not implemented" →
+// these tests must fail (message assertions) until Wave 4 implements the gate.
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
@@ -19,11 +18,11 @@ const ENTRYPOINT = join("scripts", "spikes", "m0-posthog-latency.ts");
 const LOCAL_SPIKES_DIR = join(REPO_ROOT, "local", "spikes");
 
 /**
- * An env file that defines nothing. bun auto-loads the repo-root `.env` into
- * any process it spawns, which would re-inject the POSTHOG_* credentials that
- * scrubbedEnv() just removed — making these tests pass only on a machine
- * without a configured `.env`. Pointing `--env-file` here suppresses that
- * default load, so the gate genuinely sees no credentials either way.
+ * An env file that defines nothing. bun auto-loads the repo-root `.env` into any
+ * process it spawns, which would re-inject the POSTHOG_* credentials that scrubbedEnv
+ * just removed. Making these tests pass only on a machine without a configured `.env`.
+ * Pointing `--env-file` here suppresses that default load, so the gate genuinely sees
+ * no credentials either way.
  */
 const NO_VARS_ENV_FILE = join(import.meta.dir, "fixtures", "no-vars.env");
 
@@ -31,9 +30,9 @@ const NO_VARS_ENV_FILE = join(import.meta.dir, "fixtures", "no-vars.env");
 const SPAWN_TIMEOUT_MS = 60_000;
 
 /**
- * Minimal safe env: copy of process.env (PATH, SystemRoot, etc. — bun itself
- * must still run on Windows) with every POSTHOG_* key deleted. Windows env
- * keys are case-insensitive, so match case-insensitively.
+ * Minimal safe env: copy of process.env (path, SystemRoot, etc. Bun itself must still
+ * run on Windows) with every POSTHOG_* key deleted. Windows env keys are
+ * case-insensitive, so match case-insensitively.
  */
 function scrubbedEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env };
@@ -73,11 +72,11 @@ async function runEntrypoint(env: Record<string, string | undefined>): Promise<{
 }
 
 /**
- * The "missing enumeration" of the gate's output: the paragraph (contiguous
- * non-blank lines) starting at the first line matching /missing/i. Guidance
- * paragraphs after a blank line may mention other variables; this section may
- * not. Falls back to the whole output if no line says "missing" — a gate that
- * never says "missing" gets the strict whole-output check.
+ * The "missing enumeration" of the gate's output: the paragraph (contiguous non-blank
+ * lines) starting at the first line matching /missing/i. Guidance paragraphs after a
+ * blank line may mention other variables; this section may not. Falls back to the whole
+ * output if no line says "missing". A gate that never says "missing" gets the strict
+ * whole-output check.
  */
 function missingEnumeration(output: string): string {
   const lines = output.split(/\r?\n/);
@@ -99,15 +98,15 @@ describe("m0-posthog-latency credential gate (CLI)", () => {
       // Gate failure, not success.
       expect(exitCode).not.toBe(0);
 
-      // All four variables named in plain English (D-8, FR-2).
+      // All four variables named in plain English.
       for (const name of REQUIRED_ENV_VARS) {
         expect(combined).toContain(name);
       }
 
-      // No raw stack trace — the entrypoint formats expected failures.
+      // No raw stack trace. The entrypoint formats expected failures.
       expect(combined).not.toMatch(/\n\s+at /);
 
-      // Exit BEFORE any filesystem write: local/spikes/ gained no file.
+      // Exit before any filesystem write: local/spikes/ gained no file.
       expect(listLocalSpikes()).toEqual(before);
     },
     SPAWN_TIMEOUT_MS,
@@ -116,8 +115,8 @@ describe("m0-posthog-latency credential gate (CLI)", () => {
   test(
     "entrypoint names exactly the one missing variable when three are set to dummies",
     async () => {
-      // Dummy values never reach the network: the gate fails on the absent
-      // fourth variable before any request is constructed.
+      // Dummy values never reach the network: the gate fails on the absent fourth
+      // variable before any request is constructed.
       const env = scrubbedEnv();
       env[ENV_VARS.POSTHOG_HOST] = "https://dummy.example";
       env[ENV_VARS.POSTHOG_PROJECT_API_KEY] = "phc_dummy";
@@ -128,9 +127,9 @@ describe("m0-posthog-latency credential gate (CLI)", () => {
 
       expect(exitCode).not.toBe(0);
 
-      // The missing enumeration flags POSTHOG_PROJECT_ID and ONLY it. The
-      // wider message may mention the other variables in guidance; the
-      // missing section/paragraph may not.
+      // The missing enumeration flags POSTHOG_PROJECT_ID and only it. The wider message
+      // may mention the other variables in guidance; the missing section/paragraph may
+      // not.
       const enumeration = missingEnumeration(combined);
       expect(enumeration).toContain(ENV_VARS.POSTHOG_PROJECT_ID);
 

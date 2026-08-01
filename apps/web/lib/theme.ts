@@ -1,15 +1,14 @@
 import { createTheme, type MantineColorsTuple } from "@mantine/core";
 
 /**
- * The Mantine theme that carries the brand (see lib/brand/palette.ts). The app
- * runs dark-only, like the marketing site: the `dark` tuple below maps
- * Mantine's semantic slots onto the memo palette, so `<Paper>`, `c="dimmed"`,
- * default borders, and hovers all land on brand values without any per-page
- * CSS.
+ * The Mantine theme that carries the brand (see lib/brand/palette.ts). The app runs
+ * dark-only, like the marketing site: the `dark` tuple below maps Mantine's semantic
+ * slots onto the memo palette, so `<Paper>`, `c="dimmed"`, default borders, and hovers
+ * all land on brand values without any per-page CSS.
  *
  * Slot map for the `dark` tuple in dark mode:
- *   0 → text (ink)   2 → dimmed (soft)   4 → default borders
- *   6 → surfaces (sheet)   7 → body (paper)
+ * 0 → text (ink) 2 → dimmed (soft) 4 → default borders
+ * 6 → surfaces (sheet) 7 → body (paper)
  */
 
 /** The band green, shade 4 = the brand value #a9c4a2. */
@@ -40,7 +39,7 @@ const stamp: MantineColorsTuple = [
   "#552718",
 ];
 
-/** The memo greys — greens, really — that Mantine's dark slots resolve to. */
+/** The memo greys (greens, really) that Mantine's dark slots resolve to. */
 const dark: MantineColorsTuple = [
   "#e9ede4",
   "#cfd6c9",

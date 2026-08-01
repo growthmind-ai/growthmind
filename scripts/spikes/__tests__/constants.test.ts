@@ -1,8 +1,7 @@
-// Registry-lock test for the M-0 spike constants (ADD D-7, D9 taxonomy —
-// worker task-name registry pattern). constants.ts is already implemented,
-// so this suite is GREEN from day one by design: it is the lock that keeps
-// env names, event names, the marker prop, and URL builders from drifting
-// or colliding — not a Wave 0 red test.
+// Registry-lock test for the spike constants (taxonomy. Worker task-name registry
+// pattern). constants.ts is already implemented, so this suite is green from day one by
+// design: it is the lock that keeps env names, event names, the marker prop, and URL
+// builders from drifting or colliding, not a Wave 0 red test.
 
 import { describe, expect, test } from "bun:test";
 

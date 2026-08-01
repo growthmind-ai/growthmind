@@ -17,11 +17,11 @@ describe("attributeWriteKey", () => {
       kind: "standard",
     };
 
-    // D-F/D10: the guarantee is the function's *type* — there is no parameter
-    // through which an origin could be forced. Simulate a caller that has
-    // extraneous fields sitting on the object it hands in (e.g. a spoofed
-    // `origin`, a request header, a raw payload) and assert none of it can
-    // influence the returned origin, which must be derived from `kind` alone.
+    // /: the guarantee is the function's *type*. There is no parameter through which an
+    // origin could be forced. Simulate a caller that has extraneous fields sitting on
+    // the object it hands in (e.g. a spoofed `origin`, a request header, a raw payload)
+    // and assert none of it can influence the returned origin, which must be derived
+    // from `kind` alone.
     const withExtraneousFields: typeof resolved & Record<string, unknown> = {
       ...resolved,
       origin: "synthetic",

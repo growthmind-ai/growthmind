@@ -1,19 +1,17 @@
-// signature-ledger (O-006), ADD §7 "Integration tests — packages/db"
-// T-DB-1 through T-DB-5 (D6, D-9, D4), plus the org-scoping companion D-10
-// requires of every new table, and post-sprint audit Finding 3 (T-DB-4,
-// T-DB-5 were never written against the real implementation).
+// signature-ledger, "Integration tests, packages/db" T-DB-1 through T-DB-5, plus the
+// org-scoping companion That decision requires of every new table, and post-sprint
+// audit Finding 3 (T-DB-4, T-DB-5 were never written against the real implementation).
 //
-// `createFindingSignaturesRepo`'s methods run real logic — each test below
-// asserts the ATOMIC-UPSERT property D-9 exists specifically to guarantee:
-// the same signature recorded twice is ONE row with `times_seen` incremented
-// IN SQL, never a check-then-create and never a read-then-write race, and
-// that the watermark columns (`last_seen_at`, `delivered_at`) never move
-// backwards or re-fire on a replay.
+// `createFindingSignaturesRepo`'s methods run real logic. Each test below asserts the
+// atomic-upsert property exists specifically to guarantee: the same signature recorded
+// twice is one row with `times_seen` incremented IN SQL, never a check-then-create and
+// never a read-then-write race, and that the watermark columns (`last_seen_at`,
+// `delivered_at`) never move backwards or re-fire on a replay.
 //
-// This suite is about the repository's atomicity and scoping, not the
-// brand's validation (see `hex.test.ts` for that contract), so a
-// well-formed hex literal is cast to `SignatureHex` directly rather than
-// routed through `signatureHex`'s constructor.
+// This suite is about the repository's atomicity and scoping, not the brand's
+// validation (see `hex.test.ts` for that contract), so a well-formed hex literal is
+// cast to `SignatureHex` directly rather than routed through `signatureHex`'s
+// constructor.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import {
@@ -77,7 +75,7 @@ describe("finding signatures repository", () => {
     const first = await repo.upsertSeen(input);
     const second = await repo.upsertSeen(input);
 
-    // One row, not two — settled by the unique index, never a prior read.
+    // One row, not two. Settled by the unique index, never a prior read.
     expect(second.id).toBe(first.id);
     expect(second.timesSeen).toBe(2);
 
@@ -99,9 +97,9 @@ describe("finding signatures repository", () => {
     const repo = createFindingSignaturesRepo(db, org.ctx);
     const input = makeUpsertInput(project.id, { signature: testSignature("b".repeat(64)) });
 
-    // Two "writers" racing the same upsert. If the increment were
-    // read-then-write instead of an atomic `SET times_seen = times_seen +
-    // 1`, this interleaving would lose one of the two increments.
+    // Two "writers" racing the same upsert. If the increment were read-then-write
+    // instead of an atomic `SET times_seen = times_seen + 1`, this interleaving would
+    // lose one of the two increments.
     await Promise.all([repo.upsertSeen(input), repo.upsertSeen(input)]);
 
     const found = await repo.findBySignature(project.id, input.signature);
@@ -142,26 +140,25 @@ describe("finding signatures repository", () => {
     expect(rowA.timesSeen).toBe(1);
     expect(rowB.timesSeen).toBe(1);
 
-    // Org A's own scoped read must find only org A's row for this
-    // signature — a foreign org's identical signature widens nothing.
+    // Org A's own scoped read must find only org A's row for this signature. A foreign
+    // org's identical signature widens nothing.
     const foundFromA = await repoA.findBySignature(projectA.id, sharedSignature);
     expect(foundFromA?.id).toBe(rowA.id);
     expect(foundFromA?.organizationId).toBe(orgA.organizationId);
   });
 
-  // T-DB-3 — the ADD calls the `set`-clause OMISSION this guards "the single
-  // most dangerous line in the sprint" (`finding-signatures.repo.ts:158-162`).
-  // Nothing else in the suite fails if `deliveredAt`, `dismissedAt`, or
-  // `firstSeenAt` are ADDED back to `upsertSeen`'s `onConflictDoUpdate.set`:
-  // every other test records a signature that was never delivered and never
-  // dismissed, so clearing those columns is invisible. This one records the
-  // full lifecycle FIRST and then re-records — the ordinary steady state, a
-  // finding seen again by a later analysis run after it was already delivered
-  // and already dismissed forever.
+  // T-DB-3, the add calls the `set`-clause omission this guards "the single most
+  // dangerous line in the sprint" (`finding-signatures.repo.ts:158-162`). Nothing else
+  // in the suite fails if `deliveredAt`, `dismissedAt`, or `firstSeenAt` are added back
+  // to `upsertSeen`'s `onConflictDoUpdate.set`: every other test records a signature
+  // that was never delivered and never dismissed, so clearing those columns is
+  // invisible. This one records the full lifecycle first and then re-records. The
+  // ordinary steady state, a finding seen again by a later analysis run after it was
+  // already delivered and already dismissed forever.
   //
-  // The dismissal is stamped through `recordDismissal` (the ONLY write path
-  // that sets `dismissed_at`, ADD D-8) rather than by a direct UPDATE, so the
-  // value being protected here got there the way production puts it there.
+  // The dismissal is stamped through `recordDismissal` (the only write path that sets
+  // `dismissed_at`) rather than by a direct update, so the value being protected here
+  // got there the way production puts it there.
   it("should not clear delivered_at, dismissed_at, or first_seen_at when a delivered-and-dismissed signature is re-recorded", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: "acme-lifecycle-preserved",
@@ -196,13 +193,13 @@ describe("finding signatures repository", () => {
     const beforeReRecord = await repo.findBySignature(project.id, signature);
     expect(beforeReRecord?.deliveredAt?.getTime()).toBe(deliveredAt.getTime());
     expect(beforeReRecord?.firstSeenAt.getTime()).toBe(firstSeenAt.getTime());
-    // Stamped as `now` inside `recordDismissal`'s transaction, so the exact
-    // instant is captured here rather than asserted against a literal — the
-    // point below is that it does not MOVE, not what it is.
+    // Stamped as `now` inside `recordDismissal`'s transaction, so the exact instant is
+    // captured here rather than asserted against a literal. The point below is that it
+    // does not move, not what it is.
     const stampedDismissedAt = beforeReRecord?.dismissedAt;
     expect(stampedDismissedAt).toBeInstanceOf(Date);
 
-    // 4. The SAME signature seen again by a later analysis run.
+    // 4. The same signature seen again by a later analysis run.
     const reRecorded = await repo.upsertSeen(
       makeUpsertInput(project.id, { signature, seenAt: laterSeenAt }),
     );
@@ -210,9 +207,9 @@ describe("finding signatures repository", () => {
     // The re-record does its own job...
     expect(reRecorded.timesSeen).toBe(2);
     expect(reRecorded.lastSeenAt.getTime()).toBe(laterSeenAt.getTime());
-    // ...and touches NONE of the lifetime state. Exact values, not
-    // truthiness: an `excluded.*` in the `set` clause would overwrite
-    // `first_seen_at` with a NON-null later date and still read as "set".
+    // ...and touches none of the lifetime state. Exact values, not truthiness: an
+    // `excluded.*` in the `set` clause would overwrite `first_seen_at` with a non-null
+    // later date and still read as "set".
     expect(reRecorded.deliveredAt?.getTime()).toBe(deliveredAt.getTime());
     expect(reRecorded.firstSeenAt.getTime()).toBe(firstSeenAt.getTime());
     expect(reRecorded.dismissedAt?.getTime()).toBe(stampedDismissedAt?.getTime());
@@ -243,8 +240,8 @@ describe("finding signatures repository", () => {
     const olderSeenAt = new Date("2026-07-31T09:00:00.000Z");
 
     await repo.upsertSeen(makeUpsertInput(project.id, { signature, seenAt: newerSeenAt }));
-    // An OLDER analysis run's result arrives AFTER the newer one — the exact
-    // out-of-order replay `greatest(...)` exists to guard against.
+    // An older analysis run's result arrives after the newer one. The exact
+    // out-of-order replay `greatest` exists to guard against.
     const afterOlderReplay = await repo.upsertSeen(
       makeUpsertInput(project.id, { signature, seenAt: olderSeenAt }),
     );
@@ -252,9 +249,8 @@ describe("finding signatures repository", () => {
     expect(afterOlderReplay.lastSeenAt.getTime()).toBe(newerSeenAt.getTime());
   });
 
-  // T-DB-5 (post-sprint audit Finding 3 — "this one matters most": the
-  // never-twice guarantee, previously called at most once anywhere in the
-  // suite).
+  // T-DB-5 (post-sprint audit Finding 3. "this one matters most": the never-twice
+  // guarantee, previously called at most once anywhere in the suite).
   it("should not move delivered_at when delivery is marked twice", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: "acme-delivered-twice",
@@ -273,19 +269,18 @@ describe("finding signatures repository", () => {
     const secondDeliveredAt = new Date("2026-07-31T12:00:00.000Z");
 
     const first = await repo.markDelivered(project.id, signature, firstDeliveredAt);
-    // Marked delivered a SECOND time, with a LATER timestamp — the replay
-    // `coalesce(...)` exists to guard against.
+    // Marked delivered a second time, with a later timestamp. The replay
+    // `coalesce` exists to guard against.
     const second = await repo.markDelivered(project.id, signature, secondDeliveredAt);
 
     expect(first?.deliveredAt?.getTime()).toBe(firstDeliveredAt.getTime());
     expect(second?.deliveredAt?.getTime()).toBe(firstDeliveredAt.getTime());
   });
 
-  // Review CR-12: carry-forward used to exist as two hand-copied upserts —
-  // this repository's (tested, uncalled) and `recordAncestry`'s (shipped,
-  // untested) — and they had already diverged. The values are now built here,
-  // once, and both call sites pass the SAME object through their own query
-  // builder. This test pins that one object.
+  // Review: carry-forward used to exist as two hand-copied upserts. This repository's
+  // (tested, uncalled) and `recordAncestry`'s (shipped, untested), and they had already
+  // diverged. The values are now built here, once, and both call sites pass the same
+  // object through their own query builder. This test pins that one object.
   it("carries the old ledger row's provenance and lifetime state onto the new signature without naming an organization", () => {
     const oldRow = {
       id: "row-old",
@@ -311,22 +306,22 @@ describe("finding signatures repository", () => {
       oldRow,
     });
 
-    // The lifetime state D-3(a) exists to preserve — a dismissal survives a
-    // re-key because the ledger row carried it.
+    // The lifetime state exists to preserve. A dismissal survives a re-key because
+    // the ledger row carried it.
     expect(values.deliveredAt).toEqual(oldRow.deliveredAt);
     expect(values.dismissedAt).toEqual(oldRow.dismissedAt);
     expect(values.timesSeen).toBe(4);
     expect(values.firstSeenAt).toEqual(oldRow.firstSeenAt);
-    // Provenance travels too — the new row must be a fully valid ledger row,
-    // never a partial one.
+    // Provenance travels too, the new row must be a fully valid ledger row, never a
+    // partial one.
     expect(values.symptomClass).toBe("broken");
     expect(values.surface).toBe("/checkout");
     expect(values.surfaceNormalisationVersion).toBe(2);
-    // The NEW identity, not the old one.
+    // The new identity, not the old one.
     expect(values.signature).toBe("b".repeat(64));
     expect(values.projectId).toBe("project-new");
-    // D-B / `no-org-param.test.ts`: the org is named literally at each call
-    // site beside the spread, never carried by this helper.
+    // / `no-org-param.test.ts`: the org is named literally at each call site beside the
+    // spread, never carried by this helper.
     expect("organizationId" in values).toBe(false);
   });
 });

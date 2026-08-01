@@ -1,39 +1,34 @@
 #!/usr/bin/env bun
 /**
- * Mints one read credential and prints it once, so a person can hand it to
- * their coding agent (O-009 FR-7, ADD D-10).
+ * Mints one read credential and prints it once, so a person can hand it to their coding
+ * agent.
  *
- * READS AND WRITES A REAL DATABASE. NO NETWORK BEYOND IT, NO MODEL.
+ * Reads and writes a real database. No network beyond it, no model.
  *
- * THIN BY CONSTRUCTION. There is no minting, hashing, or persistence logic in
- * this file, and a committed source scan
- * (`packages/db/__tests__/admin/reachability.test.ts`, "CLI purity") fails the
- * build if any appears: no random material, no digest, no query builder, no
- * `drizzle-orm` import. Everything credential-shaped lives in
- * `createApiKeysRepo`, and everything organisation-shaped lives in
- * `resolveOrganizationForCli`. If O-008's key-management UI has to
- * re-implement any of it, this seam was in the wrong place.
+ * Thin by construction. There is no minting, hashing, or persistence logic in this
+ * file, and a committed source scan
+ * (`packages/db/__tests__/admin/reachability.test.ts`, "CLI purity") fails the build if
+ * any appears: no random material, no digest, no query builder, no `drizzle-orm`
+ * import. Everything credential-shaped lives in `createApiKeysRepo`, and everything
+ * organisation-shaped lives in `resolveOrganizationForCli`. If the key-management UI
+ * has to re-implement any of it, this seam was in the wrong place.
  *
- * NO ENV VAR REQUIRED. Outside production `parseServerEnv` supplies a
- * DATABASE_URL matching docker-compose's published loopback port, so this runs
- * from a clean clone under `docker compose up` in one command — and
- * identically under `docker compose exec web`.
+ * No env var required. Outside production `parseServerEnv` supplies a DATABASE_URL
+ * matching docker-compose's published loopback port, so this runs from a clean clone
+ * under `docker compose up` in one command, and identically under `docker compose exec
+ * web`.
  *
- * THE KEY IS NEVER WRITTEN TO A FILE. It is printed to stdout exactly once and
- * then it is gone; nothing here opens a file handle, and `git status` stays
- * clean after a mint.
+ * The key is never written to a file. It is printed to stdout exactly once and then it
+ * is gone; nothing here opens a file handle, and `git status` stays clean after a mint.
  *
- * Usage:
- *   bun scripts/mint-api-key.ts
- *   bun scripts/mint-api-key.ts --org <id-or-slug>
- *   bun scripts/mint-api-key.ts --name "claude code"
+ * Usage: bun scripts/mint-api-key.ts bun scripts/mint-api-key.ts --org <id-or-slug> bun
+ * scripts/mint-api-key.ts --name "claude code"
  */
-// Imported by RELATIVE PATH, not by package specifier: the repo root does not
-// depend on the workspace packages, and adding a root dependency so an
-// operator script can run would be a real change to the dependency graph.
-// `../packages/db/src/admin/index` is the "./admin" subpath's whole surface —
-// `scripts/` is the one caller allowed to reach it (ADD D-9), which is why the
-// reachability gate deliberately does not scan this directory.
+// Imported by relative path, not by package specifier: the repo root does not depend on
+// the workspace packages, and adding a root dependency so an operator script can run
+// would be a real change to the dependency graph. `../packages/db/src/admin/index` is
+// the "./admin" subpath's whole surface, `scripts/` is the one caller allowed to reach
+// it, which is why the reachability gate deliberately does not scan this directory.
 import {
   resolveOrganizationForCli,
   type AdminOrganizationCandidate,
@@ -97,10 +92,10 @@ function write(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-/** This script's own candidate printer. Duplicated in `revoke-api-key.ts` by
- * decision (ADD D-10): a shared formatter would put operator-facing
- * presentation inside `packages/db`, and importing one script from the other
- * would execute the other's top level. Ten lines twice beats either. */
+/** This script's own candidate printer. Duplicated in `revoke-api-key.ts` by decision:
+ * a shared formatter would put operator-facing presentation inside `packages/db`, and
+ * importing one script from the other would execute the other's top level. Ten lines
+ * twice beats either. */
 function printCandidates(candidates: readonly AdminOrganizationCandidate[]): void {
   for (const candidate of candidates) {
     const owner = candidate.ownerEmail ?? "no owner";
@@ -108,8 +103,8 @@ function printCandidates(candidates: readonly AdminOrganizationCandidate[]): voi
   }
 }
 
-/** Prints why nothing was minted. Every branch names what the operator can do
- * next, and every branch mints NOTHING. */
+/** Prints why nothing was minted. Every branch names what the operator can do next, and
+ * every branch mints nothing. */
 function printRefusal(refusal: Extract<ResolveOrganizationResult, { ok: false }>): void {
   if (refusal.reason === "none_exist") {
     write("There is no organisation yet, so there is nothing to mint a key for.");
@@ -143,13 +138,12 @@ function defaultKeyName(): string {
   return `read credential (${new Date().toISOString().slice(0, 10)})`;
 }
 
-/** The label the operator reads back from `revoke-api-key.ts --list` when they
- * are deciding which key to kill. `--name` is trimmed, and a request that is
- * empty or whitespace-only falls back to the default instead of being
- * persisted: `api_keys.name` is `notNull` text, so `--name ""` would store a
- * blank string quite happily and `--list` would print a nameless row — which
- * defeats the column's entire purpose, telling two agents' keys apart. A
- * default label is always more useful than no label. */
+/** The label the operator reads back from `revoke-api-key.ts --list` when they are
+ * deciding which key to kill. `--name` is trimmed, and a request that is empty or
+ * whitespace-only falls back to the default instead of being persisted: `api_keys.name`
+ * is `notNull` text, so `--name ""` would store a blank string quite happily and
+ * `--list` would print a nameless row, which defeats the column's entire purpose,
+ * telling two agents' keys apart. A default label is always more useful than no label. */
 function resolveKeyName(requested: string | undefined): string {
   const trimmed = requested?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : defaultKeyName();
@@ -185,9 +179,9 @@ async function main(): Promise<number> {
 
     const organisation = resolved.organization;
 
-    // A real owner context, parsed by the same schema a signed-in request
-    // builds — indistinguishable from one. No system/bypass actor exists in
-    // this path, and none is imported.
+    // A real owner context, parsed by the same schema a signed-in request builds.
+    // Indistinguishable from one. No system/bypass actor exists in this path, and none
+    // is imported.
     const ctx = tenantContextSchema.parse({
       userId: organisation.ownerUserId,
       organizationId: organisation.id,
@@ -220,15 +214,15 @@ async function main(): Promise<number> {
   }
 }
 
-/** Turns the one failure a person actually hits — the database not being up —
- * into a sentence rather than a stack trace. Never prints the connection
- * string, which carries a password.
+/** Turns the one failure a person actually hits (the database not being up) into a
+ * sentence rather than a stack trace. Never prints the connection string, which carries
+ * a password.
  *
- * The whole `cause` chain is inspected — messages AND the `code` property —
- * not just the top message. The query layer wraps a connection refusal in its
- * own "Failed query: …" error whose cause is an `AggregateError` with an EMPTY
- * message carrying `code: "ECONNREFUSED"`, so a message-only scan finds
- * nothing and the operator sees SQL they did not write. */
+ * The whole `cause` chain is inspected (messages and the `code` property) not just the
+ * top message. The query layer wraps a connection refusal in its own "Failed query: …"
+ * error whose cause is an `AggregateError` with an empty message carrying `code:
+ * "ECONNREFUSED"`, so a message-only scan finds nothing and the operator sees SQL they
+ * did not write. */
 function describeFailure(error: unknown): string {
   const messages: string[] = [];
   const signals: string[] = [];
@@ -248,15 +242,14 @@ function describeFailure(error: unknown): string {
   return `Nothing was minted: ${firstLine(messages[0] ?? String(error))}`;
 }
 
-/** Everything the operator is shown from an unrecognised failure, and no more.
- * The query layer's message is `"Failed query: <sql>\nparams: <values>"`, so
- * anything past the first newline is the statement's bound parameters — for a
- * constraint violation or a pre-migration run that is the organisation id, the
- * key name, the digest and the display prefix, printed at a terminal nobody
- * asked to see SQL at. The raw material is never a query parameter, so the
- * credential itself cannot appear here either way; this keeps the rest of the
- * row out of the operator's scrollback too. The first line still names the
- * failure well enough to act on. */
+/** Everything the operator is shown from an unrecognised failure, and no more. The
+ * query layer's message is `"Failed query: <sql>\nparams: <values>"`, so anything past
+ * the first newline is the statement's bound parameters. For a constraint violation or
+ * a pre-migration run that is the organisation id, the key name, the digest and the
+ * display prefix, printed at a terminal nobody asked to see SQL at. The raw material is
+ * never a query parameter, so the credential itself cannot appear here either way; this
+ * keeps the rest of the row out of the operator's scrollback too. The first line still
+ * names the failure well enough to act on. */
 function firstLine(message: string): string {
   return message.split("\n")[0] ?? message;
 }

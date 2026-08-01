@@ -1,9 +1,9 @@
-// SSRF containment (O-003 security audit C-1/C-2).
+// Ssrf containment (security audit C-1/C-2).
 //
-// The host is customer-supplied and reaches fetch() from a server the customer
-// does not own; the pagination cursor is chosen by the upstream and is followed
-// with the customer's personal API key attached. These are the two outbound
-// controls, so each rejection reason gets a named case rather than a smoke test.
+// The host is customer-supplied and reaches fetch from a server the customer does not
+// own; the pagination cursor is chosen by the upstream and is followed with the
+// customer's personal API key attached. These are the two outbound controls, so each
+// rejection reason gets a named case rather than a smoke test.
 import { describe, expect, test } from "bun:test";
 
 import { checkHost, isBlockedHostname, isSameOriginAsHost } from "../../src/posthog/host-guard";
@@ -39,7 +39,7 @@ describe("checkHost accepts only a plain https host", () => {
 });
 
 describe("checkHost blocks addresses a server must never be aimed at", () => {
-  // The headline case: AWS/GCP/Azure instance metadata. Reaching this from a
+  // The headline case: AWS/gcp/Azure instance metadata. Reaching this from a
   // tenant-supplied host is credential theft against the whole deployment.
   test.each([
     ["cloud instance metadata", "https://169.254.169.254"],
@@ -54,15 +54,15 @@ describe("checkHost blocks addresses a server must never be aimed at", () => {
     ["IPv6 loopback", "https://[::1]"],
     ["IPv4-mapped IPv6 loopback", "https://[::ffff:127.0.0.1]"],
     ["IPv6 unique-local", "https://[fd00::1]"],
-    // H-1: a fully-qualified hostname's trailing root dot. Confirmed live
-    // before the fix — each of these resolved ALLOW even though the bare
-    // spelling (no trailing dot) was already blocked.
+    // : a fully-qualified hostname's trailing root dot. Confirmed live before the
+    // fix. Each of these resolved allow even though the bare spelling (no trailing dot)
+    // was already blocked.
     ["loopback name with a trailing FQDN dot", "https://localhost./api"],
     ["GCP metadata name with a trailing FQDN dot", "https://metadata.google.internal./"],
     ["cluster-internal suffix with a trailing FQDN dot", "https://foo.internal./"],
     ["loopback alias with a trailing FQDN dot", "https://localhost.localdomain./"],
-    // L-4: IPv4-compatible IPv6 (distinct from IPv4-mapped above — no `ffff`
-    // group), both spellings.
+    // L-4: IPv4-compatible IPv6 (distinct from IPv4-mapped above. No `ffff` group),
+    // both spellings.
     ["IPv4-compatible IPv6 loopback, dotted", "https://[::127.0.0.1]"],
     ["IPv4-compatible IPv6 loopback, hex", "https://[::7f00:1]"],
     // L-4: the four newly-added reserved IPv4 ranges.
@@ -77,28 +77,27 @@ describe("checkHost blocks addresses a server must never be aimed at", () => {
   });
 
   test("does not over-block a public address that merely looks adjacent", () => {
-    // 172.32.x is OUTSIDE 172.16/12, and 100.128.x is outside 100.64/10 —
-    // a near-miss fixture per predicate, so the deny-list cannot quietly widen
-    // into refusing real customer hosts.
+    // 172.32.x is outside 172.16/12, and 100.128.x is outside 100.64/10. A near-miss
+    // fixture per predicate, so the deny-list cannot quietly widen into refusing real
+    // customer hosts.
     expect(checkHost("https://172.32.0.1").ok).toBe(true);
     expect(checkHost("https://100.128.0.1").ok).toBe(true);
     expect(isBlockedHostname("11.0.0.1")).toBe(false);
     expect(isBlockedHostname("eu.posthog.com")).toBe(false);
 
-    // L-4 near-misses: one below each new range's floor, one above its
-    // ceiling, so the four new predicates cannot quietly widen either.
+    // L-4 near-misses: one below each new range's floor, one above its ceiling, so the
+    // four new predicates cannot quietly widen either.
     expect(isBlockedHostname("198.17.255.255")).toBe(false);
     expect(isBlockedHostname("198.20.0.0")).toBe(false);
     expect(isBlockedHostname("192.0.1.1")).toBe(false);
     expect(isBlockedHostname("223.255.255.255")).toBe(false);
-    // IPv4-compatible IPv6 pointed at an ordinary public address must still
-    // resolve, so the new pattern cannot be mistaken for "block all ::-forms".
+    // IPv4-compatible IPv6 pointed at an ordinary public address must still resolve, so
+    // the new pattern cannot be mistaken for "block all::-forms".
     expect(isBlockedHostname("[::0808:0808]")).toBe(false);
 
-    // H-1 near-misses: a normal public hostname must not be blocked merely
-    // for carrying a trailing dot, and a hostname that only CONTAINS
-    // "internal" as a substring (not a `.internal` suffix) must not be
-    // over-blocked either.
+    //  near-misses: a normal public hostname must not be blocked merely for carrying
+    // a trailing dot, and a hostname that only contains "internal" as a substring (not
+    // a `.internal` suffix) must not be over-blocked either.
     expect(isBlockedHostname("eu.posthog.com.")).toBe(false);
     expect(isBlockedHostname("internal-tools.example.com")).toBe(false);
   });
@@ -111,8 +110,8 @@ describe("isSameOriginAsHost bounds where a credential-bearing request may go", 
 
   test("refuses an absolute cursor pointing at another origin", () => {
     // The exfiltration primitive: the upstream answers
-    // {"results":[],"next":"https://attacker.tld/x"} and the next fetch would
-    // carry `authorization: Bearer <customer personal API key>`.
+    // {"results":[],"next":"https://attacker.tld/x"} and the next fetch would carry
+    // `authorization: Bearer <customer personal API key>`.
     expect(isSameOriginAsHost("https://attacker.tld/x", REAL_HOST)).toBe(false);
   });
 

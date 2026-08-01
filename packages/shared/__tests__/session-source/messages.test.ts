@@ -1,9 +1,9 @@
-// ADD §9 items 28–30 — the plain-English audit over the one home every
-// customer-facing string in this sprint lives in (O-003 D-13).
+// items 28–30, the plain-English audit over the one home every customer-facing string
+// in this sprint lives in.
 //
-// This audit is TOTAL rather than best-effort: every fixed string is reachable
-// through `ALL_CUSTOMER_FACING_MESSAGES`, and the completeness test below is
-// what fails when a new constant is added without registering it there.
+// This audit is total rather than best-effort: every fixed string is reachable through
+// `ALL_CUSTOMER_FACING_MESSAGES`, and the completeness test below is what fails when a
+// new constant is added without registering it there.
 import { describe, expect, test } from "bun:test";
 
 import * as messagesModule from "../../src/session-source/messages";
@@ -39,16 +39,16 @@ function everyMessage(): string[] {
 }
 
 describe("the plain-English audit", () => {
-  // Item 28 — FR-15 / the UX bar.
+  // Item 28, / the UX bar.
   test("no exported customer-facing message contains 'live' as a freshness claim", () => {
-    // Addendum A ROW 4: PostHog stores the time the customer's own browser
-    // declared and exposes no arrival time by any route, so an event can land
-    // behind everything we have already read. Nothing here may imply otherwise.
+    // Addendum a row 4: PostHog stores the time the customer's own browser declared and
+    // exposes no arrival time by any route, so an event can land behind everything we
+    // have already read. Nothing here may imply otherwise.
     const offenders = everyMessage().filter((message) => LIVE_CLAIM.test(message));
     expect(offenders).toEqual([]);
   });
 
-  // Item 29 — the P-2 plain-English bar.
+  // Item 29, the P-2 plain-English bar.
   test("no exported customer-facing message contains a forbidden jargon token", () => {
     const jargon = [
       "tenant",
@@ -75,19 +75,18 @@ describe("the plain-English audit", () => {
   });
 
   test("no exported customer-facing message contains a bare HTTP status code", () => {
-    // "The request failed with 401" is exactly the jargon the bar forbids:
-    // PostHog's own `detail` text never reaches a customer, it is mapped to
-    // one of these strings instead.
+    // "The request failed with 401" is exactly the jargon the bar forbids: PostHog's
+    // own `detail` text never reaches a customer, it is mapped to one of these strings
+    // instead.
     //
-    // CR-12: this used to scan only the fixed `ALL_CUSTOMER_FACING_MESSAGES`
-    // list, missing the templated messages (`secondSourceRefusalMessage`,
-    // `expectedLagStatement`) entirely — so a bare status hardcoded into a
-    // template could ship undetected. Scan every message the sprint can show
-    // a customer (`everyMessage()`), but mask the one interpolated field
-    // first — a PostHog project id is opaque customer data, not a status
-    // code, and "404" or "500" are entirely plausible real project ids. An
-    // unmasked scan would fail the audit on a customer's own id rather than
-    // on an actual leak.
+    // This used to scan only the fixed `ALL_CUSTOMER_FACING_MESSAGES` list, missing the
+    // templated messages (`secondSourceRefusalMessage`, `expectedLagStatement`)
+    // entirely, so a bare status hardcoded into a template could ship undetected. Scan
+    // every message the sprint can show a customer (`everyMessage`), but mask the one
+    // interpolated field first. A PostHog project id is opaque customer data, not a
+    // status code, and "404" or "500" are entirely plausible real project ids. An
+    // unmasked scan would fail the audit on a customer's own id rather than on an
+    // actual leak.
     const BARE_STATUS = /\b[1-5]\d{2}\b/;
     const maskedMessages = everyMessage().map((message) =>
       message.split(EXISTING_CONNECTION.sourceProjectId).join("s0-masked-project-id"),
@@ -96,10 +95,10 @@ describe("the plain-English audit", () => {
     const offenders = maskedMessages.filter((message) => BARE_STATUS.test(message));
     expect(offenders).toEqual([]);
 
-    // Prove the masking is load-bearing, not vacuous: a project id that
-    // itself reads like a status code must trip the RAW (unmasked) scan —
-    // otherwise this test would pass even if the mask silently matched
-    // nothing, because s0-source-project never looked like a status anyway.
+    // Prove the masking is load-bearing, not vacuous: a project id that itself reads
+    // like a status code must trip the raw (unmasked) scan. Otherwise this test would
+    // pass even if the mask silently matched nothing, because s0-source-project never
+    // looked like a status anyway.
     const statusLikeProjectId = "404";
     const rawWithStatusLikeId = secondSourceRefusalMessage({
       host: EXISTING_CONNECTION.host,
@@ -112,22 +111,22 @@ describe("the plain-English audit", () => {
   });
 
   test("the vendor's name never appears in a customer-facing message", () => {
-    // The pipeline behind the port does not learn the vendor's name, and
-    // neither does the copy — so a second source needs no copy rewrite.
+    // The pipeline behind the port does not learn the vendor's name, and neither does
+    // the copy, so a second source needs no copy rewrite.
     const offenders = everyMessage().filter((message) => /posthog/i.test(message));
     expect(offenders).toEqual([]);
   });
 
-  // CR-10: this used to compare two hand-maintained lists against each
-  // other — `ALL_CUSTOMER_FACING_MESSAGES` against a second, separately typed
-  // copy of the same constants. A new exported string added to the module but
-  // to NEITHER list produced `missing = []`, equal lengths, and a green test:
-  // it escaped the "live"/jargon/HTTP-status audits above entirely, silently.
+  // This used to compare two hand-maintained lists against each other,
+  // `ALL_CUSTOMER_FACING_MESSAGES` against a second, separately typed copy of the same
+  // constants. A new exported string added to the module but to neither list produced
+  // `missing = []`, equal lengths, and a green test: it escaped the
+  // "live"/jargon/HTTP-status audits above entirely, silently.
   //
-  // Instead, derive the expected set from the module's ACTUAL exports
-  // (`import * as messagesModule`) — the real source of truth — so a new
-  // fixed string constant is picked up automatically the moment it is
-  // exported, with nothing to remember to copy anywhere.
+  // Instead, derive the expected set from the module's actual exports (`import * as
+  // messagesModule`) (the real source of truth) so a new fixed string constant is
+  // picked up automatically the moment it is exported, with nothing to remember to copy
+  // anywhere.
   test("the audit list is complete — every fixed constant is reachable through it", () => {
     const derivedFromExports: string[] = [];
     for (const [name, value] of Object.entries(messagesModule)) {
@@ -143,9 +142,9 @@ describe("the plain-English audit", () => {
           if (typeof entry === "string") derivedFromExports.push(entry);
         }
       }
-      // Functions (secondSourceRefusalMessage, expectedLagStatement) are
-      // parameterised, not fixed constants — they are audited explicitly via
-      // `everyMessage()` above instead of enumerated here.
+      // Functions (secondSourceRefusalMessage, expectedLagStatement) are parameterised,
+      // not fixed constants. They are audited explicitly via `everyMessage` above
+      // instead of enumerated here.
     }
 
     const registered = new Set(ALL_CUSTOMER_FACING_MESSAGES);
@@ -156,13 +155,13 @@ describe("the plain-English audit", () => {
 });
 
 describe("state and refusal coverage", () => {
-  // Item 30 — the seven states O-008 renders, none indistinguishable.
+  // Item 30, the seven states renders, none indistinguishable.
   test("every connection state and every connect refusal has a distinct plain-English message", () => {
     const statuses = connectionStateSchema.options.map((option) => option.shape.status.value);
     expect(statuses).toHaveLength(7);
 
-    // Coverage: a state with no message would leave a screen with nothing to
-    // render; a message with no state is dead copy.
+    // Coverage: a state with no message would leave a screen with nothing to render; a
+    // message with no state is dead copy.
     expect(Object.keys(CONNECTION_STATE_MESSAGES).toSorted()).toEqual(statuses.toSorted());
     expect(Object.keys(CONNECT_REFUSAL_MESSAGES).toSorted()).toEqual(
       connectRefusalCodeSchema.options.toSorted(),
@@ -188,8 +187,8 @@ describe("state and refusal coverage", () => {
   });
 
   test("the second-source refusal names the existing attachment and the cutover path", () => {
-    // A customer told only "already connected" has to open a support ticket to
-    // find out which one to detach.
+    // A customer told only "already connected" has to open a support ticket to find out
+    // which one to detach.
     const message = secondSourceRefusalMessage(EXISTING_CONNECTION);
 
     expect(message).toContain(EXISTING_CONNECTION.host);
@@ -200,8 +199,8 @@ describe("state and refusal coverage", () => {
   });
 
   test("the absent, degraded, window, and completeness notices are pairwise distinct", () => {
-    // "Nothing is attached" and "we looked and found nothing" are different
-    // answers; a screen that shows them the same way is a bug.
+    // "Nothing is attached" and "we looked and found nothing" are different answers; a
+    // screen that shows them the same way is a bug.
     const notices = [
       SOURCE_ABSENT_NOTICE,
       SOURCE_DEGRADED_NOTICE,
