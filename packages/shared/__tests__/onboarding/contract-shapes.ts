@@ -509,3 +509,57 @@ export type TestPostOutcome = {
 };
 
 export type DescribeTestPostOutcome = (input: TestPostInput) => TestPostOutcome;
+
+// ===========================================================================
+// WAVE 0g ADDITIONS — the one shape deviation 1 rests on.
+// ADDITIVE ONLY: nothing above this line changed.
+//
+// Wave 0g's four suites are SOURCE SCANS (AD-1), so almost none of them needs
+// a type at all — they read text and assert about it. `FirstRunStatus` is the
+// exception, and it earns its place here for one reason: it is the shape
+// **AD-18 makes structural**, and the whole of deviation 1 hangs off one field
+// of it.
+// ===========================================================================
+
+/**
+ * What `GET /api/first-run/status` returns — the one shape the poll consumes.
+ *
+ * **THE ONE MEMBER THAT IS PINNED RATHER THAN DERIVED IS `finding`.** AD-18
+ * states it outright: *"`FirstRunStatus.finding` is `OnboardingFinding | null`
+ * — A SINGLE NULLABLE OBJECT, NOT AN ARRAY"*, and B5 says why. The most likely
+ * way deviation 1 ("the first-run surface is never linkable back to and holds
+ * no history") dies is not a designer adding a history page — it is a
+ * well-meaning later edit turning a one-row renderer into a list, because a
+ * list is what every other product does. Typing the field as a single nullable
+ * object makes that edit a TYPE ERROR AT THE ROUTE, in a file whose reviewer is
+ * looking at the deviation, instead of a quiet change to a `.map(`.
+ *
+ * The remaining members are the reducer's inputs (AD-6's milestone table
+ * supplies each one from a real row) plus the two things the strip renders
+ * (AD-3's narrowed counter, and the channel read from the `slack_connections`
+ * row per FR-O13). They are carried here so the shape is legible, not because
+ * this file can pin them.
+ *
+ * **UNDER-SPECIFIED, FLAGGED RATHER THAN GUESSED.** No source enumerates this
+ * object's full member list in one place — AD-3, AD-6, AD-18 and the UX spec's
+ * phase-B data table each name a part. Wave 1a settles it. What Wave 0g asserts
+ * about it is NOT this declaration (the mirror cannot bind an implementation
+ * nobody has written — see this file's header): it is a source scan of the real
+ * `packages/shared/src/onboarding/types.ts`, which is the only thing that can.
+ * The type-level check in `first-run-constraints.test.ts` pins THIS MIRROR, and
+ * says so out loud.
+ */
+export type FirstRunStatus = {
+  /** AD-18 / B5. NEVER `readonly OnboardingFinding[]`. */
+  readonly finding: OnboardingFinding | null;
+  readonly armedAt: Date | null;
+  readonly retrievedAt: Date | null;
+  readonly readingAt: Date | null;
+  readonly endedAt: Date | null;
+  readonly runStatus: AnalysisRunStatus | null;
+  readonly runOutcome: AnalysisOutcome | null;
+  /** AD-3 — the narrowed view. `expectedLag` is not a property in scope. */
+  readonly counter: OnboardingCounterView;
+  /** FR-O13: read from the connection row, never accepted from a payload. */
+  readonly channelId: string | null;
+};
