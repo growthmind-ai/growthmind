@@ -318,13 +318,15 @@ const SCANNED_INDEXES: ReadonlySet<string> = new Set(
  * being referenced, so the list cannot rot.
  */
 const NON_COLUMN_ALLOWLIST: Readonly<Record<string, string>> = {
-  // A table this repository deliberately does not have. `findings.ts`'s header names it
-  // to explain why the delivery wire is cut: the poster would be built from a
-  // `slack_connections` row that does not exist. If this one ever resolved, the
-  // deferral would have been built without the header being told, which is the same
-  // class of false claim in the other direction.
-  slack_connections:
-    "the deliberately-absent delivery table, named by findings.ts to explain the cut wire (AD-12)",
+  // `slack_connections` WAS the first entry here, registered as "a table this
+  // repository DELIBERATELY does not have" — the reason `findings.ts` gave for
+  // the cut delivery wire (AD-12). O-008 built the table, so the entry is gone
+  // and the token now resolves the ordinary way, as a real table in the barrel.
+  // That is the guard working in the direction it was written for: an allow-list
+  // entry outliving its own justification is how this kind of scanner decays
+  // into a catch-all, and the test at the bottom of this file fails the moment
+  // an entry stops being both referenced and unresolvable.
+  //
   // A `ClaimModelCallResult` discriminant, not a stored value. It lives on the
   // repository's return type (`analysis-runs.repo.ts`) and the cap ledger's header
   // names it because the two refusals must never collapse. Nothing persists it, so no
@@ -388,7 +390,18 @@ const PLANTED_OFFENDER: ScannedModule = {
   ].join("\n"),
 };
 
-/** The same shape with every reference true. The control for the above. */
+/**
+ * The same shape with every reference true. The control for the above.
+ *
+ * ONE CITATION PER RESOLUTION RUNG, which is what makes this a control rather
+ * than a sample: a column, a table, an enum member, a qualified pair, an index,
+ * the one allow-listed non-column, and a path that must NOT be read as a claim.
+ * `slack_connections` cited the allow-list rung until O-008 built the table;
+ * it is kept here on the TABLE rung — a real table this repository now has —
+ * and `already_claimed` is the absence rung in its place. Losing the absence
+ * rung entirely would have left `NON_COLUMN_ALLOWLIST`'s branch of
+ * `resolvesAgainstTheSchema` unexercised by any control.
+ */
 const CLEAN_FIXTURE: ScannedModule = {
   file: "packages/db/src/schema/__synthetic_clean__.ts",
   source: [
@@ -396,7 +409,8 @@ const CLEAN_FIXTURE: ScannedModule = {
     " * `signature_version` is a column, `signature_ancestry` is a table,",
     " * `cap_exhausted` is a stop reason, `finding_signatures.signature_tuple_version`",
     " * is a qualified pair, and `findings_org_project_signature_key` is an index.",
-    " * `slack_connections` is the one allow-listed absence, and this cites",
+    " * `slack_connections` is a table this repository now has, `already_claimed` is",
+    " * the one allow-listed absence, and this cites",
     " * `packages/db/src/schema/deliveries.ts:95-97`, which is a path and not a claim.",
     " */",
   ].join("\n"),
@@ -448,6 +462,7 @@ describe("the analysis schema's comment-truth guard", () => {
       "finding_signatures.signature_tuple_version",
       "findings_org_project_signature_key",
       "slack_connections",
+      "already_claimed",
     ]);
   });
 

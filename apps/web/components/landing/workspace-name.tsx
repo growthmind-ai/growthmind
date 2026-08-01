@@ -3,6 +3,7 @@
 import { ActionIcon, Button, Group, TextInput, Title } from "@mantine/core";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
+import { tapTargetStyle } from "@/components/ui/tap-target";
 import { renameWorkspace } from "@/lib/actions/workspace";
 
 // P1 rename (UX spec. The "Rename state machine", normative). Four states: display ->
@@ -14,12 +15,10 @@ type Mode = "display" | "editing" | "saving" | "error";
 
 const EMPTY_NAME_MESSAGE = "Give your workspace a name — anything works.";
 
-const tapTargetStyle = {
-  minWidth: 44,
-  minHeight: 44,
-  touchAction: "manipulation" as const,
-  WebkitTapHighlightColor: "transparent",
-};
+// The 44px tap target now has ONE home (`components/ui/tap-target.ts`). This
+// file held the original module-private copy; O-008's surface needed the same
+// object on six more controls, and six copies is where a convention stops
+// being one.
 
 interface WorkspaceNameProps {
   initialName: string;

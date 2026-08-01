@@ -317,3 +317,153 @@ export {
   isApiKeyFormat,
   hashApiKeyMaterial,
 } from "./api-keys/material";
+
+// --- O-008: the first-run surface -------------------------------------------
+// `packages/shared` has EXACTLY ONE export entry ("."), so anything the route,
+// the worker or a component needs must be re-exported here. Deep imports are
+// structurally impossible, and that is deliberate.
+//
+// `CounterRow` and `OnboardingCounterView` are exported ONCE, from `types.ts`.
+// `counter-view.ts` re-exports them beside `toOnboardingCounterView` for the
+// consumer that wants one import; listing them twice here would be a duplicate
+// export and the two would then be free to drift apart.
+export {
+  onboardingCountSchema,
+  onboardingFindingSchema,
+  endedReasonSchema,
+  type OnboardingCount,
+  type OnboardingFinding,
+  type EndedReason,
+  type CounterRow,
+  type OnboardingCounterView,
+  type FirstRunStatus,
+} from "./onboarding/types";
+export {
+  ONBOARDING_PROPER_NOUNS,
+  SET_UP_CTA_LABEL,
+  LANDING_SETTLED_LINE,
+  FIRST_RUN_TITLE,
+  STEP_REPO_TITLE,
+  STEP_REPO_WHAT_IT_WILL_DO,
+  STEP_REPO_FILLER,
+  STEP_ANALYTICS_TITLE,
+  STEP_ANALYTICS_HELPER,
+  FIELD_PROJECT_NUMBER_LABEL,
+  FIELD_PROJECT_NUMBER_PLACEHOLDER,
+  FIELD_PERSONAL_KEY_LABEL,
+  FIELD_PERSONAL_KEY_HELPER,
+  FIELD_REGION_DISCLOSURE,
+  FIELD_REGION_LABEL,
+  FIELD_REGION_PREFILL,
+  CONNECT_ACTION_LABEL,
+  CONNECT_PENDING_LABEL,
+  DISCONNECT_ACTION_LABEL,
+  DISCONNECT_CONFIRMATION,
+  COUNTER_AS_OF_TEMPLATE,
+  COUNTER_AS_OF_NEVER,
+  RECEIPT_PATHS_LINE,
+  RECEIPT_INTERNAL_DOMAIN_TEMPLATE,
+  RECEIPT_INTERNAL_DOMAIN_UNKNOWN,
+  RECEIPT_AUTOMATION_LINE,
+  RECEIPT_FAIL_DIRECTION_LINE,
+  RECEIPT_IDENTITY_LINE,
+  RECEIPT_PROPERTIES_LINE,
+  RECEIPT_OUTBOUND_LINE,
+  RECEIPT_TITLE,
+  RECEIPT_CLOSING_LINE,
+  STEP_SLACK_TITLE,
+  STEP_SLACK_HELPER,
+  FIELD_BOT_TOKEN_LABEL,
+  FIELD_BOT_TOKEN_PLACEHOLDER,
+  FIELD_CHANNEL_ID_LABEL,
+  FIELD_CHANNEL_ID_PLACEHOLDER,
+  FIELD_CHANNEL_ID_HELPER,
+  SEND_TEST_MESSAGE_LABEL,
+  SEND_TEST_MESSAGE_PENDING,
+  SKIP_FOR_NOW_LABEL,
+  TRY_AGAIN_LABEL,
+  SLACK_TEST_SUCCESS_TEMPLATE,
+  SLACK_MUST_RECONNECT,
+  SLACK_MUST_PICK_ANOTHER_CHANNEL,
+  SLACK_SKIPPED_NOTICE,
+  STEP_AGENT_TITLE,
+  STEP_AGENT_WHAT_IT_WILL_DO,
+  STEP_AGENT_FILLER,
+  STEP_MOMENT_TITLE,
+  START_WATCHING_LABEL,
+  WATCH_AGAIN_LABEL,
+  DONE_LABEL,
+  STAGE_UNARMED_HEADING,
+  STAGE_UNARMED_HINT,
+  STAGE_WATCHING_HEADING,
+  STAGE_READING_HEADING,
+  STAGE_WATCHING_HINT,
+  STAGE_READING_HINT,
+  STAGE_FOUND_HEADING,
+  STAGE_FOUND_HINT,
+  STAGE_ENDED_HINT,
+  STAGE_FINDING_UNAVAILABLE,
+  STAGE_LOG_ARMED,
+  STAGE_LOG_RETRIEVED,
+  STAGE_LOG_READING,
+  STAGE_OFFLINE_NOTICE,
+  STAGE_RETIRE_TEMPLATE,
+  STRIP_LEAD,
+  STRIP_SEEN_TEMPLATE,
+  STRIP_COUNTED_TEMPLATE,
+  STRIP_POSTING_TO_TEMPLATE,
+  STRIP_REOPEN_LABEL,
+  FINDING_CLASS_UNKNOWN_TEMPLATE,
+  FINDING_CONFIDENCE_UNKNOWN,
+  NETWORK_FAILURE_NOTICE,
+  ONBOARDING_MESSAGES,
+  ALL_ONBOARDING_MESSAGES,
+} from "./onboarding/messages";
+export {
+  stepStateSchema,
+  stepIdSchema,
+  confirmationIdSchema,
+  STEP_DESCRIPTORS,
+  deriveStepStates,
+  type StepState,
+  type StepId,
+  type ConfirmationId,
+  type FieldDescriptor,
+  type ActionDescriptor,
+  type StepDescriptor,
+  type ComingNextStep,
+  type WorkStep,
+  type StageStep,
+  type StepSequenceFacts,
+  type StepView,
+} from "./onboarding/steps";
+export { toOnboardingCounterView } from "./onboarding/counter-view";
+export {
+  buildPrivacyReceipt,
+  type ReceiptLine,
+  type PrivacyReceiptInput,
+} from "./onboarding/privacy-receipt";
+export { reduceStage, type StagePersistedFacts, type RenderedStageState } from "./onboarding/stage";
+export { renderStageView, type StageLogLine, type StageView } from "./onboarding/stage-view";
+export { toFindingView, type FindingCountLine, type FindingView } from "./onboarding/finding-view";
+export {
+  describeTestPostOutcome,
+  type TestPostInput,
+  type TestPostOutcome,
+} from "./onboarding/slack-test";
+// The eight route input schemas (AD-16, AD-16a). They live in this package
+// rather than beside their routes because `apps/web` declares no `zod` and
+// WIRE-Z1 pins that absence — see `./onboarding/route-schemas.ts`'s header.
+// EVERY ONE IS A `z.strictObject`, and none declares a tenancy key.
+export {
+  firstRunAnalyticsConnectInputSchema,
+  firstRunAnalyticsDisconnectInputSchema,
+  firstRunArmInputSchema,
+  firstRunDismissInputSchema,
+  firstRunSlackConnectInputSchema,
+  firstRunSlackSkipInputSchema,
+  firstRunSlackTestInputSchema,
+  firstRunStatusInputSchema,
+  type FirstRunAnalyticsConnectInput,
+  type FirstRunSlackConnectInput,
+} from "./onboarding/route-schemas";

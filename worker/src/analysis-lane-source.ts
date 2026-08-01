@@ -21,7 +21,13 @@ import {
 import type { ThresholdRuleSet } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import { createDetectorCorpusService } from "@growthmind/db";
-import { SYSTEM_ACTOR, listAnalysableProjects, systemContextFor } from "@growthmind/db/system";
+import type { AnalysableProject } from "@growthmind/db/system";
+import {
+  SYSTEM_ACTOR,
+  findAnalysableProject,
+  listAnalysableProjects,
+  systemContextFor,
+} from "@growthmind/db/system";
 import { describeError } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
@@ -96,65 +102,122 @@ export interface AnalysisLaneSourceDeps {
  * a crash and neither is a silent success. Gate-rejected candidates are logged here,
  * with their count, because the gate's verdict is final and nothing downstream may see
  * them. A drop that also vanished from the logs would be undebuggable.
+ *
+ * ── ONE ASSEMBLY, TWO CALLERS (O-008 AD-10) ─────────────────────────────────
+ * `listDueLanes` and `laneForProject` are two POPULATION reads over one
+ * `buildLane`. The window, both T1 detectors and `assembleCandidates` are the
+ * parts that decide WHAT A FINDING EVEN IS; a second copy would drift within a
+ * sprint and would make the onboarding surface show a different finding than
+ * Slack does. The methods differ in which projects they ask about and in
+ * nothing else.
  */
 export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): AnalysisLaneSource {
+  /**
+   * ONE PROJECT'S LANE — the whole assembly, and the only copy of it.
+   *
+   * `null` is returned only when this project's own turn FAILED (D8): an
+   * unreadable corpus, a contract violation in assembly. It is never "nothing
+   * was found" — that is a lane with empty `candidates`, which is a real answer
+   * the tick's vocabulary already names, and collapsing the two would make a
+   * broken read indistinguishable from a quiet product.
+   */
+  async function buildLane(project: AnalysableProject, now: Date): Promise<AnalysisLane | null> {
+    const rules = analysisRuleSet();
+    // The window derives from the INJECTED instant — this module reads no clock
+    // by any route, so a replayed tick rebuilds identical lanes, and the
+    // onboarding trigger's lane is the one the hourly tick would have built.
+    const window = { start: new Date(now.getTime() - ANALYSIS_WINDOW_MS), end: now };
+
+    try {
+      const ctx = contextFor(project);
+      const corpus = await createDetectorCorpusService(deps.db, ctx).read(
+        project.projectId,
+        window,
+      );
+
+      // Both T1 detectors, every tick, every project — pure calls over
+      // the one corpus read. The assembler owns the gate walk and D3's
+      // one-lane-per-project flattening.
+      const { candidates, rejected } = assembleCandidates(
+        [detectFunnelDropoff(corpus, rules), detectErrorEvent(corpus, rules)],
+        rules,
+      );
+
+      for (const rejection of rejected) {
+        deps.logger.info(
+          `analysis lane source: gate rejected a ${rejection.detector} candidate on ` +
+            `${rejection.surface} for project ${project.projectId} — final rung unsatisfied, ` +
+            `never delivered (trace length ${String(rejection.trace.length)})`,
+        );
+      }
+
+      return {
+        organizationId: project.organizationId,
+        organizationName: project.organizationName,
+        projectId: project.projectId,
+        candidates,
+        // The corpus's own denominator, never re-counted here: this is
+        // what keeps `no_candidates_passed_gate` distinguishable from
+        // `no_sessions_to_analyse` downstream.
+        sessionsConsidered: corpus.basis.kept,
+      };
+    } catch (error) {
+      // D8: one project's fault — an unreadable corpus, a contract
+      // violation in assembly — costs that project this tick, never the
+      // fleet. Logged with enough to debug; the tick's own per-lane
+      // isolation covers everything after this point.
+      deps.logger.error(
+        `analysis lane source: skipping project ${project.projectId} (org ` +
+          `${project.organizationId}) this tick: ${describeError(error)}`,
+      );
+      return null;
+    }
+  }
+
   return {
     async listDueLanes(now: Date): Promise<readonly AnalysisLane[]> {
-      const rules = analysisRuleSet();
-      // The window derives from the injected tick instant. This module reads no clock
-      // by any route, so a replayed tick rebuilds identical lanes.
-      const window = { start: new Date(now.getTime() - ANALYSIS_WINDOW_MS), end: now };
-
       const projects = await listAnalysableProjects(deps.db);
       const lanes: AnalysisLane[] = [];
 
       for (const project of projects) {
-        try {
-          const ctx = contextFor(project);
-          const corpus = await createDetectorCorpusService(deps.db, ctx).read(
-            project.projectId,
-            window,
-          );
-
-          // Both T1 detectors, every tick, every project. Pure calls over the one
-          // corpus read. The assembler owns the gate walk and the one-lane-per-project
-          // flattening.
-          const { candidates, rejected } = assembleCandidates(
-            [detectFunnelDropoff(corpus, rules), detectErrorEvent(corpus, rules)],
-            rules,
-          );
-
-          for (const rejection of rejected) {
-            deps.logger.info(
-              `analysis lane source: gate rejected a ${rejection.detector} candidate on ` +
-                `${rejection.surface} for project ${project.projectId} — final rung unsatisfied, ` +
-                `never delivered (trace length ${String(rejection.trace.length)})`,
-            );
-          }
-
-          lanes.push({
-            organizationId: project.organizationId,
-            organizationName: project.organizationName,
-            projectId: project.projectId,
-            candidates,
-            // The corpus's own denominator, never re-counted here: this is what keeps
-            // `no_candidates_passed_gate` distinguishable from `no_sessions_to_analyse`
-            // downstream.
-            sessionsConsidered: corpus.basis.kept,
-          });
-        } catch (error) {
-          // One project's fault. An unreadable corpus, a contract violation in
-          // assembly. Costs that project this tick, never the fleet. Logged with enough
-          // to debug; the tick's own per-lane isolation covers everything after this
-          // point.
-          deps.logger.error(
-            `analysis lane source: skipping project ${project.projectId} (org ` +
-              `${project.organizationId}) this tick: ${describeError(error)}`,
-          );
-        }
+        const lane = await buildLane(project, now);
+        if (lane !== null) lanes.push(lane);
       }
 
       return lanes;
+    },
+
+    /**
+     * ONE PROJECT, resolved by id, with the organisation scope READ OFF THE ROW.
+     *
+     * D7: the caller supplies a project id and nothing else, and this method
+     * derives the tenant scope from `findAnalysableProject`'s row exactly as
+     * `listDueLanes` derives it from `listAnalysableProjects`'s. There is no
+     * parameter an organisation could arrive on, so analysing one customer's
+     * project under another customer's context is impossible rather than
+     * forbidden.
+     *
+     * `findAnalysableProject` deliberately carries NO active-connection
+     * predicate, unlike `listAnalysableProjects`. The trigger fires immediately
+     * after a poll that persisted events for this very project, so re-asking
+     * that question would answer `null` for a project whose connection was
+     * revoked in the intervening seconds — silently dropping the founder's one
+     * analysis instead of letting the lane report its own outcome.
+     *
+     * `null` for an unknown project id, and `null` for a project whose corpus
+     * read failed. Both are graceful absences the trigger degrades on: the
+     * hourly cron remains the floor either way (AD-12).
+     */
+    async laneForProject(projectId: string, now: Date): Promise<AnalysisLane | null> {
+      const project = await findAnalysableProject(deps.db, projectId);
+      if (project === null) {
+        deps.logger.info(
+          `analysis lane source: project ${projectId} has no row to build a lane from, so there is nothing to check`,
+        );
+        return null;
+      }
+
+      return buildLane(project, now);
     },
   };
 }

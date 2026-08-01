@@ -42,11 +42,14 @@ import { describeError } from "@growthmind/shared";
 
 import { floorAction, floorTextFor, identityFor, surfaceIsSafeToSend } from "./gates";
 import { summariseInputFor } from "./shapes";
-import type { AnalysisLane, AnalysisTickDeps, CallAttribution, CandidatePlan } from "./types";
+import type { AnalysisLane, AnalysisLaneDeps, CallAttribution, CandidatePlan } from "./types";
 import { NO_CALL } from "./types";
 
 export async function planCandidate(
-  deps: AnalysisTickDeps,
+  // THE LANE'S DEPS, NOT THE TICK'S (O-008 AD-9). One candidate's turn needs the
+  // port, the two ceilings and the logger; it must not be able to reach the lane
+  // SOURCE, or a rung could widen the work it was handed.
+  deps: AnalysisLaneDeps,
   lane: AnalysisLane,
   runs: AnalysisRunsRepo,
   findings: FindingsRepo,

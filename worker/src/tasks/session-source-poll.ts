@@ -53,7 +53,12 @@ import {
   resolveCredentialKey,
 } from "@growthmind/shared";
 
-import { MAX_CONNECTIONS_PER_RUN, MAX_RUN_DURATION_MS, resolvePollPlan } from "./poll-plan";
+import {
+  MAX_CONNECTIONS_PER_RUN,
+  MAX_RUN_DURATION_MS,
+  isOnboardingPlan,
+  resolvePollPlan,
+} from "./poll-plan";
 
 /** The logger surface this handler needs. The subset Graphile Worker's `helpers.logger`
  * already satisfies, so the thin closure in./index.ts passes it straight through and a
@@ -76,6 +81,12 @@ export interface SessionSourcePollDeps {
   fetch: FetchLike;
   random: () => number;
   logger: PollLogger;
+  /**
+   * Asked on every pass that BOTH persisted new events AND ran under the
+   * onboarding plan. A courtesy on top of the poll's actual job, never a
+   * condition of it — see the call site's isolation (D8).
+   */
+  requestAnalysis: AnalysisTrigger;
 }
 
 export interface SessionSourcePollSummary {
@@ -219,6 +230,28 @@ export async function runSessionSourcePoll(
 }
 
 /**
+ * THE ONBOARDING ANALYSIS TRIGGER, AS A PORT (O-008 AD-11a).
+ *
+ * A founder who breaks their own product inside the first fifteen minutes should
+ * see it narrated in seconds, not at the top of the next hour — that gap is the
+ * ~180x defect this port exists to close. This poll is the only place that knows
+ * their broken request has actually LANDED, so this is where the ask originates.
+ *
+ * The poll must not learn what happens next, which is why this is a port and not
+ * an `addJob`. It hands over a project id; the composition root in ../index.ts
+ * is the only file that knows this means enqueueing `analysis:onboarding`, and
+ * the only file that may hold a queue type.
+ *
+ * Declared HERE, immediately above its one consumer, the way `PassOutcome` sits
+ * above `runOnePass` and `OpenedCredential` above `openCredential`.
+ */
+export interface AnalysisTrigger {
+  /** Best-effort. Never throws — a failure to request is logged and the poll
+   *  still succeeds (D8). The hourly cron is the floor if this never fires. */
+  requestForProject(input: { readonly projectId: string }): Promise<void>;
+}
+
+/**
  * One claimed connection's turn: read its credential once, build its source once, then
  * make the planned passes.
  *
@@ -319,6 +352,40 @@ async function pollConnection(
 
     watermarkAt = passOutcome.watermarkAt;
     backfillBefore = passOutcome.backfillBefore;
+
+    // ── THE ONBOARDING ASK (O-008 AD-11a) ────────────────────────────────────
+    // BOTH conditions, and both are already decided by this point rather than
+    // re-derived: the pass told us it saw events, and `resolvePollPlan` already
+    // chose the onboarding branch. `isOnboardingPlan` NAMES that second
+    // condition — a second copy of the window arithmetic here would be a D11
+    // wire waiting to be severed, and a trigger firing outside the window would
+    // spend an analysis on ordinary steady-state traffic on every connection,
+    // forever.
+    //
+    // EVERY QUALIFYING PASS, not once (OQ-O2). `connect()` already performs a
+    // bounded inline first pull, so the FIRST events after connect are backfill
+    // the user did not just cause; spending the one trigger on those would leave
+    // a founder who breaks their product LATE in the window waiting an hour —
+    // recreating the exact defect this port exists to remove. The volume is
+    // bounded four ways that already ship: the fifteen-minute window and
+    // `MAX_ONBOARDING_PASSES`; the single-writer index on analysis runs; the cap
+    // claim's conflict on `(org, project, signature)`; and the findings table's
+    // own unique tuple. The queue's job key collapses N pending asks for one
+    // project into one job.
+    if (passOutcome.sawEvents && isOnboardingPlan(plan)) {
+      try {
+        await deps.requestAnalysis.requestForProject({ projectId: connection.projectId });
+      } catch (error) {
+        // D8, ABSOLUTELY. The poll's job is to persist events; asking for an
+        // analysis is a courtesy on top, and a courtesy that can fail the thing
+        // it decorates is a bug. The run row stays `completed`, the watermark
+        // stays advanced, and the hourly cron remains the floor for this
+        // project — a missed ask is a DELAY, never a hole (AD-12).
+        deps.logger.error(
+          `session source poll: connection ${connection.id} persisted new events but the fast analysis could not be requested, so this project waits for the hourly check — ${describeError(error)}`,
+        );
+      }
+    }
 
     if (passOutcome.sawEvents) {
       break;

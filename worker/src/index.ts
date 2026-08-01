@@ -4,6 +4,7 @@ import {
   DEFAULT_COLDSTART_MODEL,
   createAnthropicModel,
   createAnthropicSessionSummariser,
+  createSlackDeliveryPoster,
 } from "@growthmind/adapters";
 import { modelSummaryOutputSchema } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
@@ -13,18 +14,27 @@ import {
   createDeliveriesRepo,
   createFindingsRepo,
   createSignatureLedgerService,
+  createSlackConnectionsRepo,
 } from "@growthmind/db";
-import type { DeliveryPoster, ServerEnv } from "@growthmind/shared";
-import { parseServerEnv } from "@growthmind/shared";
+import { existsAnyActiveSlackConnection } from "@growthmind/db/system";
+import type { ServerEnv } from "@growthmind/shared";
+import { parseServerEnv, resolveCredentialKey } from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
+import { createDeliveryLaneSource } from "./delivery-lane-source";
 import { TASK } from "./task-names";
-import type { AnalysisLaneSource, ConfiguredSummariser } from "./tasks/analysis-tick";
+import type {
+  AnalysisLaneSource,
+  AnalysisLogger,
+  AnalysisTickDeps,
+  ConfiguredSummariser,
+} from "./tasks/analysis-tick";
 import { runAnalysisTick } from "./tasks/analysis-tick";
-import type { DeliveryLaneSource } from "./tasks/delivery-tick";
+import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tick";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
+import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
 /**
@@ -43,45 +53,139 @@ function resolveResources(): { db: ScopedDb; env: ServerEnv } {
   return resources;
 }
 
-/** The two effects the delivery tick cannot construct for itself: where to post, and
- * which projects are due. */
+/** The two effects the delivery tick cannot construct for itself: where to post (per
+ * organization), and which projects are due. */
 type DeliveryComposition = {
-  poster: DeliveryPoster;
+  posterFor: DeliveryPosterFor;
   lanes: DeliveryLaneSource;
 };
 
 /**
- * The delivery lane's runtime composition. NULL on this installation today,
- * deliberately and visibly.
+ * THE ONE DOOR TO A BOT TOKEN, and this factory is the only thing that opens it
+ * (AD-13, AD-20, ADD §5).
  *
- * Both halves are missing from this branch's history, and neither is something the
- * handler could invent: a `slack_connections` row is what a concrete poster is built
- * from, and a `findings` table is what a lane source reads. shipped the scheduler, the
- * renderer, the residual scanner, the deliveries ledger and the poster port; the
- * adapter and the lane read are the remaining wiring.
+ * `createSlackDeliveryPoster` binds ONE workspace's bearer token at
+ * construction and `PostRequest` carries no organization, so a single poster
+ * cannot serve a multi-org installation. This returns a poster PER TENANT
+ * CONTEXT instead — the same factory shape `deliveriesFor` and the analysis
+ * lane's three repository factories already use.
  *
- * So the tick degrades to a clean no-op rather than crashing or pretending: an
- * installation with no delivery channel connected is a supported deployment (the
- * self-host graceful-absence promise, agents.md), and a worker that crash-loops on boot
- * because Slack was never connected would take the analysis pipeline down with it.
+ * ── THE CREDENTIAL IS KEYED BY THE CONTEXT AND BY NOTHING ELSE (D7) ─────────
+ * `createSlackConnectionsRepo(db, ctx)` takes the organization at construction
+ * and `openCredentialForOrg` accepts no id, so there is no route by which a
+ * value travelling with a message could select a credential. The envelope is
+ * opened under `slackCredentialAad(ctx)` — one argument, and it is a context,
+ * so passing a project id is a compile error rather than an envelope that
+ * writes fine and fails at delivery time, per customer, silently.
  *
- * TODO: return `{ poster, lanes }` here. This function is the only place that changes,
- * because `runDeliveryTick` takes both as injected dependencies typed by their ports
- * and never names a vendor. Its test suite already drives the full sequence with fakes,
- * so what lands here is the wire, not the behaviour. `createSlackDeliveryPoster`
- * (shipped, `@growthmind/adapters`) needs only a bot token and a `fetch`; the lane
- * source needs a `findings` read that no table in this branch supports yet.
+ * ── `null` IS AN ANSWER, A THROW IS A FAULT, AND THEY STAY APART ────────────
+ * `null` means this organization has no active connection — never connected, or
+ * revoked between the lane read and the post. The tick skips that lane, logs it,
+ * and counts it apart from failures.
  *
- * Be honest about what this means: until that lands, this tick posts nothing on any
- * installation. the DoD, the scheduler, the renderer's legibility budget, the residual
- * scanner running before any post, idempotency and failure isolation. Is met and
- * proven, but proven against fakes driving the real entry point, not against production
- * traffic. That is the hazard this codebase names (a value computed and then dropped on
- * the floor), held open deliberately and visibly rather than hidden: the absence is
- * logged once per tick, and this comment is the reason it is not a silent no-op.
+ * A DATABASE FAULT IS DELIBERATELY NOT CAUGHT HERE. Turning "the store stopped
+ * answering" into `null` would read as "this customer has no Slack" and would
+ * stop their delivery silently for as long as the fault lasted. Letting it
+ * escape puts it in the tick's per-lane isolation, where it is logged and
+ * counted as an error — visible, isolated, and still harmless to every sibling
+ * lane (D8).
+ *
+ * ── THE KEY IS RESOLVED ONCE, AT COMPOSITION ────────────────────────────────
+ * `resolveCredentialKey` is the shipped insecure-defaults gate, INHERITED here
+ * rather than re-implemented. It is resolved once per process rather than per
+ * lane so a misconfigured installation says so once instead of once per
+ * organization per tick — and it fails CLOSED: with no usable key, no poster is
+ * ever built and nothing is posted anywhere.
+ *
+ * Exported so the composition suite can drive the per-organization absence path
+ * against a real database without reaching into a module-private closure.
  */
-function resolveDeliveryComposition(): DeliveryComposition | null {
-  return null;
+export function makePosterFor(db: ScopedDb, env: ServerEnv): DeliveryPosterFor {
+  const resolution = resolveCredentialKey(env);
+
+  if (!resolution.ok) {
+    console.error(
+      `delivery composition: the credential key could not be resolved (${resolution.reason}), so ` +
+        `no delivery channel can be opened on this installation until it is configured`,
+    );
+    return () => Promise.resolve(null);
+  }
+
+  const key = resolution.key;
+
+  return async (ctx) => {
+    const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
+
+    if (opened === null) {
+      // No active connection for this organization. An ordinary answer, and the
+      // tick's own log line is where it is said — repeating it here would print
+      // twice per lane per tick.
+      return null;
+    }
+
+    if (!opened.ok) {
+      // A stored envelope this installation can no longer open — a rotated key,
+      // a restored backup, a row written under a different key id. FAILS
+      // CLOSED, and names the REASON and never the ciphertext: reconnecting the
+      // channel is the one action that fixes it.
+      console.error(
+        `delivery composition: org ${ctx.organizationId} has a stored delivery credential this ` +
+          `installation cannot open (${opened.reason}) — it must be reconnected`,
+      );
+      return null;
+    }
+
+    // The decrypted token lives exactly here, for the lifetime of one poster,
+    // and travels one function call into the adapter that speaks to the vendor.
+    // It is never logged, never persisted, and never attached to a result: every
+    // sentence the adapter can return comes from its own fixed table.
+    return createSlackDeliveryPoster({ botToken: opened.value }, { fetch: globalThis.fetch });
+  };
+}
+
+/**
+ * The delivery lane's runtime composition — THE WIRE, LANDED (O-008 AD-14),
+ * and still `null` on an installation with no channel connected.
+ *
+ * BOTH HALVES ARE REQUIRED LITERALLY (AC-O12). An installation that has
+ * connected Slack gets a real lane source and a real per-organization poster
+ * factory; an installation with none gets `null` and the graceful-absence line
+ * below, forever and correctly. Self-host is first-class: `docker compose up`
+ * from a clean clone, with no Slack anywhere, must reach a working pipeline,
+ * and a worker that crash-looped because nobody connected a channel would take
+ * the analysis pipeline down over an optional feature.
+ *
+ * THE GATE IS A SYSTEM EXISTENCE QUERY, and it is org-agnostic on purpose: it
+ * answers a question about the INSTALLATION, asked from a composition root that
+ * runs with no user and no tenant context to pass. The PER-ORGANIZATION
+ * question is a different one and is answered one level down, by `makePosterFor`
+ * returning `null` for an organization whose connection is gone.
+ *
+ * `is_active` is part of that question rather than an optimisation: `deactivate`
+ * keeps the row so history survives a reconnect, so a predicate that merely
+ * counted rows would report a connected installation forever after the first
+ * disconnect.
+ */
+async function resolveDeliveryComposition(): Promise<DeliveryComposition | null> {
+  const { db, env } = resolveResources();
+
+  if (!(await existsAnyActiveSlackConnection(db))) {
+    return null;
+  }
+
+  return {
+    lanes: createDeliveryLaneSource({
+      db,
+      // The console pair rather than a Graphile helper because this composition
+      // happens once per process, outside any task closure; the per-tick logger
+      // the handler receives still carries every lane-level line.
+      logger: {
+        info: (message) => console.info(message),
+        error: (message) => console.error(message),
+      },
+    }),
+    posterFor: makePosterFor(db, env),
+  };
 }
 
 /**
@@ -190,8 +294,8 @@ function resolveAnalysisLanes(): AnalysisLaneSource | null {
 }
 
 /**
- * The analysis lane's runtime composition. Still NULL on this installation today, for
- * exactly one remaining reason, and it is not the model.
+ * The analysis lane's runtime composition — REAL ON EVERY INSTALLATION, since
+ * O-012 landed the producer this port was waiting for.
  *
  * The two halves are resolved independently above and they fail differently, on
  * purpose. A missing lane source means there is nothing to analyse and the tick has no
@@ -203,14 +307,16 @@ function resolveAnalysisLanes(): AnalysisLaneSource | null {
  * The lane source is resolved first so that an installation with nothing to analyse
  * never constructs a provider it would not use.
  *
- * Be honest about what this means Until the heir lands, this tick analyses nothing on
- * any installation: it logs one graceful-absence line per hour and persists no finding
- * and no run. the DoD, the ladder's fixed order, the cap's named exhaustion, the guard
- * over the text as persisted, `summary_source` on every row, every exit path terminal.
- * Is met and proven, but proven against fakes driving the real entry point, not against
- * production traffic. That is the hazard this codebase names, held open deliberately
- * and visibly rather than hidden: the absence is logged once per tick, and this comment
- * is the reason it is not a silent no-op.
+ * ── THE `null` BRANCH IS UNREACHABLE TODAY, AND STAYS ANYWAY ────────────────
+ * `resolveAnalysisLanes()` returns `createAnalysisLaneSource` unconditionally,
+ * so on this tree this function never answers `null` and the tick's
+ * graceful-absence line is dead code. That is a STATEMENT OF FACT rather than a
+ * TODO: the port is nullable because the shape "the composition root decides
+ * whether a capability exists" is the shape all three compositions in this file
+ * share, and narrowing it would make the tick's absence branch un-writable the
+ * next time a lane source legitimately cannot be built. What used to be true
+ * here — "this tick analyses nothing on any installation" — is not; the tick
+ * reads a real corpus, runs both detectors, and persists real findings.
  */
 function resolveAnalysisComposition(): AnalysisComposition | null {
   const lanes = resolveAnalysisLanes();
@@ -224,10 +330,54 @@ function resolveAnalysisComposition(): AnalysisComposition | null {
 }
 
 /**
- * The task registry, the only place task names meet handlers. Handlers stay
- * queue-agnostic (plain functions in./tasks); the thin closures here adapt them to
- * Graphile Worker's signature. worker/src/registry.test.ts asserts this list and task
- * never drift apart.
+ * The analysis lane's dependencies, assembled ONCE for BOTH of its callers —
+ * the hourly tick and the onboarding trigger (AD-9, AD-11b).
+ *
+ * ONE ASSEMBLY, NOT TWO, AND THE REASON IS FINANCIAL. FR-O17 says the fast path
+ * respects the single-writer index AND the cap ledger, or it does not ship, and
+ * names a cap-bypassing trigger a financial commitment. A second hand-written
+ * deps object beside this one is exactly how a cap silently diverges: one call
+ * site gets `COLDSTART_MODEL_CALL_CAP` and the other gets whatever somebody
+ * typed on the day, and nothing fails. There is one list, so there is one
+ * ceiling.
+ *
+ * `AnalysisTickDeps` and `OnboardingAnalysisDeps` are the same shape by
+ * construction — both are `AnalysisLaneDeps` plus a lane source — so this
+ * function's return type serves both without a cast.
+ */
+function analysisDepsFor(composed: AnalysisComposition, logger: AnalysisLogger): AnalysisTickDeps {
+  const { db } = resolveResources();
+
+  return {
+    lanes: composed.lanes,
+    // `null` ⇒ the no-key lane, decided at `resolveSummariser`. The task body
+    // never learns whether a key exists; it learns only whether it was handed a
+    // port.
+    summariser: composed.summariser,
+    // The two repositories and the ledger, org-scoped PER LANE from the context
+    // the handler builds out of the lane row — never from a payload. The one
+    // call to each `create*` lives here, beside the pool it needs.
+    findingsFor: (ctx) => createFindingsRepo(db, ctx),
+    runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
+    ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
+    // Policy, injected — BOTH ceilings (AD-23). A spend limit is a property of
+    // the lane that spends, so both travel from ./analysis-cap.ts through here
+    // and neither leaks into `packages/db`, whose claim takes them as
+    // parameters. The organisation-wide one is what supplies the N the
+    // per-project one is missing: nothing limits how many projects an
+    // organisation creates.
+    projectCap: COLDSTART_MODEL_CALL_CAP,
+    organizationCap: ORG_MODEL_CALL_CAP,
+    now: () => new Date(),
+    logger,
+  };
+}
+
+/**
+ * The task registry — the only place task names meet handlers. Handlers stay
+ * queue-agnostic (plain functions in ./tasks); the thin closures here adapt
+ * them to Graphile Worker's signature. worker/src/registry.test.ts asserts
+ * this list and TASK never drift apart.
  */
 export const taskList: TaskList = {
   [TASK.HEARTBEAT]: (_payload, helpers) => {
@@ -252,6 +402,38 @@ export const taskList: TaskList = {
       fetch: globalThis.fetch,
       random: Math.random,
       logger: helpers.logger,
+      // THE ONBOARDING FAST PATH'S ENQUEUE, and the only place in this codebase
+      // that knows a project id means a queued job (AD-11). The poll hands over
+      // a project id through a port; this closure is what turns it into work,
+      // which is why the poll file holds no queue type.
+      requestAnalysis: {
+        requestForProject: async ({ projectId }) => {
+          // `addJob`, SINGULAR, and that is load-bearing rather than stylistic:
+          // graphile-worker's BULK `addJobs` declares `jobKeyMode?: never`, so a
+          // later refactor that batched these calls would compile and would
+          // silently drop the mode — and with it the collapsing this whole
+          // trigger's volume argument rests on.
+          //
+          // `jobKeyMode: "preserve_run_at"`, NEVER `"replace"` and NEVER
+          // `"unsafe_dedupe"`:
+          //   - `replace` re-stamps `run_at` FORWARD on every trigger, so a
+          //     founder generating a burst of broken requests would watch the
+          //     analysis slide away from them on a screen with a clock on it.
+          //   - `unsafe_dedupe` was MEASURED against a running holder and DROPS
+          //     the trigger — losing exactly the late-window failure this sprint
+          //     exists to catch.
+          //   - `preserve_run_at` collapses N pending asks for one project into
+          //     one job that still fires when the FIRST ask arrived.
+          await helpers.addJob(
+            TASK.ANALYSIS_ONBOARDING,
+            { projectId },
+            {
+              jobKey: `${TASK.ANALYSIS_ONBOARDING}:${projectId}`,
+              jobKeyMode: "preserve_run_at",
+            },
+          );
+        },
+      },
     });
   },
   // The only queue-aware line in the delivery path, and the only place a concrete
@@ -262,7 +444,7 @@ export const taskList: TaskList = {
   // There is no payload: the task is cron-triggered, and each lane's tenant scope comes
   // from the lane row the source read.
   [TASK.DELIVERY_TICK]: async (_payload, helpers) => {
-    const composed = resolveDeliveryComposition();
+    const composed = await resolveDeliveryComposition();
 
     if (composed === null) {
       // Graceful absence, said out loud once per tick rather than swallowed. A silent
@@ -281,7 +463,11 @@ export const taskList: TaskList = {
       // The ledger, org-scoped per lane from the context the handler builds out of the
       // lane row, never from a payload.
       deliveriesFor: (ctx) => createDeliveriesRepo(db, ctx),
-      poster: composed.poster,
+      // The poster, resolved PER LANE from the lane's own context (AD-13) —
+      // never one instance shared across organizations, because a Slack poster
+      // binds one workspace's token at construction and a `PostRequest` carries
+      // no organization to correct it with.
+      posterFor: composed.posterFor,
       now: () => new Date(),
       logger: helpers.logger,
     });
@@ -308,29 +494,38 @@ export const taskList: TaskList = {
       return;
     }
 
-    const { db } = resolveResources();
+    await runAnalysisTick(analysisDepsFor(composed, helpers.logger));
+  },
+  // THE ONBOARDING FAST PATH (O-008 AD-11b). The SAME lane the hourly tick
+  // above runs, asked for ONE project, seconds after a founder's own broken
+  // request reached us.
+  //
+  // QUEUED, NEVER CRONNED — deliberately absent from `crontab` below. Its one
+  // producer is the poll handler's `requestAnalysis` closure, which is also the
+  // only place the job key and its mode are named.
+  //
+  // THIS HANDLER TAKES A PAYLOAD, and it is the only one in this file that does.
+  // It is passed STRAIGHT THROUGH as `unknown`: `runOnboardingAnalysis` parses
+  // it with a `.strict()` schema declaring a project id and refusing everything
+  // else, so there is no organization id to trust and no user id to impersonate,
+  // and parsing it here as well would be a second boundary that could disagree
+  // with the first.
+  [TASK.ANALYSIS_ONBOARDING]: async (payload, helpers) => {
+    const composed = resolveAnalysisComposition();
 
-    await runAnalysisTick({
-      lanes: composed.lanes,
-      // `null` ⇒ the no-key lane, decided above. The task body never learns whether a
-      // key exists; it learns only whether it was handed a port.
-      summariser: composed.summariser,
-      // The two repositories and the ledger, org-scoped per lane from the context the
-      // handler builds out of the lane row, never from a payload. The one call to each
-      // `create*` lives here, beside the pool it needs.
-      findingsFor: (ctx) => createFindingsRepo(db, ctx),
-      runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
-      ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
-      // Policy, injected, both ceilings. A spend limit is a property of the lane that
-      // spends, so both travel from./analysis-cap.ts through here and neither leaks
-      // into `packages/db`, whose claim takes them as parameters. The organisation-wide
-      // one is what supplies the N the per-project one is missing: nothing limits how
-      // many projects an organisation creates.
-      projectCap: COLDSTART_MODEL_CALL_CAP,
-      organizationCap: ORG_MODEL_CALL_CAP,
-      now: () => new Date(),
-      logger: helpers.logger,
-    });
+    if (composed === null) {
+      // GRACEFUL ABSENCE, IN THE TRIGGER'S OWN VOCABULARY (AD-12). It names the
+      // trigger — so a reader can tell a fast-path absence from the hourly
+      // tick's — and it names the floor, because the one thing this path may
+      // never do is fail toward silence: nothing here is written, nothing is
+      // suppressed, and the project's ordinary hourly turn is untouched.
+      helpers.logger.info(
+        "analysis onboarding: no analysis lane is wired on this installation, so this trigger did nothing and the hourly check is unaffected",
+      );
+      return;
+    }
+
+    await runOnboardingAnalysis(analysisDepsFor(composed, helpers.logger), payload);
   },
 };
 

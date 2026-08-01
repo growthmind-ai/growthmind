@@ -4,6 +4,8 @@ import { Button } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { tapTargetStyle } from "@/components/ui/tap-target";
+
 import { signOut } from "../../lib/auth-client";
 import { ROUTES } from "../../lib/routes";
 
@@ -29,11 +31,7 @@ export function SignOutButton() {
       onClick={handleSignOut}
       loading={pending}
       disabled={pending}
-      style={{
-        minHeight: 44,
-        touchAction: "manipulation",
-        WebkitTapHighlightColor: "transparent",
-      }}
+      style={tapTargetStyle}
     >
       Sign out
     </Button>

@@ -74,21 +74,33 @@ export type AnalysisLane = {
  * one-line-fillable. Byte for byte the shape `DeliveryLaneSource`
  * (`../tasks/delivery-tick.ts`) set one sprint earlier for exactly this situation.
  *
- * Be honest about what this means: `resolveAnalysisComposition` in./index.ts returns
- * `null` today, so on a real installation this tick logs a graceful-absence line and
- * persists nothing. The ladder is proven against fakes driving the real entry point,
- * not against production traffic.
- *
- * TODO(the corpus-reader heir): implement this interface as a repository read that
- * assembles gate-passed candidates from sessions and events, and return it from
- * `resolveAnalysisComposition`. Nothing in the lane changes when it lands. The wire
- * is the only missing part.
+ * THE GAP IS CLOSED (O-012). `../analysis-lane-source.ts` implements this port
+ * against real persisted events, and `resolveAnalysisComposition()` in
+ * ../index.ts returns it — so on a real installation this tick reads a real
+ * corpus. The header above records why the port exists; it is no longer a
+ * description of an unwired installation.
  */
 export interface AnalysisLaneSource {
   /** Every project due an analysis decision on this tick. An empty list is an ordinary
    * answer. An installation with no project connected is a supported deployment, not a
    * fault. */
   listDueLanes(now: Date): Promise<readonly AnalysisLane[]>;
+  /**
+   * The same lane `listDueLanes` would build for this ONE project, or `null` if
+   * the project is not analysable (O-008 AD-10).
+   *
+   * Same corpus read, same window, same detectors, same assembly — ONE private
+   * builder, two callers. A second copy of that assembly would drift within a
+   * sprint and would make the onboarding surface show a DIFFERENT finding than
+   * Slack does; the parts it would fork are exactly the parts that decide what a
+   * finding even is.
+   *
+   * The project id is the whole input. The organisation scope is re-derived from
+   * the project's own row by the implementation, never carried alongside it —
+   * a caller-supplied org id is a door for analysing one customer's project
+   * under another customer's context (D7).
+   */
+  laneForProject(projectId: string, now: Date): Promise<AnalysisLane | null>;
 }
 
 /**
@@ -128,11 +140,24 @@ export type ConfiguredSummariser = {
   readonly resolvedModelId: string;
 };
 
-export interface AnalysisTickDeps {
-  lanes: AnalysisLaneSource;
+/**
+ * EVERYTHING ONE LANE'S RUN NEEDS, AND NOTHING THAT COULD WIDEN IT (O-008 AD-9).
+ *
+ * `lanes` is the one member deliberately absent, and its absence is the
+ * guarantee rather than a tidiness preference. `runAnalysisLane` is reached by
+ * two callers now — the hourly tick, and the onboarding trigger that fires
+ * seconds after a founder breaks their own product — and the trigger contributes
+ * A PROJECT ID AND NOTHING ELSE. A lane runner that could still reach the lane
+ * SOURCE would be able to widen its own work from one project to the whole
+ * installation, which is precisely the "second pipeline" AD-9 exists to make
+ * impossible. FR-O17 is financial: the fast path respects the single-writer
+ * index AND the cap ledger, or it does not ship, and the strongest available
+ * form of that is a runner with no way to ask for more work.
+ */
+export interface AnalysisLaneDeps {
   /** `null` ⇒ no written-explanation capability is configured on this installation. The
-   * branch, selected at the composition root. The lane reads no environment variable by
-   * any route, and a null here is a decision rather than a caught failure. */
+   * branch, selected at the composition root (AD-15). The lane reads no environment
+   * variable by any route, and a null here is a decision rather than a caught failure. */
   summariser: ConfiguredSummariser | null;
   findingsFor: FindingsRepoFor;
   runsFor: AnalysisRunsRepoFor;
@@ -158,6 +183,18 @@ export interface AnalysisTickDeps {
    * same lane renders and records identically forever. */
   now: () => Date;
   logger: AnalysisLogger;
+}
+
+/**
+ * The scheduled tick's dependencies: everything ONE lane needs, plus the source
+ * that decides WHICH lanes there are.
+ *
+ * Declared as an extension rather than as a second flat list so the two can
+ * never drift: a member added for the lane's benefit is available to the tick by
+ * construction, and the only difference between them stays the one that matters.
+ */
+export interface AnalysisTickDeps extends AnalysisLaneDeps {
+  lanes: AnalysisLaneSource;
 }
 
 export interface AnalysisTickSummary {

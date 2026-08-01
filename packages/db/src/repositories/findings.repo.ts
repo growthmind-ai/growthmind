@@ -1,15 +1,18 @@
 // Repository for the `findings` table.
 //
-// Named deferral: This table has no consumer this sprint The `delivery-tick`'s
-// `DeliveryLaneSource` wire is cut for. Nothing reads these rows yet: delivery is still
-// missing a lane source and a poster built from a `slack_connections` row that does not
-// exist, so wiring findings through now would produce a wire that looks connected and
-// is not. The failure where a value is computed and then dropped on the floor,
-// silently, forever. The wire lands with the first sprint that needs findings flowing
-// to delivery, and this paragraph stands until it does. It is recorded here, in
-// git-tracked source, and on `../schema/findings.ts`. Deliberately not only in
-// `tasks/`, which is gitignored and therefore does not exist for any future reader.
-// This comment is an acceptance criterion of, not a nicety.
+// ── THE O-011 DEFERRAL IS DISCHARGED: THIS TABLE HAS READERS (O-008 FR-O25) ──
+// O-011 recorded, here and on `../schema/findings.ts`, that the `delivery-tick`
+// wire was CUT because delivery was missing a lane source and a poster built
+// from a `slack_connections` row this repository did not have. That table now
+// exists (`../schema/slack-connections.ts`), so the deferral's stated reason has
+// expired and the claim that nothing reads these rows would now be false.
+//
+// O-008 closes the wire and adds two readers, both of them through the methods
+// below rather than around them: the first-run status read takes the single
+// newest finding for one project, and the delivery lane source composes an
+// organization's undelivered findings for its own channel. Neither is a new
+// door — the org-scope rule in the next paragraph governs both, and there is
+// still no method here that takes an organization id.
 //
 // Org scope comes from the context, and from nowhere else Same shape as
 // `deliveries.repo.ts`: `createFindingsRepo(db, ctx)`. No method takes an organization

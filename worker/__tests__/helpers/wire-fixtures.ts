@@ -31,7 +31,11 @@ import {
 } from "@growthmind/shared";
 import type { ServerEnv, TenantContext } from "@growthmind/shared";
 
-import type { PollLogger, SessionSourcePollDeps } from "../../src/tasks/session-source-poll";
+import type {
+  AnalysisTrigger,
+  PollLogger,
+  SessionSourcePollDeps,
+} from "../../src/tasks/session-source-poll";
 
 // Obviously-fake placeholders. `.invalid` and `.example` are reserved by rfc 2606/6761
 // and can never resolve, so a test that somehow escaped its fake fetch would fail
@@ -529,6 +533,11 @@ export function createPollDeps(params: {
   env?: ServerEnv;
   random?: () => number;
   logger?: PollLogger;
+  /** O-008 AD-11a. Defaults to a no-op recorder-free port, because every suite
+   *  predating the onboarding trigger asserts on POLL behaviour and must be
+   *  unaffected by it. A suite that cares about the ask supplies its own — see
+   *  `onboarding-trigger-wire.test.ts`, which overrides this by spread. */
+  requestAnalysis?: AnalysisTrigger;
 }): SessionSourcePollDeps {
   return {
     db: params.db,
@@ -538,6 +547,12 @@ export function createPollDeps(params: {
     fetch: params.fetch,
     random: params.random ?? (() => 0.5),
     logger: params.logger ?? createRecordingLogger(),
+    // NOT OPTIONAL ON THE DEPS ITSELF, deliberately. An optional port is a wire
+    // a composition root can leave unconnected in silence, which is precisely
+    // the D11 failure this sprint inherits from the delivery composition. The
+    // default lives HERE, in the fixture, where "this suite is not about the
+    // trigger" is a statement a reader can check.
+    requestAnalysis: params.requestAnalysis ?? { requestForProject: () => Promise.resolve() },
   };
 }
 

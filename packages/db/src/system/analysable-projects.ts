@@ -89,3 +89,41 @@ export async function listAnalysableProjects(db: ScopedDb): Promise<AnalysablePr
     };
   });
 }
+
+/**
+ * ONE project, resolved by its id, with the organization scope READ OFF THE
+ * ROW (O-008 AD-10).
+ *
+ * This is the tenancy half of the onboarding trigger. The queued payload
+ * carries a project id and NOTHING ELSE — no organization id and no user id —
+ * precisely so the worker cannot be handed a scope: it re-derives one from the
+ * project's own row, exactly as `createAnalysisLaneSource` already does for the
+ * scheduled path. A payload-supplied organization id would be a door for
+ * analysing one customer's project under another customer's context (D7).
+ *
+ * `null` for a project id that does not exist. There is deliberately no
+ * "active connection" predicate here, unlike `listAnalysableProjects`: the
+ * onboarding trigger fires immediately after a poll that persisted events for
+ * this very project, so requiring the join a second time would re-ask a
+ * question the caller already answered — and answering `null` for a project
+ * whose connection was revoked in the intervening seconds would silently drop
+ * the founder's one analysis rather than letting the lane report its own
+ * outcome.
+ */
+export async function findAnalysableProject(
+  db: ScopedDb,
+  projectId: string,
+): Promise<AnalysableProject | null> {
+  const [row] = await db
+    .select({
+      organizationId: projects.organizationId,
+      organizationName: organization.name,
+      projectId: projects.id,
+    })
+    .from(projects)
+    .innerJoin(organization, eq(organization.id, projects.organizationId))
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  return row ?? null;
+}

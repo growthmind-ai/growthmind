@@ -76,12 +76,13 @@
  * to Slack at MVP. A daily 'nothing today' post erodes the channel's signal"). The tick
  * logs the reason, counts it in the summary, and creates NO `deliveries` row.
  *
- * TODO: the honest version of this needs persistence that does not exist yet. A
- * scheduler day-state row keyed `(project, day)`. When lands its first-run surface,
- * that row is what makes a nothing-today idempotent, and this branch becomes a
- * claim-then-post exactly like the deliver arm, with the day key playing the part the
- * unique index plays here. Until then the reason is a log line and a counter, not a
- * message, and `nothing_today` is read from the app rather than pushed at anybody.
+ * TODO: the honest version of this needs persistence that still does not exist
+ * — a scheduler day-state row keyed `(project, day)`. That row is what would
+ * make a nothing-today idempotent, turning this branch into a claim-then-post
+ * exactly like the deliver arm, with the day key playing the part the unique
+ * index plays here. O-008 wired the lane and the poster and did NOT add it, so
+ * the reason remains a log line and a counter rather than a message, and
+ * `nothing_today` is READ from the app rather than pushed at anybody.
  *
  * Tenant scope comes from the lane row There is no payload (the task is cron-triggered)
  * so there is nothing a caller could supply an organization id through even in
@@ -190,15 +191,21 @@ export type DeliveryLane = {
 };
 
 /**
- * Where lanes come from. A port, not a repository call, because the delivering side of
- * this lane (a `findings` table and a `slack_connections` table) is not in this
- * branch's history yet. Shipped the scheduler, the renderer, the scanner, the ledger
- * and the poster port, and the analysis lane that writes findings is a later sprint's
- * work.
+ * Where lanes come from. A PORT, not a repository call — and the gap it was
+ * holding open is now CLOSED (O-008 AD-15).
  *
- * Naming the read as a port rather than inlining a query keeps that gap visible and
- * one-line-fillable: the day those tables land, the implementation is a repository
- * behind this interface and nothing in this file changes.
+ * O-007 shipped this interface with no producer, because the delivering side of
+ * the lane needed a `findings` table and a `slack_connections` table that were
+ * not in this branch's history: O-007 shipped the scheduler, the renderer, the
+ * scanner, the ledger and the poster port, and nothing that could build a lane.
+ * Naming the read as a port rather than inlining a query is what kept that gap
+ * VISIBLE and one-line-fillable.
+ *
+ * `../delivery-lane-source.ts` is that one line, landed. Both tables exist,
+ * `createDeliveryLaneSource` implements this interface against them, and
+ * NOTHING IN THIS FILE CHANGED FOR IT — which is what the port was for. From
+ * here on, an empty lane list means "nobody has connected a channel", never
+ * "no producer was written".
  */
 export interface DeliveryLaneSource {
   /** Every project due a delivery decision on this tick. An empty list is an ordinary
@@ -217,14 +224,39 @@ export interface DeliveryLaneSource {
  */
 export type DeliveriesRepoFor = (ctx: TenantContext) => DeliveriesRepo;
 
+/**
+ * THE POSTER, RESOLVED PER LANE FROM THE LANE'S OWN TENANT CONTEXT (AD-13,
+ * correction C-C).
+ *
+ * `createSlackDeliveryPoster` binds ONE workspace's bearer token AT
+ * CONSTRUCTION, and `PostRequest` carries `channelId`, `blocks`, `fallbackText`
+ * and NO ORGANIZATION — so a single poster instance can serve exactly one
+ * organization's token while this tick iterates lanes across every organization
+ * on the installation. A `poster: DeliveryPoster` field was therefore a
+ * single-tenant assumption hiding in a multi-tenant loop.
+ *
+ * THE REJECTED ALTERNATIVE — a dispatching poster mapping `channelId` → org —
+ * is a D7 hazard BY CONSTRUCTION: it keys a CREDENTIAL LOOKUP on a value that
+ * TRAVELS WITH THE MESSAGE. This resolver takes a `TenantContext` and nothing
+ * else, so the credential can only be found by the organization the lane row
+ * named. It is the same factory shape `deliveriesFor` above already uses, and
+ * `findingsFor`/`runsFor`/`ledgerFor` use one file over.
+ *
+ * `null` is an ORDINARY ANSWER: this organization has no active delivery
+ * channel — revoked between the lane read and the post, or never connected. The
+ * lane is skipped and said out loud; it is not an error and it does not fail
+ * the tick. Typed by the PORT (`@growthmind/shared`), never by a Slack factory:
+ * this file must not learn the vendor's name, and ../index.ts is where a
+ * concrete adapter is selected.
+ */
+export type DeliveryPosterFor = (ctx: TenantContext) => Promise<DeliveryPoster | null>;
+
 export interface DeliveryTickDeps {
   lanes: DeliveryLaneSource;
   deliveriesFor: DeliveriesRepoFor;
-  /** Typed by the port (`@growthmind/shared`), never by a Slack factory. This file must
-   * not learn the vendor's name;./index.ts is where a concrete adapter is selected. */
-  poster: DeliveryPoster;
-  /** The only way this handler reads time. A fake clock in a test is therefore total:
-   * nothing here reads `Date.now` by any other route. */
+  posterFor: DeliveryPosterFor;
+  /** The only way this handler reads time. A fake clock in a test is therefore
+   * total: nothing here reads `Date.now()` by any other route. */
   now: () => Date;
   logger: DeliveryLogger;
 }
@@ -247,8 +279,15 @@ export interface DeliveryTickSummary {
   /** Lanes where another worker already owned the post. Not a failure, the guarantee
    * working. */
   notClaimed: number;
-  /** Lanes that threw somewhere this handler could not attribute. Isolated: a non-zero
-   * value here does not mean the tick failed. */
+  /** Lanes whose organization has no active delivery channel to resolve a
+   * poster from. NOT counted as an error and NOT counted as a failure: on a
+   * multi-org installation an organization that has not connected Slack (or
+   * has revoked it) is a supported state, and putting it in `lanesErrored`
+   * would make every such installation look permanently unhealthy while
+   * burying the one lane that really did fail. */
+  notConnected: number;
+  /** Lanes that threw somewhere this handler could not attribute. Isolated: a
+   * non-zero value here does not mean the tick failed. */
   lanesErrored: number;
 }
 
@@ -260,6 +299,7 @@ type LaneOutcome =
   | "blocked_by_pii"
   | "nothing_today"
   | "not_claimed"
+  | "not_connected"
   | "unresolvable";
 
 /**
@@ -414,16 +454,44 @@ async function runLane(
   tickAt: Date,
 ): Promise<LaneOutcome> {
   const ctx = tenantContextFor(lane);
+
+  // THE POSTER IS RESOLVED FIRST, ONCE PER LANE, FROM THIS LANE'S OWN CONTEXT
+  // (AD-13) — before the ledger is read, before anything is decided, and long
+  // before anything is claimed. Resolving late would mean discovering a revoked
+  // channel while holding a `pending` row for a message that can never be sent,
+  // which is the stuck state D8 exists to prevent; resolving here means a lane
+  // with nowhere to post simply does no work at all.
+  //
+  // The context is the WHOLE input. There is no channel id and no message in
+  // it, so a credential can only ever be found by the organization the lane row
+  // named (D7).
+  const poster = await deps.posterFor(ctx);
+
+  if (poster === null) {
+    // GRACEFUL ABSENCE, PER ORGANIZATION — distinct from the installation-wide
+    // absence ../index.ts logs. Said out loud rather than skipped silently: a
+    // silent skip is indistinguishable from a lane that ran and found nothing,
+    // which is the one distinction this vocabulary exists to keep. The
+    // organization is named so a reader of a multi-org installation's logs can
+    // tell WHICH customer is unconnected.
+    deps.logger.info(
+      `delivery tick: org ${lane.organizationId} has no delivery channel connected, so project ` +
+        `${lane.projectId} was left alone this tick`,
+    );
+    return "not_connected";
+  }
+
   const deliveries = deps.deliveriesFor(ctx);
 
   // The open set is a persisted fact, read under this org's filter, never a transient
   // signal and never a number the lane source computed.
   //
-  // TODO: today "open" means a delivery still `pending`, because a finding awaiting the
-  // customer's answer has no table in this branch's history. When the analysis lane
-  // lands `findings`, this read becomes "findings awaiting an answer" and a
-  // posted-but-unanswered finding starts holding the lane the way describes. Until then
-  // the backpressure is real but shorter-lived than the product decision intends.
+  // TODO: today "open" means a delivery still `pending`. The `findings` table
+  // now exists and this read COULD become "findings awaiting an answer", at
+  // which point a posted-but-unanswered finding would hold the lane the way
+  // FR-6 describes — but the customer's ANSWER has no persistence yet, so there
+  // is still nothing to read "awaiting" from. Until that lands the backpressure
+  // is real but shorter-lived than the product decision intends.
   const pending = await deliveries.listPendingForProject(lane.projectId);
 
   const state: DeliveryLaneState = {
@@ -498,7 +566,7 @@ async function runLane(
 
   let result: PostResult;
   try {
-    result = await deps.poster.post(prepared.request);
+    result = await poster.post(prepared.request);
   } catch (error) {
     // The port is contracted never to throw. If one does anyway, the row still reaches
     // a terminal state. A contract violation must not become a stuck `pending` that
@@ -578,6 +646,9 @@ function applyOutcome(summary: DeliveryTickSummary, outcome: LaneOutcome): void 
     case "not_claimed":
       summary.notClaimed += 1;
       return;
+    case "not_connected":
+      summary.notConnected += 1;
+      return;
     case "unresolvable":
       summary.lanesErrored += 1;
       return;
@@ -610,6 +681,7 @@ export async function runDeliveryTick(deps: DeliveryTickDeps): Promise<DeliveryT
     blockedByPii: 0,
     nothingToday: 0,
     notClaimed: 0,
+    notConnected: 0,
     lanesErrored: 0,
   };
 
@@ -631,7 +703,7 @@ export async function runDeliveryTick(deps: DeliveryTickDeps): Promise<DeliveryT
   }
 
   deps.logger.info(
-    `delivery tick: lanes ${summary.lanesConsidered}, posted ${summary.posted}, failed ${summary.failed} (${summary.blockedByPii} held back), nothing today ${summary.nothingToday}, already claimed ${summary.notClaimed}, errored ${summary.lanesErrored}`,
+    `delivery tick: lanes ${summary.lanesConsidered}, posted ${summary.posted}, failed ${summary.failed} (${summary.blockedByPii} held back), nothing today ${summary.nothingToday}, already claimed ${summary.notClaimed}, no channel connected ${summary.notConnected}, errored ${summary.lanesErrored}`,
   );
 
   return summary;

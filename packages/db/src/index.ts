@@ -187,3 +187,51 @@ export {
   type ClaimModelCallInput,
   type ClaimModelCallResult,
 } from "./repositories/analysis-runs.repo";
+
+// --- O-008: the first-run surface --------------------------------------------
+// NOTE: `existsAnyActiveSlackConnection` and its two siblings are deliberately
+// absent from this barrel, exactly as the other system reads are. They live
+// behind the "./system" subpath and nothing here re-exports them.
+//
+// `openCredentialForOrg` IS reachable from here, on the repository this barrel
+// exports, and that is a deliberate difference from the PostHog credential —
+// AD-20 puts the Slack door on the repository so the delivery composition root
+// can build it per lane from the lane's own context. It is COMPOSITION-ROOT
+// ONLY, stated on the method itself, and its name is the grep.
+export {
+  createSlackConnectionsRepo,
+  toSlackConnectionSummary,
+  SlackConnectionWriteError,
+  type SlackConnectionsRepo,
+  type SlackConnectionRow,
+  type SlackConnectionSummary,
+  type InsertActiveSlackConnectionInput,
+} from "./repositories/slack-connections.repo";
+// The AAD this table's credential is sealed under has EXACTLY ONE PRODUCER, and
+// it is re-exported here so every consumer reaches it through the barrel rather
+// than deep-importing the schema module. It takes a `TenantContext` and no
+// project id, deliberately: an envelope sealed with `credentialAad(orgId,
+// projectId)` writes fine and fails at delivery time, per customer, silently.
+export { slackCredentialAad } from "./schema/slack-connections";
+export {
+  createFirstRunRepo,
+  type FirstRunRepo,
+  type FirstRunState,
+} from "./repositories/first-run.repo";
+export {
+  createFirstRunStatusService,
+  type FirstRunStatusService,
+} from "./services/first-run-status.service";
+export { ensureProject } from "./tenancy/ensure-project";
+
+// Drizzle's predicate helpers, re-exported for TEST callers that read a table
+// back directly to prove a write landed.
+//
+// WHY THEY COME FROM HERE AND NOT FROM `drizzle-orm`. This package owns the
+// database; `apps/web` declares no `drizzle-orm` dependency and must not gain
+// one, for the same reason it declares no `zod` — "the database is an
+// implementation detail" is enforced by what a package can resolve, not by
+// remembering. A test that imported `drizzle-orm` directly typechecked locally
+// on a hoisted install and failed CI's clean one, which is exactly the class of
+// drift this re-export removes.
+export { and, eq, sql } from "drizzle-orm";
