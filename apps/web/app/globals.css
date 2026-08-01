@@ -22,6 +22,18 @@
   --mono: var(--font-mono), ui-monospace, Menlo, monospace;
 }
 
+/* Filled buttons sit on the band green (#a9c4a2). White text on that is ~1.9:1 —
+ * a WCAG failure. The ink is --onband (#161c16, ~11:1). The theme asks Mantine for
+ * this via `autoContrast`, but the dark-scheme contrast variable does not always
+ * resolve, so pin it here: every filled control gets dark-on-band, everywhere. */
+.mantine-Button-root[data-variant="filled"] {
+  --button-color: var(--onband);
+}
+
+.mantine-ActionIcon-root[data-variant="filled"] {
+  --ai-color: var(--onband);
+}
+
 :focus-visible {
   outline: 2px solid var(--band);
   outline-offset: 3px;

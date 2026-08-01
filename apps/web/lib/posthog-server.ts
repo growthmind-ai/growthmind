@@ -1,10 +1,11 @@
 import { PostHog } from "posthog-node";
 
+import { resolvePostHogHosts } from "./posthog-hosts";
+
 let posthogClient: PostHog | null = null;
 
 export function getPostHogClient(): PostHog | null {
   const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
   if (!token) {
     if (process.env.NODE_ENV !== "production") {
@@ -16,8 +17,17 @@ export function getPostHogClient(): PostHog | null {
   }
 
   if (!posthogClient) {
+    // Server-side, so no build-time inlining is involved — but the variables are the
+    // same ones the browser reads, deliberately: one PostHog deployment, one set of
+    // hosts, whether the event originates on the server or the client.
+    const { apiHost } = resolvePostHogHosts({
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+      assetsHost: process.env.NEXT_PUBLIC_POSTHOG_ASSETS_HOST,
+      uiHost: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST,
+    });
+
     posthogClient = new PostHog(token, {
-      host: host ?? "https://eu.i.posthog.com",
+      host: apiHost,
       flushAt: 1,
       flushInterval: 0,
     });
