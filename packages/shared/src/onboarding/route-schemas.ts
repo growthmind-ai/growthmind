@@ -1,4 +1,10 @@
-// THE EIGHT FIRST-RUN ROUTE INPUT SCHEMAS (O-008, AD-16, AD-16a).
+// THE TEN FIRST-RUN ROUTE INPUT SCHEMAS (O-008, AD-16, AD-16a).
+//
+// Eight of them shipped with O-008. The other two — `analytics/discover` and
+// `slack/channel` — arrived with the sprint that deleted the hunting from
+// first run, and they are here under exactly the same terms: strict, no
+// tenancy key, `.min(1)` on every field. A new route's schema going anywhere
+// else is how the first non-strict one gets written.
 //
 // ###########################################################################
 // # WHY THESE SCHEMAS LIVE IN `packages/shared` AND NOT BESIDE THEIR ROUTES.
@@ -22,7 +28,7 @@
 //
 // ── AD-16: NO SCHEMA HERE DECLARES A TENANCY KEY, AND NONE EVER MAY ─────────
 //
-// There is no `projectId` and no `organizationId` below, on any of the eight.
+// There is no `projectId` and no `organizationId` below, on any of the ten.
 // Tenancy comes from the session: `getTenantContext()` → `ensureProject(db,
 // ctx)` → `createXRepo(db, ctx)`. FR-O24 asked that a client-supplied project
 // id be resolved against the caller's org before it reaches a query; the
@@ -40,7 +46,7 @@
 //
 // A plain `z.object()` ACCEPTS a client-supplied tenancy id, SILENTLY STRIPS
 // it, and answers 200 — while every key-enumeration test stays green. Six of
-// the eight schemas below declare no field at all, and those are the sharp
+// the ten schemas below declare no field at all, and those are the sharp
 // end: `z.object({})` accepts ANYTHING AT ALL, `z.strictObject({})` refuses it
 // by name. Every schema in this file is `z.strictObject`. **A plain
 // `z.object()` on a first-run route is a defect regardless of its declared
@@ -64,6 +70,34 @@ import { z } from "zod";
  * parses a `{ projectId }` body through on every route including this one.
  */
 export const firstRunStatusInputSchema = z.strictObject({});
+
+/**
+ * `POST /api/first-run/analytics/discover` — the key, and nothing else.
+ *
+ * This route exists to delete a hunt. `connect` below needs a project number,
+ * and the only way a founder gets one is by leaving this product, finding the
+ * vendor's settings page and copying a number back. The personal key on its own
+ * is enough to ask the vendor which projects it can see, so the number is
+ * something we fetch rather than something we ask for — which is why NO project
+ * id appears here, neither the customer's nor the vendor's.
+ *
+ * NO tenancy key either, for the reason the header gives: nothing on this route
+ * chooses whose organization the answer belongs to.
+ */
+export const firstRunAnalyticsDiscoverInputSchema = z.strictObject({
+  /** Held for the lifetime of the call. Never logged, never returned. */
+  personalApiKey: z.string().min(1),
+  /**
+   * Absent on the common path, and that is the design rather than a
+   * convenience. The known regions are probed in order, and the host field is
+   * revealed to the customer only once every one of them has refused — so a
+   * body carrying a host is a self-hoster answering a question we earned the
+   * right to ask. Optional here is what lets the common path stay silent about
+   * regions the customer should never have to think about.
+   */
+  host: z.string().min(1).optional(),
+});
+export type FirstRunAnalyticsDiscoverInput = z.infer<typeof firstRunAnalyticsDiscoverInputSchema>;
 
 /**
  * `POST /api/first-run/analytics/connect` — AD-16's row, transcribed.
@@ -101,6 +135,26 @@ export const firstRunSlackConnectInputSchema = z.strictObject({
   channelId: z.string().min(1),
 });
 export type FirstRunSlackConnectInput = z.infer<typeof firstRunSlackConnectInputSchema>;
+
+/**
+ * `POST /api/first-run/slack/channel` — the one moment a channel is chosen.
+ *
+ * This looks like the payload `firstRunSlackTestInputSchema` below refuses, and
+ * the difference is which question is being answered. A connection can now be
+ * made before a channel exists on it, so choosing is its own step: the server
+ * lists the channels the connected workspace actually has, and this route
+ * records which one of them the customer picked. Proving the id came from that
+ * list is the route's job — the schema's job ends at "text somebody typed is
+ * not it".
+ *
+ * After this, nothing accepts a channel on the wire again. Every later post
+ * reads it from the stored row (FR-O13), so no caller can redirect an
+ * organization's announcement by naming a channel at post time.
+ */
+export const firstRunSlackChannelInputSchema = z.strictObject({
+  channelId: z.string().min(1),
+});
+export type FirstRunSlackChannelInput = z.infer<typeof firstRunSlackChannelInputSchema>;
 
 /**
  * `POST /api/first-run/slack/test` — no input, and that is FR-O13.
