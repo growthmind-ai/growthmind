@@ -1,20 +1,19 @@
-// Row seeders for the O-003 repository/system suites (Wave 0b, lane L3).
+// Row seeders for the repository/system suites (Wave 0b, lane L3).
 //
-// `__tests__/helpers/fixtures.ts` already owns org/user/member/project/
-// connection seeding. This file adds only the three row shapes that lane's
-// tests need and that file does not have — `sessions`, `events`, and
-// `session_source_poll_runs` — deliberately in a lane-named module so a
-// parallel lane editing `fixtures.ts` can never collide with it.
+// `__tests__/helpers/fixtures.ts` already owns org/user/member/project/ connection
+// seeding. This file adds only the three row shapes that lane's tests need and that
+// file does not have, `sessions`, `events`, and `session_source_poll_runs`.
+// Deliberately in a lane-named module so a parallel lane editing `fixtures.ts` can
+// never collide with it.
 //
-// Every seeder writes a REAL row through the same drizzle instance the
-// repositories under test use, and every seeder takes `organizationId`
-// EXPLICITLY rather than a `TenantContext`: the cross-tenant fixtures must be
-// able to express "a row in org B that org A's context must not see", and a
-// context-only seeder cannot say that.
+// Every seeder writes a real row through the same drizzle instance the repositories
+// under test use, and every seeder takes `organizationId` explicitly rather than a
+// `TenantContext`: the cross-tenant fixtures must be able to express "a row in org B
+// that org A's context must not see", and a context-only seeder cannot say that.
 //
-// These bypass the repositories on purpose — they are the arrange step, never
-// the assertion. Every read-back in the suites goes back through the public
-// repository contract, or the test would prove nothing about scoping.
+// These bypass the repositories on purpose. They are the arrange step, never the
+// assertion. Every read-back in the suites goes back through the public repository
+// contract, or the test would prove nothing about scoping.
 import { randomUUID } from "node:crypto";
 
 import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
@@ -31,10 +30,10 @@ import type { ScopedDb } from "../../src/repositories/types";
 import * as schema from "../../src/schema";
 
 /**
- * Suite-unique fixture naming. The O-002 retro's costliest hour went to four
- * suites colliding on a reused `user.email`, which read as a correct red and
- * was not — so every org name, user email, and project name in this lane
- * carries the lane prefix `db-` plus a per-file token plus a counter.
+ * Suite-unique fixture naming. The retro's costliest hour went to four suites colliding
+ * on a reused `user.email`, which read as a correct red and was not, so every org name,
+ * user email, and project name in this lane carries the lane prefix `db-` plus a
+ * per-file token plus a counter.
  */
 export function laneNames(fileToken: string): {
   orgName: (label: string) => string;
@@ -46,7 +45,7 @@ export function laneNames(fileToken: string): {
   return {
     orgName: (label) => `${base}-org-${label}`,
     userName: (label) => `${base}-user-${label}`,
-    // example.com is IANA-reserved; nothing here addresses a real mailbox.
+    // example.com is iana-reserved; nothing here addresses a real mailbox.
     email: (label) => `${base}-${label}@example.com`,
     projectName: (label) => `${base}-project-${label}`,
   };
@@ -127,15 +126,15 @@ export async function seedEvent(
     occurredAt?: Date;
     urlPath?: string | null;
     /**
-     * ADD §D-15 edit (iii). This seeder writes drizzle values DIRECTLY rather
-     * than through `EventInsertRow`, so adding the column to that interface did
-     * not break it at typecheck — which is precisely why the edit is easy to
-     * miss and why the ADD names the file.
+     * edit (iii). This seeder writes drizzle values directly rather than through
+     * `EventInsertRow`, so adding the column to that interface did not break it at
+     * typecheck, which is precisely why the edit is easy to miss and why the add names
+     * the file.
      *
-     * Defaults to the current version so a seeded row looks like one the write
-     * path produced. Pass `null` explicitly to seed a pre-versioning row —
-     * `null` means "written before versions were recorded, redaction status
-     * unknown" and is never coerced to `0` (ES-14).
+     * Defaults to the current version so a seeded row looks like one the write path
+     * produced. Pass `null` explicitly to seed a pre-versioning row, `null` means
+     * "written before versions were recorded, redaction status unknown" and is never
+     * coerced to `0`.
      */
     urlPathNormalisationVersion?: number | null;
   },
@@ -152,10 +151,10 @@ export async function seedEvent(
       name: params.name ?? "$pageview",
       occurredAt: params.occurredAt ?? new Date("2026-07-30T10:00:00.000Z"),
       urlPath: params.urlPath ?? "/pricing",
-      // `=== undefined`, NOT `??` — an explicitly seeded `null` is a
-      // pre-versioning row and must survive as `null`. `??` would coerce it
-      // back to the current version and quietly destroy the only fixture that
-      // can stand in for the rows a §5 remediation migration has to find.
+      // `=== undefined`, not `??`, an explicitly seeded `null` is a pre-versioning row
+      // and must survive as `null`. `??` would coerce it back to the current version
+      // and quietly destroy the only fixture that can stand in for the rows a
+      // remediation migration has to find.
       urlPathNormalisationVersion:
         params.urlPathNormalisationVersion === undefined
           ? URL_PATH_NORMALISATION_VERSION

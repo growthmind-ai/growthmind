@@ -1,32 +1,30 @@
-// Credential scrubbing for anything that could become a stored reason, a log
-// line, or a customer-facing message (O-003 D-13, FR-7).
+// Credential scrubbing for anything that could become a stored reason, a log line, or a
+// customer-facing message.
 //
-// The spike's `scrubKeys` redacts only exact whole-string occurrences of the
-// values the process holds — so a key echoed back URL-encoded, JSON-escaped,
-// or truncated survives it. This scrubber runs BOTH passes: exact values
-// first, then a pattern pass over PostHog's own key shapes.
+// The spike's `scrubKeys` redacts only exact whole-string occurrences of the values the
+// process holds, so a key echoed back URL-encoded, JSON-escaped, or truncated survives
+// it. This scrubber runs both passes: exact values first, then a pattern pass over
+// PostHog's own key shapes.
 
 /**
- * PostHog key shapes: `phc_…` (project), `phx_…` (personal), `phs_…`.
- * Deliberately broad in the redacting direction — over-redacting a reason
- * string costs nothing, while leaking a customer's personal key costs them
- * their PostHog account.
+ * PostHog key shapes: `phc_…` (project), `phx_…` (personal), `phs_…`. Deliberately
+ * broad in the redacting direction. Over-redacting a reason string costs nothing, while
+ * leaking a customer's personal key costs them their PostHog account.
  */
 export const POSTHOG_KEY_PATTERN = /\bph[a-z]_[A-Za-z0-9_-]{16,}/g;
 
-/** What a redacted run leaves behind, so a reader can tell redaction happened
- * rather than wondering where a value went. */
+/** What a redacted run leaves behind, so a reader can tell redaction happened rather
+ * than wondering where a value went. */
 export const REDACTED_PLACEHOLDER = "[redacted]";
 
 /** Default ceiling on a stored failure reason. */
 export const REASON_MAX_LENGTH = 240;
 
 /**
- * Every written form one secret can take on its way into a message. The
- * exact-value pass alone is what the spike does, and it misses all but the
- * first of these — a key that came back through a URL, through
- * `JSON.stringify`, or through a logger that escaped it is still the whole
- * key, still usable, and still leaked.
+ * Every written form one secret can take on its way into a message. The exact-value
+ * pass alone is what the spike does, and it misses all but the first of these. A key
+ * that came back through a URL, through `JSON.stringify`, or through a logger that
+ * escaped it is still the whole key, still usable, and still leaked.
  */
 function encodedVariantsOf(secret: string): string[] {
   const urlEncoded = encodeURIComponent(secret);
@@ -40,21 +38,21 @@ function encodedVariantsOf(secret: string): string[] {
     // `JSON.stringify` wraps in quotes and escapes; we want the body only.
     JSON.stringify(secret).slice(1, -1),
   ]);
-  // Longest first, so a variant that CONTAINS a shorter one is redacted whole
-  // rather than being left as a recognisable fragment around a placeholder.
+  // Longest first, so a variant that contains a shorter one is redacted whole rather
+  // than being left as a recognisable fragment around a placeholder.
   return [...variants].toSorted((a, b) => b.length - a.length);
 }
 
 /**
- * Exact-value pass over `secrets` (each also matched URL-encoded and
- * JSON-escaped), then the `POSTHOG_KEY_PATTERN` pass.
+ * Exact-value pass over `secrets` (each also matched URL-encoded and JSON-escaped),
+ * then the `POSTHOG_KEY_PATTERN` pass.
  */
 export function scrubSecrets(value: string, secrets: readonly string[]): string {
   let scrubbed = value;
 
   for (const secret of secrets) {
-    // A short or empty secret would match everywhere and turn every message
-    // into placeholders — useless for debugging and not safer.
+    // A short or empty secret would match everywhere and turn every message into
+    // placeholders. Useless for debugging and not safer.
     if (secret.length < 8) {
       continue;
     }
@@ -63,10 +61,9 @@ export function scrubSecrets(value: string, secrets: readonly string[]): string 
     }
   }
 
-  // The pattern pass catches what the exact pass structurally cannot: a key
-  // this process never held, echoed back by the upstream. Over-redacting a
-  // reason costs nothing; leaking a customer's personal key costs them their
-  // analytics account.
+  // The pattern pass catches what the exact pass structurally cannot: a key this
+  // process never held, echoed back by the upstream. Over-redacting a reason costs
+  // nothing; leaking a customer's personal key costs them their analytics account.
   scrubbed = scrubbed.replace(
     new RegExp(POSTHOG_KEY_PATTERN.source, POSTHOG_KEY_PATTERN.flags),
     REDACTED_PLACEHOLDER,
@@ -89,9 +86,9 @@ export function truncateForReason(value: string, maxLength: number = REASON_MAX_
   // Never leave a dangling percent-escape: `…%2` reads as noise, and half of a
   // percent-encoded secret is still half a secret on screen.
   cut = cut.replace(/%[0-9A-Fa-f]?$/, "");
-  // Never leave a dangling backslash escape from a JSON-escaped fragment: an
-  // odd number of trailing backslashes means the last one is opening an escape
-  // whose payload got cut off.
+  // Never leave a dangling backslash escape from a JSON-escaped fragment: an odd number
+  // of trailing backslashes means the last one is opening an escape whose payload got
+  // cut off.
   const trailingBackslashes = /\\+$/.exec(cut)?.[0].length ?? 0;
   if (trailingBackslashes % 2 === 1) {
     cut = cut.slice(0, -1);

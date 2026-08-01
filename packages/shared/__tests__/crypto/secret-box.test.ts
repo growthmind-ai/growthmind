@@ -1,8 +1,8 @@
-// ADD §9 items 1–4 — the credential envelope (O-003 D-1 / FR-7 / D7 / D12).
+// items 1–4, the credential envelope.
 //
-// Fixture discipline: lane seed prefix `s0-`. Every value here is an obviously
-// fake placeholder — this repo is public and nothing resembling a real
-// PostHog personal key may appear in it.
+// Fixture discipline: lane seed prefix `s0-`. Every value here is an obviously fake
+// placeholder. This repo is public and nothing resembling a real PostHog personal key
+// may appear in it.
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -18,9 +18,9 @@ import {
 import type { CredentialKey } from "../../src/crypto/secret-box";
 
 /**
- * `CredentialKey` is a public shape (`{ readonly bytes: Uint8Array }`), so a
- * test can build one directly rather than reaching through
- * `resolveCredentialKey` — which has its own suite and its own failure modes.
+ * `CredentialKey` is a public shape (`{ readonly bytes: Uint8Array }`), so a test can
+ * build one directly rather than reaching through `resolveCredentialKey`, which has its
+ * own suite and its own failure modes.
  */
 function fakeKey(fill: number): CredentialKey {
   return { bytes: new Uint8Array(CREDENTIAL_KEY_BYTE_LENGTH).fill(fill) };
@@ -42,7 +42,7 @@ const PLAINTEXT = "s0-placeholder-credential-value-not-a-real-key";
 describe("credentialAad", () => {
   test("binds a ciphertext to one organization and project", () => {
     expect(AAD_A).toBe(`${ORG_A}:${PROJECT}`);
-    // The whole D7 guard rests on two orgs never producing the same AAD.
+    // The whole guard rests on two orgs never producing the same aad.
     expect(AAD_A).not.toBe(AAD_B);
   });
 });
@@ -58,11 +58,10 @@ describe("encryptSecret / decryptSecret", () => {
     expect(result).toEqual({ ok: true, value: PLAINTEXT });
   });
 
-  // CR-7 regression. Before the fix, `encryptSecret("")` produced a
-  // well-formed envelope (a zero-length ciphertext is exactly what AES-GCM
-  // produces for zero-length plaintext) that `decryptSecret` then rejected as
-  // `malformed_envelope` — reading as credential corruption rather than as a
-  // legitimate round trip of an empty string.
+  // regression. Before the fix, `encryptSecret` produced a well-formed envelope (a
+  // zero-length ciphertext is exactly what aes-gcm produces for zero-length plaintext)
+  // that `decryptSecret` then rejected as `malformed_envelope`. Reading as credential
+  // corruption rather than as a legitimate round trip of an empty string.
   test("round-trips an empty plaintext instead of reading it back as a malformed envelope", () => {
     const envelope = encryptSecret("", KEY_A, AAD_A);
     const parts = envelope.split(".");
@@ -74,17 +73,17 @@ describe("encryptSecret / decryptSecret", () => {
   });
 
   test("two encryptions of the same plaintext differ, because the iv is random per call", () => {
-    // A deterministic ciphertext would leak "these two orgs pasted the same
-    // key" straight out of the column.
+    // A deterministic ciphertext would leak "these two orgs pasted the same key"
+    // straight out of the column.
     expect(encryptSecret(PLAINTEXT, KEY_A, AAD_A)).not.toBe(encryptSecret(PLAINTEXT, KEY_A, AAD_A));
   });
 
-  // Item 2 — D7
+  // Item 2,
   test("decryption fails as a named result — never a throw — when the aad names a different organization", () => {
     const envelope = encryptSecret(PLAINTEXT, KEY_A, AAD_A);
 
-    // The structural cross-tenant guard: org B lifts org A's ciphertext into
-    // its own row and gets a refusal, not a credential.
+    // The structural cross-tenant guard: org B lifts org A's ciphertext into its own
+    // row and gets a refusal, not a credential.
     const result = decryptSecret(envelope, KEY_A, AAD_B);
 
     expect(result.ok).toBe(false);
@@ -92,7 +91,7 @@ describe("encryptSecret / decryptSecret", () => {
     expect(result.reason).toBe("authentication_failed");
   });
 
-  // Item 3 — F-11 (fail closed)
+  // Item 3, F-11 (fail closed)
   test("decryption fails as a named result when the envelope was written under a different key id", () => {
     const envelope = encryptSecret(PLAINTEXT, KEY_A, AAD_A);
 
@@ -100,8 +99,8 @@ describe("encryptSecret / decryptSecret", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected a failure result, got a decrypted value");
-    // Identifiable as a rotation casualty, not an opaque authentication error:
-    // that distinction is the entire reason the envelope carries a keyId.
+    // Identifiable as a rotation casualty, not an opaque authentication error: that
+    // distinction is the entire reason the envelope carries a keyId.
     expect(result.reason).toBe("key_id_mismatch");
   });
 
@@ -116,7 +115,7 @@ describe("encryptSecret / decryptSecret", () => {
 });
 
 describe("the envelope format", () => {
-  // Item 4 — D12
+  // Item 4,
   test("envelope is versioned and carries a key fingerprint, never the key", () => {
     const envelope = encryptSecret(PLAINTEXT, KEY_A, AAD_A);
     const parts = envelope.split(".");
@@ -126,8 +125,8 @@ describe("the envelope format", () => {
     const [version, keyId, iv, tag, ciphertext] = parts;
     expect(version).toBe(ENVELOPE_VERSION);
 
-    // A fingerprint — the first 8 hex chars of sha256(key) — so a row written
-    // under a retired key is findable rather than an opaque failure.
+    // A fingerprint (the first 8 hex chars of sha256(key)) so a row written under a
+    // retired key is findable rather than an opaque failure.
     expect(keyId).toBe(keyIdOf(KEY_A));
     expect(keyId).toMatch(/^[0-9a-f]{8}$/);
 
@@ -138,8 +137,8 @@ describe("the envelope format", () => {
     expect(Buffer.from(iv ?? "", "base64url")).toHaveLength(IV_BYTE_LENGTH);
     expect(Buffer.from(tag ?? "", "base64url")).toHaveLength(AUTH_TAG_BYTE_LENGTH);
 
-    // The key itself must not be recoverable from the stored column in any
-    // encoding we hand out.
+    // The key itself must not be recoverable from the stored column in any encoding we
+    // hand out.
     const keyBase64 = Buffer.from(KEY_A.bytes).toString("base64");
     const keyBase64Url = Buffer.from(KEY_A.bytes).toString("base64url");
     const keyHex = Buffer.from(KEY_A.bytes).toString("hex");

@@ -1,21 +1,20 @@
-// Wave 0b lane L2 test doubles. Fakes, never mocks: a fake fetch that serves
-// canned pages and records what was asked for, a fake deps bundle whose
-// `sleep` records instead of waiting, and a fake `PostHogClient` for the
-// identity tests.
+// Wave 0b lane L2 test doubles. Fakes, never mocks: a fake fetch that serves canned
+// pages and records what was asked for, a fake deps bundle whose `sleep` records
+// instead of waiting, and a fake `PostHogClient` for the identity tests.
 //
-// NOTHING HERE TOUCHES THE NETWORK. `sleep` resolves immediately, so a 429
-// sequence is asserted with zero wall-clock waiting (O-003 D-8).
+// Nothing here touches the network. `sleep` resolves immediately, so a 429 sequence is
+// asserted with zero wall-clock waiting.
 //
-// FIXTURE SEED PREFIX: `ad-`. Every value that could collide with another
-// suite carries it. Every host, project id, and key below is an obviously-fake
-// placeholder — this repo is public.
+// Fixture seed prefix: `ad-`. Every value that could collide with another suite carries
+// it. Every host, project id, and key below is an obviously-fake placeholder. This repo
+// is public.
 import { deriveIdentityHmacKey } from "@growthmind/shared";
 import type { IdentityHmacKey } from "@growthmind/shared";
 
 import type { ClientResult, PostHogClient, PostHogEndpoint } from "../../src/posthog/client";
 import type { FetchLike, PostHogSourceConfig, PostHogSourceDeps } from "../../src/posthog/deps";
 
-/** `.invalid` is reserved by RFC 2606 and can never resolve. */
+/** `.invalid` is reserved by rfc 2606 and can never resolve. */
 export const AD_HOST = "https://ph.ad-fake.invalid";
 export const AD_SOURCE_PROJECT_ID = "424242";
 
@@ -23,11 +22,10 @@ export const AD_SOURCE_PROJECT_ID = "424242";
 export const AD_FAKE_PERSONAL_KEY = "phx_ad-fake-not-a-real-key-0000000000";
 
 /**
- * A second fake key carrying characters that percent-encode. Its
- * pattern-matchable run (`ad-fake`, 7 chars) is SHORTER than the 16-char
- * minimum, so `POSTHOG_KEY_PATTERN` cannot catch it — only the exact-value
- * pass and its encoded variants can. That is what makes the URL-encoded
- * scrubbing test discriminating rather than incidentally green.
+ * A second fake key carrying characters that percent-encode. Its pattern-matchable run
+ * (`ad-fake`, 7 chars) is shorter than the 16-char minimum, so `POSTHOG_KEY_PATTERN`
+ * cannot catch it. Only the exact-value pass and its encoded variants can. That is what
+ * makes the URL-encoded scrubbing test discriminating rather than incidentally green.
  */
 export const AD_FAKE_ENCODABLE_KEY = "phx_ad-fake+encoded/key=0000000000000000";
 
@@ -37,13 +35,11 @@ export const AD_CONFIG: PostHogSourceConfig = {
   personalApiKey: AD_FAKE_PERSONAL_KEY,
 };
 
-/** An absolute events-page url of the pinned shape, for calls that take one
- * directly rather than through the (stubbed) builder. */
+/** An absolute events-page url of the pinned shape, for calls that take one directly
+ * rather than through the (stubbed) builder. */
 export const AD_EVENTS_URL = `${AD_HOST}/api/projects/${AD_SOURCE_PROJECT_ID}/events?limit=200`;
 
-// ---------------------------------------------------------------------------
 // Fake fetch
-// ---------------------------------------------------------------------------
 
 export interface FakeResponseSpec {
   readonly status?: number;
@@ -64,13 +60,12 @@ export interface FakeFetch {
 }
 
 /**
- * `respond` is called with the requested url and the 0-based call index, so a
- * test can serve a page sequence, route by endpoint, or return the same 429
- * forever.
+ * `respond` is called with the requested url and the 0-based call index, so a test can
+ * serve a page sequence, route by endpoint, or return the same 429 forever.
  *
- * `preconnect` is carried over from the real `fetch` purely to satisfy
- * `FetchLike` (see the BLOCKER note in this lane's report) — it is never
- * called, so no connection is ever opened.
+ * `preconnect` is carried over from the real `fetch` purely to satisfy `FetchLike` (see
+ * the blocker note in this lane's report). It is never called, so no connection is ever
+ * opened.
  */
 export function createFakeFetch(
   respond: (url: string, callIndex: number) => FakeResponseSpec,
@@ -101,8 +96,8 @@ export function createFakeFetch(
   };
 }
 
-/** Serves a fixed page sequence in order; every call past the end repeats the
- * last spec, so an over-walking implementation is visible in `requests`. */
+/** Serves a fixed page sequence in order; every call past the end repeats the last
+ * spec, so an over-walking implementation is visible in `requests`. */
 export function createPagedFetch(pages: readonly FakeResponseSpec[]): FakeFetch {
   return createFakeFetch((_url, index) => {
     const spec = pages[Math.min(index, pages.length - 1)];
@@ -110,19 +105,17 @@ export function createPagedFetch(pages: readonly FakeResponseSpec[]): FakeFetch 
   });
 }
 
-// ---------------------------------------------------------------------------
 // Fake deps
-// ---------------------------------------------------------------------------
 
 export const AD_NOW = new Date("2026-07-30T18:00:00.000Z");
 
 /**
- * Security audit M-1. A fixed, obviously-fake 32-byte root key run through
- * the REAL `deriveIdentityHmacKey` — not a hand-rolled stand-in — so a test
- * asserting on `hashIdentityKey` output exercises the same derivation path
- * production does. Every test that needs a `PostHogSourceDeps` gets this
- * through `createFakeDeps` below; a test that needs to assert on the exact
- * digest imports this constant directly rather than re-deriving its own.
+ * Security audit. A fixed, obviously-fake 32-byte root key run through the real
+ * `deriveIdentityHmacKey` (not a hand-rolled stand-in) so a test asserting on
+ * `hashIdentityKey` output exercises the same derivation path production does. Every
+ * test that needs a `PostHogSourceDeps` gets this through `createFakeDeps` below; a
+ * test that needs to assert on the exact digest imports this constant directly rather
+ * than re-deriving its own.
  */
 export const AD_IDENTITY_HMAC_KEY: IdentityHmacKey = deriveIdentityHmacKey({
   bytes: new Uint8Array(32).fill(0x42),
@@ -156,11 +149,9 @@ export function createFakeDeps(
   };
 }
 
-// ---------------------------------------------------------------------------
-// PostHog event fixtures — the pinned wire shape (Addendum A ROW 3 / ROW 4 /
-// ROW 6). Top-level keys are exactly the eight the probe observed, including
-// `person`, which is present and ALWAYS `null` (165/165).
-// ---------------------------------------------------------------------------
+// PostHog event fixtures, the pinned wire shape (Addendum a row 3 / row 4 / row 6).
+// Top-level keys are exactly the eight the probe observed, including `person`, which is
+// present and always `null`.
 
 export interface AdEventItemOverrides {
   readonly id?: string;
@@ -183,8 +174,8 @@ export function adEventItem(overrides: AdEventItemOverrides = {}): Record<string
   };
 }
 
-/** The `{next, results}` envelope. No `count`, no `previous` — that envelope
- * belongs to a different endpoint and must never be generalised here. */
+/** The `{next, results}` envelope. No `count`, no `previous`. That envelope belongs to
+ * a different endpoint and must never be generalised here. */
 export function adEventsPage(
   results: readonly unknown[],
   next: string | null = null,
@@ -192,11 +183,8 @@ export function adEventsPage(
   return { next, results };
 }
 
-// ---------------------------------------------------------------------------
-// Fake PostHogClient — persons only. The events methods throw loudly, so an
-// identity resolver that reaches for the events walk fails visibly rather than
-// silently passing.
-// ---------------------------------------------------------------------------
+// Fake PostHogClient, persons only. The events methods throw loudly, so an identity
+// resolver that reaches for the events walk fails visibly rather than silently passing.
 
 export interface FakePersonsClient {
   readonly client: PostHogClient;

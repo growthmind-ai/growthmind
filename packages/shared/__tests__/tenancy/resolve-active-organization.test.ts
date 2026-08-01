@@ -44,8 +44,8 @@ describe("resolveActiveOrganization", () => {
     // Absent: the session carries no active-organization hint at all.
     expect(resolveActiveOrganization(memberships, null)).toBe("org-1");
 
-    // Tie: two memberships share the same createdAt — broken deterministically
-    // by organizationId ascending.
+    // Tie: two memberships share the same createdAt. Broken deterministically by
+    // organizationId ascending.
     const tied: Membership[] = [
       {
         organizationId: "org-b",

@@ -1,33 +1,28 @@
 #!/usr/bin/env bun
 /**
- * M-0 PostHog retrieval-latency spike — entrypoint (ADD §4 file 13).
+ *  PostHog retrieval-latency spike. Entrypoint (add file 13).
  *
- * Measures how long PostHog takes to make three signal types retrievable
- * through its read APIs: custom events, exceptions, and session recordings.
- * Runs sequential legs (events → exceptions → recordings), each leg running
- * N capture → poll trials, persisting every trial incrementally to
- * `local/spikes/run-<ISO>.json`, then prints per-leg verdict lines, a summary
- * table, and a paste-ready decision-doc results block (ADD D-9).
+ * Measures how long PostHog takes to make three signal types retrievable through its
+ * read APIs: custom events, exceptions, and session recordings. Runs sequential legs
+ * (events → exceptions → recordings), each leg running N capture → poll trials,
+ * persisting every trial incrementally to `local/spikes/run-<ISO>.json`, then prints
+ * per-leg verdict lines, a summary table, and a paste-ready decision-doc results block.
  *
- * Usage:
- *   bun scripts/spikes/m0-posthog-latency.ts [flags]
+ * Usage: bun scripts/spikes/m0-posthog-latency.ts [flags]
  *
- * Flags:
- *   --trials <n>          trials per leg (default 20)
- *   --poll-interval <ms>  delay between poll ticks (default 1000)
- *   --timeout <ms>        per-trial cap in ms (default 120000)
- *   --legs <csv>          any of events,exceptions,recordings (default all)
- *   --manual-recording    force the recording leg into manual mode
+ * Flags: Trials <n> trials per leg (default 20) Poll-interval <ms> delay between poll
+ * ticks (default 1000) Timeout <ms> per-trial cap in ms (default 120000) Legs <csv> any
+ * of events,exceptions,recordings (default all) Manual-recording force the recording
+ * leg into manual mode
  *
- * Required env vars (put them in `.env` at the repo root — and point them at
- * a TEST PostHog project; the harness writes synthetic events):
- *   POSTHOG_HOST, POSTHOG_PROJECT_API_KEY, POSTHOG_PERSONAL_API_KEY,
- *   POSTHOG_PROJECT_ID
- * Optional: CHROME_PATH — explicit browser executable for the recording leg.
+ * Required env vars (put them in `.env` at the repo root, and point them at a test
+ * PostHog project; the harness writes synthetic events): POSTHOG_HOST,
+ * POSTHOG_PROJECT_API_KEY, POSTHOG_PERSONAL_API_KEY, POSTHOG_PROJECT_ID Optional:
+ * CHROME_PATH. Explicit browser executable for the recording leg.
  *
- * Exit codes (ADD D-6): 0 = all selected legs completed; 1 = credential-gate
- * or total failure; 2 = partial (at least one leg failed, at least one
- * completed). Expected failure classes are formatted — never a stack trace.
+ * Exit codes: 0 = all selected legs completed; 1 = credential-gate or total failure; 2
+ * = partial (at least one leg failed, at least one completed). Expected failure classes
+ * are formatted, never a stack trace.
  */
 
 import { join } from "node:path";
@@ -62,7 +57,7 @@ import type { LegResult, RecordingMode, RunFile, SignalType, TrialRecord } from 
 /** Canonical leg execution order (ADD D-6): events → exceptions → recordings. */
 const LEG_ORDER: readonly SignalType[] = ["custom-event", "exception", "recording"];
 
-/** How long each automated/manual recording trial keeps the page alive (D-2). */
+/** How long each automated/manual recording trial keeps the page alive. */
 const RECORDING_TRIAL_DURATION_MS = 15_000;
 
 /** Consecutive non-retrieved automated trials before the D-2 manual fallback. */
@@ -75,9 +70,7 @@ const USAGE = `Usage: bun scripts/spikes/m0-posthog-latency.ts [flags]
   --legs <csv>          any of events,exceptions,recordings (default all)
   --manual-recording    force the recording leg into manual mode`;
 
-// ---------------------------------------------------------------------------
-// Flag parsing — hand-rolled over Bun.argv, no dependency
-// ---------------------------------------------------------------------------
+// Flag parsing, hand-rolled over Bun.argv, no dependency
 
 interface CliFlags {
   readonly trials: number;
@@ -186,13 +179,11 @@ function parseFlags(argv: readonly string[]): FlagParseResult {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Small helpers
-// ---------------------------------------------------------------------------
 
 /**
- * Region string for RunMetadata — derived from the host's hostname only,
- * never the project ID and never key material (public-repo constraint).
+ * Region string for RunMetadata. Derived from the host's hostname only, never the
+ * project ID and never key material (public-repo constraint).
  */
 function deriveHostRegion(host: string): string {
   try {
@@ -211,9 +202,9 @@ function deriveHostRegion(host: string): string {
 }
 
 /**
- * ADD D-4 exception capture shape: `$exception_list` with type, value, and a
- * synthetic stack. The trial marker property is stamped by captureEvent
- * itself (MARKER_PROP), so it is not duplicated here.
+ * Add exception capture shape: `$exception_list` with type, value, and a synthetic
+ * stack. The trial marker property is stamped by captureEvent itself (MARKER_PROP), so
+ * it is not duplicated here.
  */
 function exceptionProps(marker: string): Readonly<Record<string, unknown>> {
   return {
@@ -247,9 +238,7 @@ const sleep = (ms: number): Promise<void> =>
 const now = (): number => Date.now();
 const markerFactory = (): string => crypto.randomUUID();
 
-// ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
 
 async function main(): Promise<number> {
   const flagResult = parseFlags(Bun.argv.slice(2));
@@ -260,11 +249,10 @@ async function main(): Promise<number> {
   }
   const { flags } = flagResult;
 
-  // CREDENTIAL GATE FIRST — before ANY network call or filesystem write
-  // (ADD D-8). The formatter's output is printed VERBATIM to stderr:
-  // gate-cli.test.ts parses the paragraph starting at its first /missing/i
-  // line, so nothing containing "missing" may precede it and its blank lines
-  // must arrive intact.
+  // Credential gate first, before any network call or filesystem write. The formatter's
+  // output is printed verbatim to stderr: gate-cli.test.ts parses the paragraph
+  // starting at its first /missing/i line, so nothing containing "missing" may precede
+  // it and its blank lines must arrive intact.
   const gate = validateCredentials(process.env);
   if (!gate.ok) {
     console.error(formatCredentialError(gate.missing));
@@ -274,7 +262,7 @@ async function main(): Promise<number> {
 
   const runStartedAt = new Date().toISOString();
   const hostRegion = deriveHostRegion(creds.host);
-  // Created only AFTER the gate; save() is the only thing that touches disk.
+  // Created only after the gate; save is the only thing that touches disk.
   const persister = createRunPersister(runStartedAt);
   let saved = false;
 
@@ -290,7 +278,7 @@ async function main(): Promise<number> {
         pollIntervalMs: flags.pollIntervalMs,
         timeoutMs: flags.timeoutMs,
         legs: flags.legs,
-        // Present only when the recording leg ran (D-2 honesty requirement).
+        // Present only when the recording leg ran (honesty requirement).
         ...(recordingRan ? { recordingMode } : {}),
       },
       trials: [...allTrials],
@@ -299,8 +287,8 @@ async function main(): Promise<number> {
     saved = true;
   };
 
-  // Incremental persistence + the CLI "loading state": save after EVERY
-  // trial (D-6), then print the progress line.
+  // Incremental persistence + the CLI "loading state": save after every trial, then
+  // print the progress line.
   const onTrialComplete = async (record: TrialRecord): Promise<void> => {
     allTrials.push(record);
     await saveRun();
@@ -370,10 +358,10 @@ async function main(): Promise<number> {
 
       const pageHtml = await Bun.file(join(import.meta.dir, "recording-page.html")).text();
 
-      // One server for the whole leg (ADD D-2 step 1). GET / serves the
-      // page; GET /go?marker=… redirects to the full page URL with host+key
-      // attached, so manual-mode instructions can print a URL WITHOUT any
-      // key material ever reaching the console.
+      // One server for the whole leg (add step 1). GET / serves the page; GET
+      // /go?marker=… redirects to the full page URL with host+key attached, so
+      // manual-mode instructions can print a URL without any key material ever reaching
+      // the console.
       const server = Bun.serve({
         port: 0,
         hostname: "localhost",
@@ -422,14 +410,14 @@ async function main(): Promise<number> {
         now,
         markerFactory,
         onTrialComplete: async (record) => {
-          // Stamp the mode that PRODUCED this trial — read BEFORE the fallback
-          // flip below, so a mixed-mode run is reconstructable per trial from
-          // the run file (CR-M1). The trial that triggers the flip ran
-          // automated and is recorded as such.
+          // Stamp the mode that produced this trial. Read before the fallback flip
+          // below, so a mixed-mode run is reconstructable per trial from the run file
+          // . The trial that triggers the flip ran automated and is recorded as
+          // such.
           const stamped: TrialRecord = { ...record, mode: recordingMode };
-          // D-2 fallback: 3 consecutive automated trials ending non-retrieved
-          // flips the leg to manual mode — decided BEFORE the save so the run
-          // file records the mode that will produce the remaining trials.
+          // fallback: 3 consecutive automated trials ending non-retrieved flips the leg
+          // to manual mode. Decided before the save so the run file records the mode
+          // that will produce the remaining trials.
           if (record.outcome === "retrieved") {
             consecutiveUnretrieved = 0;
           } else {
@@ -453,7 +441,10 @@ async function main(): Promise<number> {
         await saveRun();
         return records;
       } finally {
-        server.stop(true);
+        // Awaited, not fired and forgotten: `stop` is async, each leg binds the same
+        // port, and an un-awaited stop lets the next leg's bind race a socket that is
+        // still closing.
+        await server.stop(true);
       }
     },
   };
@@ -465,9 +456,9 @@ async function main(): Promise<number> {
   };
   const selectedSpecs = flags.legs.map((signal) => legByType[signal]);
 
-  // Sequential legs, each isolated in its own try/catch (runLegs, ADD D-6).
-  // An AuthError thrown by a poll becomes that leg's failureReason — its
-  // instructive D-8 swapped-key message surfaces in the verdict line below.
+  // Sequential legs, each isolated in its own try/catch (runLegs, add). An AuthError
+  // thrown by a poll becomes that leg's failureReason. Its instructive swapped-key
+  // message surfaces in the verdict line below.
   const results = await runLegs(selectedSpecs);
 
   const resultBySignal = new Map<SignalType, LegResult>(
@@ -485,9 +476,9 @@ async function main(): Promise<number> {
   console.log("");
   for (const leg of displayLegs) {
     console.log(renderVerdictLine(leg, computeStats([...leg.trials])));
-    // CR-M3: a leg that failed mid-run still completed K trials before the
-    // throw — each was persisted via onTrialComplete. The verdict line's "no
-    // numbers to report" must not read as data loss.
+    // Cr-m3: a leg that failed mid-run still completed K trials before the throw. Each
+    // was persisted via onTrialComplete. The verdict line's "no numbers to report" must
+    // not read as data loss.
     if (leg.status === "failed") {
       const completedForLeg = allTrials.filter(
         (trial) => trial.signalType === leg.signalType,
@@ -514,7 +505,7 @@ async function main(): Promise<number> {
 }
 
 const exitCode = await main().catch((error: unknown) => {
-  // Expected failure classes are formatted — never a raw stack trace (D-8).
+  // Expected failure classes are formatted, never a raw stack trace.
   if (error instanceof Error && error.name === "AuthError") {
     console.error(error.message);
   } else {

@@ -1,0 +1,63 @@
+name: PR title
+
+# Pull requests are squash-merged, so the PR title — not the commits inside it —
+# becomes the subject line on main. The log is exactly as good as this check.
+#
+# Separate from ci.yml on purpose: this needs the `edited` event so a corrected
+# title re-runs the check, and firing the whole build gate every time someone
+# fixes a typo in a title would be a waste of a runner.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventional:
+    name: Conventional Commits format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          # Bound through the environment, never interpolated into the script
+          # body. A PR title is attacker-controlled text from a fork, and a
+          # `${{ ... }}` expression inside a run block is substituted before
+          # bash ever parses the line — which turns a title into a command.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # The types listed in CONTRIBUTING.md, an optional lowercase scope,
+          # an optional ! for a breaking change, then ": " and a subject.
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9._/-]+\))?!?: .+'
+
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            {
+              echo "PR title does not follow Conventional Commits."
+              echo
+              echo "  got:  $TITLE"
+              echo
+              echo "  want: type(scope): subject in the imperative mood"
+              echo
+              echo "  e.g.  feat(sdk-js): mask input values at capture"
+              echo "        fix(worker): backfill missed rollups on restart"
+              echo "        docs: explain the finding signature ledger"
+              echo
+              echo "  types: feat fix docs style refactor perf test build ci chore revert"
+              echo "  (CONTRIBUTING.md, 'Commit messages')"
+            } >&2
+            exit 1
+          fi
+
+          # Advisory only — CONTRIBUTING.md says "under about 72 characters",
+          # and "about" is not something to fail a contributor's PR over.
+          if (( ${#TITLE} > 72 )); then
+            echo "::warning::PR title is ${#TITLE} characters; CONTRIBUTING.md suggests keeping it under about 72."
+          fi
+
+          echo "ok: $TITLE"

@@ -1,13 +1,11 @@
-// O-003 CR-5, security audit M-1 — deterministic, project-salted, KEYED
-// identity-key hashing.
+// Security audit. Deterministic, project-salted, keyed identity-key hashing.
 //
-// PostHog's `identify()` is routinely called with a user's email address as
-// the `distinct_id`, so the raw value can carry PII. Only a hash of it may
-// ever be persisted or cross a port boundary (product-decisions §5, FR-16).
-// M-1: the original hash was UNKEYED and salted only with the project id —
-// public, plaintext, one table over — so an email-shaped digest was
-// reversible by dictionary in seconds from a database dump. The keyed-ness
-// tests below are what would have caught that.
+// PostHog's `identify` is routinely called with a user's email address as the
+// `distinct_id`, so the raw value can carry PII. Only a hash of it may ever be
+// persisted or cross a port boundary (product-decisions).: the original hash was
+// unkeyed and salted only with the project id (public, plaintext, one table over) so an
+// email-shaped digest was reversible by dictionary in seconds from a database dump. The
+// keyed-ness tests below are what would have caught that.
 import { createHash, createHmac } from "node:crypto";
 
 import { describe, expect, test } from "bun:test";
@@ -18,9 +16,9 @@ const PROJECT_A = "s0-project-424242";
 const PROJECT_B = "s0-project-999999";
 const DISTINCT_ID = "s0-distinct-0001";
 
-/** Two distinct 32-byte fixture keys, so a test can prove the digest is a
- * function of the KEY, not merely of the (project, distinct id) pair.
- * Obviously-fake fixture bytes — this repo is public. */
+/** Two distinct 32-byte fixture keys, so a test can prove the digest is a function of
+ * the key, not merely of the (project, distinct id) pair. Obviously-fake fixture bytes,
+ * this repo is public. */
 const KEY_A = deriveIdentityHmacKey({ bytes: new Uint8Array(32).fill(0x11) });
 const KEY_B = deriveIdentityHmacKey({ bytes: new Uint8Array(32).fill(0x22) });
 
@@ -29,8 +27,8 @@ describe("hashIdentityKey", () => {
     const first = hashIdentityKey(KEY_A, PROJECT_A, DISTINCT_ID);
     const second = hashIdentityKey(KEY_A, PROJECT_A, DISTINCT_ID);
     expect(second).toBe(first);
-    // A hex HMAC-SHA256 digest, so a later real identity stitcher can rely on
-    // the shape as well as the value (D12).
+    // A hex HMAC-SHA256 digest, so a later real identity stitcher can rely on the shape
+    // as well as the value.
     expect(first).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -54,19 +52,18 @@ describe("hashIdentityKey", () => {
     expect(second).not.toBe(first);
   });
 
-  // M-1 — the fix's whole point.
+  // , the fix's whole point.
   test("is KEYED: the same project and distinct id under a different key fork the digest", () => {
     const underKeyA = hashIdentityKey(KEY_A, PROJECT_A, DISTINCT_ID);
     const underKeyB = hashIdentityKey(KEY_B, PROJECT_A, DISTINCT_ID);
     expect(underKeyB).not.toBe(underKeyA);
   });
 
-  // M-1 — the regression test for the actual reported hazard: without a key,
-  // anyone holding a database dump can dictionary-attack every email-shaped
-  // distinct id because the project-id salt is public. This proves the
-  // digest is no longer the old unkeyed scheme, which any attacker with the
-  // (public) project id could otherwise recompute for a whole email
-  // dictionary in seconds.
+  // , the regression test for the actual reported hazard: without a key, anyone
+  // holding a database dump can dictionary-attack every email-shaped distinct id
+  // because the project-id salt is public. This proves the digest is no longer the old
+  // unkeyed scheme, which any attacker with the (public) project id could otherwise
+  // recompute for a whole email dictionary in seconds.
   test("is not reproducible from the public project id alone (not the old unkeyed sha256 scheme)", () => {
     const emailShaped = "someone@s0-acme.invalid";
     const digest = hashIdentityKey(KEY_A, PROJECT_A, emailShaped);
@@ -93,9 +90,9 @@ describe("deriveIdentityHmacKey", () => {
     expect(Buffer.from(first.bytes)).toEqual(Buffer.from(second.bytes));
   });
 
-  // D12: named explicitly, so the rotation consequence documented in
-  // identity-key.ts's header is a tested fact, not just a comment.
-  test("D12: a different root encryption key derives a different HMAC key, forking every identity key under it", () => {
+  // Named explicitly, so the rotation consequence documented in identity-key.ts's
+  // header is a tested fact, not just a comment.
+  test("a different root encryption key derives a different HMAC key, forking every identity key under it", () => {
     const derivedFromA = deriveIdentityHmacKey({ bytes: new Uint8Array(32).fill(0x44) });
     const derivedFromB = deriveIdentityHmacKey({ bytes: new Uint8Array(32).fill(0x55) });
     expect(Buffer.from(derivedFromA.bytes)).not.toEqual(Buffer.from(derivedFromB.bytes));

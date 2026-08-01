@@ -1,8 +1,8 @@
-// Repository for the (generated, Better Auth) `organization` table. D-B:
-// the factory takes a `TenantContext` at construction; both methods key
-// solely on `ctx.organizationId` — there is no id parameter to accept at
-// all, so a foreign org can never be named. `creatorEmail()` keys on the same
-// context and joins `member` → `user`, so it too has no org parameter.
+// Repository for the (generated, Better Auth) `organization` table: the factory takes a
+// `TenantContext` at construction; both methods key solely on `ctx.organizationId`.
+// There is no id parameter to accept at all, so a foreign org can never be named.
+// `creatorEmail` keys on the same context and joins `member` → `user`, so it too has
+// no org parameter.
 import { and, asc, eq } from "drizzle-orm";
 
 import type { TenantContext } from "@growthmind/shared";
@@ -15,20 +15,19 @@ export type OrganizationRecord = typeof organization.$inferSelect;
 export interface OrganizationsRepo {
   /** The constructing context's own organization row. */
   get(): Promise<OrganizationRecord>;
-  /** Renames the constructing context's own organization — never any
-   * other org, since no organization id is ever accepted as a parameter. */
+  /** Renames the constructing context's own organization, never any other org, since no
+   * organization id is ever accepted as a parameter. */
   rename(name: string): Promise<OrganizationRecord>;
   /**
-   * The email of this organization's owner — the earliest-created `member`
-   * row with role `owner`, joined to `user.email`. Org-scoped by
-   * construction: `ctx.organizationId` is the only org this context can name.
+   * The email of this organization's owner. The earliest-created `member` row with role
+   * `owner`, joined to `user.email`. Org-scoped by construction: `ctx.organizationId`
+   * is the only org this context can name.
    *
-   * The single input to internal-domain inference (O-003 FR-11).
+   * The single input to internal-domain inference.
    *
-   * FAIL DIRECTION (F-2): no owner found, or an
-   * owner with no email, returns `null` ⇒ infer NOTHING. A missing creator
-   * email must never produce a guess, because a wrong internal domain
-   * silently excludes the customer's entire user base.
+   * Fail direction: no owner found, or an owner with no email, returns `null` ⇒
+   * infer nothing. A missing creator email must never produce a guess, because a wrong
+   * internal domain silently excludes the customer's entire user base.
    */
   creatorEmail(): Promise<string | null>;
 }
@@ -67,15 +66,15 @@ export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): Organ
     },
 
     async creatorEmail(): Promise<string | null> {
-      // Org-scoped by construction: `ctx.organizationId` is the only org this
-      // context can name, and the join is inner — a `member` row pointing at a
-      // deleted user simply drops out rather than resolving to a partial row.
+      // Org-scoped by construction: `ctx.organizationId` is the only org this context
+      // can name, and the join is inner. A `member` row pointing at a deleted user
+      // simply drops out rather than resolving to a partial row.
       //
-      // FAIL DIRECTION F-2: `?? null`, never a fallback to "the earliest
-      // member of any role". An org whose only member is a plain `member`
-      // (Better Auth's shape when the owner has left) must infer NOTHING —
-      // a wrong internal domain silently excludes the customer's entire user
-      // base, which is worse than inferring none at all.
+      // Fail direction F-2: `?? null`, never a fallback to "the earliest member of any
+      // role". An org whose only member is a plain `member` (Better Auth's shape when
+      // the owner has left) must infer nothing. A wrong internal domain silently
+      // excludes the customer's entire user base, which is worse than inferring none at
+      // all.
       const [row] = await db
         .select({ email: user.email })
         .from(member)

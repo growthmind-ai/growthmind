@@ -1,14 +1,14 @@
-// Wave 0b (RED) — lane L3, fixture seed prefix `db-`.
-// ADD tasks/session-source-posthog-adapter/add.md §9 items 88–89 — D-7 / D6 / D3.
+// Wave 0b (red), lane L3, fixture seed prefix `db-`. Add
+// tasks/session-source-posthog-adapter/add.md items 88–89, / /.
 //
-// The cron line fires every minute and runs can overlap, so the claim IS the
-// lock: one `UPDATE … WHERE is_active AND next_poll_at <= $now RETURNING …`
-// that pushes `next_poll_at` forward as it selects. There is no read-then-write
-// window anywhere, which is the only reason two overlapping ticks cannot poll
-// one connection twice and double-count its events.
+// The cron line fires every minute and runs can overlap, so the claim IS the lock: one
+// `UPDATE … WHERE is_active AND next_poll_at <= $now RETURNING …` that pushes
+// `next_poll_at` forward as it selects. There is no read-then-write window anywhere,
+// which is the only reason two overlapping ticks cannot poll one connection twice and
+// double-count its events.
 //
-// `claimDuePollableConnections` is a typed-stub throw today, so every test
-// here fails on "not implemented".
+// `claimDuePollableConnections` is a typed-stub throw today, so every test here fails
+// on "not implemented".
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { claimDuePollableConnections } from "../../src/system";
@@ -63,7 +63,7 @@ describe("claimDuePollableConnections", () => {
     await close();
   });
 
-  // --- item 88 -------------------------------------------------------------
+  // -- item 88
   it("never returns the same connection to two concurrent claims", async () => {
     const seeded = await seedDueConnection(db, "concurrent");
 
@@ -73,20 +73,20 @@ describe("claimDuePollableConnections", () => {
     ]);
 
     const claims = [...first, ...second].filter((row) => row.id === seeded.connectionId);
-    // Exactly one of the two overlapping ticks may own it. Two would mean two
-    // polls of the same window, and every event counted twice.
+    // Exactly one of the two overlapping ticks may own it. Two would mean two polls of
+    // the same window, and every event counted twice.
     expect(claims).toHaveLength(1);
   });
 
-  // --- item 88 (the claim moves the cursor) --------------------------------
+  // -- item 88 (the claim moves the cursor)
   it("does not hand the same connection back to an immediately following claim", async () => {
     const seeded = await seedDueConnection(db, "sequential");
 
     const first = await claimDuePollableConnections(db, { now: NOW, limit: 10 });
     expect(first.map((row) => row.id)).toContain(seeded.connectionId);
 
-    // The claim itself pushed `next_poll_at` forward by the interval, so the
-    // next tick at the same instant finds nothing due.
+    // The claim itself pushed `next_poll_at` forward by the interval, so the next tick
+    // at the same instant finds nothing due.
     const second = await claimDuePollableConnections(db, { now: NOW, limit: 10 });
     expect(second.map((row) => row.id)).not.toContain(seeded.connectionId);
 
@@ -98,7 +98,7 @@ describe("claimDuePollableConnections", () => {
     expect(later.map((row) => row.id)).toContain(seeded.connectionId);
   });
 
-  // --- item 88 (limit) -----------------------------------------------------
+  // -- item 88 (limit)
   it("claims no more than the requested limit and leaves the remainder due", async () => {
     const one = await seedDueConnection(db, "limit-one");
     const two = await seedDueConnection(db, "limit-two");
@@ -114,7 +114,7 @@ describe("claimDuePollableConnections", () => {
     expect(remaining[0]?.id).not.toBe(mine[0]?.id);
   });
 
-  // --- item 89 -------------------------------------------------------------
+  // -- item 89
   it("returns nothing for a connection that is not active", async () => {
     const seeded = await seedDueConnection(db, "inactive", { isActive: false });
 
@@ -122,7 +122,7 @@ describe("claimDuePollableConnections", () => {
     expect(claimed.map((row) => row.id)).not.toContain(seeded.connectionId);
   });
 
-  // --- item 89 -------------------------------------------------------------
+  // -- item 89
   it("returns nothing for a connection that is not yet due", async () => {
     const seeded = await seedDueConnection(db, "not-due", { nextPollAt: NOT_DUE_UNTIL });
 
@@ -130,7 +130,7 @@ describe("claimDuePollableConnections", () => {
     expect(claimed.map((row) => row.id)).not.toContain(seeded.connectionId);
   });
 
-  // --- item 89 (empty is clean, not a crash) -------------------------------
+  // -- item 89 (empty is clean, not a crash)
   it("returns an empty list rather than failing when nothing is due", async () => {
     const claimed = await claimDuePollableConnections(db, {
       now: new Date("2020-01-01T00:00:00.000Z"),
@@ -139,7 +139,7 @@ describe("claimDuePollableConnections", () => {
     expect(claimed).toEqual([]);
   });
 
-  // --- item 89 (the claimed shape carries what the poll needs) -------------
+  // -- item 89 (the claimed shape carries what the poll needs)
   it("carries the organization name and source config the poll runs on", async () => {
     const seeded = await seedDueConnection(db, "shape");
 

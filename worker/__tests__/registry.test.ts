@@ -7,9 +7,9 @@ import { expect, test } from "bun:test";
 import { crontab, taskList } from "../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../src/task-names";
 
-// Graphile Worker matches jobs to handlers by string name. These tests make
-// the failure mode — a queued name with no handler, or a handler nothing can
-// queue — a red test instead of a job retrying silently forever.
+// Graphile Worker matches jobs to handlers by string name. These tests make the failure
+// mode. A queued name with no handler, or a handler nothing can queue. A red test
+// instead of a job retrying silently forever.
 
 test("every task name has a registered handler", () => {
   for (const name of Object.values(TASK)) {
@@ -33,11 +33,10 @@ test("every cron line schedules a known task", () => {
   }
 });
 
-// --- O-003 §9 item 105 ------------------------------------------------------
-// `crontab` became MULTI-LINE when the poll schedule landed. The ADD marks the
-// parser's ability to handle that as an ASSUMED row, pinned here: if a future
-// change breaks line-by-line parsing, extend the parser rather than collapsing
-// the cron lines back onto one.
+// -- item 105 `crontab` became multi-line when the poll schedule landed. The add marks
+// the parser's ability to handle that as an assumed row, pinned here: if a future
+// change breaks line-by-line parsing, extend the parser rather than collapsing the cron
+// lines back onto one.
 
 test("crontab is multi-line and every line parses into five cron fields plus a task name", () => {
   const lines = crontab.split("\n").filter((line) => line.trim().length > 0);
@@ -46,8 +45,8 @@ test("crontab is multi-line and every line parses into five cron fields plus a t
 
   for (const line of lines) {
     const fields = line.trim().split(/\s+/);
-    // Five schedule fields, then the task identifier. Anything after that is
-    // Graphile Worker's own option syntax (`?fill=…`) and is not parsed here.
+    // Five schedule fields, then the task identifier. Anything after that is Graphile
+    // Worker's own option syntax (`?fill=…`) and is not parsed here.
     expect(fields.length).toBeGreaterThanOrEqual(6);
     expect(fields.slice(0, 5).every((field) => field.length > 0)).toBe(true);
   }
@@ -64,19 +63,18 @@ test("the session-source poll is scheduled exactly once and no task is scheduled
 });
 
 test("the scheduled poll name is the exported constant, not a look-alike string", () => {
-  // Guards the D9 hazard directly: a cron line scheduling `posthog.poll` or a
-  // typo'd variant would queue jobs nothing handles, and the set-based test
-  // above would still pass if the constant itself had drifted.
+  // Guards the hazard directly: a cron line scheduling `posthog.poll` or a typo'd
+  // variant would queue jobs nothing handles, and the set-based test above would still
+  // pass if the constant itself had drifted.
   expect(TASK.SESSION_SOURCE_POLL_SCHEDULE).toBe("session-source:poll-schedule");
   expect(crontab).toContain(TASK.SESSION_SOURCE_POLL_SCHEDULE);
   expect(taskList[TASK.SESSION_SOURCE_POLL_SCHEDULE]).toBeDefined();
 });
 
-// --- O-003 §9 item 106 ------------------------------------------------------
-// The AGENTS.md rule, enforced instead of trusted: worker task names are
-// exported constants, never raw strings. A raw name in a second place is a
-// name that drifts once — and a drifted name is a job queued under something
-// nothing handles, retrying silently forever.
+// -- item 106 The agents.md rule, enforced instead of trusted: worker task names are
+// exported constants, never raw strings. A raw name in a second place is a name that
+// drifts once, and a drifted name is a job queued under something nothing handles,
+// retrying silently forever.
 
 const WORKER_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TASK_NAMES_FILE = path.join(WORKER_ROOT, "src", "task-names.ts");
@@ -86,7 +84,7 @@ test("no raw task-name string literal appears anywhere in worker/", () => {
   const offenders: string[] = [];
 
   for (const file of typeScriptFilesUnder(WORKER_ROOT)) {
-    // task-names.ts is the ONE home the literals are allowed to have.
+    // task-names.ts is the one home the literals are allowed to have.
     if (path.resolve(file) === path.resolve(TASK_NAMES_FILE)) continue;
     // This file necessarily names one to assert the constant's value above.
     if (path.resolve(file) === path.resolve(fileURLToPath(import.meta.url))) continue;
@@ -116,15 +114,15 @@ function typeScriptFilesUnder(dir: string): string[] {
   return out;
 }
 
-/** Comments may discuss a task name freely — the hazard is a name used as a
- * VALUE. Stripping them first is what keeps this test about wiring. */
+/** Comments may discuss a task name freely. The hazard is a name used as a value.
+ * Stripping them first is what keeps this test about wiring. */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-/** Every complete string literal, by value. An exact match against a task name
- * is the violation; a longer message that merely mentions one is not, because
- * it can never be used to register or queue anything. */
+/** Every complete string literal, by value. An exact match against a task name is the
+ * violation; a longer message that merely mentions one is not, because it can never be
+ * used to register or queue anything. */
 function stringLiteralsIn(source: string): string[] {
   const out: string[] = [];
   const pattern = /"([^"\\\n]*)"|'([^'\\\n]*)'|`([^`\\$\n]*)`/g;
@@ -139,13 +137,13 @@ function stringLiteralsIn(source: string): string[] {
 /**
  * Every task name must satisfy Graphile Worker's crontab identifier grammar.
  *
- * This exists because `session-source.poll-schedule` shipped through a green
- * unit suite and then crashed the worker ON BOOT — "Invalid command
- * specification in line 2 of crontab" — because the parser's character set
- * (letter or underscore, then letters, digits, colon, slash, underscore, hyphen) excludes the dot. Nothing below the crontab
- * string had ever been fed to the real parser, so the whole container was the
- * first thing to find out. A name that only fails inside a running container
- * is exactly the D9 stringly-typed hazard task-names.ts warns about.
+ * This exists because `session-source.poll-schedule` shipped through a green unit suite
+ * and then crashed the worker on boot. "Invalid command specification in line 2 of
+ * crontab", because the parser's character set (letter or underscore, then letters,
+ * digits, colon, slash, underscore, hyphen) excludes the dot. Nothing below the crontab
+ * string had ever been fed to the real parser, so the whole container was the first
+ * thing to find out. A name that only fails inside a running container is exactly the
+ * stringly-typed hazard task-names.ts warns about.
  */
 test("every TASK name parses as a Graphile Worker crontab identifier", () => {
   for (const [key, name] of Object.entries(TASK)) {

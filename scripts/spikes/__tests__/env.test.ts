@@ -1,7 +1,7 @@
-// Wave 0/1 RED tests for the credential gate (ADD D-8).
-// Asserts the PUBLIC contract of scripts/spikes/lib/env.ts only:
-// validateCredentials(env) and formatCredentialError(missing).
-// Stubs throw "not implemented" — these tests MUST fail until Wave 2.
+// Wave 0/1 red tests for the credential gate. Asserts the public contract of
+// scripts/spikes/lib/env.ts only: validateCredentials(env) and
+// formatCredentialError(missing). Stubs throw "not implemented". These tests must fail
+// until Wave 2.
 
 import { describe, expect, test } from "bun:test";
 
@@ -75,7 +75,7 @@ describe("formatCredentialError", () => {
       expect(message).toContain(name);
     }
 
-    // Tells the user the values belong in .env.
+    // Tells the user the values belong in.env.
     expect(message).toContain(".env");
 
     // Points at PostHog project settings (phc_ project key + project ID)...
@@ -85,7 +85,7 @@ describe("formatCredentialError", () => {
     expect(message.toLowerCase()).toContain("personal api key");
     expect(message).toContain("phx_");
 
-    // Plain-English block: no stack-trace content (no "at ..." frames).
+    // Plain-English block: no stack-trace content (no "at..." frames).
     expect(message).not.toMatch(/^\s*at /m);
   });
 });

@@ -1,48 +1,44 @@
-// ADD §7 "Unit — the gate, one test per D-3 cell" — the sixteen named tests,
-// verbatim as named (O-004 FR-12, FR-13, FR-13B, D-9, D-10, ES-12).
+// Unit tests for the gate, one test per cell: the sixteen named tests, verbatim as named.
 //
-// THIS IS THE PRODUCT'S IDENTITY, NOT A FEATURE. mvp.md §4: "a summary without
-// deterministic proof predicates is an AI narrating a session, which §6 exists
-// to prevent."
+// This is the product's identity, not a feature. mvp.md: "a summary without
+// deterministic proof predicates is an AI narrating a session, which exists to
+// prevent."
 //
 // The contract these tests pin:
-//   1. Eight DIRECT cells — one per cell of architecture D-3's table: each
-//      class passes when its own proof predicate holds, and takes its
-//      `DOWNGRADE_PATH` destination when it does not.
-//   2. The CASCADE and the FLOOR — a failed proof descends along
-//      `DOWNGRADE_PATH` and terminates at `"drop"`. `changed_mind` is
-//      unreachable as a cascade DESTINATION (FR-13B), asserted over the map's
-//      VALUES rather than through behaviour, because a behavioural assertion
-//      here can pass vacuously and a direct one cannot (D-10).
-//   3. The GATE INVARIANTS — never ascend, always terminate, reject an unknown
-//      class at the Zod boundary (ES-12), and keep the FR-13B rationale
-//      physically present at the floor's implementation site.
+// 1. Eight direct cells, one per cell of architecture the table: each
+//  class passes when its own proof predicate holds, and takes its
+//  `DOWNGRADE_PATH` destination when it does not.
+// 2. The cascade and the floor. A failed proof descends along
+//  `DOWNGRADE_PATH` and terminates at `"drop"`. `changed_mind` is
+//  unreachable as a cascade destination, asserted over the map's
+//  Values rather than through behaviour, because a behavioural assertion
+//  here can pass vacuously and a direct one cannot.
+// 3. The gate invariants, never ascend, always terminate, reject an unknown
+//  class at the Zod boundary, and keep the rationale
+//  physically present at the floor's implementation site.
 //
-// WHY 9, 12 AND 16 EXIST. `changed_mind`'s proof predicate is "clean exit, no
-// error, no struggle" — satisfied by the ABSENCE OF EVERYTHING. BS-1(a)'s
-// silent no-op save (the MVP's own headline demo case, ESC-1) is undetectable
-// over the current `events` schema and therefore produces exactly that
-// absence. If the ladder let a failed `confusing` descend to `changed_mind`,
-// the product would tell a founder "this user changed their mind" when the
-// product BROKE UNDER THEM — the §6 violation this whole sprint exists to
-// prevent. Test 9 is that incident, replayed. Test 12 is the structural
-// guarantee it cannot recur. Test 16 guards the comment that stops a future
-// contributor "fixing" the apparent gap in the ordering.
+// Why 9, 12 and 16 exist. `changed_mind`'s proof predicate is "clean exit, no error, no
+// struggle". Satisfied by the absence of everything.'s silent no-op save (the mvp's
+// own headline demo case) is undetectable over the current `events` schema and
+// therefore produces exactly that absence. If the ladder let a failed `confusing`
+// descend to `changed_mind`, the product would tell a founder "this user changed their
+// mind" when the product broke under them. The violation this whole sprint exists to
+// prevent. Test 9 is that incident, replayed. Test 12 is the structural guarantee it
+// cannot recur. Test 16 guards the comment that stops a future contributor "fixing" the
+// apparent gap in the ordering.
 //
-// FIXTURE TIME IS A REQUIRED PARAMETER (ADD §6.5). Every instant below is a
-// frozen literal; there is no `Date.now()`, no clock, and no randomness in
-// this file. There is also no node builtin — the source read in test 16 goes
-// through `Bun.file`, keeping this package's "no node builtin" discipline
-// (FR-5, D-13) true in the tests as well as in `src/`.
+// Fixture time is a required parameter. Every instant below is a frozen literal; there
+// is no `Date.now`, no clock, and no randomness in this file. There is also no node
+// builtin. The source read in test 16 goes through `Bun.file`, keeping this package's
+// "no node builtin" discipline true in the tests as well as in `src/`.
 //
-// LANE ISOLATION (ADD §6.5) does not apply here: this suite touches no
-// database, seeds no rows, and shares no fixture namespace with any other
-// suite. Stated so its absence reads as a decision rather than an omission.
+// Lane isolation does not apply here: this suite touches no database, seeds no rows,
+// and shares no fixture namespace with any other suite. Stated so its absence reads as
+// a decision rather than an omission.
 //
-// The rule set arrives BY VERSION (`THRESHOLD_RULE_SETS.get(1)`), never as
-// "whatever is current" (D-14). PL ruling 3: there is no clock parameter.
-// PL ruling 1: thresholds are INTEGER PERCENTAGES compared with exact integer
-// arithmetic.
+// The rule set arrives by version (`THRESHOLD_RULE_SETS.get`), never as "whatever is
+// current": there is no clock parameter: thresholds are integer percentages compared
+// with exact integer arithmetic.
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
@@ -56,15 +52,13 @@ import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import { findingClassSchema } from "../../src/rules/types";
 import type { FindingClass, ThresholdRuleSet } from "../../src/rules/types";
 
-// ───────────────────────────────────────────────────────────────────────────
-// Fixtures. Every one is a FUNCTION, called inside a test body — never a
-// module-level constant that runs at import time. A fixture that throws at
-// import time takes the whole file down and reports as a load failure, which
-// is precisely the "compile or fixture error masquerading as TDD red" ADD §6.5
-// warns about. Built this way, each test fails on its own reason.
-// ───────────────────────────────────────────────────────────────────────────
+// Fixtures. Every one is a function, called inside a test body, never a module-level
+// constant that runs at import time. A fixture that throws at import time takes the
+// whole file down and reports as a load failure, which is precisely the "compile or
+// fixture error masquerading as tdd red" warns about. Built this way, each test fails
+// on its own reason.
 
-/** Frozen fixture window. An INJECTED instant pair, never derived from a clock. */
+/** Frozen fixture window. An injected instant pair, never derived from a clock. */
 const WINDOW: AnalysisWindow = {
   start: new Date("2026-05-01T00:00:00.000Z"),
   end: new Date("2026-05-08T00:00:00.000Z"),
@@ -75,7 +69,7 @@ const SIGNAL_AT = new Date("2026-05-03T09:15:00.000Z");
 
 const SURFACE = "/checkout/payment";
 
-/** The v1 rule set fetched BY VERSION, never "whatever is current" (D-14). */
+/** The v1 rule set fetched by version, never "whatever is current". */
 function ruleSetV1(): ThresholdRuleSet {
   const rules = THRESHOLD_RULE_SETS.get(1);
   if (!rules) throw new Error("rule set version 1 must remain resolvable forever");
@@ -87,13 +81,12 @@ const ALL_CLASSES: readonly FindingClass[] = findingClassSchema.options;
 /**
  * A claim, as the gate receives it.
  *
- * `detector` is `"funnel_dropoff"` for every fixture including the
- * `changed_mind` and `instrumentation` ones. That is not an endorsement of a
- * detector proposing those classes — D-9 bars `changed_mind` from
- * `DetectorProposedClass` and ESC-3 records that `instrumentation` has no
- * producer this sprint. `ProposedClaim.detector` is nonetheless a required
- * `DetectorName`, so a fixture has to name one; the gate's verdict must not
- * depend on which.
+ * `detector` is `"funnel_dropoff"` for every fixture including the `changed_mind` and
+ * `instrumentation` ones. That is not an endorsement of a detector proposing those
+ * classes. Bars `changed_mind` from `DetectorProposedClass` and records that
+ * `instrumentation` has no producer this sprint. `ProposedClaim.detector` is
+ * nonetheless a required `DetectorName`, so a fixture has to name one; the gate's
+ * verdict must not depend on which.
  */
 function claim(
   claimedClass: FindingClass,
@@ -120,8 +113,8 @@ function failureCorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
     occurredAt: SIGNAL_AT,
     precedingActionName: "submit_payment",
     correlationWindowMs: ruleSet.errorCorrelationWindowMs,
-    // The proven cohort, required since audit C-1: `broken` may not pass on a
-    // single correlated session while its count reports a larger population.
+    // The proven cohort, required since audit C-1: `broken` may not pass on a single
+    // correlated session while its count reports a larger population.
     correlatedSessions: measuredCount({
       numerator: 3,
       denominator: 10,
@@ -133,9 +126,9 @@ function failureCorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
 }
 
 /**
- * An exception that could NOT be tied to a preceding action (ES-13). Recorded
- * honestly rather than laundered into a correlated one, and deliberately not
- * admissible as proof of `broken`.
+ * An exception that could not be tied to a preceding action. Recorded honestly
+ * rather than laundered into a correlated one, and deliberately not admissible as proof
+ * of `broken`.
  */
 function failureUncorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
   return {
@@ -145,19 +138,19 @@ function failureUncorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
   };
 }
 
-/** The cohort every struggle fixture is measured over. Held fixed, so the only
- * thing that ever moves in these fixtures is a numerator. */
+/** The cohort every struggle fixture is measured over. Held fixed, so the only thing
+ * that ever moves in these fixtures is a numerator. */
 const STRUGGLE_COHORT_KEPT = 40;
 
-/** Clears `struggleMinStrugglingSessions` without sitting on its boundary —
+/** Clears `struggleMinStrugglingSessions` without sitting on its boundary,
  * `predicates.test.ts` walks that boundary; this file is about the ladder. */
 const STRUGGLING_SESSIONS_ABOVE_MINIMUM = 8;
 
 /**
- * A repeated-attempt struggle carrying BOTH magnitudes the predicate reads: the
- * per-session depth (`attempts`, PL ruling 31) and the cohort that reached it
- * (`strugglingSessions`, H-1). The cohort defaults above the minimum, so no
- * fixture here can pass or fail for a reason this file is not about.
+ * A repeated-attempt struggle carrying both magnitudes the predicate reads: the
+ * per-session depth (`attempts`) and the cohort that reached it
+ * (`strugglingSessions`). The cohort defaults above the minimum, so no fixture
+ * here can pass or fail for a reason this file is not about.
  */
 function repeatedAttempt(
   attempts: number,
@@ -173,12 +166,12 @@ function repeatedAttempt(
 }
 
 /**
- * The subkind that is NOT admissible proof (PL ruling 36) and IS still a
- * `changed_mind` disqualifier (ruling 19).
+ * The subkind that is not admissible proof and IS still a `changed_mind` disqualifier
+ * (ruling 19).
  *
- * `attempts: 1` is the point: a single back-navigation. Its cohort is
- * deliberately above every minimum, so nothing below can turn on the fixture
- * being too small — the refusal is the SUBKIND's.
+ * `attempts: 1` is the point: a single back-navigation. Its cohort is deliberately
+ * above every minimum, so nothing below can turn on the fixture being too small. The
+ * refusal is the subkind's.
  */
 function backtrack(): EvidenceSignal {
   return {
@@ -196,9 +189,9 @@ function cleanExit(): EvidenceSignal {
 }
 
 /**
- * A count built through the ONLY constructor (D-8) — the brand cannot be
- * fabricated by an object literal, which is exactly the property FR-10 asks
- * for, so these fixtures go through `measuredCount` like production does.
+ * A count built through the only constructor. The brand cannot be fabricated by an
+ * object literal, which is exactly the property asks for, so these fixtures go through
+ * `measuredCount` like production does.
  */
 function sessions(numerator: number, kept: number): MeasuredCount {
   return measuredCount({
@@ -211,11 +204,10 @@ function sessions(numerator: number, kept: number): MeasuredCount {
 }
 
 /**
- * An instrumentation signal whose observed and expected counts share one
- * denominator, so the "observed count vs expected count" reading and the
- * "observed rate vs expected rate" reading of the threshold COINCIDE. The
- * assertions below therefore pin the magnitude that matters rather than a
- * particular arithmetic spelling of it.
+ * An instrumentation signal whose observed and expected counts share one denominator,
+ * so the "observed count vs expected count" reading and the "observed rate vs expected
+ * rate" reading of the threshold coincide. The assertions below therefore pin the
+ * magnitude that matters rather than a particular arithmetic spelling of it.
  */
 function rateDrop(
   observedNumerator: number,
@@ -235,11 +227,9 @@ function visitedClasses(outcome: GateOutcome): readonly FindingClass[] {
   return outcome.trace.map((entry) => entry.class);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DIRECT CELLS — one test per cell of architecture D-3's table (8)
-// ═══════════════════════════════════════════════════════════════════════════
+// Direct cells, one test per cell of architecture the table
 
-describe("evidence gate — direct cells (D-3)", () => {
+describe("evidence gate — direct cells", () => {
   test("should pass broken when a failure signal is correlated to the action", () => {
     const ruleSet = ruleSetV1();
 
@@ -248,8 +238,8 @@ describe("evidence gate — direct cells (D-3)", () => {
     expect(outcome.kind).toBe("pass");
     if (outcome.kind !== "pass") throw new Error("unreachable — narrowing only");
     expect(outcome.finalClass).toBe("broken");
-    // ES-15: a PASSING claim carries its satisfied entry, so "we checked and
-    // it held" is never confusable with "we did not check".
+    // : a passing claim carries its satisfied entry, so "we checked and it held"
+    // is never confusable with "we did not check".
     expect(visitedClasses(outcome)).toEqual(["broken"]);
     expect(outcome.trace[0]?.satisfied).toBe(true);
   });
@@ -257,15 +247,15 @@ describe("evidence gate — direct cells (D-3)", () => {
   test("should downgrade broken to confusing when no correlated failure signal exists", () => {
     const ruleSet = ruleSetV1();
 
-    // An UNCORRELATED exception plus a struggle signal. The uncorrelated
-    // exception must not satisfy `broken` (ES-13) — that is the
-    // over-permissive predicate the PRD names as a High risk — so the claim
-    // descends one rung and lands on the proof it actually has.
+    // An uncorrelated exception plus a struggle signal. The uncorrelated exception must
+    // not satisfy `broken`. That is the over-permissive predicate the prd names
+    // as a High risk, so the claim descends one rung and lands on the proof it actually
+    // has.
     //
-    // The struggle signal is a REPEATED ATTEMPT, not a back-navigation: PL
-    // ruling 36 makes `backtrack` inadmissible as proof, so a fixture built
-    // from one would exercise the floor rather than the downgrade this cell is
-    // about. The cell is unchanged; only the evidence that can carry it is.
+    // The struggle signal is a repeated attempt, not a back-navigation: makes
+    // `backtrack` inadmissible as proof, so a fixture built from one would exercise the
+    // floor rather than the downgrade this cell is about. The cell is unchanged; only
+    // the evidence that can carry it is.
     const outcome = evaluate(
       claim("broken", [
         failureUncorrelated(ruleSet),
@@ -282,24 +272,23 @@ describe("evidence gate — direct cells (D-3)", () => {
     expect(outcome.trace[1]?.satisfied).toBe(true);
   });
 
-  // ── INVERTED BY PL RULING 36, AND KEPT. ───────────────────────────────────
+  // Inverted by, and kept.
   //
-  // This test used to construct `backtrack()` with `attempts: 1` and assert it
-  // PASSED as `confusing`. That was the defect: a single back-navigation is a
-  // superset of its target — users navigate back constantly — admitted at any
-  // magnitude, at the one gate between drop-off arithmetic and a delivered
-  // finding. Ruling 36 makes `backtrack` inadmissible as proof; the test is not
-  // deleted, because it is now the assertion that the ruling HOLDS.
+  // This test used to construct `backtrack` with `attempts: 1` and assert it passed
+  // as `confusing`. That was the defect: a single back-navigation is a superset of its
+  // target (users navigate back constantly) admitted at any magnitude, at the one gate
+  // between drop-off arithmetic and a delivered finding. Ruling 36 makes `backtrack`
+  // inadmissible as proof; the test is not deleted, because it is now the assertion
+  // that the ruling holds.
   //
-  // The ADD's cell is unchanged: `confusing` passes on proof of hesitation or
-  // repeated attempts. What changed is which SIGNAL may carry it this sprint.
+  // The cell is unchanged: `confusing` passes on proof of hesitation or repeated
+  // attempts. What changed is which signal may carry it this sprint.
   test("should pass confusing on repeated attempts, and NOT on a back-navigation alone", () => {
     const ruleSet = ruleSetV1();
 
-    // INCLUSIVE at the boundary (D-6): exactly `struggleRepeatedAttemptMin`
-    // attempts, by exactly `struggleMinStrugglingSessions` sessions, is a
-    // struggle. Fail direction is carried by the magnitudes, never by the
-    // strictness of the comparison.
+    // Inclusive at the boundary: exactly `struggleRepeatedAttemptMin` attempts, by
+    // exactly `struggleMinStrugglingSessions` sessions, is a struggle. Fail direction
+    // is carried by the magnitudes, never by the strictness of the comparison.
     const repeated = evaluate(
       claim("confusing", [
         repeatedAttempt(ruleSet.struggleRepeatedAttemptMin, ruleSet.struggleMinStrugglingSessions),
@@ -312,9 +301,9 @@ describe("evidence gate — direct cells (D-3)", () => {
     expect(repeated.finalClass).toBe("confusing");
     expect(visitedClasses(repeated)).toEqual(["confusing"]);
 
-    // AND THE INVERSION (ruling 36). `backtrack` alone proves nothing, so the
-    // claim finds no proof at its own rung, hits FR-13B's floor, and DROPS —
-    // never a softer claim, and never `changed_mind`.
+    // And the inversion (ruling 36). `backtrack` alone proves nothing, so the claim
+    // finds no proof at its own rung, hits the floor, and drops, never a softer claim,
+    // and never `changed_mind`.
     const backtracked = evaluate(claim("confusing", [backtrack()]), ruleSet);
 
     expect(backtracked.kind).toBe("drop");
@@ -323,10 +312,10 @@ describe("evidence gate — direct cells (D-3)", () => {
     expect(backtracked.trace[0]?.satisfied).toBe(false);
     expect(JSON.stringify(backtracked)).not.toContain("changed_mind");
 
-    // RULING 19 IS UNCHANGED, and this is the half that must not be weakened:
-    // the same inadmissible signal still DISQUALIFIES `changed_mind`, because
-    // that class's proof is the absence of everything. "Proves nothing" and
-    // "shows nothing happened" are different statements.
+    // Ruling 19 is unchanged, and this is the half that must not be weakened: the same
+    // inadmissible signal still disqualifies `changed_mind`, because that class's proof
+    // is the absence of everything. "Proves nothing" and "shows nothing happened" are
+    // different statements.
     const flattering = evaluate(claim("changed_mind", [cleanExit(), backtrack()]), ruleSet);
     expect(flattering.kind).toBe("drop");
   });
@@ -334,10 +323,10 @@ describe("evidence gate — direct cells (D-3)", () => {
   test("should downgrade confusing when no struggle signal exists", () => {
     const ruleSet = ruleSetV1();
 
-    // THE DESTINATION IS `drop`, NOT `changed_mind` (D-10). The claim carries
-    // a clean exit — the signal that WOULD satisfy `changed_mind` — precisely
-    // so this test fails loudly if the floor is ever "fixed" into an ordering
-    // that continues past `confusing`.
+    // The destination is `drop`, not `changed_mind`. The claim carries a clean exit
+    // (the signal that would satisfy `changed_mind`) precisely so this test fails
+    // loudly if the floor is ever "fixed" into an ordering that continues past
+    // `confusing`.
     const outcome = evaluate(claim("confusing", [cleanExit()]), ruleSet);
 
     expect(outcome.kind).toBe("drop");
@@ -349,9 +338,8 @@ describe("evidence gate — direct cells (D-3)", () => {
   test("should pass changed_mind when originally proposed with clean exit, no error, and no struggle signal", () => {
     const ruleSet = ruleSetV1();
 
-    // ORIGINALLY PROPOSED — the O-005 path. FR-13B floors the CASCADE; it does
-    // not weaken an originally-proposed `changed_mind` whose proof is
-    // positively present.
+    // Originally proposed, the path. floors the cascade; it does not weaken an
+    // originally-proposed `changed_mind` whose proof is positively present.
     const outcome = evaluate(claim("changed_mind", [cleanExit()]), ruleSet);
 
     expect(outcome.kind).toBe("pass");
@@ -364,9 +352,9 @@ describe("evidence gate — direct cells (D-3)", () => {
   test("should drop changed_mind when an error or struggle signal is present", () => {
     const ruleSet = ruleSetV1();
 
-    // The ABSENCE half of the predicate is the load-bearing one. Each of these
-    // three carries a clean exit — the PRESENT half is satisfied every time —
-    // and each must still drop.
+    // The absence half of the predicate is the load-bearing one. Each of these three
+    // carries a clean exit (the present half is satisfied every time) and each must
+    // still drop.
     const withCorrelatedError = evaluate(
       claim("changed_mind", [cleanExit(), failureCorrelated(ruleSet)]),
       ruleSet,
@@ -389,11 +377,11 @@ describe("evidence gate — direct cells (D-3)", () => {
     const ruleSet = ruleSetV1();
     const denominator = 100;
     const expectedNumerator = ruleSet.instrumentationMinExpected * 2; // 100 — comfortably above the baseline floor
-    // EXACTLY at the threshold: 20 observed against 100 expected is 20%, and
-    // `instrumentationDropRatioPercent` is 20. D-6: boundaries are INCLUSIVE,
-    // so "at the threshold" fires. PL ruling 1: compared as exact integer
-    // arithmetic (`observed * 100 <= percent * expected`), never float
-    // division, so this boundary is exact rather than ulp-fragile.
+    // Exactly at the threshold: 20 observed against 100 expected is 20%, and
+    // `instrumentationDropRatioPercent` is 20: boundaries are inclusive, so "at the
+    // threshold" fires: compared as exact integer arithmetic (`observed * 100 <=
+    // percent * expected`), never float division, so this boundary is exact rather than
+    // ulp-fragile.
     const atThreshold = evaluate(
       claim("instrumentation", [
         rateDrop(
@@ -434,9 +422,9 @@ describe("evidence gate — direct cells (D-3)", () => {
       ruleSet,
     );
 
-    // FAIL DIRECTION: UNDER-DETECT (FR-9). A baseline below
-    // `instrumentationMinExpected` supports no rate claim at all, however
-    // dramatic the apparent collapse — 0 of 40 is still not a finding.
+    // Fail direction: Under-detect. A baseline below `instrumentationMinExpected`
+    // supports no rate claim at all, however dramatic the apparent collapse, 0 of 40 is
+    // still not a finding.
     const baselineTooThin = evaluate(
       claim("instrumentation", [
         rateDrop(
@@ -456,66 +444,62 @@ describe("evidence gate — direct cells (D-3)", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CASCADE AND FLOOR (4)
-// ═══════════════════════════════════════════════════════════════════════════
+// Cascade and floor
 
-describe("evidence gate — cascade and floor (FR-13, FR-13B)", () => {
+describe("evidence gate — cascade and floor", () => {
   test("THE INCIDENT TEST — should DROP a broken claim over a session with a clean single-click exit and no failure signal, never surface it as changed_mind", () => {
     const ruleSet = ruleSetV1();
 
-    // BS-1(c), replayed exactly. The session BS-1(a) describes: a save
-    // silently fails — nothing throws, no request event fires, and the current
-    // `events` schema cannot see it at all. The user clicks once and leaves.
-    // What survives into the corpus is a clean exit and NOTHING ELSE.
+    // , replayed exactly. The session describes: a save silently fails. Nothing
+    // throws, no request event fires, and the current `events` schema cannot see it at
+    // all. The user clicks once and leaves. What survives into the corpus is a clean
+    // exit and nothing else.
     //
-    // Trace the ladder: `broken` finds no correlated failure signal ->
-    // downgrade -> `confusing` finds no hesitation, because the user clicked
-    // once and left -> downgrade -> AND HERE THE FLOOR MUST HOLD. Left
-    // unfloored, the next rung would be `changed_mind`, whose proof is "clean
-    // exit, no error, no struggle" — ALL THREE LITERALLY TRUE of this session
-    // — and the product would tell a founder "this user changed their mind"
-    // when the product BROKE UNDER THEM.
+    // Trace the ladder: `broken` finds no correlated failure signal -> downgrade ->
+    // `confusing` finds no hesitation, because the user clicked once and left ->
+    // downgrade -> and here the floor must hold. Left unfloored, the next rung would be
+    // `changed_mind`, whose proof is "clean exit, no error, no struggle" (all three
+    // literally TRUE of this session) and the product would tell a founder "this user
+    // changed their mind" when the product broke under them.
     //
-    // The honest output for this session is NOTHING AT ALL (ESC-1, ESC-5).
-    // "No verdict beats a wrong verdict."
+    // The honest output for this session is nothing at all. "No verdict beats a wrong
+    // verdict."
     const outcome = evaluate(claim("broken", [cleanExit()]), ruleSet);
 
     expect(outcome.kind).toBe("drop");
     // `drop` carries no class at all, because there is nothing to say.
     expect(outcome).not.toHaveProperty("finalClass");
-    // The descent reached the floor by walking the ladder, not by an early
-    // exit — and `changed_mind` was never even EVALUATED, let alone returned.
+    // The descent reached the floor by walking the ladder, not by an early exit, and
+    // `changed_mind` was never even evaluated, let alone returned.
     expect(visitedClasses(outcome)).toEqual(["broken", "confusing"]);
     expect(visitedClasses(outcome)).not.toContain("changed_mind");
     expect(outcome.trace.every((entry) => entry.satisfied === false)).toBe(true);
-    // Belt and braces: the string must not appear ANYWHERE in the verdict.
+    // Belt and braces: the string must not appear anywhere in the verdict.
     expect(JSON.stringify(outcome)).not.toContain("changed_mind");
   });
 
   test("should cascade a broken claim with neither failure nor struggle signal past confusing to the floor and drop it", () => {
     const ruleSet = ruleSetV1();
 
-    // No signals at all — the emptiest possible claim. Distinct from THE
-    // INCIDENT TEST, which carries the one tempting signal.
+    // No signals at all. The emptiest possible claim. Distinct from the incident test,
+    // which carries the one tempting signal.
     const outcome = evaluate(claim("broken", []), ruleSet);
 
     expect(outcome.kind).toBe("drop");
     expect(outcome).not.toHaveProperty("finalClass");
     expect(visitedClasses(outcome)).toEqual(["broken", "confusing"]);
     expect(outcome.trace.every((entry) => entry.satisfied === false)).toBe(true);
-    // FR-14: a downgrade that leaves no trace is indistinguishable from a
-    // detector that never fired.
+    // A downgrade that leaves no trace is indistinguishable from a detector that never
+    // fired.
     expect(outcome.trace.length).toBeGreaterThanOrEqual(2);
   });
 
   test("should cascade a confusing claim with no struggle signal to the floor and drop it, regardless of a clean exit", () => {
     const ruleSet = ruleSetV1();
 
-    // "Regardless of a clean exit" is the whole point: the clean exit is
-    // present, is genuine, and is IRRELEVANT, because `confusing`'s floor is
-    // `drop` and the ladder does not continue to the class that clean exit
-    // would satisfy.
+    // "Regardless of a clean exit" is the whole point: the clean exit is present, is
+    // genuine, and is irrelevant, because `confusing`'s floor is `drop` and the ladder
+    // does not continue to the class that clean exit would satisfy.
     const withCleanExit = evaluate(claim("confusing", [cleanExit()]), ruleSet);
     const withoutAnySignal = evaluate(claim("confusing", []), ruleSet);
     // An uncorrelated exception is not a struggle signal either.
@@ -533,25 +517,25 @@ describe("evidence gate — cascade and floor (FR-13, FR-13B)", () => {
   });
 
   test("should make changed_mind unreachable as a cascade destination from any starting class", () => {
-    // ASSERTED OVER `DOWNGRADE_PATH`'s VALUES DIRECTLY, not over behaviour
-    // (D-10). A behavioural assertion here can pass VACUOUSLY — it passes when
-    // the fixture simply never reaches the rung — whereas a direct assertion
-    // that no row's value is `"changed_mind"` cannot pass for the wrong
-    // reason. This is the structural guarantee behind THE INCIDENT TEST.
+    // Asserted over `DOWNGRADE_PATH`'s values directly, not over behaviour. A
+    // behavioural assertion here can pass vacuously. It passes when the fixture simply
+    // never reaches the rung, whereas a direct assertion that no row's value is
+    // `"changed_mind"` cannot pass for the wrong reason. This is the structural
+    // guarantee behind the incident test.
 
-    // (a) No row names `changed_mind` as its destination. One statement,
-    //     enumerated over the whole map so a fifth class cannot slip past.
+    //  No row names `changed_mind` as its destination. One statement,
+    //  enumerated over the whole map so a fifth class cannot slip past.
     const destinations: readonly DowngradeDestination[] = Object.values(DOWNGRADE_PATH);
     expect(destinations).not.toContain("changed_mind");
 
-    // (b) The map is TOTAL over the class union — an unenumerated class would
-    //     make (a) an assertion about a subset.
+    //  The map is total over the class union. An unenumerated class would
+    //  make an assertion about a subset.
     expect(new Set(Object.keys(DOWNGRADE_PATH))).toEqual(new Set(ALL_CLASSES));
 
-    // (c) Transitively, from EVERY starting class: walk the map to its fixed
-    //     point and assert `changed_mind` is never entered as a destination.
-    //     The walk also proves the map itself is acyclic, which is what makes
-    //     the visited-set descent bounded rather than merely guarded.
+    //  Transitively, from every starting class: walk the map to its fixed
+    //  point and assert `changed_mind` is never entered as a destination.
+    //  The walk also proves the map itself is acyclic, which is what makes
+    //  the visited-set descent bounded rather than merely guarded.
     for (const start of ALL_CLASSES) {
       const reached: FindingClass[] = [];
       let current: DowngradeDestination = DOWNGRADE_PATH[start];
@@ -564,9 +548,9 @@ describe("evidence gate — cascade and floor (FR-13, FR-13B)", () => {
       expect(reached).not.toContain("changed_mind");
     }
 
-    // (d) The floor itself, named. `changed_mind` keeps its own row so an
-    //     ORIGINALLY PROPOSED one is evaluated normally and drops when its
-    //     proof is absent — that row is a source, never a destination.
+    //  The floor itself, named. `changed_mind` keeps its own row so an
+    //  Originally proposed one is evaluated normally and drops when its
+    //  proof is absent — that row is a source, never a destination.
     expect(DOWNGRADE_PATH.confusing).toBe("drop");
     expect(DOWNGRADE_PATH.broken).toBe("confusing");
     expect(DOWNGRADE_PATH.changed_mind).toBe("drop");
@@ -574,15 +558,13 @@ describe("evidence gate — cascade and floor (FR-13, FR-13B)", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GATE INVARIANTS (4)
-// ═══════════════════════════════════════════════════════════════════════════
+// Gate invariants
 
 /**
- * Every class reachable from `claimedClass` by DESCENDING — the claimed class
- * itself plus everything `DOWNGRADE_PATH` leads to. Computed here in the test,
- * independently of `isReachableClass`, so the invariant is checked against the
- * map rather than against the production helper that reads it.
+ * Every class reachable from `claimedClass` by descending. The claimed class itself
+ * plus everything `DOWNGRADE_PATH` leads to. Computed here in the test, independently
+ * of `isReachableClass`, so the invariant is checked against the map rather than
+ * against the production helper that reads it.
  */
 function descendantsOf(claimedClass: FindingClass): ReadonlySet<FindingClass> {
   const reachable = new Set<FindingClass>([claimedClass]);
@@ -604,9 +586,9 @@ function powerSet<T>(items: readonly T[]): readonly (readonly T[])[] {
 }
 
 /**
- * One representative signal of EVERY kind in the union. The powerset of these
- * five is every combination of evidence the gate can be handed — 32 of them,
- * across 4 starting classes, is the 128-cell matrix tests 13 and 14 walk.
+ * One representative signal of every kind in the union. The powerset of these five is
+ * every combination of evidence the gate can be handed, 32 of them, across 4 starting
+ * classes, is the 128-cell matrix tests 13 and 14 walk.
  */
 function everySignalKind(ruleSet: ThresholdRuleSet): readonly EvidenceSignal[] {
   return [
@@ -618,21 +600,19 @@ function everySignalKind(ruleSet: ThresholdRuleSet): readonly EvidenceSignal[] {
   ];
 }
 
-describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
+describe("evidence gate — invariants", () => {
   test("should never return a class stronger than the one claimed", () => {
     const ruleSet = ruleSetV1();
 
-    // The sharp case first, stated on its own so a failure names it: a
-    // `confusing` claim carrying a CORRELATED failure signal has, sitting
-    // right there, everything `broken` needs. The gate must not take it. The
-    // descent only ever moves ALONG `DOWNGRADE_PATH`, and nothing in it
-    // ascends.
+    // The sharp case first, stated on its own so a failure names it: a `confusing`
+    // claim carrying a correlated failure signal has, sitting right there, everything
+    // `broken` needs. The gate must not take it. The descent only ever moves along
+    // `DOWNGRADE_PATH`, and nothing in it ascends.
     const tempted = evaluate(claim("confusing", [failureCorrelated(ruleSet)]), ruleSet);
     expect(visitedClasses(tempted)).not.toContain("broken");
     if (tempted.kind === "pass") expect(tempted.finalClass).not.toBe("broken");
 
-    // Then exhaustively, over every starting class and every signal
-    // combination.
+    // Then exhaustively, over every starting class and every signal combination.
     for (const claimedClass of ALL_CLASSES) {
       const allowed = descendantsOf(claimedClass);
       for (const signals of powerSet(everySignalKind(ruleSet))) {
@@ -649,11 +629,11 @@ describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
 
   test("should terminate the fixed-point descent for every starting class and every signal combination", () => {
     const ruleSet = ruleSetV1();
-    // D-10: "termination is guaranteed by a visited-class set (a class is
-    // never re-entered) over a four-member union, AND ASSERTED BY A TEST
-    // rather than argued." So this enumerates the matrix and asserts the
-    // observable consequences of termination — a bounded, strictly
-    // non-repeating descent whose last rung is either satisfied or floors.
+    // "termination is guaranteed by a visited-class set (a class is never re-entered)
+    // over a four-member union, and asserted by a test rather than argued." So this
+    // enumerates the matrix and asserts the observable consequences of termination. A
+    // bounded, strictly non-repeating descent whose last rung is either satisfied or
+    // floors.
     let evaluated = 0;
 
     for (const claimedClass of ALL_CLASSES) {
@@ -662,23 +642,22 @@ describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
         const visited = visitedClasses(outcome);
         evaluated += 1;
 
-        // Bounded by the size of the class union — a descent that re-entered
-        // a class would exceed this or never return at all.
+        // Bounded by the size of the class union. A descent that re-entered a class
+        // would exceed this or never return at all.
         expect(visited.length).toBeGreaterThanOrEqual(1);
         expect(visited.length).toBeLessThanOrEqual(ALL_CLASSES.length);
-        // NO CLASS IS EVER RE-ENTERED. This is the visited-set property
-        // itself, observed through the trace.
+        // No class is ever re-entered. This is the visited-set property itself,
+        // observed through the trace.
         expect(new Set(visited).size).toBe(visited.length);
-        // The descent starts at the claimed class and follows the map exactly
-        // — never a jump, never a skipped rung.
+        // The descent starts at the claimed class and follows the map exactly, never a
+        // jump, never a skipped rung.
         expect(visited[0]).toBe(claimedClass);
         for (let index = 1; index < visited.length; index += 1) {
           expect(DOWNGRADE_PATH[visited[index - 1] as FindingClass]).toBe(
             visited[index] as FindingClass,
           );
         }
-        // Every rung before the last failed; the last one explains the
-        // verdict.
+        // Every rung before the last failed; the last one explains the verdict.
         for (let index = 0; index < outcome.trace.length - 1; index += 1) {
           expect(outcome.trace[index]?.satisfied).toBe(false);
         }
@@ -688,27 +667,25 @@ describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
           expect(outcome.finalClass).toBe(last?.class as FindingClass);
         } else {
           expect(last?.satisfied).toBe(false);
-          // A drop only ever happens AT THE FLOOR — never by running out of
-          // map.
+          // A drop only ever happens at the floor, never by running out of map.
           expect(DOWNGRADE_PATH[last?.class as FindingClass]).toBe("drop");
         }
       }
     }
 
-    // 4 starting classes x 2^5 signal combinations. Asserted so a silently
-    // shrunken matrix cannot make this test vacuous.
+    // 4 starting classes x 2^5 signal combinations. Asserted so a silently shrunken
+    // matrix cannot make this test vacuous.
     expect(evaluated).toBe(ALL_CLASSES.length * 2 ** 5);
   });
 
   test("should reject an unknown finding class at the Zod boundary, never default it to the weakest class", () => {
     const ruleSet = ruleSetV1();
 
-    // ES-12. A claim naming a class the gate has no predicate for is
-    // MALFORMED INPUT. Defaulting it — to the weakest class, to the most
-    // flattering one, or to anything at all — silently converts a bad input
-    // into a shippable claim, which is the one thing this gate exists to stop.
-    // A model's output (O-005) is external data and is validated like any
-    // other.
+    // . A claim naming a class the gate has no predicate for is malformed input.
+    // Defaulting it, to the weakest class, to the most flattering one, or to anything
+    // at all. Silently converts a bad input into a shippable claim, which is the one
+    // thing this gate exists to stop. A model's output is external data and is
+    // validated like any other.
     const unknownClass: unknown = { ...claim("broken", []), claimedClass: "user_error" };
     const missingClass: unknown = { ...claim("broken", []), claimedClass: undefined };
 
@@ -721,35 +698,34 @@ describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
         thrown = error;
       }
 
-      // NOT DEFAULTED: no verdict of any kind came back.
+      // Not defaulted: no verdict of any kind came back.
       expect(returned).toBeUndefined();
-      // REJECTED AT THE ZOD BOUNDARY specifically — a bare `Error` would mean
-      // the rejection happened somewhere else, or not at all.
+      // Rejected at the zod boundary specifically. A bare `Error` would mean the
+      // rejection happened somewhere else, or not at all.
       expect(thrown).toBeInstanceOf(z.ZodError);
       const issuePaths = (thrown as z.ZodError).issues.map((issue) => issue.path.join("."));
       expect(issuePaths).toContain("claimedClass");
     }
   });
 
-  test("should carry the FR-13B rationale as a code comment at the floor's implementation site", async () => {
-    // D-10: "a future contributor will read `confusing -> drop` as a gap in an
-    // obvious ordering and 'fix' it. The comment is the only thing standing
-    // between that reading and the incident." A comment that load-bearing is
-    // a contract, so a test guards it — deleting it must break the build, not
-    // merely lose some prose.
+  test("should carry the floor rationale as a code comment at the floor's implementation site", async () => {
+    // "a future contributor will read `confusing -> drop` as a gap in an obvious
+    // ordering and 'fix' it. The comment is the only thing standing between that
+    // reading and the incident." A comment that load-bearing is a contract, so a test
+    // guards it. Deleting it must break the build, not merely lose some prose.
     //
-    // Read through `Bun.file` and `import.meta.dir`, NOT `node:fs`: this
-    // package imports no node builtin anywhere, in `src/` or in `__tests__/`,
-    // which is what makes FR-5's purity auditable by construction (D-13).
+    // Read through `Bun.file` and `import.meta.dir`, not `node:fs`: this package
+    // imports no node builtin anywhere, in `src/` or in `__tests__/`, which is what
+    // makes the purity auditable by construction.
     const source = await Bun.file(`${import.meta.dir}/../../src/evidence/gate.ts`).text();
     const lines = source.split("\n");
 
     const floorIndex = lines.findIndex((line) => /^\s*confusing:\s*"drop",/.test(line));
     expect(floorIndex).toBeGreaterThan(-1);
 
-    // The contiguous comment block immediately ABOVE the floor line. "At the
-    // implementation site" means exactly that — a rationale parked at the top
-    // of the file is a rationale a contributor editing this line will not see.
+    // The contiguous comment block immediately above the floor line. "At the
+    // implementation site" means exactly that. A rationale parked at the top of the
+    // file is a rationale a contributor editing this line will not see.
     let blockStart = floorIndex;
     while (blockStart > 0 && /^\s*(\/\/|\/\*|\*)/.test(lines[blockStart - 1] ?? "")) {
       blockStart -= 1;
@@ -759,10 +735,11 @@ describe("evidence gate — invariants (FR-13, D-10, ES-12)", () => {
 
     // It must be a real explanation, not a label.
     expect(rationaleLines.length).toBeGreaterThanOrEqual(5);
-    // It must name the requirement, so the reader can find the decision.
-    expect(rationale).toContain("FR-13B");
-    // It must name the class the floor exists to keep unreachable — the whole
-    // point of the comment is that `changed_mind` is not the next rung.
+    // It must cite the commitment it is protecting, so the reader can find the
+    // decision rather than take the comment's word for it.
+    expect(rationale).toContain("product-decisions");
+    // It must name the class the floor exists to keep unreachable. The whole point of
+    // the comment is that `changed_mind` is not the next rung.
     expect(rationale).toContain("changed_mind");
     // And the comment must describe the value that is actually there.
     expect(rationale).toContain("drop");

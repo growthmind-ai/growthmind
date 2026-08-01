@@ -1,18 +1,20 @@
-// Wave 0 (RED): write-keys repository contract — packages/db/__tests__/repositories/write-keys.repo.test.ts
-// tasks/tenancy-app-shell/add.md — Wave 0 Contract Checklist, "Repository tests" section.
+// Wave 0 (red): write-keys repository contract,
+// packages/db/__tests__/repositories/write-keys.repo.test.ts
+// tasks/tenancy-app-shell/add.md. Wave 0 Contract Checklist, "Repository tests"
+// section.
 //
-// Every assertion here targets the PUBLIC contract of `createWriteKeysRepo`
-// and `resolveWriteKeyForIngest` (packages/db/src/repositories/write-keys.repo.ts)
-// against REAL SQL via PGlite (D-D) — a fake repository would prove nothing
-// about the tenant-scoping this ADD (D-B/D-F) commits to.
+// Every assertion here targets the public contract of `createWriteKeysRepo` and
+// `resolveWriteKeyForIngest` (packages/db/src/repositories/write-keys.repo.ts) against
+// real SQL via PGlite. A fake repository would prove nothing about the tenant-scoping
+// this add commits to.
 //
-// Both `createWriteKeysRepo(...).mint/listByProject/revoke` and
-// `resolveWriteKeyForIngest` are currently typed-stub throws ("not
-// implemented"), so every test below fails now by construction. Tests that
-// need a *specific* failure reason (not just "it threw") catch the error and
-// assert on content that the generic stub message cannot satisfy, so a
-// later wave's real implementation is what turns these green — not a vaguer
-// "did it throw" check that the stub would already satisfy today.
+// Both `createWriteKeysRepo.mint/listByProject/revoke` and
+// `resolveWriteKeyForIngest` are currently typed-stub throws ("not implemented"), so
+// every test below fails now by construction. Tests that need a *specific* failure
+// reason (not just "it threw") catch the error and assert on content that the generic
+// stub message cannot satisfy, so a later wave's real implementation is what turns
+// these green, not a vaguer "did it throw" check that the stub would already satisfy
+// today.
 import { randomBytes, createHash } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -30,9 +32,9 @@ import { createTestDb, type TestDb } from "../../src/testing";
 import { seedOrgWithOwner } from "../helpers/fixtures";
 
 /**
- * Local helper (out of scope for this agent to build a real `ProjectsRepo`
- * — it is a stub too): inserts a `projects` row directly, stamping
- * `organizationId`, so write-key tests have a real project to mint against.
+ * Local helper (out of scope for this agent to build a real `ProjectsRepo`. It is a
+ * stub too): inserts a `projects` row directly, stamping `organizationId`, so write-key
+ * tests have a real project to mint against.
  */
 async function seedProject(
   db: ScopedDb,
@@ -51,16 +53,16 @@ async function seedProject(
 }
 
 /**
- * Produces raw material in the exact shape D-F commits to: `WRITE_KEY_PREFIX`
- * + 43 base64url chars (256-bit random). Computed locally rather than through
- * the still-stubbed production generator, since these tests seed `write_keys`
- * rows directly and only need a plausible, well-formed raw key.
+ * Produces raw material in the exact shape commits to: `WRITE_KEY_PREFIX` + 43
+ * base64url chars (256-bit random). Computed locally rather than through the
+ * still-stubbed production generator, since these tests seed `write_keys` rows directly
+ * and only need a plausible, well-formed raw key.
  */
 function makeRawKeyMaterial(): string {
   return `${WRITE_KEY_PREFIX}${randomBytes(32).toString("base64url")}`;
 }
 
-/** Mirrors D-F's "key_hash = SHA-256 hex" independently of the stubbed
+/** Mirrors the "key_hash = SHA-256 hex" independently of the stubbed
  * `hashWriteKeyMaterial`, so seeding does not depend on unimplemented code. */
 function hashMaterial(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
@@ -133,8 +135,8 @@ describe("write-keys repository", () => {
       throw new Error("expected mint to persist a write_keys row");
     }
 
-    // FR-7: the persisted row must contain no substring of the raw material
-    // beyond its 12-char prefix — never the tail that makes the key usable.
+    // The persisted row must contain no substring of the raw material beyond its
+    // 12-char prefix, never the tail that makes the key usable.
     const tail = minted.raw.slice(12);
     const persisted = JSON.stringify(row);
     expect(persisted.includes(tail)).toBe(false);
@@ -188,10 +190,10 @@ describe("write-keys repository", () => {
     }
 
     expect(caught).toBeInstanceOf(Error);
-    // FR-8(d): a client-supplied project id from a foreign org must be
-    // rejected for THAT reason — a generic "not implemented" stub message
-    // does not satisfy this, so this assertion stays red until mint()
-    // actually verifies project ownership before minting.
+    // : a client-supplied project id from a foreign org must be rejected for that
+    // reason. A generic "not implemented" stub message does not satisfy this, so this
+    // assertion stays red until mint actually verifies project ownership before
+    // minting.
     expect((caught as Error).message).toMatch(/organization|project|not found|belong/i);
 
     const rows = await db
@@ -325,8 +327,8 @@ describe("write-keys repository", () => {
     if (!freshRow) {
       throw new Error("expected the foreign org's revoke attempt to leave the row in place");
     }
-    // No silent success: the key must genuinely still be active, not just
-    // "the repo returned null while secretly revoking it anyway".
+    // No silent success: the key must genuinely still be active, not just "the repo
+    // returned null while secretly revoking it anyway".
     expect(freshRow.revokedAt).toBeNull();
   });
 

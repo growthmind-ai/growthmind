@@ -1,10 +1,10 @@
 import { Courier_Prime, IBM_Plex_Mono, Jost } from "next/font/google";
 
 /**
- * The brand's three families, self-hosted via next/font — the same trio the
- * marketing site uses. Each is exposed as a CSS variable; the Mantine theme
- * (lib/theme.ts) and app/globals.css wrap them in stacks with fallbacks, so a
- * family can be swapped here without touching a stylesheet.
+ * The brand's three families, self-hosted via next/font, the same trio the marketing
+ * site uses. Each is exposed as a CSS variable; the Mantine theme (lib/theme.ts) and
+ * app/globals.css wrap them in stacks with fallbacks, so a family can be swapped here
+ * without touching a stylesheet.
  */
 
 const jost = Jost({

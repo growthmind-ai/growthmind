@@ -8,11 +8,10 @@ import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { ROUTES } from "../lib/routes";
 import { getTenantContext } from "../lib/tenant";
 
-// Server component by convention — client logic lives in separate
-// "use client" components (see AGENTS.md). This is the authenticated
-// workspace landing (ADD D-G/D-H): a signed-out visitor is redirected to
-// `/sign-in` before anything renders, so there is no client loading flash
-// and no separate "no data" state — the landing IS the empty state.
+// Server component by convention. Client logic lives in separate "use client"
+// components (see agents.md). This is the authenticated workspace landing: a signed-out
+// visitor is redirected to `/sign-in` before anything renders, so there is no client
+// loading flash and no separate "no data" state. The landing IS the empty state.
 export default async function HomePage() {
   const tenantContext = await getTenantContext();
 

@@ -1,15 +1,14 @@
-// ADD §7 "Unit — counts" — the evidence gate's arithmetic floor (FR-10, FR-7,
-// D-7, D-8, ES-6, ES-7, BS-3).
+// Unit tests for counts: the evidence gate's arithmetic floor.
 //
-// This suite asserts the ONE property the product's identity rests on: a count
-// in this codebase cannot exist without its denominator. Every test below is
-// written against the public contract of `packages/core/src/counts/
-// measured-count.ts` — the exported constructor, the exported guard, the
-// exported schemas — and never against anything module-private.
+// This suite asserts the one property the product's identity rests on: a count in this
+// codebase cannot exist without its denominator. Every test below is written against
+// the public contract of `packages/core/src/counts/ measured-count.ts`. The exported
+// constructor, the exported guard, the exported schemas, and never against anything
+// module-private.
 //
-// FIXTURE TIME IS INJECTED, ALWAYS. `Date.now()` and `new Date()` (no-arg)
-// appear nowhere in this file: a time-of-day-dependent test fails at 23:59 and
-// looks exactly like a genuine red state (ADD §6.5).
+// Fixture time is injected, always. `Date.now` and `new Date` (no-arg) appear
+// nowhere in this file: a time-of-day-dependent test fails at 23:59 and looks exactly
+// like a genuine red state.
 import { EXCLUSION_REASON_LABELS } from "@growthmind/shared";
 import type { ExclusionReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -29,7 +28,7 @@ import type {
   SetAsideBasis,
 } from "../../src/counts/measured-count";
 
-// --- fixtures ---------------------------------------------------------------
+// -- fixtures
 
 /** The analysis window, injected. Both instants are literals, never a clock. */
 const FIXTURE_WINDOW = {
@@ -38,18 +37,17 @@ const FIXTURE_WINDOW = {
 } as const;
 
 /**
- * A set-aside row in the customer's own words — the label comes from
- * `EXCLUSION_REASON_LABELS`, so this suite reads the same vocabulary O-007
- * renders rather than inventing a second one (D-7).
+ * A set-aside row in the customer's own words. The label comes from
+ * `EXCLUSION_REASON_LABELS`, so this suite reads the same vocabulary renders rather
+ * than inventing a second one.
  */
 function setAside(reason: ExclusionReason, count: number): SetAsideBasis {
   return { reason, count, label: EXCLUSION_REASON_LABELS[reason] };
 }
 
 /**
- * D-7's own sentence, expressible verbatim:
- * "3 of 28 sessions (12 set aside: 9 crawlers, monitors and scripts, 3 your own team)".
- * Identity holds: 28 + 9 + 3 === 40.
+ * the own sentence, expressible verbatim: "3 of 28 sessions (12 set aside: 9 crawlers,
+ * monitors and scripts, 3 your own team)". Identity holds: 28 + 9 + 3 === 40.
  */
 const KEPT_BASIS: CountBasis = {
   totalInWindow: 40,
@@ -58,9 +56,9 @@ const KEPT_BASIS: CountBasis = {
 };
 
 /**
- * ES-7: every session in the window was set aside. `kept = 0` is a real,
- * reportable state, and `totalInWindow = 40` keeps it distinguishable from
- * ES-1 (nothing arrived at all) by construction. 0 + 31 + 9 === 40.
+ * : every session in the window was set aside. `kept = 0` is a real, reportable
+ * state, and `totalInWindow = 40` keeps it distinguishable from (nothing arrived
+ * at all) by construction. 0 + 31 + 9 === 40.
  */
 const ALL_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 40,
@@ -68,14 +66,14 @@ const ALL_SET_ASIDE_BASIS: CountBasis = {
   setAside: [setAside("automation_headless", 31), setAside("internal_domain", 9)],
 };
 
-/** No exclusions at all — the simplest consistent basis. 28 + 0 === 28. */
+/** No exclusions at all. The simplest consistent basis. 28 + 0 === 28. */
 const NOTHING_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 28,
   kept: 28,
   setAside: [],
 };
 
-/** The D-7 identity is VIOLATED here: 28 + 3 === 31, not 40. */
+/** The identity is violated here: 28 + 3 === 31, not 40. */
 const INCONSISTENT_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 28,
@@ -97,13 +95,13 @@ function inputOf(params: {
   };
 }
 
-// --- rejection helper -------------------------------------------------------
+// -- rejection helper
 
 /**
- * The scaffold's placeholder throw. A rejection test must never be satisfied by
- * it: "it threw" is not "it refused". Asserting the message is NOT this string
- * is what makes the Wave 0 red state honest, and it stays load-bearing after
- * Wave 3 — a `not implemented` escaping the constructor is always a bug.
+ * The scaffold's placeholder throw. A rejection test must never be satisfied by it: "it
+ * threw" is not "it refused". Asserting the message is not this string is what makes
+ * the Wave 0 red state honest, and it stays load-bearing after Wave 3. A `not
+ * implemented` escaping the constructor is always a bug.
  */
 const NOT_IMPLEMENTED = "not implemented";
 
@@ -134,12 +132,12 @@ function issuePaths(error: unknown): readonly string[] {
   return zodError.issues.map((issue) => issue.path.join("."));
 }
 
-// --- tests ------------------------------------------------------------------
+// -- tests
 
 describe("MeasuredCount", () => {
   test("should reject construction when denominator is missing", () => {
-    // FR-10, primary guard: the COMPILE error. `denominator` is required and
-    // non-optional, so a count without one does not typecheck at all.
+    // Primary guard: the compile error. `denominator` is required and non-optional, so
+    // a count without one does not typecheck at all.
     const withoutDenominator: Omit<MeasuredCountInput, "denominator"> = {
       numerator: 3,
       unit: "sessions",
@@ -147,20 +145,20 @@ describe("MeasuredCount", () => {
       basis: KEPT_BASIS,
     };
 
-    // FR-10, mirror: the same refusal is observable at runtime, so an untyped
-    // caller (a JS consumer, a parsed payload) gets the same answer.
+    // Mirror: the same refusal is observable at runtime, so an untyped caller (a JS
+    // consumer, a parsed payload) gets the same answer.
     expect(measuredCountInputSchema.safeParse(withoutDenominator).success).toBe(false);
 
     const refusal = rejectionOf(() =>
-      // @ts-expect-error — FR-10: `denominator` is required; omitting it is a compile error.
+      // @ts-expect-error —: `denominator` is required; omitting it is a compile error.
       measuredCount(withoutDenominator),
     );
     expect(issuePaths(refusal)).toContain("denominator");
   });
 
   test("should reject a negative denominator", () => {
-    // The basis is internally consistent, so the refusal is about the negative
-    // value rather than a malformed basis (FR-10).
+    // The basis is internally consistent, so the refusal is about the negative value
+    // rather than a malformed basis.
     const refusal = rejectionOf(() =>
       measuredCount(
         inputOf({
@@ -190,17 +188,16 @@ describe("MeasuredCount", () => {
     expect(issuePaths(refusal)).toContain("numerator");
   });
 
-  // Fail direction: REFUSE. Every count here is a SUBSET count — "sessions
-  // that did X out of the kept sessions" — so a numerator above its
-  // denominator is an impossible claim, not a large one. Left unguarded,
-  // `rateOf` returns 1.25 and contradicts `Rate`'s own documented [0, 1]
-  // range, and "35 of 28 sessions" reaches a founder in Slack.
+  // Fail direction: Refuse. Every count here is a subset count. "sessions that did X
+  // out of the kept sessions", so a numerator above its denominator is an impossible
+  // claim, not a large one. Left unguarded, `rateOf` returns 1.25 and contradicts
+  // `Rate`'s own documented [0, 1] range, and "35 of 28 sessions" reaches a founder in
+  // Slack.
   //
-  // Reachable because TWO independent paths compute the same fact:
-  // `analysedSessions` recomputes kept from the sessions it was handed, while
-  // the detectors read `corpus.basis.kept`. The real corpus service keeps them
-  // equal; nothing structural forced that, and O-005/O-006/O-007 will build
-  // corpora this constructor has never seen.
+  // Reachable because two independent paths compute the same fact: `analysedSessions`
+  // recomputes kept from the sessions it was handed, while the detectors read
+  // `corpus.basis.kept`. The real corpus service keeps them equal; nothing structural
+  // forced that, and // will build corpora this constructor has never seen.
   test("should reject a numerator larger than its denominator", () => {
     const refusal = rejectionOf(() =>
       measuredCount(
@@ -215,9 +212,9 @@ describe("MeasuredCount", () => {
 
     expect(issuePaths(refusal)).toContain("numerator");
 
-    // NON-VACUITY, and the boundary. `numerator === denominator` is a REAL
-    // state — every kept session dropped — and must still construct, so the
-    // guard above is proven to be about the excess and not about equality.
+    // Non-vacuity, and the boundary. `numerator === denominator` is a real state (every
+    // kept session dropped) and must still construct, so the guard above is proven to
+    // be about the excess and not about equality.
     const everySessionDropped = measuredCount(
       inputOf({
         numerator: 28,
@@ -232,8 +229,8 @@ describe("MeasuredCount", () => {
   });
 
   test("should represent a zero denominator and return no_rate, never NaN or Infinity", () => {
-    // ES-6 / ES-7: everything in the window was set aside. This is a state to
-    // report, not an error to raise — so it CONSTRUCTS.
+    //  /: everything in the window was set aside. This is a state to report,
+    // not an error to raise, so it constructs.
     const count = measuredCount(
       inputOf({
         numerator: 0,
@@ -243,14 +240,14 @@ describe("MeasuredCount", () => {
       }),
     );
 
-    // Still distinguishable from ES-1 (nothing arrived): 40 sessions were seen.
+    // Still distinguishable from (nothing arrived): 40 sessions were seen.
     expect(count.basis.totalInWindow).toBe(40);
     expect(count.denominator).toBe(0);
 
     const rate = rateOf(count);
 
-    // `toEqual` is exact over own properties: an implementation that smuggled a
-    // numeric `value` onto this arm fails here.
+    // `toEqual` is exact over own properties: an implementation that smuggled a numeric
+    // `value` onto this arm fails here.
     expect(rate).toEqual({ kind: "no_rate", reason: "zero_denominator" });
     expect(Object.values(rate).some((field) => typeof field === "number")).toBe(false);
   });
@@ -277,10 +274,10 @@ describe("MeasuredCount", () => {
   });
 
   test('should carry unit "sessions" and make a people-count unconstructible', () => {
-    // BS-3: identity stitching does not exist in this product — `identity_key`
-    // is a project-salted hash and the `identities` table does not exist. "3 of
-    // 40" therefore means 3 of 40 SESSIONS, and the literal type is what makes
-    // O-007 unable (not merely unlikely) to render it as people.
+    // Identity stitching does not exist in this product, `identity_key` is a
+    // project-salted hash and the `identities` table does not exist. "3 of 40"
+    // therefore means 3 of 40 sessions, and the literal type is what makes unable (not
+    // merely unlikely) to render it as people.
     const count = measuredCount(
       inputOf({
         numerator: 3,
@@ -295,7 +292,7 @@ describe("MeasuredCount", () => {
     const asPeople: MeasuredCountInput = {
       numerator: 3,
       denominator: 28,
-      // @ts-expect-error — BS-3: `unit` is the literal "sessions"; a people count is a compile error.
+      // @ts-expect-error —: `unit` is the literal "sessions"; a people count is a compile error.
       unit: "people",
       timeframe: FIXTURE_WINDOW,
       basis: KEPT_BASIS,
@@ -307,8 +304,8 @@ describe("MeasuredCount", () => {
   });
 
   test("should assert the basis identity kept + sum(setAside) === totalInWindow", () => {
-    // FR-7 / D-7: the denominator IS kept sessions, and its composition ships
-    // with the count. A consistent basis constructs and survives intact.
+    // /: the denominator IS kept sessions, and its composition ships with the count. A
+    // consistent basis constructs and survives intact.
     const count = measuredCount(
       inputOf({
         numerator: 3,
@@ -321,13 +318,13 @@ describe("MeasuredCount", () => {
     const setAsideTotal = count.basis.setAside.reduce((sum, row) => sum + row.count, 0);
     expect(count.basis.kept + setAsideTotal).toBe(count.basis.totalInWindow);
 
-    // The denominator is not merely equal by coincidence — the constructor
-    // binds it to `basis.kept`, so a count can never quote a denominator its
-    // own basis does not account for.
+    // The denominator is not merely equal by coincidence. The constructor binds it to
+    // `basis.kept`, so a count can never quote a denominator its own basis does not
+    // account for.
     expect(count.denominator).toBe(count.basis.kept);
 
-    // A basis whose parts do not sum to its whole is refused, never coerced:
-    // 28 kept + 3 set aside is not 40 in the window.
+    // A basis whose parts do not sum to its whole is refused, never coerced: 28 kept +
+    // 3 set aside is not 40 in the window.
     rejectionOf(() =>
       measuredCount(
         inputOf({
@@ -353,10 +350,9 @@ describe("MeasuredCount", () => {
   });
 
   test("should be unconstructible without the smart constructor (brand)", () => {
-    // D-8: the brand is a module-private `unique symbol`. A structurally
-    // identical object literal carries every field and is still NOT a
-    // MeasuredCount — that is what makes "impossible to construct without a
-    // denominator" literal rather than aspirational.
+    // The brand is a module-private `unique symbol`. A structurally identical object
+    // literal carries every field and is still not a MeasuredCount. That is what makes
+    // "impossible to construct without a denominator" literal rather than aspirational.
     const lookalike: MeasuredCountInput = inputOf({
       numerator: 3,
       denominator: 28,
@@ -367,7 +363,7 @@ describe("MeasuredCount", () => {
     expect(isMeasuredCount(lookalike)).toBe(false);
     expect(measuredCountSchema.safeParse(lookalike).success).toBe(false);
 
-    // @ts-expect-error — D-8: the brand key is module-private, so no literal is assignable.
+    // @ts-expect-error —: the brand key is module-private, so no literal is assignable.
     const unbranded: MeasuredCount = lookalike;
     expect(isMeasuredCount(unbranded)).toBe(false);
 

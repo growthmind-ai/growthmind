@@ -1,17 +1,17 @@
-// Guards BOTH Dockerfiles (worker and apps/web), not just the worker's — it
-// lives here because worker/__tests__ already hosts the repo's structural
-// checks and bun test discovers it.
+// Guards both Dockerfiles (worker and apps/web), not just the worker's. It lives here
+// because worker/__tests__ already hosts the repo's structural checks and bun test
+// discovers it.
 //
-// WHY THIS EXISTS: adding a workspace package and forgetting to COPY its
-// manifest into the dependency-install layer breaks `docker compose up` from a
-// clean clone — bun cannot resolve the `workspace:*` link, and the build dies
-// in seconds. That is the self-host promise the compose CI job protects, and
-// it costs a full CI round-trip to discover.
+// Why this exists: adding a workspace package and forgetting to copy its manifest into
+// the dependency-install layer breaks `docker compose up` from a clean clone. Bun
+// cannot resolve the `workspace:*` link, and the build dies in seconds. That is the
+// self-host promise the compose CI job protects, and it costs a full CI round-trip to
+// discover.
 //
-// It has now happened twice: `packages/adapters` (O-003) and `packages/core`
-// (O-004), in consecutive sprints. It will happen every time a package is
-// added, because nothing about creating a package reminds anyone about a
-// Dockerfile. So the reminder is a failing test rather than a convention.
+// It has now happened twice: `packages/adapters` and `packages/core`, in consecutive
+// sprints. It will happen every time a package is added, because nothing about creating
+// a package reminds anyone about a Dockerfile. So the reminder is a failing test rather
+// than a convention.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

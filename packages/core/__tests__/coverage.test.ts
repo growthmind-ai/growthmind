@@ -1,33 +1,33 @@
-// ADD §7 "Unit — export coverage" — both named tests (FR-22, FR-9).
+// Unit tests for export coverage: both named tests.
 //
-// WHY THIS FILE EXISTS. O-004's definition of done is "every pure function
-// unit-tested with declared fail directions". Everywhere else in this package
-// that claim is *made*; here it is *enforced*. The two tests below are the
-// difference between a sprint that believes it is covered and a sprint that
-// can prove it — and, more importantly, between a package that is covered
-// today and one that stays covered after the next function is added.
+// Why this file exists. the definition of done is "every pure function unit-tested with
+// declared fail directions". Everywhere else in this package that claim is *made*; here
+// it is *enforced*. The two tests below are the difference between a sprint that
+// believes it is covered and a sprint that can prove it, and, more importantly, between
+// a package that is covered today and one that stays covered after the next function is
+// added.
 //
-// THE RULE BOTH TESTS OBEY: NOTHING IS HAND-LISTED THAT CAN BE ENUMERATED.
-// A hand-written list of exports silently stops covering the function someone
-// adds next month, which is precisely the failure these tests exist to
-// prevent. So the enumeration comes from the artefacts themselves — the barrel
-// (`src/index.ts`, parsed AND cross-checked against the runtime module), the
-// threshold rule set's own keys, and `PROOF_PREDICATES`'s own keys. The only
-// hand-written thing here is the *coverage map* in test 2, and that map is
-// typed `Record<ThresholdKey, …>` so a threshold added without a declared
-// fail-direction test is a COMPILE error before it is a test failure.
+// The rule both tests obey: Nothing is hand-listed that can be enumerated. A
+// hand-written list of exports silently stops covering the function someone adds next
+// month, which is precisely the failure these tests exist to prevent. So the
+// enumeration comes from the artefacts themselves. The barrel (`src/index.ts`, parsed
+// and cross-checked against the runtime module), the threshold rule set's own keys, and
+// `PROOF_PREDICATES`'s own keys. The only hand-written thing here is the *coverage map*
+// in test 2, and that map is typed `Record<ThresholdKey, …>` so a threshold added
+// without a declared fail-direction test is a compile error before it is a test
+// failure.
 //
-// NON-VACUITY IS ASSERTED FIRST, EVERY TIME (the `reachability.test.ts`
-// pattern). An enumeration that resolves to nothing passes perfectly and means
-// nothing: "zero uncovered exports" out of zero exports is not coverage, it is
-// a broken scan reporting green.
+// Non-vacuity is asserted first, every time (the `reachability.test.ts` pattern). An
+// enumeration that resolves to nothing passes perfectly and means nothing: "zero
+// uncovered exports" out of zero exports is not coverage, it is a broken scan reporting
+// green.
 //
-// House rules honoured here (STATE.md standing constraints):
-//   - NO NODE BUILTIN. Source and test text is read through `Bun.file`,
-//     `Bun.Glob`, and `import.meta.dir` — never `node:fs` / `node:path`. A
-//     sibling test asserts `packages/core/src` imports no node builtin, and
-//     this package's test side keeps the same discipline.
-//   - No `Date.now()`: nothing here reads a clock.
+// House rules honoured here (state.md standing constraints):
+// No node builtin. Source and test text is read through `Bun.file`,
+//  `Bun.Glob`, and `import.meta.dir` — never `node:fs` / `node:path`. A
+//  sibling test asserts `packages/core/src` imports no node builtin, and
+//  this package's test side keeps the same discipline.
+// No `Date.now`: nothing here reads a clock.
 import { describe, expect, test } from "bun:test";
 
 import { PROOF_PREDICATES } from "../src/evidence/predicates";
@@ -35,7 +35,7 @@ import * as barrel from "../src/index";
 import { THRESHOLD_RULE_SETS } from "../src/rules/thresholds";
 import type { FindingClass, ThresholdRuleSet } from "../src/rules/types";
 
-// --- paths (no `node:path`; forward slashes everywhere) ---------------------
+// -- paths (no `node:path`; forward slashes everywhere)
 
 const TESTS_ROOT = import.meta.dir;
 const BARREL_PATH = `${TESTS_ROOT}/../src/index.ts`;
@@ -46,25 +46,25 @@ function slash(value: string): string {
 }
 
 /**
- * THIS FILE IS EXCLUDED FROM ITS OWN CORPUS. A coverage test that can satisfy
- * itself from its own test names is a mirror, not a gate.
+ * This file is excluded from its own corpus. A coverage test that can satisfy itself
+ * from its own test names is a mirror, not a gate.
  */
 const SELF = "coverage.test.ts";
 
-// --- the suite, discovered rather than listed -------------------------------
+// -- the suite, discovered rather than listed
 
 type TestSuite = {
   /** Posix-relative to `__tests__`, e.g. `evidence/gate.test.ts`. */
   readonly files: readonly string[];
   /** file -> source text. */
   readonly sources: ReadonlyMap<string, string>;
-  /** file -> the `test(…)` / `it(…)` names declared in it. */
+  /** file -> the `test` / `it` names declared in it. */
   readonly names: ReadonlyMap<string, readonly string[]>;
 };
 
 let suiteCache: TestSuite | null = null;
 
-/** Every `test("…")` / `it('…')` name in one file, quote style agnostic. */
+/** Every `test` / `it` name in one file, quote style agnostic. */
 function testNamesIn(source: string): string[] {
   const declaration = /\b(?:test|it)\s*\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/g;
   const found: string[] = [];
@@ -97,7 +97,7 @@ async function readSuite(): Promise<TestSuite> {
   return suiteCache;
 }
 
-// --- the barrel, parsed and cross-checked against the runtime module --------
+// -- the barrel, parsed and cross-checked against the runtime module
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
@@ -111,11 +111,11 @@ type ParsedBarrel = {
 };
 
 /**
- * `src/index.ts` is a wall of `export { … } from "./x/y"` blocks, so the
- * specifier each name came from is only visible in the SOURCE — the runtime
- * module object knows the names and not their homes. Parsing gives us the
- * homes; the runtime module is then used to decide which of those names are
- * functions, and to prove the parse missed nothing (below).
+ * `src/index.ts` is a wall of `export { … } from "./x/y"` blocks, so the specifier each
+ * name came from is only visible in the source. The runtime module object knows the
+ * names and not their homes. Parsing gives us the homes; the runtime module is then
+ * used to decide which of those names are functions, and to prove the parse missed
+ * nothing (below).
  */
 async function parseBarrel(): Promise<ParsedBarrel> {
   const code = stripComments(await Bun.file(BARREL_PATH).text());
@@ -141,44 +141,43 @@ async function parseBarrel(): Promise<ParsedBarrel> {
 
 const runtimeBarrel = barrel as unknown as Record<string, unknown>;
 
-describe("export coverage (FR-22)", () => {
-  // ADD §7 item 1 (FR-22).
+describe("export coverage", () => {
+  // item 1.
   //
-  // THE RULE FOR "NEEDS A TEST FILE", STATED OUT LOUD: every barrel export
-  // whose runtime value is a FUNCTION. Not every export is a pure function —
-  // the barrel also carries Zod schemas, constant maps, versioned literals, and
-  // (erased) types — and the classification is made at RUNTIME by `typeof`
-  // rather than by name, so nothing can dodge it by being called
-  // `somethingSchema`. The rule cannot silently exempt a real function: adding
-  // one to the barrel adds it to this enumeration automatically.
+  // The rule for "needs a test file", stated out loud: every barrel export whose
+  // runtime value is a function. Not every export is a pure function. The barrel also
+  // carries Zod schemas, constant maps, versioned literals, and (erased) types, and the
+  // classification is made at runtime by `typeof` rather than by name, so nothing can
+  // dodge it by being called `somethingSchema`. The rule cannot silently exempt a real
+  // function: adding one to the barrel adds it to this enumeration automatically.
   //
-  // A function is covered when BOTH hold:
-  //   (a) its module has a mirroring test file — `src/x/y.ts` is covered by
-  //       `__tests__/x/y.test.ts`, the convention every existing suite already
-  //       follows, so the tests for a module are findable from the module; and
-  //   (b) some test file in the suite CALLS it by name. (a) alone passes for a
-  //       function nobody ever invokes; (b) alone loses the naming convention.
-  //       `isReachableClass` is why (b) scans the whole suite rather than only
-  //       the mirroring file — it lives in `evidence/gate.ts` and is exercised
-  //       from `findings/candidate.test.ts`, which is the right home for it.
+  // A function is covered when both hold: its module has a mirroring test file,
+  // `src/x/y.ts` is covered by
+  //  `__tests__/x/y.test.ts`, the convention every existing suite already
+  //  follows, so the tests for a module are findable from the module; and
+  //  some test file in the suite calls it by name. alone passes for a
+  //  function nobody ever invokes; alone loses the naming convention.
+  //  `isReachableClass` is why scans the whole suite rather than only
+  //  the mirroring file — it lives in `evidence/gate.ts` and is exercised
+  //  from `findings/candidate.test.ts`, which is the right home for it.
   test("should have a test file for every exported pure function in packages/core", async () => {
     const { valueExports, residue } = await parseBarrel();
     const suite = await readSuite();
 
-    // --- NON-VACUITY, BEFORE ANY "ZERO OFFENDERS" CLAIM ---------------------
+    // -- non-vacuity, before any "zero offenders" claim
     expect(valueExports.size).toBeGreaterThan(0);
     expect(suite.files.length).toBeGreaterThan(0);
     expect(Object.keys(runtimeBarrel).length).toBeGreaterThan(0);
 
-    // The parser must have seen the WHOLE barrel. A bare `export function`, an
-    // `export const`, or an `export *` in `index.ts` would be invisible to the
-    // block regex above and would therefore be exempt from this test by
-    // accident — so anything the regex could not account for fails here.
+    // The parser must have seen the whole barrel. A bare `export function`, an `export
+    // const`, or an `export *` in `index.ts` would be invisible to the block regex
+    // above and would therefore be exempt from this test by accident, so anything the
+    // regex could not account for fails here.
     expect(residue).not.toMatch(/\bexport\b/);
 
-    // ...and the parse must agree with the runtime module in BOTH directions:
-    // a name at runtime the parse missed is an un-enumerated export, and a
-    // parsed name absent at runtime means the parse invented one.
+    // ...and the parse must agree with the runtime module in both directions: a name at
+    // runtime the parse missed is an un-enumerated export, and a parsed name absent at
+    // runtime means the parse invented one.
     expect([...valueExports.keys()].toSorted()).toEqual(Object.keys(runtimeBarrel).toSorted());
 
     const functions = [...valueExports].filter(
@@ -186,7 +185,7 @@ describe("export coverage (FR-22)", () => {
     );
     expect(functions.length).toBeGreaterThan(0);
 
-    // --- the actual assertion ----------------------------------------------
+    // -- the actual assertion
     const uncovered: string[] = [];
     for (const [name, specifier] of functions) {
       const mirrorFile = `${specifier.replace(/^\.\//, "")}.test.ts`;
@@ -218,55 +217,54 @@ describe("export coverage (FR-22)", () => {
     expect(uncovered).toEqual([]);
   });
 
-  // ADD §7 item 2 (FR-22, FR-9).
+  // item 2.
   //
-  // WHAT THIS ADDS OVER `rules/thresholds.test.ts`'s fail-direction test. That
-  // one proves every threshold DECLARES a fail direction — documentation, as
-  // data. This one proves every threshold has a TEST whose NAME states it, so
-  // the declared direction is an asserted behaviour and not a comment. FR-9's
-  // whole value is that the direction is provable; a rule set can declare
-  // "under-detect" for a magnitude nothing ever pushes past its boundary.
+  // What this adds over `rules/thresholds.test.ts`'s fail-direction test. That one
+  // proves every threshold declares a fail direction. Documentation, as data. This one
+  // proves every threshold has a test whose name states it, so the declared direction
+  // is an asserted behaviour and not a comment. the whole value is that the direction
+  // is provable; a rule set can declare "under-detect" for a magnitude nothing ever
+  // pushes past its boundary.
   //
-  // WHAT COUNTS AS A "THRESHOLD" HERE, and why the classification cannot let a
-  // real one through:
-  //   - every NUMERIC member of the rule set except `version` (the rule set's
-  //     own identity, not a judgement it makes) — enumerated at runtime, so a
-  //     new magnitude is in scope the moment it is added;
-  //   - `exceptionEventName` is a NAME: no magnitude, nothing to be
-  //     conservative about, no direction to state (D-14, and the same call
-  //     `thresholds.test.ts` makes);
-  //   - the four `*ProofSignals` lists are covered by their PREDICATE's row
-  //     below — the list is the predicate's parameter, and the predicate is
-  //     what turns it into a verdict;
-  //   - every OTHER name list needs its own row in
-  //     `NAME_LIST_FAIL_DIRECTION_TESTS`. A list can be an assertion gate just
-  //     as a magnitude can: `passiveEventNames` is what stops a `$pageview`
-  //     being named as the action an exception broke, which is the difference
-  //     between a passing `broken` verdict and silence;
-  //   - anything else throws rather than being skipped.
+  // What counts as a "threshold" here, and why the classification cannot let a real one
+  // through:
+  // Every numeric member of the rule set except `version` (the rule set's
+  //  own identity, not a judgement it makes) — enumerated at runtime, so a
+  //  new magnitude is in scope the moment it is added;
+  // `exceptionEventName` is a name: no magnitude, nothing to be
+  //  conservative about, no direction to state (and the same call
+  //  `thresholds.test.ts` makes);
+  // The four `*ProofSignals` lists are covered by their predicate's row
+  //  below — the list is the predicate's parameter, and the predicate is
+  //  what turns it into a verdict;
+  // Every other name list needs its own row in
+  //  `NAME_LIST_FAIL_DIRECTION_TESTS`. A list can be an assertion gate just
+  //  as a magnitude can: `passiveEventNames` is what stops a `$pageview`
+  //  being named as the action an exception broke, which is the difference
+  //  between a passing `broken` verdict and silence;
+  // Anything else throws rather than being skipped.
   //
-  // `DETECTOR_CORPUS_MAX_SESSIONS` is deliberately NOT here, and that is a
-  // decision rather than an omission: PL ruling 4 makes it a read-side cost
-  // bound rather than a rule-set member, and its fail direction is carried by
-  // `coverage.truncated` (a visible truncation, never a silent one), asserted
-  // in the corpus service's own suite.
+  // `DETECTOR_CORPUS_MAX_SESSIONS` is deliberately not here, and that is a decision
+  // rather than an omission: makes it a read-side cost bound rather than a rule-set
+  // member, and its fail direction is carried by `coverage.truncated` (a visible
+  // truncation, never a silent one), asserted in the corpus service's own suite.
   test("should have at least one test whose name states a fail direction for every threshold and predicate", async () => {
     const suite = await readSuite();
     const ruleSet = ruleSetV1();
 
-    // --- NON-VACUITY, BEFORE ANY "ZERO OFFENDERS" CLAIM ---------------------
+    // -- non-vacuity, before any "zero offenders" claim
     expect(suite.files.length).toBeGreaterThan(0);
     expect(Object.keys(ruleSet).length).toBeGreaterThan(0);
     expect(Object.keys(PROOF_PREDICATES).length).toBeGreaterThan(0);
 
-    // The name extractor must have found names in EVERY discovered file. If the
-    // regex ever stops matching the house style, this catches it here rather
-    // than letting a silently empty corpus report full coverage.
+    // The name extractor must have found names in every discovered file. If the regex
+    // ever stops matching the house style, this catches it here rather than letting a
+    // silently empty corpus report full coverage.
     for (const file of suite.files) {
       expect((suite.names.get(file) ?? []).length).toBeGreaterThan(0);
     }
 
-    // --- every threshold is declared, and nothing declared is stale ---------
+    // -- every threshold is declared, and nothing declared is stale
     const declaredThresholds = new Map<string, FailDirectionEvidence>(
       Object.entries(THRESHOLD_FAIL_DIRECTION_TESTS),
     );
@@ -277,16 +275,16 @@ describe("export coverage (FR-22)", () => {
       if (key === "version") continue;
       if (typeof value === "string") continue;
       if (Array.isArray(value)) {
-        // The four `*ProofSignals` lists are covered by their PREDICATE's row
-        // below — the list is the predicate's parameter, and the predicate is
-        // what turns it into a verdict.
+        // The four `*ProofSignals` lists are covered by their predicate's row below.
+        // The list is the predicate's parameter, and the predicate is what turns it
+        // into a verdict.
         //
-        // EVERY OTHER name list is a gate in its own right and needs its own
-        // named test. `passiveEventNames` decides whether a `$pageview` may be
-        // named as the action an exception broke, and that decision is the
-        // difference between a passing `broken` verdict and silence. A blanket
-        // `continue` here would have exempted it without anybody choosing to —
-        // the exact shape of silent miss this file exists to prevent.
+        // Every other name list is a gate in its own right and needs its own named
+        // test. `passiveEventNames` decides whether a `$pageview` may be named as the
+        // action an exception broke, and that decision is the difference between a
+        // passing `broken` verdict and silence. A blanket `continue` here would have
+        // exempted it without anybody choosing to. The exact shape of silent miss this
+        // file exists to prevent.
         if (PROOF_SIGNAL_KEY.test(key)) continue;
         if (!declaredNameLists.has(key)) {
           throw new Error(
@@ -318,7 +316,7 @@ describe("export coverage (FR-22)", () => {
       expect(Object.keys(ruleSet)).toContain(key);
     }
 
-    // --- every predicate is declared, and nothing declared is stale ---------
+    // -- every predicate is declared, and nothing declared is stale
     const predicateKeys = Object.keys(PROOF_PREDICATES);
     const declaredPredicates = new Map<string, FailDirectionEvidence>(
       Object.entries(PREDICATE_FAIL_DIRECTION_TESTS),
@@ -335,7 +333,7 @@ describe("export coverage (FR-22)", () => {
       expect(predicateKeys).toContain(key);
     }
 
-    // --- every declared test must state a direction AND actually exist ------
+    // -- every declared test must state a direction and actually exist
     const rows: [string, FailDirectionEvidence][] = [
       ...[...declaredThresholds].map(([key, row]): [string, FailDirectionEvidence] => [
         `threshold \`${key}\``,
@@ -353,8 +351,8 @@ describe("export coverage (FR-22)", () => {
 
     const missing: string[] = [];
     for (const [subject, row] of rows) {
-      // A row may not be re-pointed at a happy-path test to go green: the name
-      // it names has to READ as a fail direction.
+      // A row may not be re-pointed at a happy-path test to go green: the name it names
+      // has to read as a fail direction.
       if (!FAIL_DIRECTION.test(row.test)) {
         throw new Error(
           `${subject} names "${row.test}", which states no fail direction. FR-9 requires the ` +
@@ -388,17 +386,17 @@ describe("export coverage (FR-22)", () => {
   });
 });
 
-// --- the coverage map -------------------------------------------------------
+// -- the coverage map
 //
-// Everything above is enumerated. This is the one thing that cannot be: which
-// test covers which threshold is a human claim, so it is written down once and
-// then verified from BOTH ends — the subject list comes from the rule set and
-// the predicate registry (a new one is a compile error here), and the test name
-// must really exist, in the file this map says it lives in.
+// Everything above is enumerated. This is the one thing that cannot be: which test
+// covers which threshold is a human claim, so it is written down once and then verified
+// from both ends. The subject list comes from the rule set and the predicate registry
+// (a new one is a compile error here), and the test name must really exist, in the file
+// this map says it lives in.
 
 /** The name of the test that states a subject's fail direction, and its home. */
 type FailDirectionEvidence = {
-  /** Verbatim `test(…)` name. */
+  /** Verbatim `test` name. */
   readonly test: string;
   /** Posix-relative to `__tests__`. */
   readonly file: string;
@@ -411,31 +409,30 @@ type NumericMembers<T> = {
 type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet>, "version">;
 
 /**
- * The rule set's NAME LISTS, minus the four `*ProofSignals` lists that their
- * predicate's row already covers. What is left is a list that decides a
- * verdict on its own — today exactly one, `passiveEventNames` — and the
- * `Record<NameListKey, …>` below makes a second one a `bun run typecheck`
- * failure before it is a test failure.
+ * The rule set's name lists, minus the four `*ProofSignals` lists that their
+ * predicate's row already covers. What is left is a list that decides a verdict on its
+ * own (today exactly one, `passiveEventNames`) and the `Record<NameListKey, …>` below
+ * makes a second one a `bun run typecheck` failure before it is a test failure.
  */
 type NameListMembers<T> = {
   [K in keyof T]-?: T[K] extends readonly string[] ? K : never;
 }[keyof T];
 type NameListKey = Exclude<NameListMembers<ThresholdRuleSet>, `${string}ProofSignals`>;
 
-/** The runtime half of that exclusion — see the enumeration in test 2. */
+/** The runtime half of that exclusion. See the enumeration in test 2. */
 const PROOF_SIGNAL_KEY = /ProofSignals$/;
 
 /**
- * A name that reads as a fail direction. Deliberately a small, fixed
- * vocabulary: the point is that a reader scanning the suite can see which way
- * the magnitude fails without opening the file.
+ * A name that reads as a fail direction. Deliberately a small, fixed vocabulary: the
+ * point is that a reader scanning the suite can see which way the magnitude fails
+ * without opening the file.
  */
 const FAIL_DIRECTION =
   /\b(?:not|never|no|without|outside|below|unsatisfied)\b|\b(?:drop|downgrade|reject|refuse)\w*/i;
 
 /**
- * Typed `Record<ThresholdKey, …>` so a threshold added to `ThresholdRuleSet`
- * without a fail-direction test fails `bun run typecheck` before it fails here.
+ * Typed `Record<ThresholdKey, …>` so a threshold added to `ThresholdRuleSet` without a
+ * fail-direction test fails `bun run typecheck` before it fails here.
  */
 const THRESHOLD_FAIL_DIRECTION_TESTS: Record<ThresholdKey, FailDirectionEvidence> = {
   errorCorrelationWindowMs: {
@@ -477,9 +474,9 @@ const THRESHOLD_FAIL_DIRECTION_TESTS: Record<ThresholdKey, FailDirectionEvidence
 };
 
 /**
- * Typed `Record<NameListKey, …>` for the same reason as the map above: a name
- * list added to `ThresholdRuleSet` without a fail-direction test fails
- * `bun run typecheck` before it fails here.
+ * Typed `Record<NameListKey, …>` for the same reason as the map above: a name list
+ * added to `ThresholdRuleSet` without a fail-direction test fails `bun run typecheck`
+ * before it fails here.
  */
 const NAME_LIST_FAIL_DIRECTION_TESTS: Record<NameListKey, FailDirectionEvidence> = {
   passiveEventNames: {
@@ -493,12 +490,12 @@ const NAME_LIST_FAIL_DIRECTION_TESTS: Record<NameListKey, FailDirectionEvidence>
 };
 
 /**
- * Keyed by `FindingClass` — the key `PROOF_PREDICATES` itself is keyed by — so
- * a fifth class cannot arrive without declaring how its predicate fails.
+ * Keyed by `FindingClass` (the key `PROOF_PREDICATES` itself is keyed by) so a fifth
+ * class cannot arrive without declaring how its predicate fails.
  *
- * A row may repeat a threshold's test: one test name can legitimately state
- * both the predicate's direction and its magnitude's, and forcing a distinct
- * name per subject would manufacture a gap rather than find one.
+ * A row may repeat a threshold's test: one test name can legitimately state both the
+ * predicate's direction and its magnitude's, and forcing a distinct name per subject
+ * would manufacture a gap rather than find one.
  */
 const PREDICATE_FAIL_DIRECTION_TESTS: Record<FindingClass, FailDirectionEvidence> = {
   broken: {
@@ -519,7 +516,7 @@ const PREDICATE_FAIL_DIRECTION_TESTS: Record<FindingClass, FailDirectionEvidence
   },
 };
 
-/** The v1 rule set fetched BY VERSION, never as "whatever is current" (D-14). */
+/** The v1 rule set fetched by version, never as "whatever is current". */
 function ruleSetV1(): ThresholdRuleSet {
   const rules = THRESHOLD_RULE_SETS.get(1);
   if (!rules) throw new Error("threshold rule set version 1 must remain resolvable forever");

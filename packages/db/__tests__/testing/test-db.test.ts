@@ -16,9 +16,9 @@ describe("createTestDb", () => {
   });
 
   test("createTestDb boots pglite and applies every migration in packages/db/drizzle", async () => {
-    // Every table the generated auth schema defines must be queryable —
-    // proof the real migrations (0000_enable-pgvector, 0001_auth-tables)
-    // applied cleanly against PGlite, not a mock.
+    // Every table the generated auth schema defines must be queryable. Proof the real
+    // migrations (0000_enable-pgvector, 0001_auth-tables) applied cleanly against
+    // PGlite, not a mock.
     expect(await db.select().from(schema.organization)).toEqual([]);
     expect(await db.select().from(schema.member)).toEqual([]);
     expect(await db.select().from(schema.invitation)).toEqual([]);

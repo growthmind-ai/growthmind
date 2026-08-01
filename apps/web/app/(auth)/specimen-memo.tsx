@@ -3,21 +3,21 @@ import { Box, Text } from "@mantine/core";
 import { MemoFields, MemoSheet, type MemoField } from "@/components/ui/Memo";
 
 /**
- * The sample finding shown beside the auth form — what actually arrives once
- * a site is connected, so a first-time visitor can see the product's output
- * before handing over an email. This is the one thing the old auth pages had
- * no answer for: they never said what Growthmind is.
+ * The sample finding shown beside the auth form. What actually arrives once a site is
+ * connected, so a first-time visitor can see the product's output before handing over
+ * an email. This is the one thing the old auth pages had no answer for: they never said
+ * what Growthmind is.
  *
- * Copy discipline (product decisions §6 and §10): the claim carries its
- * evidence and a denominator, the recommendation names an action, and every
- * sentence is readable by the non-technical persona. The narrative and the
- * footnote are the marketing site's, deliberately — reusing approved copy
- * rather than inventing a second version of the same story.
+ * Copy discipline (product decisions and ): the claim carries its evidence and a
+ * denominator, the recommendation names an action, and every sentence is readable by
+ * the non-technical persona. The narrative and the footnote are the marketing site's,
+ * deliberately. Reusing approved copy rather than inventing a second version of the
+ * same story.
  *
- * Honesty guard: no account can produce a finding until a site is connected,
- * so this must never be mistakable for one. It is stamped SPECIMEN and says
- * so again in plain English on the sheet itself. If this ever becomes a live
- * finding renderer, that stamp is the thing to check first.
+ * Honesty guard: no account can produce a finding until a site is connected, so this
+ * must never be mistakable for one. It is stamped specimen and says so again in plain
+ * English on the sheet itself. If this ever becomes a live finding renderer, that stamp
+ * is the thing to check first.
  */
 
 const FIELDS: readonly MemoField[] = [

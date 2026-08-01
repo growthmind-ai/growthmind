@@ -1,5 +1,5 @@
-// Repository for the `sessions` table. D-B: org-scoped at construction, no
-// organization id parameter, mutations keyed on `(org, id)`.
+// Repository for the `sessions` table: org-scoped at construction, no organization id
+// parameter, mutations keyed on `(org, id)`.
 import type {
   ExclusionReason,
   IdentityResolution,
@@ -19,7 +19,7 @@ export interface SessionUpsertRow {
   connectionId: string;
   sessionKey: string;
   identityKey: string | null;
-  /** DOMAIN ONLY, never the address. */
+  /** Domain only, never the address. */
   identityEmailDomain: string | null;
   identityResolution: IdentityResolution;
   userAgent: string | null;
@@ -35,27 +35,27 @@ export interface SessionUpsertRow {
 
 export interface SessionsRepo {
   /**
-   * `ON CONFLICT (project_id, session_key) DO UPDATE` — IDEMPOTENT UNDER
-   * REPEATED APPLICATION BY CONSTRUCTION, which is what makes a retried
-   * worker task safe without a prior existence check (D4/D6):
+   * `ON CONFLICT (project_id, session_key) DO UPDATE`, idempotent under repeated
+   * application by construction, which is what makes a retried worker task safe without
+   * a prior existence check:
    *
-   * - `started_at` takes the EARLIEST of stored and incoming;
-   * - `last_event_at` takes the LATEST;
-   * - `identity_email_domain` keeps the stored value when it is already set;
-   * - `identity_resolution` upgrades MONOTONICALLY along
-   *   `unresolved → absent → resolved` and never regresses, so a later run
-   *   that could not check does not erase an earlier run that could.
+   * `started_at` takes the earliest of stored and incoming;
+   * `last_event_at` takes the latest;
+   * `identity_email_domain` keeps the stored value when it is already set;
+   * `identity_resolution` upgrades monotonically along `unresolved → absent → resolved`
+   *  and never regresses, so a later run that could not check does not erase an
+   *  earlier run that could.
    */
   upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]>;
   /** Org-filtered list for one project, newest first. */
   listForProject(projectId: string, options: { limit: number }): Promise<SessionRecord[]>;
-  /** Org-filtered lookup by session key — `null` for a foreign org. */
+  /** Org-filtered lookup by session key, `null` for a foreign org. */
   findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null>;
 }
 
-/** `unresolved < absent < resolved`. `absent` is a FACT (a completed lookup
- * proving no email); `unresolved` is an admission of ignorance, so it can
- * never overwrite either of the other two. */
+/** `unresolved < absent < resolved`. `absent` is a fact (a completed lookup proving no
+ * email); `unresolved` is an admission of ignorance, so it can never overwrite either
+ * of the other two. */
 const RESOLUTION_RANK: Record<IdentityResolution, number> = {
   unresolved: 1,
   absent: 2,
@@ -63,10 +63,10 @@ const RESOLUTION_RANK: Record<IdentityResolution, number> = {
 };
 
 /**
- * `ON CONFLICT … DO UPDATE` raises "cannot affect row a second time" when one
- * statement carries the same conflict target twice, so two rows sharing a
- * `(project_id, session_key)` are merged here — under exactly the rules the
- * SQL below applies — before they reach the wire.
+ * `ON CONFLICT … DO UPDATE` raises "cannot affect row a second time" when one statement
+ * carries the same conflict target twice, so two rows sharing a `(project_id,
+ * session_key)` are merged here (under exactly the rules the SQL below applies) before
+ * they reach the wire.
  */
 function mergeSessionRows(rows: readonly SessionUpsertRow[]): SessionUpsertRow[] {
   const merged = new Map<string, SessionUpsertRow>();
@@ -105,28 +105,26 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
         return [];
       }
 
-      // ---------------------------------------------------------------------
-      // D7 — THE CROSS-TENANT WRITE VECTOR, CLOSED EXPLICITLY.
+      // The cross-tenant write vector, closed explicitly.
       //
-      // The upsert's conflict target is `(project_id, session_key)`. That
-      // index carries NO organization id, so `ON CONFLICT … DO UPDATE` does
-      // NOT inherit tenancy from it: a foreign org supplying another org's
-      // `projectId` + `sessionKey` would match that org's row and EDIT it.
-      // The index cannot be the guard here, and relying on it is the bug.
+      // The upsert's conflict target is `(project_id, session_key)`. That index carries
+      // NO organization id, so `ON CONFLICT … DO UPDATE` does not inherit tenancy from
+      // it: a foreign org supplying another org's `projectId` + `sessionKey` would
+      // match that org's row and edit it. The index cannot be the guard here, and
+      // relying on it is the bug.
       //
       // Two independent mechanisms close it, and both are deliberate:
       //
-      //  1. OWNERSHIP FILTER (below). Rows naming a project this context does
-      //     not own are dropped before the write, so a foreign org can neither
-      //     edit an existing row NOR inject a new one into another org's
-      //     project. A project never changes organization, so this is a lookup
-      //     on an immutable relationship, not the read-then-write race D6
-      //     forbids.
-      //  2. `setWhere` (further below) pins the DO UPDATE to
-      //     `sessions.organization_id = ctx.organizationId`, so even if (1)
-      //     were ever removed or bypassed the update matches zero rows and
-      //     RETURNING yields nothing — never a silent successful edit.
-      // ---------------------------------------------------------------------
+      // 1. Ownership filter (below). Rows naming a project this context does
+      //  not own are dropped before the write, so a foreign org can neither
+      //  edit an existing row nor inject a new one into another org's
+      //  project. A project never changes organization, so this is a lookup
+      //  on an immutable relationship, not the read-then-write race
+      //  forbids.
+      // 2. `setWhere` (further below) pins the do update to
+      //  `sessions.organization_id = ctx.organizationId`, so even if
+      //  were ever removed or bypassed the update matches zero rows and
+      //  Returning yields nothing — never a silent successful edit.
       const requestedProjectIds = [...new Set(rows.map((row) => row.projectId))];
       const ownedProjects = await db
         .select({ id: projects.id })
@@ -144,16 +142,16 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
         return [];
       }
 
-      // `excluded` is the proposed row; the qualified column is the STORED
-      // row. Postgres evaluates every SET expression against the pre-update
-      // values, so `entry_url_path` can branch on the stored `started_at`
-      // while `started_at` is itself being set.
+      // `excluded` is the proposed row; the qualified column is the stored row.
+      // Postgres evaluates every set expression against the pre-update values, so
+      // `entry_url_path` can branch on the stored `started_at` while `started_at` is
+      // itself being set.
       const incomingRank = sql`case excluded.identity_resolution when 'resolved' then 3 when 'absent' then 2 else 1 end`;
       const storedRank = sql`case ${sessions.identityResolution} when 'resolved' then 3 when 'absent' then 2 else 1 end`;
       // A run that knew at least as much as the stored one re-stamps the
-      // classification; a run that knew LESS leaves it alone. This is what
-      // keeps the persisted facts and the stamp derived from them coherent,
-      // which is the whole property FR-14's recomputability rests on.
+      // classification; a run that knew less leaves it alone. This is what keeps the
+      // persisted facts and the stamp derived from them coherent, which is the whole
+      // property the recomputability rests on.
       const knewAtLeastAsMuch = sql`(${incomingRank}) >= (${storedRank})`;
 
       return db
@@ -187,7 +185,7 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
             identityEmailDomain: sql`coalesce(${sessions.identityEmailDomain}, excluded.identity_email_domain)`,
             identityResolution: sql`case when ${knewAtLeastAsMuch} then excluded.identity_resolution else ${sessions.identityResolution} end`,
             userAgent: sql`coalesce(${sessions.userAgent}, excluded.user_agent)`,
-            // The ENTRY path belongs to whichever run saw the earlier start.
+            // The entry path belongs to whichever run saw the earlier start.
             entryUrlPath: sql`case when excluded.started_at < ${sessions.startedAt} then coalesce(excluded.entry_url_path, ${sessions.entryUrlPath}) else coalesce(${sessions.entryUrlPath}, excluded.entry_url_path) end`,
             startedAt: sql`least(${sessions.startedAt}, excluded.started_at)`,
             lastEventAt: sql`greatest(${sessions.lastEventAt}, excluded.last_event_at)`,
@@ -198,8 +196,8 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
             groupingVersion: sql`excluded.grouping_version`,
             updatedAt: sql`now()`,
           },
-          // Mechanism 2 of the D7 guard above. Zero rows and an empty
-          // RETURNING for a foreign org, never a silent successful edit.
+          // Mechanism 2 of the guard above. Zero rows and an empty returning for a
+          // foreign org, never a silent successful edit.
           setWhere: eq(sessions.organizationId, ctx.organizationId),
         })
         .returning();
