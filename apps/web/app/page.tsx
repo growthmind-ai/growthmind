@@ -1,5 +1,4 @@
-import { Anchor, Box, Button, Container, Group, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Box, Container, Group, Stack, Text } from "@mantine/core";
 import { redirect } from "next/navigation";
 
 import { createFirstRunRepo } from "@growthmind/db";
@@ -7,6 +6,10 @@ import { LANDING_SETTLED_LINE, SET_UP_CTA_LABEL } from "@growthmind/shared";
 
 import { SignOutButton } from "../components/landing/sign-out-button";
 import { WorkspaceName } from "../components/landing/workspace-name";
+// Mantine link/button primitives that are safe to compose from a SERVER component.
+// `component={Link}` written inline here passes a function across the server→client
+// boundary and 500s the route — see the header on Links.tsx.
+import { AnchorLink, ButtonLink } from "../components/ui/Links";
 import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { tapTargetStyle } from "../components/ui/tap-target";
 import { getDb } from "../lib/db";
@@ -39,12 +42,12 @@ export default async function HomePage() {
       >
         <Container size="sm">
           <Group justify="space-between" wrap="nowrap" py="sm">
-            <Anchor component={Link} href={ROUTES.home} underline="never" c="inherit">
+            <AnchorLink href={ROUTES.home} underline="never" c="inherit">
               <Group gap="xs" wrap="nowrap">
                 <LogoMark size={28} />
                 <LogoWordmark size={16} />
               </Group>
-            </Anchor>
+            </AnchorLink>
             <SignOutButton />
           </Group>
         </Container>
@@ -93,15 +96,14 @@ export default async function HomePage() {
               </Group>
             ) : (
               <>
-                <Button
-                  component={Link}
+                <ButtonLink
                   href={ROUTES.firstRun}
                   size="md"
                   style={tapTargetStyle}
                   w={{ base: "100%", xs: "auto" }}
                 >
                   {SET_UP_CTA_LABEL}
-                </Button>
+                </ButtonLink>
 
                 <Group wrap="nowrap" align="flex-start" gap="sm">
                   <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>

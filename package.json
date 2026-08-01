@@ -12,7 +12,7 @@
     "worker"
   ],
   "scripts": {
-    "dev": "bun run --filter @growthmind/web dev",
+    "dev": "bun run --cwd apps/web dev",
     "dev:worker": "bun run --filter @growthmind/worker dev",
     "build": "bun run --filter @growthmind/web build",
     "start": "bun run --filter @growthmind/web start",

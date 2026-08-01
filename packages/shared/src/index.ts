@@ -28,6 +28,8 @@ export {
   signUpSchema,
   signInSchema,
   workspaceNameSchema,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MAX_LENGTH,
   type SignUpInput,
   type SignInInput,
   type WorkspaceName,
