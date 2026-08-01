@@ -1,4 +1,4 @@
-// THE READ-ONLY MACHINE SURFACE'S REQUEST HANDLER (O-009).
+// THE READ-ONLY MACHINE SURFACE'S TRANSPORT BOUNDARY (O-009, O-013).
 //
 // A plain function over `Request` with its two effects injected, so the whole
 // surface is driven end to end through its REAL entry point in tests, with
@@ -6,108 +6,111 @@
 // the same reason. `../../app/api/mcp/route.ts` is the only queue of one line
 // that knows about Next.js and about which implementations are wired in.
 //
+// THIS FILE DECIDES FOUR THINGS AND THEN STOPS. Who is asking, whether a
+// browser is asking, whether the body claims to be JSON, and whether the verb
+// is one this surface answers. Everything past that — negotiation, the message
+// envelope, framing, error codes, the shape a result travels in — belongs to
+// `./wire.ts`, and every decision a tool call makes belongs to
+// `./call-tool.ts`. Neither of those is nameable from here except by its one
+// exported function, which is what makes the seam a fact rather than a habit.
+//
 // ---------------------------------------------------------------------------
 // THE ORDER OF OPERATIONS IS PART OF THE SECURITY ARGUMENT
 // ---------------------------------------------------------------------------
 //
-//   1. AUTHENTICATE FIRST, before the body is read, before the tool name is
-//      resolved, before anything is parsed. An unauthenticated caller must not
-//      be able to learn which tool names exist, which arguments are valid, or
-//      whether a payload was well formed — every one of those is a probe, and
-//      the answers differ. So there is exactly one thing an anonymous caller
-//      can find out: that it is not authenticated.
+//   1. AUTHENTICATE FIRST, before the body is read, before any header gate
+//      fires, before the wire layer is constructed at all. An unauthenticated
+//      caller must not be able to learn which tool names exist, which arguments
+//      are valid, whether a payload was well formed, or even which media types
+//      this surface accepts — every one of those is a probe, and the answers
+//      differ. So there is exactly one thing an anonymous caller can find out:
+//      that it is not authenticated.
 //
-//   2. RESOLVE THE ORGANIZATION FROM THE CREDENTIAL, never from the body. It is
-//      structurally impossible to do otherwise here: `McpCredential` is the
-//      only place an organization id exists in this file, no tool input schema
-//      has such a key, and the read port requires the field. There is no line
-//      below where a body value could be substituted.
+//      THIS IS WHY THE 401 IS PRE-WIRE, AND IT IS LOAD-BEARING. The refusal is
+//      produced before the transport is anywhere in the call stack, so all six
+//      unauthenticated cases are byte-identical BY CONSTRUCTION rather than by
+//      review, and the transport's own content-negotiation refusal can never
+//      come back to a caller that presented no key.
 //
-//   3. ONE READ, ONE `null` BRANCH. Each id-taking tool makes a single call
-//      that carries the organization and the id together, and turns `null` into
-//      one frozen refusal. This handler never learns whether the row was
-//      missing or somebody else's, so it cannot say — which is the whole
-//      obligation `packages/shared/src/mcp/types.ts` handed forward, and the
-//      reason there is no existence check anywhere in this file.
+//   2. THE ORIGIN GATE. A request carrying an `Origin` header AT ALL is refused
+//      403; a request carrying none FAILS OPEN and is served. That direction is
+//      the decision, not an oversight: an MCP client is not a browser and sends
+//      no `Origin`, so failing closed on its absence would refuse every real
+//      client and break `docker compose up` on every hostname — an exclusion
+//      predicate firing on a superset of its real target. Failing open costs
+//      nothing here because this surface carries no ambient credential: it is
+//      bearer-only and cookie-blind, so a page cannot forge an authenticated
+//      call even when it reaches us. The 403 closes the DNS-rebinding shape; it
+//      is not an authentication control.
 //
-//   4. PARSE EVERY OUTPUT before it goes out, through the schema that owns it.
-//      A store's declared type is a claim about today's writes, not about
-//      what is persisted (edge taxonomy D5); and the output schemas carry real
-//      invariants — a count without its denominator, a window whose `truncated`
-//      contradicts its own numbers, a first attempt with earlier work behind it
-//      are all refused. A producer bug becomes a 500 with no detail in it,
-//      never a wrong answer an agent acts on.
+//   3. THE CONTENT-TYPE GATE, ON WHAT A REQUEST DECLARES. A body announced as
+//      anything other than JSON is refused 415 with the sentence that says what
+//      to send. A request that declares NOTHING is not refused here — a
+//      bodiless verb has no content type to be wrong about, and the speculative
+//      `GET` a real client opens during its handshake is exactly that request.
+//      It falls through to the verb gate below and is answered 405, which is
+//      what a correct handshake expects.
+//
+//   4. THE VERB GATE. `POST` and nothing else. Every other method is 405 with a
+//      sentence telling an agent what to send instead — never a bodiless 405
+//      from a framework, and never delegated to the transport, which would
+//      answer without instructions. The catalogue is no longer a `GET`: it
+//      moved onto the wire protocol as `tools/list`, so a `GET` has nothing
+//      left to answer with.
+//
+//   5. HAND OFF, ONCE. `./wire.ts` receives the request and an ALREADY-RESOLVED
+//      credential. It never authenticates, and it never sees a verb this file
+//      would have refused.
+//
+// WE AUTHOR NO `Accept` GATE. The transport already requires both media types
+// on the leg a stock client negotiates and refuses instructively when they are
+// missing; a second, hand-rolled content-negotiation classifier of ours would
+// be the same shape D-12 declined for the protocol-version header. What matters
+// is that its refusal sits BEHIND the credential check, which the ordering
+// above guarantees.
 //
 // ---------------------------------------------------------------------------
-// READ-ONLY, STRUCTURALLY
+// THE ORGANIZATION COMES FROM THE CREDENTIAL, AND NOTHING HERE READS A BODY
 // ---------------------------------------------------------------------------
 //
-// Nothing in this file writes. The switch below is exhaustive over
-// `McpToolName`, so a fourth tool added to `@growthmind/shared` fails to
-// compile here rather than arriving unhandled — and the only dependency this
-// handler has that could write anything is `McpReadPort`, whose three methods
-// are all reads. `report_shipped`, the draft contract's one write tool, is
-// absent from the descriptor list and asserted absent by name in
-// `packages/shared/__tests__/mcp/tools.test.ts`.
-import { renderFixSpec } from "@growthmind/core";
-import {
-  FIX_ATTEMPT_CEILING,
-  MCP_TOOL,
-  MCP_TOOLS,
-  fixSpecEnvelopeSchema,
-  getFindingInputSchema,
-  getFixInputSchema,
-  listOpenFixesInputSchema,
-  listOpenFixesOutputSchema,
-  resolveMcpTool,
-  type ListOpenFixesInput,
-  type McpToolDescriptor,
-  type McpToolName,
-} from "@growthmind/shared";
-
+// `McpCredential` is the only place an organization id exists in this file, and
+// this file no longer parses a body at all — so there is not a line below where
+// a request value could be substituted for it. The read port travels through
+// untouched to `./call-tool.ts`, which takes the credential as its own
+// parameter for the same structural reason.
+//
+// ---------------------------------------------------------------------------
+// THE ZOD POSITION THIS FILE USED TO ARGUE IS RETIRED, ON A MEASUREMENT
+// ---------------------------------------------------------------------------
+//
+// Two long comment blocks here used to argue that `apps/web` must never depend
+// on `zod`, because a second copy on disk would break `instanceof` against the
+// schemas `packages/shared` builds. THE HAZARD REQUIRES TWO COPIES, AND WAVE 0
+// MEASURED EXACTLY ONE (`4.4.3`, hoisted) after the transport package was
+// installed — and `zod` is not resolvable from `apps/web` at all under bun's
+// isolated linker, at runtime or under typecheck. So the invariant is enforced
+// by the INSTALLER rather than by an argument, and the argument is withdrawn.
+//
+// THIS MATTERS DOWNSTREAM, WHICH IS WHY IT IS STATED RATHER THAN DELETED. The
+// retired position said "no schema object may cross into the wire layer". Taken
+// as binding it would break tool registration outright: registration REQUIRES a
+// standard schema and refuses a pre-rendered JSON Schema document. The shared
+// Zod objects are handed across verbatim, on purpose, so the object that
+// validates a call is the object that renders what a caller was shown.
+// `__tests__/mcp/no-direct-zod.test.ts` holds both halves.
 import type { McpCredential, McpCredentialSource } from "./credentials";
 import { presentedCredential } from "./credentials";
-import type { McpReadPort, OpenFixRow } from "./read-port";
+import type { McpReadPort } from "./read-port";
 import {
-  MALFORMED_BODY,
-  NOT_FOUND,
+  BROWSER_ORIGIN,
   UNAUTHENTICATED,
   UNAVAILABLE,
+  WRONG_CONTENT_TYPE,
   WRONG_METHOD,
-  malformedInput,
   refusalResponse,
-  unknownTool,
 } from "./refusals";
-
-/**
- * A tool's own descriptor, by name.
- *
- * `resolveMcpTool` already returns one for a name off the wire; this is the
- * lookup for the two schemas this file needs at module scope, and it THROWS at
- * import time if a name in the contract has no descriptor — a boot failure the
- * first request notices, rather than a `undefined.parse` on a live call.
- */
-function requireTool(name: McpToolName): McpToolDescriptor {
-  const tool = MCP_TOOLS.find((candidate) => candidate.name === name);
-  if (tool === undefined) {
-    throw new Error(`mcp: the contract names a tool "${name}" with no descriptor`);
-  }
-  return tool;
-}
-
-/**
- * `get_finding`'s output schema, taken from the DESCRIPTOR rather than imported
- * by name.
- *
- * `@growthmind/shared`'s barrel re-exports `listOpenFixesOutputSchema` and
- * `fixSpecEnvelopeSchema` but not `getFindingOutputSchema`, and the package
- * exposes no second entry point to reach it through. Reaching it via
- * `MCP_TOOLS` is not a workaround so much as the stricter route: the descriptor
- * is what a client is SHOWN, so parsing through it makes "what we validate" and
- * "what we advertise" the same object by construction. See `FindingRecord` in
- * `./read-port.ts` for the type side of the same gap.
- */
-const GET_FINDING_OUTPUT_SCHEMA = requireTool(MCP_TOOL.GET_FINDING).outputSchema;
+import { renderMcpWire } from "./wire";
+import { MCP_HEADER } from "./wire-constants";
 
 /** The two things this handler cannot construct for itself: who is asking, and
  * where the answers come from. Both are ports; neither names a table. */
@@ -116,14 +119,20 @@ export interface McpServerDeps {
   readonly reads: McpReadPort;
 }
 
+/** The one verb this surface answers, and the one media type a body may
+ * announce. Neither is a protocol vocabulary word — the header names, the
+ * protocol revisions and the error codes all live in `./wire-constants.ts`, and
+ * a test fails this file if any of them is written inline here. */
+const SERVED_METHOD = "POST";
+const JSON_MEDIA_TYPE = "application/json";
+
 /**
- * The whole surface, in one function.
+ * The boundary, in one function.
  *
- * `GET` lists the tools that exist; `POST` calls one. Both require a credential
- * — the catalogue is a static contract and leaks no customer data, but a
- * surface with two authentication rules has one rule somebody will get wrong,
- * and there is no client that needs the catalogue without also needing to call
- * something.
+ * Its signature is fixed: a raw request in, a response out, with both effects
+ * injected. Every suite in `__tests__/mcp/` drives this, so it is the narrowest
+ * place the whole surface can be proven from — and the place the gate ordering
+ * above is actually enforced rather than described.
  */
 export async function handleMcpRequest(request: Request, deps: McpServerDeps): Promise<Response> {
   const credential = await authenticate(request, deps.credentials);
@@ -131,38 +140,34 @@ export async function handleMcpRequest(request: Request, deps: McpServerDeps): P
     return refusalResponse(UNAUTHENTICATED);
   }
 
-  if (request.method === "GET") {
-    return catalogueResponse();
+  // PRESENCE IS THE WHOLE RULE. No allow-list, no configuration, and no
+  // inspection of the value — see the fail direction declared in the header.
+  if (request.headers.get(MCP_HEADER.ORIGIN) !== null) {
+    return refusalResponse(BROWSER_ORIGIN);
   }
 
-  if (request.method !== "POST") {
+  if (declaresSomethingOtherThanJson(request)) {
+    return refusalResponse(WRONG_CONTENT_TYPE);
+  }
+
+  if (request.method !== SERVED_METHOD) {
     return refusalResponse(WRONG_METHOD);
   }
 
-  const call = await readToolCall(request);
-  if (call === null) {
-    return refusalResponse(MALFORMED_BODY);
-  }
-
-  // An unknown name is REFUSED WITH INSTRUCTIONS and never thrown:
-  // `resolveMcpTool` returns a result union whose message already names the
-  // three tools and says which one to start from.
-  const resolution = resolveMcpTool(call.tool);
-  if (!resolution.ok) {
-    return refusalResponse(unknownTool(resolution.message));
-  }
-
   try {
-    return await runTool(resolution.tool.name, call.input, deps.reads, credential);
+    return await renderMcpWire(request, { reads: deps.reads, credential });
   } catch (error) {
-    // THE ONLY CATCH IN THE FILE, and it exists so that a fault in a read, in
-    // the renderer, or in an output schema is a 500 with nothing in it rather
-    // than an unhandled rejection with a stack trace on the wire. The detail
-    // goes to the log, which is ours; the agent gets one sentence.
-    console.error("mcp: a tool call could not be completed", {
-      tool: resolution.tool.name,
-      error,
-    });
+    // THE OUTER CATCH, AND IT HAS A DIFFERENT JOB FROM `callTool`'s. That one
+    // owns a fault INSIDE a tool call — a read that broke, a spec that would
+    // not render, an output that would not parse — and turns it into a refusal
+    // value without ever throwing. This one owns a fault in the wire layer
+    // itself, which is the only way an exception can still arrive here.
+    //
+    // ⚠️ THE TWO CAN NEVER BOTH FIRE FOR ONE EVENT, and that is asserted:
+    // `__tests__/mcp/failure-isolation.test.ts` requires EXACTLY ONE log line
+    // for a broken read. Do not add a third catch around the tool core, and do
+    // not log a tool fault twice on its way out.
+    console.error("mcp: the wire could not answer a request", error);
     return refusalResponse(UNAVAILABLE);
   }
 }
@@ -193,261 +198,21 @@ async function authenticate(
   }
 }
 
-/** What a call names and what it carries. `input` stays `unknown` until the
- * tool's own schema parses it — this envelope decides nothing about arguments. */
-interface McpToolCall {
-  readonly tool: string;
-  readonly input: unknown;
-}
-
 /**
- * Reads the two envelope fields off an unknown JSON body.
+ * Did this request announce a body that is not JSON?
  *
- * DELIBERATELY NOT A SCHEMA. `apps/web` does not depend on `zod` itself — it
- * reads the schemas `@growthmind/shared` exports, and a second copy of Zod in
- * this workspace would be a second set of internals for those schemas to fail
- * against. What is hand-checked here is the ENVELOPE only: is this an object,
- * and is `tool` a string. Every claim about arguments is made by the exported
- * schema that owns them, a few lines further down.
+ * ANNOUNCED, NOT ABSENT. A request with no content type at all is not refused
+ * here — see gate 3 in the header. Only a declaration we cannot read is, and
+ * the declaration is compared on its media type alone: `application/json` and
+ * `application/json; charset=utf-8` are the same claim, and a gate that
+ * rejected the second would refuse clients for punctuation.
  */
-async function readToolCall(request: Request): Promise<McpToolCall | null> {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return null;
+function declaresSomethingOtherThanJson(request: Request): boolean {
+  const declared = request.headers.get(MCP_HEADER.CONTENT_TYPE);
+  if (declared === null) {
+    return false;
   }
 
-  if (!isRecord(body)) {
-    return null;
-  }
-
-  const tool = body.tool;
-  if (typeof tool !== "string") {
-    return null;
-  }
-
-  // `undefined` becomes `{}` so the zero-argument call an agent makes first —
-  // `list_open_fixes` with nothing at all — reaches the schema that supplies
-  // its defaults, rather than being refused for sending nothing.
-  return { tool, input: body.input ?? {} };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * One tool call.
- *
- * EXHAUSTIVE OVER `McpToolName` WITH NO `default`, so a fourth tool added to
- * the contract is a `bun run typecheck` failure here rather than a name that
- * resolves and then does nothing. Each arm parses its input through the exact
- * schema `@growthmind/shared` exports AND the descriptor advertises — the two
- * are the same object, and `__tests__/mcp/route.test.ts` pins that identity so
- * this file cannot start validating against something a client was never shown.
- */
-async function runTool(
-  name: McpToolName,
-  input: unknown,
-  reads: McpReadPort,
-  credential: McpCredential,
-): Promise<Response> {
-  switch (name) {
-    case MCP_TOOL.LIST_OPEN_FIXES: {
-      const parsed = listOpenFixesInputSchema.safeParse(input);
-      if (!parsed.success) {
-        return refusalResponse(malformedInput(name, parsed.error.issues));
-      }
-      return listOpenFixes(parsed.data, reads, credential);
-    }
-
-    case MCP_TOOL.GET_FIX: {
-      const parsed = getFixInputSchema.safeParse(input);
-      if (!parsed.success) {
-        return refusalResponse(malformedInput(name, parsed.error.issues));
-      }
-      return getFix(parsed.data.fixId, reads, credential);
-    }
-
-    case MCP_TOOL.GET_FINDING: {
-      const parsed = getFindingInputSchema.safeParse(input);
-      if (!parsed.success) {
-        return refusalResponse(malformedInput(name, parsed.error.issues));
-      }
-      return getFinding(parsed.data.findingId, reads, credential);
-    }
-  }
-}
-
-/**
- * The most urgent slice of what is open, never everything.
- *
- * THE ORGANIZATION IS THE CREDENTIAL'S. A `projectId` argument narrows WITHIN
- * it; the port resolves that project inside the same organization, so a project
- * id belonging to somebody else narrows to nothing and this answers with an
- * empty list and a truthful window — the identical answer a project id that
- * never existed gets.
- *
- * SORTED HERE AS WELL AS IN THE PORT. Ordering is part of the contract
- * (`listOpenFixesOutputSchema`: soonest `resultsBy` first, so a truncated list
- * is the most urgent slice rather than an arbitrary one), and re-sorting 25
- * rows costs nothing while removing the whole class of bug where an
- * implementation forgets its `order by`. Ties break on `fixId` so two calls
- * against one store answer identically — an agent that re-reads a list must not
- * see a different order and conclude something moved. `toSorted` rather than
- * `sort`: the input is the port's array and is not ours to mutate.
- */
-async function listOpenFixes(
-  input: ListOpenFixesInput,
-  reads: McpReadPort,
-  credential: McpCredential,
-): Promise<Response> {
-  const page = await reads.listOpenFixes({
-    organizationId: credential.organizationId,
-    projectId: input.projectId ?? null,
-    limit: input.limit,
-  });
-
-  const chosen = page.fixes.toSorted(byUrgencyThenId).slice(0, input.limit);
-
-  return okResponse(
-    MCP_TOOL.LIST_OPEN_FIXES,
-    listOpenFixesOutputSchema.parse({
-      fixes: chosen.map(toSummary),
-      window: {
-        returned: chosen.length,
-        totalOpen: page.totalOpen,
-        // Asserted by the schema against the two numbers beside it, so a
-        // producer that cut the list and forgot the flag fails to parse.
-        truncated: chosen.length < page.totalOpen,
-      },
-    }),
-  );
-}
-
-function byUrgencyThenId(left: OpenFixRow, right: OpenFixRow): number {
-  const byDate = Date.parse(left.resultsBy) - Date.parse(right.resultsBy);
-  if (byDate !== 0) {
-    return byDate;
-  }
-  // Code-unit comparison, not `localeCompare`: the tie-break must be the same
-  // on every machine, and a locale-aware collation is not.
-  if (left.fixId < right.fixId) return -1;
-  if (left.fixId > right.fixId) return 1;
-  return 0;
-}
-
-/**
- * A stored row as a wire row. FIELD BY FIELD, never a spread — the same rule
- * `packages/db`'s `toMetadata` follows, so a column added to the store cannot
- * ride out to a coding agent because nobody updated a mapping.
- *
- * `status` is written here rather than copied: the wire literal is `"open"`,
- * and this list may only contain open work.
- */
-function toSummary(row: OpenFixRow): Record<string, unknown> {
-  return {
-    fixId: row.fixId,
-    findingId: row.findingId,
-    summary: row.summary,
-    impact: row.impact,
-    openedAt: row.openedAt,
-    resultsBy: row.resultsBy,
-    status: "open",
-  };
-}
-
-/**
- * One fix's instructions.
- *
- * THE JOIN THE CONTRACT NAMED HAPPENS HERE, in one line.
- * `packages/shared/src/mcp/types.ts` carries the spec as one opaque `specText`
- * because it may not import `@growthmind/core`; `renderFixSpec` produces the
- * sectioned `FixSpec`; `apps/web` may import both, so this is where
- * `sentences.join("\n")` belongs and the only place it exists.
- *
- * `renderFixSpec` REFUSES rather than degrades — an unnormalised page address,
- * a template that reads as code, a count that describes people all throw. That
- * throw reaches the one catch in this file and becomes a 500 with no detail:
- * a fix spec that cannot be rendered safely is one we do not serve, and it is
- * emphatically not a `NOT_FOUND`, which would tell an agent the work does not
- * exist.
- */
-async function getFix(
-  fixId: string,
-  reads: McpReadPort,
-  credential: McpCredential,
-): Promise<Response> {
-  const record = await reads.getFix({ organizationId: credential.organizationId, fixId });
-  if (record === null) {
-    return refusalResponse(NOT_FOUND);
-  }
-
-  const spec = renderFixSpec(record.spec);
-
-  return okResponse(
-    MCP_TOOL.GET_FIX,
-    fixSpecEnvelopeSchema.parse({
-      fixId: record.fixId,
-      findingId: record.findingId,
-      status: record.status,
-      specText: spec.sentences.join("\n"),
-      attempt: record.attempt,
-      // Contract constants, stated by the surface that owns the contract — a
-      // store cannot get them wrong because a store is never asked.
-      attemptsAllowed: FIX_ATTEMPT_CEILING,
-      alreadyLanded: record.alreadyLanded,
-      impact: record.impact,
-      resultsBy: record.resultsBy,
-      dateIsFinal: true,
-    }),
-  );
-}
-
-/** The evidence behind one problem. One read, one `null` branch, one answer. */
-async function getFinding(
-  findingId: string,
-  reads: McpReadPort,
-  credential: McpCredential,
-): Promise<Response> {
-  const record = await reads.getFinding({
-    organizationId: credential.organizationId,
-    findingId,
-  });
-  if (record === null) {
-    return refusalResponse(NOT_FOUND);
-  }
-
-  return okResponse(MCP_TOOL.GET_FINDING, GET_FINDING_OUTPUT_SCHEMA.parse(record));
-}
-
-/**
- * The tools that exist.
- *
- * Name, title, description and the read-only label — the four things a client's
- * tool picker and a model's decision to call need. The machine-readable input
- * schemas are deliberately not rendered here: turning them into JSON Schema
- * needs `zod` as a direct dependency of `apps/web`, and a second copy of Zod
- * beside the one `@growthmind/shared` builds its schemas with is a subtle
- * source of mismatches. When this surface moves to a `packages/mcp` that may
- * import Zod and core directly (the move `packages/shared/src/mcp/types.ts`
- * already names), that is where the schemas render.
- */
-function catalogueResponse(): Response {
-  return Response.json({
-    ok: true,
-    tools: MCP_TOOLS.map((tool) => ({
-      name: tool.name,
-      title: tool.title,
-      description: tool.description,
-      readOnlyHint: tool.readOnlyHint,
-    })),
-  });
-}
-
-/** One producer of the success envelope, so every answer has the same shape and
- * every response carries the name of the tool that produced it. */
-function okResponse(tool: McpToolName, result: unknown): Response {
-  return Response.json({ ok: true, tool, result });
+  const mediaType = (declared.split(";")[0] ?? "").trim().toLowerCase();
+  return mediaType !== JSON_MEDIA_TYPE;
 }
