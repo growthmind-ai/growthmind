@@ -26,6 +26,42 @@
 // comparison would hide a differing message, which is the leak these rows exist
 // to catch.
 //
+// ===========================================================================
+// O-013: THE ROWS ARE `WIRE-XR1…XR5`, AND ONLY `callWith()` CHANGED
+// ===========================================================================
+//
+// The surface moved to JSON-RPC over a real MCP transport. The claims here did
+// not move at all — what moved is how a request is built and which band the
+// answer arrives in. Both changes are inside `callWith()` and the two constants
+// below; every assertion still compares the same three fields over the same two
+// real credentials.
+//
+//   - REQUEST: fixture-minted, so it is a JSON-RPC `tools/call` on the LEGACY
+//     leg carrying `accept: application/json, text/event-stream` — both values,
+//     or the transport answers 406 before a credential is even looked at — with
+//     the JSON-RPC `id` defaulting to 1 so two compared answers share it.
+//   - BAND: `NOT_FOUND` is now a TOOL EXECUTION ERROR on HTTP 200, rendered by
+//     the SDK as `text/event-stream` (D-6 rule 2). The status halves read 200
+//     where they used to read 404; `NOT_FOUND.status` keeps its 404 and simply
+//     stops being read on this path.
+//
+//     ⚠️ ADD §6's per-row line for these rows still says `application/json`.
+//     Round-1 residue from the abandoned `responseMode: "json"` pin — §6's band
+//     paragraph and D-6 both say `text/event-stream`, measured on both legs
+//     under all three modes, and they win. Do not "fix" it back.
+//
+// THE EXCLUSION LIST IS EMPTY AND STAYS EMPTY. No `id:` line is emitted on
+// either leg, so two identical requests are byte-identical and no field has to
+// be excluded from the comparison. `WIRE-R10` scans this file for
+// `toMatchObject`, `objectContaining` and `JSON.parse(`; it contains none of
+// them, and the one `toMatchObject` it used to carry (at the old line 232) is
+// gone — see `WIRE-XR3`.
+//
+// ⚠️ `WIRE-XR5` IS UNTOUCHED, BYTE FOR BYTE — no id prefix, no band assertion,
+// not a character. It resolves two real credentials with no HTTP anywhere near
+// it, it doubles as the D1 teammate row, and it is one of the three rows that
+// prove PR #16's credential path is reused verbatim (ADD §4 row 43).
+//
 // Lane prefix `mcpxk`.
 import { createApiKeysRepo, resolveApiKeyForRead } from "@growthmind/db";
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
@@ -33,6 +69,7 @@ import { MCP_TOOL, type TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createApiKeyMcpCredentials } from "../../lib/mcp/credentials";
+import { NOT_FOUND } from "../../lib/mcp/refusals";
 import { handleMcpRequest, type McpServerDeps } from "../../lib/mcp/server";
 import {
   buildTestTenantContext,
@@ -50,6 +87,33 @@ import {
 } from "./helpers/mcp-fixture";
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
+
+/**
+ * The content type of every answer the SDK rendered, under the pinned
+ * `responseMode: "sse"` (D-4). Measured exactly: no charset suffix, unlike the
+ * pre-SDK band's `application/json;charset=utf-8`.
+ */
+const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
+
+/**
+ * The whole frame a `NOT_FOUND` tool execution error arrives in on the LEGACY
+ * leg — the same construction the fake-credential sibling suite uses, built
+ * from the constant rather than pasted so a reword fails `WIRE-R9` rather than
+ * silently rewriting this expectation.
+ *
+ * `JSON.stringify` IS NOT THE BANNED DIRECTION. `WIRE-R10` bans `JSON.parse(`
+ * because parsing a RESPONSE discards key order, whitespace and framing — the
+ * bytes these rows compare. Serialising an EXPECTATION pins key order instead
+ * of discarding it, and what is compared is still a string against a string.
+ */
+function notFoundFrame(id: number = 1): string {
+  const payload = JSON.stringify({
+    result: { content: [{ type: "text", text: NOT_FOUND.message }], isError: true },
+    jsonrpc: "2.0",
+    id,
+  });
+  return `event: message\ndata: ${payload}\n\n`;
+}
 
 /** Ids nobody ever issued. Deliberately shaped like real ones, so a comparison
  * is never accidentally between two different KINDS of wrong. */
@@ -188,81 +252,144 @@ async function callWith(
 }
 
 describe("two real organizations, two real credentials, and no way from one to the other", () => {
-  test("should answer another organization's fix id exactly as an id that does not exist", async () => {
+  test("WIRE-XR1 — should answer another organization's fix id exactly as an id that does not exist", async () => {
     const reads = twoOrgStore();
 
     // NON-VACUITY: org B's fix exists, and org B's REAL credential reads it.
-    const owned = await callWith(reads, keyB, MCP_TOOL.GET_FIX, { fixId: ORG_B_FIX_ID });
+    // The band is asserted with the status, because a 200 that carried an empty
+    // success of some other kind would satisfy a bare status check.
+    const owned = await fingerprint(
+      await callWith(reads, keyB, MCP_TOOL.GET_FIX, { fixId: ORG_B_FIX_ID }),
+    );
     expect(owned.status).toBe(200);
+    expect(owned.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+    expect(owned.body).toContain(ORG_B_FIX_ID);
+    expect(owned.body).not.toContain(NOT_FOUND.message);
 
-    const foreign = await callWith(reads, keyA, MCP_TOOL.GET_FIX, { fixId: ORG_B_FIX_ID });
-    const absent = await callWith(reads, keyA, MCP_TOOL.GET_FIX, { fixId: NEVER_ISSUED_FIX });
+    const foreign = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.GET_FIX, { fixId: ORG_B_FIX_ID }),
+    );
+    const absent = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.GET_FIX, { fixId: NEVER_ISSUED_FIX }),
+    );
 
-    expect(await fingerprint(foreign)).toEqual(await fingerprint(absent));
-    expect(foreign.status).toBe(404);
+    // The band before the comparison: two wrong answers compare equal to each
+    // other all day.
+    expect(foreign.status).toBe(200);
+    expect(foreign.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+
+    // THE TENANT PROOF, over two REAL credentials. Load-bearing; never loosen.
+    expect(foreign).toEqual(absent);
+
+    // The measured frame — a contract pin, not the tenant proof.
+    expect(foreign.body).toEqual(notFoundFrame());
   });
 
-  test("should answer another organization's finding id exactly as an id that does not exist", async () => {
+  test("WIRE-XR2 — should answer another organization's finding id exactly as an id that does not exist", async () => {
     const reads = twoOrgStore();
 
-    const owned = await callWith(reads, keyB, MCP_TOOL.GET_FINDING, {
-      findingId: ORG_B_FINDING_ID,
-    });
+    const owned = await fingerprint(
+      await callWith(reads, keyB, MCP_TOOL.GET_FINDING, { findingId: ORG_B_FINDING_ID }),
+    );
     expect(owned.status).toBe(200);
+    expect(owned.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+    expect(owned.body).toContain(ORG_B_FINDING_ID);
+    expect(owned.body).not.toContain(NOT_FOUND.message);
 
-    const foreign = await callWith(reads, keyA, MCP_TOOL.GET_FINDING, {
-      findingId: ORG_B_FINDING_ID,
-    });
-    const absent = await callWith(reads, keyA, MCP_TOOL.GET_FINDING, {
-      findingId: NEVER_ISSUED_FINDING,
-    });
+    const foreign = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.GET_FINDING, { findingId: ORG_B_FINDING_ID }),
+    );
+    const absent = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.GET_FINDING, { findingId: NEVER_ISSUED_FINDING }),
+    );
 
-    expect(await fingerprint(foreign)).toEqual(await fingerprint(absent));
-    expect(foreign.status).toBe(404);
+    expect(foreign.status).toBe(200);
+    expect(foreign.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+
+    expect(foreign).toEqual(absent);
+    expect(foreign.body).toEqual(notFoundFrame());
   });
 
-  test("should answer another organization's project id exactly as a project id that does not exist", async () => {
+  test("WIRE-XR3 — should answer another organization's project id exactly as a project id that does not exist", async () => {
     const reads = twoOrgStore();
 
     // NON-VACUITY: the same narrowing, asked with the credential of the
     // organization that owns the project, returns the one fix in it.
-    const owned = await callWith(reads, keyB, MCP_TOOL.LIST_OPEN_FIXES, {
-      projectId: ORG_B_PROJECT_ID,
-    });
-    expect(await owned.json()).toMatchObject({ ok: true, result: { window: { totalOpen: 1 } } });
+    //
+    // ⚠️ THIS HALF USED `toMatchObject` AND NOW DOES NOT. It was one of the
+    // five loosenings `WIRE-R10` named at Wave 0-T1, and the only one in this
+    // file. The raw frame is inspected by containment instead — no parse, no
+    // subset matcher, and strictly more of the answer inside the assertion.
+    const owned = await fingerprint(
+      await callWith(reads, keyB, MCP_TOOL.LIST_OPEN_FIXES, { projectId: ORG_B_PROJECT_ID }),
+    );
+    expect(owned.status).toBe(200);
+    expect(owned.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+    expect(owned.body).toContain(ORG_B_FIX_ID);
+    expect(owned.body).toContain('"totalOpen":1');
 
-    const foreign = await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, {
-      projectId: ORG_B_PROJECT_ID,
-    });
-    const absent = await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, {
-      projectId: NEVER_ISSUED_PROJECT,
-    });
+    const foreign = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, { projectId: ORG_B_PROJECT_ID }),
+    );
+    const absent = await fingerprint(
+      await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, { projectId: NEVER_ISSUED_PROJECT }),
+    );
 
-    expect(await fingerprint(foreign)).toEqual(await fingerprint(absent));
     // The shared answer is a well-formed empty list, not an error.
     expect(foreign.status).toBe(200);
+    expect(foreign.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+
+    expect(foreign).toEqual(absent);
+
+    expect(foreign.body).toContain('"totalOpen":0');
+    expect(foreign.body).not.toContain(ORG_B_FIX_ID);
   });
 
-  test("should scope every read to the organization the credential resolves to, never the request", async () => {
+  test("WIRE-XR4 — should scope every read to the organization the credential resolves to, never the request", async () => {
     const reads = twoOrgStore();
 
-    // Every argument names something of the OTHER organization's.
-    await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, { projectId: ORG_B_PROJECT_ID });
-    await callWith(reads, keyA, MCP_TOOL.GET_FIX, { fixId: ORG_B_FIX_ID });
-    await callWith(reads, keyA, MCP_TOOL.GET_FINDING, { findingId: ORG_B_FINDING_ID });
+    // Every argument names something of the OTHER organization's — and now
+    // names the other organization ITSELF as well. Under JSON-RPC a caller puts
+    // whatever it likes in `params.arguments`, so the row asserts the stronger
+    // claim: an explicit `organizationId` in the arguments reaches nothing,
+    // because no tool input schema declares the key and the credential is the
+    // only place an organization id exists on this path.
+    await callWith(reads, keyA, MCP_TOOL.LIST_OPEN_FIXES, {
+      organizationId: ctxB.organizationId,
+      projectId: ORG_B_PROJECT_ID,
+    });
+    await callWith(reads, keyA, MCP_TOOL.GET_FIX, {
+      organizationId: ctxB.organizationId,
+      fixId: ORG_B_FIX_ID,
+    });
+    await callWith(reads, keyA, MCP_TOOL.GET_FINDING, {
+      organizationId: ctxB.organizationId,
+      findingId: ORG_B_FINDING_ID,
+    });
 
     expect(reads.organizationsAsked).toHaveLength(3);
     expect(reads.organizationsAsked.every((id) => id === ctxA.organizationId)).toBe(true);
+    expect(reads.organizationsAsked).not.toContain(ctxB.organizationId);
 
     // And the mirror, so this is a property of the credential rather than of
     // whichever organization happened to be seeded first.
     const mirror = twoOrgStore();
-    await callWith(mirror, keyB, MCP_TOOL.LIST_OPEN_FIXES, { projectId: ORG_A_PROJECT_ID });
-    await callWith(mirror, keyB, MCP_TOOL.GET_FIX, { fixId: ORG_A_FIX_ID });
-    await callWith(mirror, keyB, MCP_TOOL.GET_FINDING, { findingId: ORG_A_FINDING_ID });
+    await callWith(mirror, keyB, MCP_TOOL.LIST_OPEN_FIXES, {
+      organizationId: ctxA.organizationId,
+      projectId: ORG_A_PROJECT_ID,
+    });
+    await callWith(mirror, keyB, MCP_TOOL.GET_FIX, {
+      organizationId: ctxA.organizationId,
+      fixId: ORG_A_FIX_ID,
+    });
+    await callWith(mirror, keyB, MCP_TOOL.GET_FINDING, {
+      organizationId: ctxA.organizationId,
+      findingId: ORG_A_FINDING_ID,
+    });
 
     expect(mirror.organizationsAsked).toHaveLength(3);
     expect(mirror.organizationsAsked.every((id) => id === ctxB.organizationId)).toBe(true);
+    expect(mirror.organizationsAsked).not.toContain(ctxA.organizationId);
   });
 
   test("should never resolve one organization's credential to the other organization", async () => {

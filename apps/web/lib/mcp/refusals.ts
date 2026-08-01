@@ -53,10 +53,21 @@
 // where the instruction has to stay generic for the reason above.
 
 /** The shapes of refusal this surface has. Every one of them is a read that
- * did not happen; none of them is a partial answer. */
+ * did not happen; none of them is a partial answer.
+ *
+ * LISTED IN THE ORDER THE GATES FIRE in `./server.ts` — authenticate, then
+ * Origin, then Content-Type, then method, then the body's size, then its shape
+ * (a batch is refused as `malformed_request`), then the envelope, then the
+ * tool, then the row, then our own fault. The order is not decoration: it is
+ * the security argument in that file's header, and a reader who wants to know
+ * what an anonymous caller can learn reads it top-down and stops at the first
+ * line. */
 export type McpRefusalCode =
   | "unauthenticated"
+  | "browser_origin"
+  | "wrong_content_type"
   | "wrong_method"
+  | "body_too_large"
   | "malformed_request"
   | "unknown_tool"
   | "not_found"
@@ -117,23 +128,117 @@ export const UNAVAILABLE: McpRefusal = Object.freeze({
 });
 
 /**
+ * A caller that is a web page. Refused on the presence of an `Origin` header
+ * alone, with no allow-list and no configuration (D-9).
+ *
+ * ABSENCE FAILS OPEN, AND THAT IS THE DECISION, NOT AN OVERSIGHT. An MCP client
+ * is not a browser and sends no `Origin`; only a page running in one does, and
+ * there is no legitimate browser caller of this surface. Failing closed on
+ * absence would refuse every real client and break `docker compose up` on every
+ * hostname — an exclusion predicate firing on a superset of its target. It
+ * costs nothing to fail open here because this surface carries no ambient
+ * credential: it is bearer-only and cookie-blind, so a page cannot forge an
+ * authenticated request even when it reaches us. The 403 closes the
+ * DNS-rebinding shape; it is not an authentication control, and `./server.ts`'s
+ * header says so in words.
+ */
+export const BROWSER_ORIGIN: McpRefusal = Object.freeze({
+  code: "browser_origin",
+  message:
+    "This server does not answer requests from a web page. Call it from a coding agent or " +
+    "another program, with the key that agent was given.",
+  status: 403,
+});
+
+/**
+ * A body that did not arrive as JSON.
+ *
+ * SEPARATE FROM `MALFORMED_BODY` ON PURPOSE. "Your JSON is shaped wrong" and
+ * "you did not send JSON" are different mistakes with different next actions,
+ * and an agent told the wrong one edits the wrong thing. 415 rather than 400
+ * for the same reason: the status already carries the distinction, so the
+ * sentence does not have to argue for it.
+ */
+export const WRONG_CONTENT_TYPE: McpRefusal = Object.freeze({
+  code: "wrong_content_type",
+  message:
+    "We could not read that request because it did not arrive as JSON. Send it with a content " +
+    "type of application/json.",
+  status: 415,
+});
+
+/**
  * Every other method. Doubles as the plainest statement of what this surface
  * is: it reads, and there is no verb here that does anything else.
+ *
+ * RE-AUTHORED (D-12). The previous sentence offered "a GET to see the tools
+ * that exist", which this surface stopped being able to honour the moment the
+ * catalogue moved onto the wire protocol: `tools/list` is a JSON-RPC method on
+ * the POST, and `GET` is now only ever this refusal. An instruction that has
+ * become false is worse than no instruction, because an agent follows it.
  */
 export const WRONG_METHOD: McpRefusal = Object.freeze({
   code: "wrong_method",
   message:
-    "This server only reads. Send a POST to call one of its tools, or a GET to see the tools " +
-    "that exist. Nothing here changes anything.",
+    "This server only reads, and it only answers a POST carrying a single JSON-RPC message. " +
+    "Send tools/list that way to see what it can do. Nothing here changes anything.",
   status: 405,
 });
 
-/** The body we could not read at all. */
+/**
+ * A body bigger than anything this surface could ever have a use for.
+ *
+ * NEW THIS SPRINT, AND THE ONLY SENTENCE THE POST-SPRINT AUDIT ADDED. It exists
+ * because nothing stood between the credential check and the transport, and a
+ * read-only key is not a lever a caller should be able to buy arbitrary work
+ * with: a 20 MB body was buffered whole — about 89 MB of heap — before any gate
+ * downstream of authentication fired. `./server.ts` now stops reading at a
+ * stated ceiling, and this is what it says when it does.
+ *
+ * SEPARATE FROM `MALFORMED_BODY` FOR THE SAME REASON `WRONG_CONTENT_TYPE` IS.
+ * "Your JSON is shaped wrong" and "your request was too big to read" are
+ * different mistakes with different next actions, and an agent told the wrong
+ * one shrinks nothing and re-sends. 413 rather than 400 because the status
+ * already carries the distinction, so the sentence does not have to argue it.
+ *
+ * IT NAMES THE SIZE IN WORDS, NOT IN BYTES. The reader is a coding agent
+ * relaying to a person, and "under a megabyte" is actionable where a five-digit
+ * byte count is arithmetic. The number itself lives once, in `./server.ts`.
+ */
+export const BODY_TOO_LARGE: McpRefusal = Object.freeze({
+  code: "body_too_large",
+  message:
+    "That request was too big to read, so none of it was looked at. This server only ever needs " +
+    "a short message — a method name and at most a couple of ids — so send one under a megabyte.",
+  status: 413,
+});
+
+/**
+ * The body we could not read at all.
+ *
+ * RE-AUTHORED (D-12), for the same reason and with the same care. The previous
+ * sentence named a `tool` field and an `input` field — this surface's own
+ * pre-protocol envelope, which no MCP client has ever sent and which nothing
+ * reads any more. The replacement names the JSON-RPC envelope that is actually
+ * parsed, and still instructs: it says which method to send and where the
+ * arguments go, so an agent that got the shape wrong can fix it from the
+ * refusal alone without reading a document.
+ *
+ * IT HAS A PRODUCER AGAIN, AND IT IS THE ONE THE RE-AUTHORED SENTENCE WAS
+ * WRITTEN FOR. The pre-protocol envelope reader that used to produce this is
+ * gone, and for one sprint nothing did — the transport's own parse error
+ * answers a body that is not JSON. What `./server.ts` now refuses with it is a
+ * JSON-RPC BATCH: an array body, refused on its first non-whitespace byte
+ * before the transport ever sees it. "Send a SINGLE JSON-RPC message" is
+ * already the first instruction in the sentence, which is why no new sentence
+ * was authored for it.
+ */
 export const MALFORMED_BODY: McpRefusal = Object.freeze({
   code: "malformed_request",
   message:
-    "We could not read that request. Send JSON with the name of the tool you want in a tool " +
-    "field, and that tool's arguments in an input field.",
+    "We could not read that request. Send a single JSON-RPC message: put the method you want " +
+    "in a method field — tools/list to see what this server can do, or tools/call with the " +
+    "tool's name and its arguments in a params field.",
   status: 400,
 });
 
@@ -199,4 +304,55 @@ export function refusalResponse(refusal: McpRefusal): Response {
     { ok: false, error: { code: refusal.code, message: refusal.message } },
     { status: refusal.status },
   );
+}
+
+/** One block of text, addressed to the model. Declared here rather than
+ * imported from the SDK because this file names no transport — the shape is
+ * the protocol's, but the dependency would be ours, and `./wire.ts` is the one
+ * file allowed to hold it. */
+export interface McpTextContent {
+  readonly type: "text";
+  readonly text: string;
+}
+
+/** A refusal as a TOOL EXECUTION ERROR — `isError: true` on an HTTP 200, never
+ * a JSON-RPC error object. */
+export interface McpToolErrorResult {
+  readonly content: McpTextContent[];
+  readonly isError: true;
+}
+
+/**
+ * The other wire form of a refusal, and the SECOND of exactly two producers.
+ *
+ * THE SAME ARGUMENT AS `refusalResponse`, ONE LAYER IN. Once the surface speaks
+ * JSON-RPC, a refusal can leave by two doors: as an HTTP response, before the
+ * envelope exists (a missing key, a browser `Origin`, a body that is not JSON),
+ * or as a tool result, once it does (`NOT_FOUND`, an unknown tool, arguments
+ * that do not fit, our own fault). Two doors is one more than one, so each gets
+ * exactly one producer and neither gets a literal. `./wire.ts` contains no
+ * refusal literal at all — it calls this — which is what makes two refusals
+ * built from one constant identical BY CONSTRUCTION rather than by review.
+ * That identity is the cross-tenant proof: `NOT_FOUND` for somebody else's id
+ * and `NOT_FOUND` for an id that never existed travel this function, in the
+ * same order, with nothing added.
+ *
+ * `isError: true` RATHER THAN A JSON-RPC ERROR, DELIBERATELY. "There is nothing
+ * here with that id" is business logic, and the spec reserves protocol errors
+ * for unknown methods and malformed requests — which are framing, and therefore
+ * the SDK's to emit, never ours. A refusal sent as a protocol error is also one
+ * a client may render as a transport failure, which puts our sentence somewhere
+ * the model never reads it.
+ *
+ * `refusal.status` is deliberately NOT read here. It is the HTTP door's field;
+ * on this door the answer is 200 and the refusal is in the body. The constant
+ * keeps its status because the same constant goes out both doors.
+ *
+ * NOT frozen, unlike the constants: the returned object is handed straight to
+ * the SDK, and freezing a value another library owns the rendering of buys
+ * nothing and can break it. The guarantee here is one producer, not one
+ * instance.
+ */
+export function refusalToolResult(refusal: McpRefusal): McpToolErrorResult {
+  return { content: [{ type: "text", text: refusal.message }], isError: true };
 }
