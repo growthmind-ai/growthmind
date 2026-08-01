@@ -128,6 +128,7 @@ export function SignUpForm() {
       <Stack gap="md">
         <TextInput
           label="Your name"
+          size="md"
           value={name}
           onChange={(event) => setName(event.currentTarget.value)}
           error={nameError}
@@ -137,6 +138,7 @@ export function SignUpForm() {
         <TextInput
           label="Email"
           type="email"
+          size="md"
           value={email}
           onChange={(event) => setEmail(event.currentTarget.value)}
           error={emailErrorNode}
@@ -145,6 +147,7 @@ export function SignUpForm() {
         />
         <PasswordInput
           label="Password"
+          size="md"
           value={password}
           onChange={(event) => setPassword(event.currentTarget.value)}
           error={passwordError}
@@ -156,7 +159,7 @@ export function SignUpForm() {
             {formError}
           </Text>
         ) : null}
-        <Button type="submit" fullWidth loading={isPending}>
+        <Button type="submit" size="md" fullWidth loading={isPending}>
           {isPending ? PENDING_LABEL : "Create account"}
         </Button>
         <Text size="sm" ta="center">

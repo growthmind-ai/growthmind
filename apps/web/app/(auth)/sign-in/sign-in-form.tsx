@@ -109,6 +109,7 @@ export function SignInForm() {
         <TextInput
           label="Email"
           type="email"
+          size="md"
           value={email}
           onChange={(event) => setEmail(event.currentTarget.value)}
           error={emailError}
@@ -117,6 +118,7 @@ export function SignInForm() {
         />
         <PasswordInput
           label="Password"
+          size="md"
           value={password}
           onChange={(event) => setPassword(event.currentTarget.value)}
           error={passwordError}
@@ -128,17 +130,16 @@ export function SignInForm() {
             {formError}
           </Text>
         ) : null}
-        <Button type="submit" fullWidth loading={isPending}>
+        <Button type="submit" size="md" fullWidth loading={isPending}>
           {isPending ? PENDING_LABEL : "Sign in"}
         </Button>
+        {/* The open-source imprint moved to the route group's layout — it
+            belongs to both pages, and one copy is one place to change it. */}
         <Text size="sm" ta="center">
           New here?{" "}
           <Anchor component={Link} href={ROUTES.signUp}>
             Create an account
           </Anchor>
-        </Text>
-        <Text size="xs" c="dimmed" ta="center">
-          Growthmind is open source — github.com/growthmind-ai/growthmind
         </Text>
       </Stack>
     </form>
