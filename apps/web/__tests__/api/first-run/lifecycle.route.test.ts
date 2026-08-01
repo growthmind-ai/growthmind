@@ -26,9 +26,9 @@
 // ###########################################################################
 //
 // Lane prefix `web-fr-lifecycle`.
-import { schema } from "@growthmind/db";
+import { eq, schema } from "@growthmind/db";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+
 import path from "node:path";
 
 import { readSourceUnderConstruction } from "../../../../../packages/shared/__tests__/onboarding/module-under-construction";

@@ -30,9 +30,9 @@
 // ###########################################################################
 //
 // Lane prefix `web-fr-status`.
-import { createFindingsRepo, schema, type MeasuredCountRow } from "@growthmind/db";
+import { createFindingsRepo, eq, schema, type MeasuredCountRow } from "@growthmind/db";
 import { CONNECTION_STATE_MESSAGES } from "@growthmind/shared";
-import { eq } from "drizzle-orm";
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";

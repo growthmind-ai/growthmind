@@ -24,11 +24,11 @@
 // ###########################################################################
 //
 // Lane prefix `web-fr-slack`.
-import { schema } from "@growthmind/db";
+import { eq, schema } from "@growthmind/db";
 import { POST_FAILURE_MESSAGES } from "@growthmind/shared";
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+
 import { readFileSync } from "node:fs";
 import path from "node:path";
 

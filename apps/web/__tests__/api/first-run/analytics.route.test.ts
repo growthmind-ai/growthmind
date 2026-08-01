@@ -24,7 +24,7 @@
 // ###########################################################################
 //
 // Lane prefix `web-fr-analytics`.
-import { schema } from "@growthmind/db";
+import { eq, schema } from "@growthmind/db";
 import {
   CONNECTION_STATE_MESSAGES,
   CONNECT_REFUSAL_MESSAGES,
@@ -38,7 +38,7 @@ import {
   type SourceFailureCode,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+
 import { randomUUID } from "node:crypto";
 
 import {

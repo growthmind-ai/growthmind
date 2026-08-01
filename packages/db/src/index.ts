@@ -223,3 +223,15 @@ export {
   type FirstRunStatusService,
 } from "./services/first-run-status.service";
 export { ensureProject } from "./tenancy/ensure-project";
+
+// Drizzle's predicate helpers, re-exported for TEST callers that read a table
+// back directly to prove a write landed.
+//
+// WHY THEY COME FROM HERE AND NOT FROM `drizzle-orm`. This package owns the
+// database; `apps/web` declares no `drizzle-orm` dependency and must not gain
+// one, for the same reason it declares no `zod` — "the database is an
+// implementation detail" is enforced by what a package can resolve, not by
+// remembering. A test that imported `drizzle-orm` directly typechecked locally
+// on a hoisted install and failed CI's clean one, which is exactly the class of
+// drift this re-export removes.
+export { and, eq, sql } from "drizzle-orm";
