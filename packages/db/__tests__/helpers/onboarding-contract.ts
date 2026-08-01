@@ -284,7 +284,7 @@ export type RawExecutor = {
 
 /** What the `sql` tagged template produces. `ReturnType<typeof sql>` in the
  *  cited file resolves to exactly this. */
-type RawQuery = SQL<unknown>;
+type RawQuery = SQL;
 
 /**
  * Reads one scalar column of one row through raw SQL, as `unknown`.

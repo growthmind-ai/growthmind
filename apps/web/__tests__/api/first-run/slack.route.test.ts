@@ -178,13 +178,19 @@ describe("POST /api/first-run/slack/connect (FR-O10, AD-20)", () => {
     // decrypting cross-tenant.
     const rows = await rawSlackRows(owner.organizationId);
     expect(rows.length).toBe(1);
-    const stored = String(rows[0]?.credential_ciphertext ?? "");
+    // Read as a string only when it IS one. These come off a raw SQL row, so
+    // the column type is `unknown`; `String(unknown)` would render an object as
+    // "[object Object]" and quietly pass the leak scan below against a value it
+    // never actually inspected.
+    const ciphertext = rows[0]?.credential_ciphertext;
+    const stored = typeof ciphertext === "string" ? ciphertext : "";
     expect(stored.startsWith("v1.")).toBe(true);
     expect(stored.split(".").length).toBe(5);
     expect(leaks(stored, BOT_TOKEN)).toBeNull();
     // The key FINGERPRINT is stored, never the key (D12 — rotation is a
     // migratable event rather than a silent fork).
-    expect(String(rows[0]?.credential_key_id ?? "")).toMatch(/^[0-9a-f]{8}$/);
+    const keyId = rows[0]?.credential_key_id;
+    expect(typeof keyId === "string" ? keyId : "").toMatch(/^[0-9a-f]{8}$/);
   });
 
   // ------------------------------------------------------------------ row 2

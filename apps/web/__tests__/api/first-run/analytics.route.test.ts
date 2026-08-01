@@ -456,7 +456,13 @@ describe("POST /api/first-run/analytics/connect (FR-O5, FR-O6, AD-16)", () => {
     expect(leaks(captured.join("\n"), PERSONAL_API_KEY)).toBeNull();
     expect(
       leaks(
-        thrown === null ? "" : `${String(thrown)}\n${JSON.stringify(thrown)}`,
+        // Both representations are scanned deliberately: a secret can hide in a
+        // message, in a stack, or in an own-property that only serialises.
+        // `String(unknown)` would flatten a non-Error to "[object Object]" and
+        // scan nothing, so the readable half is taken from Error explicitly.
+        thrown === null
+          ? ""
+          : `${thrown instanceof Error ? `${thrown.message}\n${thrown.stack ?? ""}` : ""}\n${JSON.stringify(thrown)}`,
         PERSONAL_API_KEY,
       ),
     ).toBeNull();

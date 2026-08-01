@@ -334,7 +334,7 @@ test("the channel id comes from the stored connection row and no caller can supp
 
   // `listDueLanes` was handed ONE argument — an instant — and produced a lane
   // carrying this org's own stored channel.
-  expect(lanes.listDueLanes).toHaveLength(1);
+  expect(lanes.listDueLanes.length).toBe(1);
   expect(lane?.channelId).toBe(CHANNEL_A);
   expect(lane?.organizationId).toBe(org.workspace.organizationId);
 
