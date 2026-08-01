@@ -24,25 +24,23 @@
 // # sentence of its own, so the plain-English audit over the copy home sees
 // # all of it rather than most of it.
 // ###########################################################################
-import { Box, Group, Stack, Text } from "@mantine/core";
+//
+// ── THE ORDINAL LEFT THIS ROW, AND NOTHING ELSE ABOUT IT DID ────────────────
+//
+// Both stubs moved out of the numbered sequence and under it, into `Roadmap`,
+// because "Connect your code — not built yet" was the FIRST thing a founder
+// ever saw and the eye lands on row one. A number here would re-create the
+// sequence that move dissolved, and put the reader back to counting how much
+// of the product does not exist yet — while also disagreeing with the live
+// steps, which are now numbered 1-2-3 among themselves.
+//
+// This is still the ONE renderer both stubs come through, so a scan of this
+// file is still a scan of both, and the whole shared stub contract
+// (`apps/web/__tests__/first-run/stub-steps.test.ts`) still reads it here.
+// `Roadmap` is the section around it, not a second way to draw a stub.
+import { Stack, Text } from "@mantine/core";
 
 import type { ComingNextStep } from "@growthmind/shared";
-
-/**
- * The ordinal column, at the same fixed 20px the landing page's glyph column
- * already uses — so the sequence's numbers line up whether the row beside them
- * is a card or a note in the margin.
- */
-const ORDINAL_COLUMN = { width: 20, flexShrink: 0 };
-
-/**
- * A hairline in the margin rather than a box around the row.
- *
- * It says "this belongs to the sequence" without saying "there is something
- * here to do". Dashed, dimmed, and drawn from the semantic border token so it
- * resolves per colour scheme — never a literal.
- */
-const MARGIN_RULE = { borderLeft: "1px dashed var(--mantine-color-default-border)" };
 
 interface StubStepProps {
   readonly step: ComingNextStep;
@@ -50,21 +48,16 @@ interface StubStepProps {
 
 export function StubStep({ step }: StubStepProps) {
   return (
-    <Box py="xs" pl="md" style={MARGIN_RULE}>
-      <Group align="flex-start" gap="sm" wrap="nowrap">
-        <Text c="dimmed" fw={700} aria-hidden style={ORDINAL_COLUMN}>
-          {step.ordinal}
-        </Text>
-        <Stack gap={4}>
-          <Text c="dimmed">{step.title}</Text>
-          <Text c="dimmed" size="sm">
-            {step.whatItWillDo}
-          </Text>
-          <Text c="dimmed" size="sm">
-            {step.filler}
-          </Text>
-        </Stack>
-      </Group>
-    </Box>
+    <Stack gap={2}>
+      <Text c="dimmed" size="sm">
+        {step.title}
+      </Text>
+      <Text c="dimmed" size="sm">
+        {step.whatItWillDo}
+      </Text>
+      <Text c="dimmed" size="sm">
+        {step.filler}
+      </Text>
+    </Stack>
   );
 }

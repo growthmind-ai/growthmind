@@ -301,6 +301,28 @@ export const SLACK_SKIPPED_NOTICE =
   "You can still see the next part on this screen. But nothing will arrive anywhere after that until Slack is connected.";
 
 // ---------------------------------------------------------------------------
+// The roadmap line — where the two stubs live now
+// ---------------------------------------------------------------------------
+//
+// THE STUBS LEFT THE NUMBERED SEQUENCE, AND NOTHING ELSE ABOUT THEM CHANGED.
+// AD-19's two invariants were "render nothing that could be mistaken for a live
+// control" and "not built yet must read as honest rather than abandoned". Both
+// are untouched: the `coming-next` arm still carries no property a control
+// could be built from, and both sentences below still say what is coming and
+// what brings it. What changed is WHERE they sit.
+//
+// They were the first thing on the screen. A founder opening the product for
+// the first time met "Not built yet" before they met anything that worked, and
+// the sweep that found it scored the entry state a dead-end for exactly that
+// reason. A roadmap belongs under the thing it is a roadmap for.
+
+/**
+ * The roadmap's own lead-in. Deliberately not a step, not numbered, and not a
+ * heading that competes with the stage's.
+ */
+export const ROADMAP_LEAD = "Still being built";
+
+// ---------------------------------------------------------------------------
 // Step 4 — the agent stub (R5)
 // ---------------------------------------------------------------------------
 
@@ -329,6 +351,58 @@ export const STAGE_UNARMED_HEADING = "Nothing is being watched yet.";
 
 export const STAGE_UNARMED_HINT =
   "Start watching, then go and cause something to fail in your own product.";
+
+// ---------------------------------------------------------------------------
+// The stage's blocked sentences — what it says BEFORE there is anything to
+// watch with (the blocker chain in `./blockers`)
+// ---------------------------------------------------------------------------
+//
+// ###########################################################################
+// # THESE FOUR SENTENCES ARE THE DESIGN, NOT DECORATION.
+// #
+// # The stage sits at the top of this screen from the first paint, before
+// # anything is connected. That is only an improvement on burying it at the
+// # bottom IF IT ALWAYS NAMES THE ONE THING IT IS WAITING FOR. A panel in the
+// # best position on the page saying nothing is the empty step-5 card this
+// # rebuild deletes, promoted rather than removed.
+// #
+// # So each one names EXACTLY ONE next action, in the founder's own words, and
+// # points at where on the screen to do it. Not a menu, not a status, not a
+// # description of the product. The heading beside them carries the PROGRESS
+// # (nothing yet -> we can see your product -> watching) and the sentence
+// # carries the PRECISION. That split is why the panel reads as help rather
+// # than as noise.
+// #
+// # THE ARM STEP HAS NO SENTENCE OF ITS OWN HERE, AND THAT IS DELIBERATE.
+// # `STAGE_UNARMED_HEADING` and `STAGE_UNARMED_HINT` above already say exactly
+// # this, they already ship, and they are already audited. B3: if a shipped
+// # string says it, import it — a second spelling of one sentence is the drift
+// # the one-home rule exists to stop.
+// ###########################################################################
+
+/**
+ * The heading once the analytics connection is attached and reading.
+ *
+ * THE WARMTH BEAT. It is the first moment the product stops asking and starts
+ * reporting, and it arrives with the founder's own session counts underneath
+ * it — before they have done any work for us. Everything before this is setup;
+ * this sentence is the product waking up.
+ */
+export const SETUP_SEEING_HEADING = "We can see your product.";
+
+/** Nothing attached. The one thing we need, and the fact that it is the only one. */
+export const SETUP_NEXT_ANALYTICS =
+  "First, connect the analytics you already run. It is the only thing we need to start.";
+
+/** Attached and reading; nowhere to send anything yet. */
+export const SETUP_NEXT_DELIVERY = "Next, choose where what we find should arrive.";
+
+/**
+ * A workspace is connected but no channel is chosen — the state that only
+ * exists because connecting and choosing are two acts now rather than one
+ * pasted pair.
+ */
+export const SETUP_NEXT_CHANNEL = "Almost there — choose the channel it should arrive in.";
 
 /**
  * RULING (settled by the copy wave): THE FULL STOP IS IN, on both headings.
@@ -528,6 +602,12 @@ export const ONBOARDING_MESSAGES = {
   stepAgentTitle: STEP_AGENT_TITLE,
   stepAgentWhatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
   stepAgentFiller: STEP_AGENT_FILLER,
+  roadmapLead: ROADMAP_LEAD,
+
+  setupSeeingHeading: SETUP_SEEING_HEADING,
+  setupNextAnalytics: SETUP_NEXT_ANALYTICS,
+  setupNextDelivery: SETUP_NEXT_DELIVERY,
+  setupNextChannel: SETUP_NEXT_CHANNEL,
 
   stepMomentTitle: STEP_MOMENT_TITLE,
   startWatching: START_WATCHING_LABEL,
@@ -604,6 +684,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,
   STEP_AGENT_FILLER,
+  ROADMAP_LEAD,
 
   STEP_MOMENT_TITLE,
   START_WATCHING_LABEL,
@@ -611,6 +692,10 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   DONE_LABEL,
   STAGE_UNARMED_HEADING,
   STAGE_UNARMED_HINT,
+  SETUP_SEEING_HEADING,
+  SETUP_NEXT_ANALYTICS,
+  SETUP_NEXT_DELIVERY,
+  SETUP_NEXT_CHANNEL,
   STAGE_WATCHING_HEADING,
   STAGE_READING_HEADING,
   STAGE_WATCHING_HINT,

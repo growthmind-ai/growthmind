@@ -42,9 +42,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   deriveStepStates,
+  displayOrdinal,
+  isAnalyticsAttached,
+  LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
-  STEP_DESCRIPTORS,
+  type SetupFacts,
   type StagePersistedFacts,
   type StepSequenceFacts,
 } from "@growthmind/shared";
@@ -55,10 +58,10 @@ import { ROUTES } from "@/lib/routes";
 
 import { FIRST_RUN_API, postJson } from "./api";
 import styles from "./first-run.module.css";
+import { SetupStage } from "./SetupStage";
 import { Stage } from "./Stage";
 import { StepRow } from "./StepRow";
 import { Strip } from "./Strip";
-import { StubStep } from "./StubStep";
 
 /**
  * A stamp, whichever side of the wire it arrived from.
@@ -155,6 +158,28 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const kind = reduceStage(facts, nowMs).kind;
   const terminal = kind === "finding" || kind === "ended";
 
+  const connectionState = current.counter.state;
+  const attached = isAnalyticsAttached(
+    connectionState.status === "not_connected" ? null : connectionState.status,
+  );
+
+  // THE CHAIN'S INPUT, AND EVERY MEMBER IS A PERSISTED ROW OR STAMP. There is
+  // no "which step am I on" state in this component, and its absence is the
+  // same guarantee the arming stamp already buys: a second tab, a reload and a
+  // return tomorrow all land on the sentence the database describes.
+  //
+  // `workspaceAttached` and `deliveryResolved` are read off the SAME facts
+  // today because attaching a workspace and choosing a channel are one act on
+  // the pasted-token path. The chain distinguishes them so the OAuth path,
+  // where they are genuinely two acts with a window between them, has a
+  // sentence for that window rather than nothing.
+  const setupFacts: SetupFacts = {
+    analyticsAttached: attached,
+    workspaceAttached: current.channelId !== null,
+    deliveryResolved: current.channelId !== null || current.slackSkippedAt !== null,
+    armedAt: facts.armedAt,
+  };
+
   const armedOnArrival = useRef(armed);
   const handle = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const busy = useRef(false);
@@ -247,7 +272,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
     router.push(ROUTES.home);
   }
 
-  const connectionState = current.counter.state;
   const sequenceFacts: StepSequenceFacts = {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
     slackConnected: current.channelId !== null,
@@ -263,6 +287,36 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   return (
     <Stack gap="md">
+      {/* ################################################################
+          THE PAYOFF IS FIRST, IN BOTH PHASES, AND THAT IS THE WHOLE REDESIGN.
+
+          Before there is anything to watch, this is the blocker panel naming
+          the one next thing; after arming it is the shipped stage. Either way
+          the thing the founder came for is the top of the screen rather than
+          an untitled empty card underneath two forms and two rows about work
+          that does not exist yet.
+
+          EC-O5 rides the poll, not a client flag: the route is the authority
+          on it and re-answers every tick, so a row that becomes readable
+          clears the sentence on its own.
+          ################################################################ */}
+      {armed ? (
+        <Stage
+          facts={facts}
+          nowMs={nowMs}
+          channelId={current.channelId}
+          findingUnavailable={current.findingUnavailable === true}
+        />
+      ) : (
+        <SetupStage
+          facts={setupFacts}
+          counter={current.counter}
+          attached={attached}
+          pending={pending}
+          onArm={() => void startWatching()}
+        />
+      )}
+
       {armed ? (
         <Box className={armedOnArrival.current ? undefined : styles.foldIn}>
           <Strip
@@ -278,22 +332,27 @@ export function FirstRunClient(props: FirstRunClientProps) {
       {armed ? (
         <Collapse expanded={reopened}>
           <Stack gap="md">
-            {STEP_DESCRIPTORS.map((descriptor) => {
+            {/* THE RE-OPENED RECORD SHOWS WHAT WAS DONE, so it lists the same
+                steps the sequence listed and numbers them the same way. The
+                stubs are absent for the reason they left the sequence: nothing
+                was done to them, and a record of work should not list work
+                that does not exist.
+
+                `displayOrdinal`, NOT `descriptor.ordinal` — the record showing
+                2, 3, 5 beside steps the founder counted as 1, 2, 3 would be a
+                second numbering of one sequence. */}
+            {LIVE_STEP_DESCRIPTORS.map((descriptor) => {
               const view = resolved.get(descriptor.id);
               if (view === undefined) {
                 return null;
               }
 
-              if (descriptor.kind === "coming-next") {
-                return <StubStep key={descriptor.id} step={descriptor} />;
-              }
-
-              // Closed, every one of them. A re-opened sequence is a record of
-              // what was done, not an invitation to do it again.
+              // Closed, every one of them. A re-opened sequence is a record
+              // of what was done, not an invitation to do it again.
               return (
                 <StepRow
                   key={descriptor.id}
-                  ordinal={descriptor.ordinal}
+                  ordinal={displayOrdinal(descriptor.id)}
                   title={descriptor.title}
                   helper={descriptor.kind === "work" ? descriptor.helper : null}
                   state={view.state}
@@ -308,32 +367,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
       {armed && !folding ? null : (
         <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
       )}
-
-      {armed ? null : (
-        <Group gap="sm" wrap="wrap">
-          <Button
-            onClick={() => void startWatching()}
-            loading={pending}
-            className={styles.action}
-            style={tapTargetStyle}
-            w={{ base: "100%", xs: "auto" }}
-          >
-            {ONBOARDING_MESSAGES.startWatching}
-          </Button>
-        </Group>
-      )}
-
-      {/* EC-O5 rides the poll, not a client flag: the route is the authority on
-          it and re-answers every tick, so a row that becomes readable clears the
-          sentence on its own. */}
-      {armed ? (
-        <Stage
-          facts={facts}
-          nowMs={nowMs}
-          channelId={current.channelId}
-          findingUnavailable={current.findingUnavailable === true}
-        />
-      ) : null}
 
       {/* The page lost the connection; the check did not. The elapsed keeps
           counting and the line disappears again on its own. */}

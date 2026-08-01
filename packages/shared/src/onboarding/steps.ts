@@ -388,6 +388,64 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
 ]);
 
 // ---------------------------------------------------------------------------
+// The two partitions the screen renders — derived, never a second array
+// ---------------------------------------------------------------------------
+//
+// ###########################################################################
+// # THIS IS A VIEW OVER `STEP_DESCRIPTORS`, NOT A SECOND LIST OF STEPS.
+// #
+// # The screen stopped numbering the two stubs alongside the three live steps,
+// # because "Connect your code — not built yet" was the first thing a founder
+// # ever saw and the eye lands on row one. But the fix must not be a
+// # hand-maintained second array: two lists of the same five steps disagree the
+// # first time somebody edits one, and the disagreement is silent.
+// #
+// # So both partitions are COMPUTED from the frozen source. `STEP_DESCRIPTORS`
+// # is untouched — still five, still ordinals 1-5 with no gaps, ids still
+// # outliving the stubs. Filling a stub later moves it between these two
+// # arrays by changing ONE DESCRIPTOR'S KIND, which is exactly the edit AD-19
+// # was designed to make cheap.
+// #
+// # DISPLAY ORDINALS ARE NOT STORED ORDINALS. `descriptor.ordinal` is the
+// # step's permanent identity within the five; `displayOrdinal` is what the
+// # founder counts. Keeping them separate is what lets the screen show 1-2-3
+// # without renumbering anything AD-19 pinned.
+// ###########################################################################
+
+/** The steps a founder can actually do, in order. Numbered on screen. */
+export const LIVE_STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze(
+  STEP_DESCRIPTORS.filter((descriptor) => descriptor.kind !== "coming-next"),
+);
+
+/** The stubs, in order. Rendered under the flow as a roadmap, never numbered. */
+export const COMING_NEXT_DESCRIPTORS: readonly ComingNextStep[] = Object.freeze(
+  STEP_DESCRIPTORS.filter(
+    (descriptor): descriptor is ComingNextStep => descriptor.kind === "coming-next",
+  ),
+);
+
+/** Display ordinal by id — 1-based over the live steps only. */
+const DISPLAY_ORDINALS: ReadonlyMap<StepId, number> = new Map(
+  LIVE_STEP_DESCRIPTORS.map((descriptor, index) => [descriptor.id, index + 1]),
+);
+
+/**
+ * What the founder counts, which is not what the descriptor stores.
+ *
+ * Falls back to the stored ordinal for an id with no display position — a stub
+ * asked for its display number is a caller error, and answering with the
+ * stored ordinal is the honest, non-throwing answer rather than a zero that
+ * would render as a row numbered nothing.
+ */
+export function displayOrdinal(id: StepId): number {
+  return (
+    DISPLAY_ORDINALS.get(id) ??
+    STEP_DESCRIPTORS.find((descriptor) => descriptor.id === id)?.ordinal ??
+    0
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The facts the sequence is derived FROM
 // ---------------------------------------------------------------------------
 
@@ -455,13 +513,26 @@ const ATTACHED_STATUSES: ReadonlySet<ConnectionStateStatus> = new Set([
   "failing",
 ]);
 
+/**
+ * Whether the analytics account is attached, for any consumer that needs the
+ * fact rather than the step state.
+ *
+ * EXPORTED SO `ATTACHED_STATUSES` KEEPS ONE HOME. The blocker chain and the
+ * arm gate both need this exact question answered, and the failure mode if
+ * they re-derive it is silent and asymmetric: a set that gains a member here
+ * and not there leaves a founder whose connection is `failing` looking at a
+ * step marked done above a panel still asking them to connect it. One set, one
+ * predicate, three callers.
+ */
+export function isAnalyticsAttached(status: ConnectionStateStatus | null): boolean {
+  return status !== null && ATTACHED_STATUSES.has(status);
+}
+
 /** `null` means unresolved — the step still has work in it. */
 type WorkResolution = "done" | "skipped" | null;
 
 function resolveAnalytics(facts: StepSequenceFacts): WorkResolution {
-  return facts.connectionStatus !== null && ATTACHED_STATUSES.has(facts.connectionStatus)
-    ? "done"
-    : null;
+  return isAnalyticsAttached(facts.connectionStatus) ? "done" : null;
 }
 
 /**
