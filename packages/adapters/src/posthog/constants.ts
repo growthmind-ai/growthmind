@@ -44,6 +44,46 @@ export function personsUrl(host: string, sourceProjectId: string): string {
   return `${trimHost(host)}/api/projects/${encodeURIComponent(sourceProjectId)}/persons`;
 }
 
+/** Project list read API, the one endpoint discovery calls. Bearer personal key.
+ *
+ * The list path carries no project id segment, so unlike `eventsUrl` and `personsUrl`
+ * above there is nothing customer-supplied between the host and the end of the path:
+ * no interpolation, and therefore nothing for `encodeURIComponent` to protect. The
+ * path-injection guard those two builders carry has no subject here, and adding it
+ * anyway would only encode a literal. `trimHost` is still needed — the host is the one
+ * customer-supplied part left, on the self-host branch.
+ *
+ * The trailing slash is the vendor's, not decoration: this is the path the live probe
+ * in scripts/spikes/notes/posthog-projects-endpoint.md answered 200 on.
+ */
+export function projectsUrl(host: string): string {
+  return `${trimHost(host)}/api/projects/`;
+}
+
+/**
+ * The cloud origins discovery probes when the founder supplied no host, walked in this
+ * order, US before EU.
+ *
+ * The order is part of the contract, not presentation. A key issued in one region
+ * answers 401 on the other — 401, not 403, is what the live account actually returned
+ * (scripts/spikes/notes/posthog-projects-endpoint.md) — and the walk stops at the first
+ * origin that answers 200. So the ordering decides who waits for two requests instead of
+ * one, and both statuses have to mean "try the next origin" rather than "refuse".
+ *
+ * These are the ingest origins (`*.i.posthog.com`), not the app origins, and the spike
+ * is why: `/api/projects/` is served on the ingest origin too. `eu.i.posthog.com`
+ * returned 200 with the same `results[]` body `eu.posthog.com` returned. That matters
+ * beyond preference, because it is the same origin family `FIELD_REGION_PREFILL`
+ * (`@growthmind/shared`) shows the founder and the same host the connect path already
+ * stores — so a discovered host is written to the connection exactly as probed, with no
+ * translation step in between that could be got wrong or forgotten.
+ *
+ * Written as literals rather than imported from `FIELD_REGION_PREFILL`: this file is
+ * where the adapter's cross-boundary literals live, and an adapter that reached into the
+ * onboarding copy module for a url would invert the dependency. A test pins the pair.
+ */
+export const PROBE_ORIGINS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"] as const;
+
 /**
  * PostHog property keys, in one place. The request builder and the parser both read
  * from here. A key typed twice is a key that drifts once. Every one of these is SDK-set
