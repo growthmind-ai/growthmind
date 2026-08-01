@@ -79,6 +79,7 @@ import type { SummaryRenderResult, TenantContext } from "@growthmind/shared";
 import {
   assertUnderConstruction,
   loadUnderConstruction,
+  loadValueUnderConstruction,
   readSourceUnderConstruction,
   underConstructionSpecifier,
 } from "../../packages/shared/__tests__/onboarding/module-under-construction";
@@ -218,11 +219,15 @@ const loadRunAnalysisLane = (): Promise<MirrorRunAnalysisLane> =>
   });
 
 const loadPayloadSchema = (): Promise<MirrorPayloadSchema> =>
-  loadUnderConstruction<MirrorPayloadSchema>({
+  loadValueUnderConstruction<MirrorPayloadSchema>({
     modulePath: underConstructionSpecifier("worker/src/tasks/onboarding-analysis"),
-    // `loadUnderConstruction` insists the export is callable; a zod schema is a
-    // callable object in zod 4, so this resolves. The shape assertion below is
-    // what actually proves it is a schema.
+    // AMENDED: this used `loadUnderConstruction`, whose comment claimed "a zod
+    // schema is a callable object in zod 4". Measured against the installed
+    // zod 4.4.3, that is false — `z.object`, `z.strictObject`, `.strict()`
+    // chains and `z.string()` all report `typeof === "object"`, and that loader
+    // hard-requires a function, so rows 4 and 5 were unpassable for any
+    // implementation. `loadValueUnderConstruction` exists for exactly this
+    // case (its own header names "an array, a zod object and a tuple").
     exportName: "onboardingAnalysisPayloadSchema",
     ownedBy: OWNER_TRIGGER,
   });
@@ -852,17 +857,32 @@ test("listDueLanes and laneForProject produce an identical lane for the same pro
 });
 
 // Row 3 — graceful absence.
-test("laneForProject returns null for a project that is not analysable", async () => {
+test("laneForProject returns null for a project that does not exist", async () => {
   const logger = createRecordingLogger();
-  const workspace = await seedPollableWorkspace(db, { prefix: PREFIX, now: AT, isActive: false });
 
   const source = widenedLaneSource(db, logger);
 
-  // A project whose only connection is inactive is outside
-  // `listAnalysableProjects`'s population, so there is no lane to build. NULL,
-  // not a throw and not an empty lane — an empty lane would open a run and
-  // close it, which is a different and false claim ("we looked").
-  expect(await source.laneForProject(workspace.projectId, AT)).toBeNull();
+  // NULL, not a throw and not an empty lane — an empty lane would open a run
+  // and close it, which is a different and false claim ("we looked").
+  //
+  // AMENDED. This row previously seeded an INACTIVE connection and asserted
+  // `null`, reasoning that such a project is outside `listAnalysableProjects`'s
+  // population. That reasoning is right about `listAnalysableProjects` and
+  // wrong about this method. `findAnalysableProject` deliberately carries NO
+  // active-connection predicate (AD-12's fail direction), so that a revocation
+  // landing in the seconds after a poll does not drop the founder's one
+  // analysis. Re-adding the predicate to satisfy the old claim would have cost
+  // more than it looked: a revoked project is excluded from
+  // `listAnalysableProjects` too, so the hourly cron would not pick it up
+  // either — the analysis would be lost outright rather than delayed, which is
+  // precisely the silent drop AD-12 exists to forbid.
+  //
+  // The revoked-connection case is now asserted where it belongs, as a
+  // POSITIVE claim: `analysis-lane-source.for-project.test.ts` row 1, "a
+  // project whose connection was revoked after the poll still resolves a
+  // lane", with `listAnalysableProjects(db) === []` as its control so the
+  // divergence between the two reads is exercised rather than assumed.
+  expect(await source.laneForProject("00000000-0000-4000-8000-000000000000", AT)).toBeNull();
   expect(await source.listDueLanes(AT)).toEqual([]);
 });
 
