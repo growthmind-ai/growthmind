@@ -1,5 +1,5 @@
 // Wave 0 (task 0.2). The contract for `discoverProjects` (ADD AD-1, AD-2, AD-3), written
-// before the function exists. Every row here is RED until wave 3 lands `discovery.ts`.
+// before the function existed and RED until wave 3 landed `discovery.ts`.
 //
 // The rows assert what the SPIKE observed, not what the ADD originally assumed —
 // `scripts/spikes/notes/posthog-projects-endpoint.md`, run 2026-08-01 against a live
@@ -18,60 +18,19 @@
 //
 // Public contract only: `DiscoveryResult`, the request count, and the recorded requests.
 // No internal is reached for.
-import type { SourceFailure } from "@growthmind/shared";
+//
+// Wave 0 loaded both subjects through `await import(<variable>)`, because a static import
+// of a file that did not exist yet fails `bun run typecheck` — which would have stopped
+// the task's own verify before a single assertion ran. Task 3.2 landed the subject, so
+// they are ordinary static imports now, exactly as that comment promised. The types come
+// from the subject too rather than being transcribed here: a locally-restated contract
+// stays green while the real exported shape drifts away from it, which is the failure
+// this file exists to prevent, one level up.
 import { describe, expect, test } from "bun:test";
 
-import type { PostHogSourceDeps } from "../../src/posthog/deps";
+import { PROBE_ORIGINS } from "../../src/posthog/constants";
+import { discoverProjects } from "../../src/posthog/discovery";
 import { AD_FAKE_PERSONAL_KEY, AD_HOST, createFakeDeps, createFakeFetch } from "../helpers/fakes";
-
-// The contract, restated locally so this file typechecks before its subject exists.
-//
-// TODO(wave 3, task 3.2): `packages/adapters/src/posthog/discovery.ts` exports these for
-// real; delete the local copies and import them once it does. They are transcribed from
-// the ADD's Core Abstractions block verbatim.
-
-interface DiscoveredProject {
-  /** From the result's `id`. Never `project_id`. Opaque text, never a number. */
-  readonly sourceProjectId: string;
-  readonly name: string;
-  /** The only signal the endpoint reports about volume, and it is a boolean. */
-  readonly hasIngestedEvents: boolean;
-}
-
-type DiscoveryResult =
-  | { readonly ok: true; readonly host: string; readonly projects: readonly DiscoveredProject[] }
-  | { readonly ok: false; readonly failure: SourceFailure };
-
-type DiscoverProjects = (
-  input: { readonly personalApiKey: string; readonly host: string | null },
-  deps: PostHogSourceDeps,
-) => Promise<DiscoveryResult>;
-
-const DISCOVERY_MODULE = "../../src/posthog/discovery";
-const CONSTANTS_MODULE = "../../src/posthog/constants";
-
-/**
- * Loads a module through a specifier held in a variable, so TypeScript cannot resolve it
- * at compile time.
- *
- * This is deliberate and temporary. Wave 0 must typecheck AND be red: a static import of
- * a file that does not exist yet fails `bun run typecheck`, which would stop the task's
- * own verify before a single assertion ran. Resolving at runtime instead moves the
- * absence from a compile error to a test failure, which is exactly where a missing
- * implementation belongs. Once wave 3 lands, these become ordinary static imports.
- */
-async function loadModule(specifier: string): Promise<Record<string, unknown>> {
-  return (await import(specifier)) as Record<string, unknown>;
-}
-
-async function loadDiscoverProjects(): Promise<DiscoverProjects> {
-  const loaded = await loadModule(DISCOVERY_MODULE);
-  const exported = loaded.discoverProjects;
-  if (typeof exported !== "function") {
-    throw new TypeError(`${DISCOVERY_MODULE} does not export discoverProjects`);
-  }
-  return exported as unknown as DiscoverProjects;
-}
 
 /**
  * What the spike verified `PROBE_ORIGINS` must be: the ingest-origin family, US before
@@ -151,16 +110,13 @@ describe("PROBE_ORIGINS", () => {
   // Pins task 1.3 against the spike rather than against the ADD's superseded text: the
   // list endpoint IS served on the ingest origin, so this is the same origin family the
   // connect path already stores.
-  test("is the ordered US-then-EU ingest pair the spike verified", async () => {
-    const constants = await loadModule(CONSTANTS_MODULE);
-
-    expect(constants.PROBE_ORIGINS).toEqual([...EXPECTED_PROBE_ORIGINS]);
+  test("is the ordered US-then-EU ingest pair the spike verified", () => {
+    expect(PROBE_ORIGINS).toEqual([...EXPECTED_PROBE_ORIGINS]);
   });
 });
 
 describe("discoverProjects walks the probe origins", () => {
   test("probes PROBE_ORIGINS in order and stops at the first 200", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -175,7 +131,6 @@ describe("discoverProjects walks the probe origins", () => {
   });
 
   test("asks for the project LIST path, with no project id segment", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -187,7 +142,6 @@ describe("discoverProjects walks the probe origins", () => {
   });
 
   test("presents the personal key as a Bearer credential on the probe", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -199,7 +153,6 @@ describe("discoverProjects walks the probe origins", () => {
   // The spike's fallthrough trigger, observed live: an EU-issued key answered 401 on US,
   // then 200 on EU. This is the row the whole ordered walk exists for.
   test("falls through to the second origin on a 401 — the status a wrong-region key returns", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch((url) =>
       url.startsWith(US_PROBE_ORIGIN)
         ? { status: 401, body: AD_UNAUTHORIZED_BODY }
@@ -219,7 +172,6 @@ describe("discoverProjects walks the probe origins", () => {
   // "try the next origin", and refusing on 403 while falling through on 401 would strand
   // whichever founders a future PostHog change points at the other one.
   test("falls through to the second origin on a 403 as well", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch((url) =>
       url.startsWith(US_PROBE_ORIGIN)
         ? { status: 403, body: { type: "authentication_error", code: "permission_denied" } }
@@ -239,7 +191,6 @@ describe("discoverProjects walks the probe origins", () => {
   // the client's five exponential sleeps belong to a poll that must survive a throttle,
   // never to this call.
   test("costs exactly one request per origin when every origin refuses, and never retries", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 401, body: AD_UNAUTHORIZED_BODY }));
     const { deps, sleeps } = createFakeDeps(fake.fetch);
 
@@ -255,7 +206,6 @@ describe("discoverProjects walks the probe origins", () => {
   // AD-1: a 429 on discovery is an immediate, named refusal. The temptation to reuse the
   // client's backoff is exactly what this row forbids.
   test("refuses a 429 immediately, with no backoff sleep", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 429,
       body: AD_THROTTLED_BODY,
@@ -279,7 +229,6 @@ describe("discoverProjects maps the result list", () => {
   // project that is not the founder's, and nothing errors — not the request, not the
   // parse, not the poll that follows.
   test("takes sourceProjectId from `id`, never from `project_id`", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 200,
       body: adProjectsBody([adProject({ id: 31_337, project_id: 90_210 })]),
@@ -297,7 +246,6 @@ describe("discoverProjects maps the result list", () => {
   // "Opaque text, never a number" — the wire carries an integer and every consumer
   // downstream interpolates a string into a url path.
   test("holds sourceProjectId as text, though the wire carries a number", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 200,
       body: adProjectsBody([adProject({ id: 31_337 })]),
@@ -314,7 +262,6 @@ describe("discoverProjects maps the result list", () => {
   // AD-3. One project is the common case, and the caller auto-connects rather than
   // asking a founder to pick from a list of one.
   test("returns the single project so the caller can auto-select it", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 200,
       body: adProjectsBody([adProject({ id: 31_337, name: "ad-fake solo" })]),
@@ -333,7 +280,6 @@ describe("discoverProjects maps the result list", () => {
   // AD-3. Zero is a refusal, not a pick list of zero. An empty list rendered as a
   // chooser is a screen that asks a founder to choose nothing.
   test("refuses an empty results list as project_not_found, never an empty pick list", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -348,7 +294,6 @@ describe("discoverProjects maps the result list", () => {
   // alpha/bravo/charlie/zulu and no sort at all would give the input order, so this
   // fixture separates all three.
   test("orders projects with ingested events first, then by name", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 200,
       body: adProjectsBody([
@@ -375,7 +320,6 @@ describe("discoverProjects maps the result list", () => {
   // There is no event count on this endpoint. A count on the screen that nothing
   // measured is worse than no count at all, so the mapped shape must not grow one.
   test("carries no event count, because the endpoint reports none", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 200,
       body: adProjectsBody([adProject({ ingested_event: true })]),
@@ -401,7 +345,6 @@ describe("discoverProjects on the self-host branch", () => {
   // refused. One request, to the host the founder gave, and the cloud origins are not
   // touched.
   test("makes one request to a customer-supplied host and never probes the cloud origins", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -418,7 +361,6 @@ describe("discoverProjects on the self-host branch", () => {
   // the metadata service, and the distinguishable refusal codes make the answer a
   // port-scanning oracle.
   test("refuses a blocked hostname without making any request at all", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
 
@@ -440,7 +382,6 @@ describe("discoverProjects never leaks the credential", () => {
   // later edit that starts folding response content into a message is caught here rather
   // than in a customer's error log.
   test("keeps the personal key out of every returned failure", async () => {
-    const discoverProjects = await loadDiscoverProjects();
     const fake = createFakeFetch(() => ({
       status: 401,
       body: {

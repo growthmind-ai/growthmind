@@ -10,6 +10,12 @@ export { createPostHogSessionSource } from "./posthog/session-source";
 export { POSTHOG_SOURCE_KIND } from "./posthog/constants";
 export type { PostHogSourceConfig, PostHogSourceDeps, FetchLike } from "./posthog/deps";
 
+// Project discovery, the first-run path: a personal key in, the projects it can read
+// out. Nothing credential-bearing crosses this boundary — the key travels in on
+// `DiscoveryInput` and is never returned, logged, or folded into a failure message.
+export { discoverProjects } from "./posthog/discovery";
+export type { DiscoveredProject, DiscoveryInput, DiscoveryResult } from "./posthog/discovery";
+
 // Credential scrubbing (the pattern-based redaction), so `packages/db` and `worker/`
 // can apply the same guard to a reason/log string they build from this adapter's output
 // instead of re-implementing a weaker one inline.

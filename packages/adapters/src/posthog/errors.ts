@@ -70,6 +70,14 @@ const SOURCE_FAILURE_MESSAGES: Record<SourceFailureCode, string> = {
  * Builds the failure with its one plain-English sentence, run through `scrubSecrets`
  * (`./scrub.ts`) before it leaves this function.
  *
+ * Exported because two refusals are ours rather than the vendor's, and both still owe
+ * the customer the same sentence and the same scrub pass: `discovery.ts` refuses a
+ * blocked host as `misconfigured` before any request exists to map, and refuses an empty
+ * project list as `project_not_found` when the vendor answered 200. Routing those
+ * through `mapFailure` would mean inventing a status the vendor never sent; giving
+ * `discovery.ts` its own literal would put a second copy of the code-to-sentence table
+ * one module away from this one. This is the single home for both.
+ *
  * This is a belt-and-braces pass, the same shape as
  * `packages/db/src/repositories/project-connections.repo.ts`'s
  * `rethrowWithoutParameters`: `SOURCE_FAILURE_MESSAGES` is a fixed, hand-written set of
@@ -79,13 +87,13 @@ const SOURCE_FAILURE_MESSAGES: Record<SourceFailureCode, string> = {
  * starts folding response content into a message (or the pattern pass alone, for a key
  * PostHog echoes back that this process never held) is caught here rather than shipped.
  */
-function failure(code: SourceFailureCode, secrets: readonly string[]): SourceFailure {
+export function sourceFailure(code: SourceFailureCode, secrets: readonly string[]): SourceFailure {
   return { code, message: scrubSecrets(SOURCE_FAILURE_MESSAGES[code], secrets) };
 }
 
 /**
  * `secrets` are scrubbed out of the returned message even though the message itself
- * never echoes response content. See `failure` above. Callers pass the credential
+ * never echoes response content. See `sourceFailure` above. Callers pass the credential
  * currently in play (`client.ts` passes `config.personalApiKey`) so the guard is live
  * rather than aspirational.
  */
@@ -104,9 +112,9 @@ export function mapFailure(
   switch (code) {
     case POSTHOG_ERROR_CODE.AUTHENTICATION_FAILED:
     case POSTHOG_ERROR_CODE.NOT_AUTHENTICATED:
-      return failure("invalid_credentials", secrets);
+      return sourceFailure("invalid_credentials", secrets);
     case POSTHOG_ERROR_CODE.THROTTLED:
-      return failure("rate_limited", secrets);
+      return sourceFailure("rate_limited", secrets);
     default:
       break;
   }
@@ -116,13 +124,13 @@ export function mapFailure(
   // 403 branch: a 403 was never observed, so anything auth-shaped that is not one of
   // the codes above takes the generic path rather than a branch written on a guess.
   if (status === 401) {
-    return failure("invalid_credentials", secrets);
+    return sourceFailure("invalid_credentials", secrets);
   }
   if (status === 404) {
-    return failure("project_not_found", secrets);
+    return sourceFailure("project_not_found", secrets);
   }
   if (status === 429) {
-    return failure("rate_limited", secrets);
+    return sourceFailure("rate_limited", secrets);
   }
-  return failure("unreachable", secrets);
+  return sourceFailure("unreachable", secrets);
 }
