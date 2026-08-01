@@ -169,6 +169,25 @@ export type SessionSourcePullResult = z.infer<typeof sessionSourcePullResultSche
 // Connection DTOs — what O-008 reads. Never credential-bearing.
 // ---------------------------------------------------------------------------
 
+/**
+ * ── THE THREE DATES ARE COERCED, AND THAT IS A D5 FIX RATHER THAN A LOOSENING
+ *
+ * This shape STARTED as a server-side DTO and BECAME a wire shape in O-008:
+ * AD-3 puts a `ConnectionState` — which embeds this summary — inside
+ * `OnboardingCounterView`, the narrowed counter the status route serialises to
+ * the browser. JSON has no `Date`, so the moment that happened these three
+ * fields began leaving as `Date` and arriving as ISO strings, and a plain
+ * `z.date()` could no longer parse the very payload the schema describes.
+ * Measured: `connectionStateSchema.safeParse(JSON.parse(JSON.stringify(state)))`
+ * failed on `connection.connectedAt` with `expected date, received string`,
+ * while the `not_connected` member — the only one carrying no date — passed.
+ *
+ * `z.coerce.date()` is the same answer `onboardingFindingSchema` already gives
+ * for `windowStart` and `windowEnd`, in that file's own words: "JSON has no
+ * `Date` … One schema guards both directions (D5)". It is a strict widening,
+ * not a weakening — a `Date` still parses to itself, an ISO string parses to a
+ * `Date`, and a value that is neither is still refused.
+ */
 export const connectionSummarySchema = z.object({
   id: z.string(),
   organizationId: z.string(),
@@ -180,12 +199,12 @@ export const connectionSummarySchema = z.object({
   health: connectionHealthSchema,
   healthReasonCode: sourceFailureCodeSchema.nullable(),
   healthReasonMessage: z.string().nullable(),
-  healthCheckedAt: z.date().nullable(),
+  healthCheckedAt: z.coerce.date().nullable(),
   /** `null` means never polled — distinct from "polled and found nothing". */
-  watermarkAt: z.date().nullable(),
+  watermarkAt: z.coerce.date().nullable(),
   backfillBefore: z.string().nullable(),
   pollIntervalSeconds: z.number().int().positive(),
-  connectedAt: z.date(),
+  connectedAt: z.coerce.date(),
   inferredInternalDomain: z.string().nullable(),
   internalDomainProvenance: internalDomainProvenanceSchema.nullable(),
 });
