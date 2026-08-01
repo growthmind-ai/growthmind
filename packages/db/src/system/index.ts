@@ -18,7 +18,21 @@ export {
   readConnectionCredential,
   type PollableConnection,
 } from "./pollable-connections";
-export { listAnalysableProjects, type AnalysableProject } from "./analysable-projects";
+export {
+  listAnalysableProjects,
+  findAnalysableProject,
+  type AnalysableProject,
+} from "./analysable-projects";
+// O-008. Both are ORG-AGNOSTIC on purpose — see the module header. The
+// existence gate answers a question about the INSTALLATION so the delivery
+// composition root can stay null-able (AD-14); the listing gives the lane
+// source one row per connected organization, each carrying its own channel
+// (AD-15). Neither carries credential material.
+export {
+  existsAnyActiveSlackConnection,
+  listOrgsWithActiveSlackConnection,
+  type SlackDeliveryOrganization,
+} from "./slack-connections";
 export { systemTenantContextFor } from "./system-context";
 export {
   SYSTEM_ACTOR,
