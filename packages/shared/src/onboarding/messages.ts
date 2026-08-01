@@ -348,6 +348,29 @@ export const STAGE_WATCHING_HEADING = "Watching for what you just did.";
 
 export const STAGE_READING_HEADING = "Reading what came back.";
 
+/**
+ * EC-O5, AND IT IS THE ONLY SENTENCE ON THIS SCREEN THAT ADMITS A FAULT.
+ *
+ * `findingUnavailable` is true when a finding row EXISTS for this project and
+ * could not be read back — a genuinely different fact from "nothing has been
+ * found yet", which is where a founder spends steps one to four. Without a
+ * sentence for it the screen keeps narrating "Reading what came back", which is
+ * true and never ends: the reader waits for something that is not coming, on the
+ * one screen this whole product exists for. SILENT DEGRADATION IS THE BUG.
+ *
+ * THREE THINGS IT HAS TO DO, IN THIS ORDER. Say that something WAS found, so
+ * the founder does not read this as a quiet product. Say that showing it here is
+ * what failed, so they do not go hunting through their own app for a fault that
+ * is ours. And END THE WAIT out loud — a terminal state that does not say it is
+ * terminal leaves the reader in exactly the place the missing sentence put them.
+ *
+ * It is not an error dump: no code, no identifier, no "something went wrong",
+ * and nothing for them to do. And no duration, in either direction — "try again
+ * shortly" would be a promise about a wait we have just ended.
+ */
+export const STAGE_FINDING_UNAVAILABLE =
+  "We found something and could not show it here. Nothing you did caused this, and there is nothing more to wait for on this screen.";
+
 /** What the founder should go and do. The wait is theirs to end. */
 export const STAGE_WATCHING_HINT =
   "Go and cause something to fail in your own product — a save that errors, a button that does nothing. Then come back to this tab. We are watching from here.";
@@ -595,6 +618,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STAGE_FOUND_HEADING,
   STAGE_FOUND_HINT,
   STAGE_ENDED_HINT,
+  STAGE_FINDING_UNAVAILABLE,
   STAGE_LOG_ARMED,
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,

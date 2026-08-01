@@ -323,7 +323,17 @@ export function FirstRunClient(props: FirstRunClientProps) {
         </Group>
       )}
 
-      {armed ? <Stage facts={facts} nowMs={nowMs} channelId={current.channelId} /> : null}
+      {/* EC-O5 rides the poll, not a client flag: the route is the authority on
+          it and re-answers every tick, so a row that becomes readable clears the
+          sentence on its own. */}
+      {armed ? (
+        <Stage
+          facts={facts}
+          nowMs={nowMs}
+          channelId={current.channelId}
+          findingUnavailable={current.findingUnavailable === true}
+        />
+      ) : null}
 
       {/* The page lost the connection; the check did not. The elapsed keeps
           counting and the line disappears again on its own. */}

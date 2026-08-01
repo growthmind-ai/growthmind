@@ -40,6 +40,7 @@ import { useRef } from "react";
 import {
   reduceStage,
   renderStageView,
+  STAGE_FINDING_UNAVAILABLE,
   STAGE_RETIRE_TEMPLATE,
   type StagePersistedFacts,
 } from "@growthmind/shared";
@@ -55,6 +56,17 @@ interface StageProps {
   readonly nowMs: number;
   /** FR-O13: read from the stored connection row, never from a payload. */
   readonly channelId: string | null;
+  /**
+   * EC-O5. A finding row exists and could not be read back.
+   *
+   * IT IS NOT DERIVABLE FROM `facts`, AND THAT IS THE POINT. `facts.finding`
+   * is `null` both when nothing has been found yet and when something was found
+   * and could not be rendered — one value, two facts, and only the status route
+   * pays for the extra read that tells them apart. The reducer therefore cannot
+   * see it and correctly keeps narrating; this prop is what stops that narration
+   * being the last thing the reader is ever told.
+   */
+  readonly findingUnavailable: boolean;
 }
 
 export function Stage(props: StageProps) {
@@ -76,6 +88,15 @@ export function Stage(props: StageProps) {
       <Text c="dimmed" size="sm">
         {view.hint}
       </Text>
+
+      {/* The one fault this screen admits to. It never suppresses the log
+          beside it: those lines are measurements that really did happen, and
+          they are the evidence that the wait was real rather than dropped. */}
+      {props.findingUnavailable ? (
+        <Text size="sm" c="stamp.4">
+          {STAGE_FINDING_UNAVAILABLE}
+        </Text>
+      ) : null}
 
       <WaitLog lines={view.lines} />
 
