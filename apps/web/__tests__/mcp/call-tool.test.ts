@@ -237,7 +237,7 @@ describe("WIRE-S3 — the v1 SDK is imported nowhere in the workspace", () => {
 
 describe("WIRE-S4 — the SDK is named in exactly one source file", () => {
   /**
-   * ⚠️ exactly one entry. Not two.
+   * Exactly one entry. Not two.
    *
    * The file table says `wire-constants.ts` imports the SDK "type-only, for
    * WIRE-K3/K4". That cell is wrong, and Wave 2 deliberately did not follow it: a

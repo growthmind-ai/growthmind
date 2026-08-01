@@ -1,6 +1,6 @@
 // Wave 0 feasibility spike (add tasks/tenancy-app-shell/add.md, ordering note): this
 // test pins Better Auth 1.6.25's real hook and server-API signatures against a
-// PGlite-backed instance, before /That decision are built for real in waves 6-7. It
+// PGlite-backed instance, before the real auth flows are built in waves 6-7. It
 // constructs its own directly-built Better Auth instance (never the apps/web lazy
 // singleton in lib/auth.ts, which this task must not modify) so the assertions below
 // are proof of the library's behavior, not of our own future glue code.

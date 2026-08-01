@@ -90,7 +90,7 @@ export type SessionSourcePullRequest = z.infer<typeof sessionSourcePullRequestSc
 export const sourceSessionSchema = z.object({
   sessionKey: z.string(),
   /** The keyed hmac hash of PostHog's `distinct_id` (`../sessions/identity-key.ts`,
-   * security audit ), never the raw value; `identify` is routinely called with an
+   * security audit), never the raw value; `identify` is routinely called with an
    * email address as the distinct id, so only the hash may cross this port boundary.
    * Named `identityKey`, not `identityId`, because the `identities` table full
    * stitching creates does not exist yet and a `_id` column with no referent would
@@ -228,7 +228,7 @@ export type ConnectionState = z.infer<typeof connectionStateSchema>;
 export type ConnectionStateStatus = ConnectionState["status"];
 
 /**
- * The `connect` boundary's own input (security audit ). This is the one shape that
+ * The `connect` boundary's own input (security audit). This is the one shape that
  * arrives at `packages/db`'s `ConnectionsService.connect` from outside a typed caller.
  * Today the tests and the connect-time wire proof, tomorrow an API route parsing an
  * untrusted request body, so it gets a runtime schema like every other cross-boundary

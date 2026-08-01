@@ -522,7 +522,7 @@ export function createRecordingLogger(): RecordingLogger {
 }
 
 /**
- * The deps the queue closure in././src/index.ts assembles, with every effect faked: no
+ * The deps the queue closure in ../../src/index.ts assembles, with every effect faked: no
  * network, no wall clock, no randomness. `random` returns a fixed value so both jitter
  * branches are exactly reproducible.
  */

@@ -3,7 +3,7 @@
 // One home, for three reasons. The plain-English audit and the "live" grep become a
 // single-file review instead of a repo sweep. imports these rather than
 // re-authoring them, so there is no wire between a producer and a consumer to sever.
-//  The honesty rule from That decision is enforceable: the word "live" appears in no
+// The honesty rule is enforceable: the word "live" appears in no
 // string this sprint produces, because no overlap window can make a poll on
 // client-declared event time complete, and we do not claim otherwise.
 //

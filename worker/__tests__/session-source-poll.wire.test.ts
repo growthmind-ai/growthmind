@@ -85,7 +85,7 @@ async function seedConnectedWorkspace(
 }
 
 /** The real entry point. Every test goes through this one call, the same plain function
- * the queue closure in./src/index.ts invokes, with the same deps and no payload. */
+ * the queue closure in ../src/index.ts invokes, with the same deps and no payload. */
 async function invokeTheHandler(params: { posthog: FakePostHog; now?: Date }): Promise<void> {
   const clock = createFakeClock(params.now ?? NOW);
   await runSessionSourcePoll(createPollDeps({ db, fetch: params.posthog.fetch, clock }));

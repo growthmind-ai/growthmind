@@ -370,7 +370,7 @@ export const MCP_URL = "http://localhost:3000/api/mcp";
  * The headers every minted request carries, in one constant applied by all three
  * constructors so that no test can forget one.
  *
- * ⚠️ both `accept` values are required by the transport on the legacy leg. Sending
+ * Both `accept` values are required by the transport on the legacy leg. Sending
  * `application/json` alone is answered HTTP 406 there,
  * `{"error":{"code":-32000,"message":"Not Acceptable: Client must accept both
  * application/json and text/event-stream"}}`. Before the body is parsed and before any
@@ -398,7 +398,7 @@ export const WIRE_HEADERS = {
  * They start from `WIRE_HEADERS` and override one entry, so the deviation is visible at
  * the call site and everything else stays truthful.
  *
- * ⚠️ not a door to the modern leg. `Mcp-Method` / `Mcp-Name` are half of the modern
+ * Not a door to the modern leg. `Mcp-Method` / `Mcp-Name` are half of the modern
  * classification and the `_meta` claim keys (the other half) are not reachable through
  * this at all, because the body is built below. See the file header.
  */
@@ -418,7 +418,7 @@ function wireHeaders(key: string | null | undefined, overrides?: WireHeaderOverr
 /**
  * A `tools/call` as a real `Request`. `key` omitted means no credential at all.
  *
- * ⚠️ `id` defaults to 1, and that default is why the exclusion list is empty (rule 4).
+ * `id` defaults to 1, and that default is why the exclusion list is empty (rule 4).
  * The identity rows compare two responses byte for byte over `await response.text`;
  * the JSON-RPC id is echoed into every answer, so two requests can only be
  * byte-identical if they shared an id. Defaulting it here means a test has to go out of
@@ -530,7 +530,7 @@ export function verbRequest(input: {
  * A request whose body is whatever string you hand it, not JSON at all, a JSON-RPC
  * message missing a required field, or a batch array.
  *
- * ⚠️ this carries `accept` too, and that was a correction. The first draft marked this
+ * This carries `accept` too, and that was a correction. The first draft marked this
  * constructor unchanged; without both media types the transport answers 406 before the
  * parser is reached, and `WIRE-R2` / `WIRE-W7` (which exist to prove a parse error)
  * would assert against a content-negotiation refusal instead.
@@ -558,7 +558,7 @@ export function rawBodyRequest(
  * status, in content type, or in one byte of text are distinguishable, and comparing
  * parsed objects would hide exactly the differences that matter.
  *
- * ⚠️ unchanged, on purpose, and the body stays a raw string. This is the first of the
+ * Unchanged, on purpose, and the body stays a raw string. This is the first of the
  * mechanisms that stop a future reader loosening the crown-jewel comparison: a parsed
  * comparison is not reachable from this helper at all, so loosening one would mean
  * hand-rolling `JSON.parse` in a test file, which the source scanner in
@@ -606,7 +606,7 @@ export async function fingerprint(response: Response): Promise<ResponseFingerpri
  * and `JSON.parse(` is a banned token in all four (`../refusal-identity-guard.test.ts`
  * scans their source text for it). Four hand-rolled extractors is four chances for one
  * of them to reach for the obvious parse; one extractor here is one place to get it
- * right. The That decision says extraction happens "inside the test, never in the
+ * right. The ruling says extraction happens "inside the test, never in the
  * helper". That sentence is about not letting a helper perform a parsed comparison,
  * which this does not do: it returns strings and compares nothing. Task 3.1 item 7
  * makes the placement explicit.

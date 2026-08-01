@@ -3,7 +3,7 @@
 // a connected project". This is P-1's primary path: an existing PostHog project with
 // more history than one run's page cap covers.
 //
-// Root cause: `applyCursors` in./src/tasks/session-source-poll.ts only recorded
+// Root cause: `applyCursors` in ../src/tasks/session-source-poll.ts only recorded
 // `backfillBefore` when a watermark already existed. A never-polled connection
 // (`watermark_at IS NULL`) whose very first walk hit the page cap therefore persisted
 // neither cursor. The next tick started from `watermarkAt: null` again, re-fetched the
@@ -75,7 +75,7 @@ import {
 const PREFIX = "bf-";
 const NOW = new Date("2026-07-30T18:00:00.000Z");
 
-/** Mirrors `MAX_PAGES_PER_PASS` in./src/tasks/session-source-poll.ts and
+/** Mirrors `MAX_PAGES_PER_PASS` in ../src/tasks/session-source-poll.ts and
  * `MAX_PAGES_PER_RUN` in packages/adapters/src/posthog/constants.ts (also 25). The walk
  * takes the tighter of the two, and both are 25, so the page cap this suite proves is
  * hit sits here, named rather than magic. */
@@ -356,7 +356,7 @@ test("/: a connect-time first pull that hits its own tiny page cap is completed 
 
   // The real PostHog adapter, wired exactly as the composition root wires it. This
   // proves the connect-time pull against the same adapter contract the scheduled poll
-  // below runs against, not a hand-built pull result.: `identityHmacKey` derived
+  // below runs against, not a hand-built pull result. `identityHmacKey` is derived
   // from the same resolved credential key the composition root derives it from, not a
   // hand-picked test value.
   const connectionsService = createConnectionsService(db, seeded.ownerCtx, {

@@ -1,6 +1,6 @@
 // items 50–54, the walk.
 //
-// Three pinned facts shape every assertion here (Addendum a row 1 / row 2 / row 4):
+// Three pinned facts shape every assertion here (Addendum A row 1 / row 2 / row 4):
 // Pagination walks backwards. `next` is an absolute url carrying an
 //  exclusive `before=<last item's timestamp>`; ordering is strictly
 //  newest-first; `next` is literal null on the final page. A short page is

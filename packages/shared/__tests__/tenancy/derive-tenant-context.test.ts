@@ -38,7 +38,7 @@ describe("deriveTenantContext", () => {
 
   it("resolution input schema has no field that could carry a client-supplied organization id", () => {
     // An attacker-controlled request body naming an org override at the top level. The
-    // exact shape /That decision says must be structurally impossible.
+    // exact shape the tenancy design says must be structurally impossible.
     const maliciousInput = {
       session: { userId: "user-1", activeOrganizationId: "org-1" },
       memberships: [

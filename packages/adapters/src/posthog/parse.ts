@@ -1,4 +1,4 @@
-// Boundary parsing for the PostHog events and persons responses (Addendum a row 1 / row
+// Boundary parsing for the PostHog events and persons responses (Addendum A row 1 / row
 // 5 / row 6).
 //
 // Per-item degradation, never per-page. The spike's parser returns a named failure for

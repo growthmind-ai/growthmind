@@ -53,9 +53,9 @@
  * Listed in the order the gates fire in `./server.ts`. Authenticate, then Origin, then
  * Content-Type, then method, then the body's size, then its shape (a batch is refused
  * as `malformed_request`), then the envelope, then the tool, then the row, then our own
- * fault. The order is not decoration: it is the security argument in that file's
- * header, and a reader who wants to know what an anonymous caller can learn reads it
- * top-down and stops at the first line. */
+ * fault. The order is not decoration: it is the security argument in
+ * docs/decisions/0005-mcp-server-composition.md, and a reader who wants to know what an
+ * anonymous caller can learn reads it top-down and stops at the first line. */
 export type McpRefusalCode =
   | "unauthenticated"
   | "browser_origin"
@@ -130,8 +130,9 @@ export const UNAVAILABLE: McpRefusal = Object.freeze({
  * predicate firing on a superset of its target. It costs nothing to fail open here
  * because this surface carries no ambient credential: it is bearer-only and
  * cookie-blind, so a page cannot forge an authenticated request even when it reaches
- * us. The 403 closes the DNS-rebinding shape; it is not an authentication control, and
- * `./server.ts`'s header says so in words.
+ * us. The 403 closes the DNS-rebinding shape; it is not an authentication control.
+ * `./server.ts`'s header declares the fail direction in words, and
+ * docs/decisions/0005-mcp-server-composition.md carries the full argument.
  */
 export const BROWSER_ORIGIN: McpRefusal = Object.freeze({
   code: "browser_origin",

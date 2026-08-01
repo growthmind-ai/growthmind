@@ -1,20 +1,18 @@
 // Repository for the `findings` table.
 //
-// ── THE O-011 DEFERRAL IS DISCHARGED: THIS TABLE HAS READERS (O-008 FR-O25) ──
-// O-011 recorded, here and on `../schema/findings.ts`, that the `delivery-tick`
-// wire was CUT because delivery was missing a lane source and a poster built
-// from a `slack_connections` row this repository did not have. That table now
-// exists (`../schema/slack-connections.ts`), so the deferral's stated reason has
-// expired and the claim that nothing reads these rows would now be false.
+// The deferral this file used to carry is discharged: the table has readers now. An
+// earlier sprint recorded, here and on `../schema/findings.ts`, that the
+// `delivery-tick` wire was cut because delivery had no lane source and no poster built
+// from a `slack_connections` row this repository did not have. That table now exists
+// (`../schema/slack-connections.ts`), so the stated reason has expired.
 //
-// O-008 closes the wire and adds two readers, both of them through the methods
-// below rather than around them: the first-run status read takes the single
-// newest finding for one project, and the delivery lane source composes an
-// organization's undelivered findings for its own channel. Neither is a new
-// door — the org-scope rule in the next paragraph governs both, and there is
-// still no method here that takes an organization id.
+// The wire is closed, and both of its readers go through the methods below rather than
+// around them: the first-run status read takes the single newest finding for one
+// project, and the delivery lane source composes an organization's undelivered findings
+// for its own channel. Neither is a new door. The org-scope rule in the next paragraph
+// governs both, and there is still no method here that takes an organization id.
 //
-// Org scope comes from the context, and from nowhere else Same shape as
+// Org scope comes from the context, and from nowhere else. Same shape as
 // `deliveries.repo.ts`: `createFindingsRepo(db, ctx)`. No method takes an organization
 // id, so there is no id-only write path onto this table. The writer is a Graphile
 // Worker task running with no user. The exact "path that steps outside the tenant
@@ -22,7 +20,7 @@
 // the entire tenant boundary for this lane. No system/bypass context is reachable from
 // this file.
 //
-// JSONB is parsed on write **and** on read `context` and `counts` are `unknown` at the
+// JSONB is parsed on write **and** on read. `context` and `counts` are `unknown` at the
 // schema level on purpose. A jsonb column holds every shape ever written, not the shape
 // today's code writes, so both directions go through Zod. `summary_source` is parsed
 // through the shared union before the write for the same reason: a value forged past

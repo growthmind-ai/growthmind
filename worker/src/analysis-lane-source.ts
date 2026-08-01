@@ -7,8 +7,8 @@
 // piece that owns it, and the one new decision here (the analysis window) is a named
 // constant with its rationale.
 //
-// That decision is the hazard this outcome exists to close, so say the wire out loud:
-// `resolveAnalysisLanes` in./index.ts returns `createAnalysisLaneSource`, and from
+// A severed producer/consumer wire is the hazard this outcome exists to close, so say the wire out loud:
+// `resolveAnalysisLanes` in ./index.ts returns `createAnalysisLaneSource`, and from
 // that moment the tick's graceful-absence line means "no projects connected", never "no
 // producer written".
 import {

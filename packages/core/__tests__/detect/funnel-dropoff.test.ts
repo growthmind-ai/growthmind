@@ -218,7 +218,7 @@ const SET_ASIDE_REASONS: readonly ExclusionReason[] = [
 ];
 
 /**
- * /. Derived from the sessions rather than hand-written, so the identity `kept + Σ
+ * Derived from the sessions rather than hand-written, so the identity `kept + Σ
  * setAside.count === totalInWindow` (which `measuredCount` asserts) can never be
  * satisfied by a fixture that lies about its own contents.
  */
@@ -354,7 +354,7 @@ function rateBoundaryCorpus(input: {
   return corpusOf({ sessions, connectionState: CONNECTED_RECEIVING, truncated: false });
 }
 
-/**  /. The same 30 kept sessions as `firingSessions`, with a genuinely path-less
+/** The same 30 kept sessions as `firingSessions`, with a genuinely path-less
  * event wedged into the middle of every one of them. */
 function nullPathCorpus(): DetectorCorpus {
   const sessions = [
@@ -803,7 +803,7 @@ describe("detectFunnelDropoff", () => {
     expect(result.candidates.length).toBeGreaterThan(0);
 
     for (const candidate of result.candidates) {
-      // the That decision was a silent truncation that read as "no more events". The
+      // the precedent incident was a silent truncation that read as "no more events". The
       // limitation travels with the claim, not beside it in a log.
       expect(candidate.coverage.truncated).toBe(true);
       expect(candidate.coverage).toEqual(result.coverage);
@@ -1106,7 +1106,7 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
     // origin -> destination -> origin. If a single back-navigation were admitted as
     // `confusing` proof, this is where it would fire, and it would fire on a superset
     // of its target, because users navigate back constantly. That is the conflation
-    // this sprint exists to prevent, and That decision is the decision not to admit it.
+    // this sprint exists to prevent, and the deliberate decision here is not to admit it.
     const backtrackCorpus = struggleCorpus({
       converted: BACKTRACK_CONVERTED,
       revisits: [
@@ -1371,7 +1371,7 @@ describe("detectFunnelDropoff — the structural properties", () => {
 // against a detector from which the floor had been deleted, which is precisely the
 // regression exists to make impossible.
 //
-// That decision is what makes handing over a different rule set the natural move rather
+// The rule-set parameter design is what makes handing over a different rule set the natural move rather
 // than a workaround: the rule set is a parameter, never read internally, and
 // `predicates.test.ts` already does the equivalent (a constructed v2 carrying a
 // different proof-signal list) to prove a predicate reads its parameter. Exactly one

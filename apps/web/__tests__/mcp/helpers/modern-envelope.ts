@@ -42,7 +42,7 @@
 // explicitly not a door to this leg: the claim keys live in the body, and the fixture
 // builds that.
 //
-// ⚠️ the answers differ from the legacy leg's, by design. A modern result carries
+// The answers differ from the legacy leg's, by design. A modern result carries
 // `resultType: "complete"` and a `_meta.serverInfo` block the legacy frame does not.
 // Every row using this minter therefore compares modern against modern and never
 // against a legacy literal, the same discipline `../cross-tenant.test.ts` states for

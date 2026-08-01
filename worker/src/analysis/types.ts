@@ -16,7 +16,7 @@ import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { SummarySource, SummaryUsage, TenantContext } from "@growthmind/shared";
 
 /** The logger surface this lane needs. The subset Graphile Worker's `helpers.logger`
- * already satisfies, so the thin closure in./index.ts passes it straight through and a
+ * already satisfies, so the thin closure in ../index.ts passes it straight through and a
  * test passes a recording fake. */
 export interface AnalysisLogger {
   info(message: string): void;
@@ -74,11 +74,10 @@ export type AnalysisLane = {
  * one-line-fillable. Byte for byte the shape `DeliveryLaneSource`
  * (`../tasks/delivery-tick.ts`) set one sprint earlier for exactly this situation.
  *
- * THE GAP IS CLOSED (O-012). `../analysis-lane-source.ts` implements this port
- * against real persisted events, and `resolveAnalysisComposition()` in
- * ../index.ts returns it — so on a real installation this tick reads a real
- * corpus. The header above records why the port exists; it is no longer a
- * description of an unwired installation.
+ * The gap is closed. `../analysis-lane-source.ts` implements this port against real
+ * persisted events and `resolveAnalysisComposition` in `../index.ts` returns it, so on
+ * a real installation this tick reads a real corpus. The paragraph above records why
+ * the port exists; it is no longer a description of an unwired installation.
  */
 export interface AnalysisLaneSource {
   /** Every project due an analysis decision on this tick. An empty list is an ordinary
@@ -109,7 +108,7 @@ export interface AnalysisLaneSource {
  * this handler be tested against the contracts with fakes carrying real state, while
  * the fakes stay compile-checked against the same interfaces production uses, so they
  * cannot drift into agreeing with a repository that no longer exists. The one call to
- * each `create*` lives in./index.ts, beside the pool it needs.
+ * each `create*` lives in ../index.ts, beside the pool it needs.
  */
 export type FindingsRepoFor = (ctx: TenantContext) => FindingsRepo;
 export type AnalysisRunsRepoFor = (ctx: TenantContext) => AnalysisRunsRepo;
@@ -219,7 +218,7 @@ export interface AnalysisTickSummary {
    * a number that lives only here dies with the process. */
   candidatesUnrenderable: number;
   /** Candidates refused before the ladder because their surface was not in its
-   * normalised form (security audit ). Counted apart from every other number here:
+   * normalised form (security audit). Counted apart from every other number here:
    * nothing was claimed, nothing was sent and nothing was written for them, and folding
    * them into `candidatesUnrenderable` would read as "the floor could not phrase it"
    * when the truth is "we would not transmit it". Persisted per run on

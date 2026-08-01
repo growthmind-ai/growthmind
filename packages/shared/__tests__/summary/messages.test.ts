@@ -124,7 +124,7 @@ describe("degradation states — enum totality", () => {
     }
   });
 
-  // That decision is enforced at the type level today. Every enum is a closed Zod
+  // The closed-enum rule is enforced at the type level today. Every enum is a closed Zod
   // union, never a nullable field standing in for a state, and the test below confirms
   // each schema is total over its declared members with no additional
   // `null`/`undefined` arm.

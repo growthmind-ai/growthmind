@@ -39,7 +39,7 @@
 //
 // The five loosenings this row was authored against are gone
 //
-// ⚠️ an earlier version of this header listed five offenders by `file:line` and said
+// An earlier version of this header listed five offenders by `file:line` and said
 // the row was red on arrival. It was, once. As landed at `35d5e6f` three of the four
 // suites carried a loosened comparison, two `JSON.parse(` sites in
 // `api-key-credentials.test.ts` and three `toMatchObject` sites across

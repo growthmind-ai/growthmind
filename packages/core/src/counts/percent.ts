@@ -1,10 +1,11 @@
 // The percent scale, the unit of the rule set's `*Percent` members, and the only
 // numeric literal any comparison against one is allowed to need.
 //
-// Forbids unnamed numeric literals in a detector or predicate body. A named constant is
-// not merely tolerated there, it is what That decision is asking for. The opposite of
-// the magic number. And this magnitude cannot come from the rule set: makes every
-// `ThresholdRuleSet` member an under-detect assertion gate, whereas this is arithmetic.
+// House rule: no unnamed numeric literals in a detector or predicate body. A named
+// constant is not merely tolerated there, it is what that rule is asking for. The
+// opposite of the magic number. And this magnitude cannot come from the rule set: every
+// `ThresholdRuleSet` member is an under-detect assertion gate, whereas this is
+// arithmetic.
 // A rule set that could set the scale to `1000` would silently move every threshold it
 // also carries.
 //
@@ -19,6 +20,6 @@
  *
  * Float division would put the inclusive "fires at exactly the threshold" one ulp away
  * from "fires just above it", which no test written in floats can see. It is also what
- * lets `canonicalJson` stay integer-only, which hashes the rule set through.
+ * lets `canonicalJson`, the function the rule set is hashed through, stay integer-only.
  */
 export const PERCENT_SCALE = 100;

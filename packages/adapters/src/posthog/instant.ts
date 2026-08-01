@@ -1,4 +1,4 @@
-// Timestamp formatting for PostHog's `after` / `before` parameters (h, Addendum a row
+// Timestamp formatting for PostHog's `after` / `before` parameters (Addendum A row
 // 2 / row 4).
 //
 // The hazard this file exists for: a malformed time value returns HTTP 200 with an

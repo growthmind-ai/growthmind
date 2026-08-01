@@ -201,7 +201,7 @@ export const VOCABULARY_ROWS: readonly VocabularyRow[] = [
   },
 ];
 
-/** The three verdicts a row can carry. The em dashes are the, verbatim. */
+/** The three verdicts a row can carry. The em dashes are the spec's, verbatim. */
 export type VerdictLabel = "PINNED — present" | "PINNED — absent" | "FAILED-TO-PIN";
 
 /**

@@ -41,7 +41,7 @@ function everyMessage(): string[] {
 describe("the plain-English audit", () => {
   // Item 28, / the UX bar.
   test("no exported customer-facing message contains 'live' as a freshness claim", () => {
-    // Addendum a row 4: PostHog stores the time the customer's own browser declared and
+    // Addendum A row 4: PostHog stores the time the customer's own browser declared and
     // exposes no arrival time by any route, so an event can land behind everything we
     // have already read. Nothing here may imply otherwise.
     const offenders = everyMessage().filter((message) => LIVE_CLAIM.test(message));

@@ -146,7 +146,7 @@ export const summaryFailureCodeSchema = z.enum([
 export type SummaryFailureCode = z.infer<typeof summaryFailureCodeSchema>;
 
 /**
- * Token counts as the SDK actually reports them (Wave 0 probe ): a field the SDK did
+ * Token counts as the SDK actually reports them (Wave 0 probe): a field the SDK did
  * not report is `undefined`, never coerced to `0`. A candidate the model touched but
  * did not meter would otherwise look identical to one that cost nothing.
  */

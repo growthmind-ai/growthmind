@@ -35,7 +35,7 @@ export interface WatchedRun<T> {
  * Runs `run`, capturing any unhandled promise rejection the process reports while it
  * does.
  *
- * ⚠️ the flush is the whole point. A rejection with no handler is reported by the
+ * The flush is the whole point. A rejection with no handler is reported by the
  * runtime after the microtask queue drains, so a watcher that reads its list the
  * instant `run` resolves reads an empty list every time and the row using it passes
  * forever. One macrotask turn is awaited before the list is handed back.

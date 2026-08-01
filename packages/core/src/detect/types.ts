@@ -16,7 +16,7 @@ import type { DetectorName, DetectorProposedClass } from "../rules/types";
  * fabricates a drop-off, because the events proving the user reached the destination
  * are exactly the ones the cap dropped. Capping by session makes every loaded session
  * complete by construction, and `DetectorCoverage.truncated` carries the limitation
- * onto every candidate rather than hiding it. The That decision was a silent truncation
+ * onto every candidate rather than hiding it. The precedent incident was a silent truncation
  * that read as "no more events", and this is that fix applied before the incident
  * rather than after it.
  *

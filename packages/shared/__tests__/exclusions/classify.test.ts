@@ -39,7 +39,7 @@ function ruleSetV1(): ExclusionRuleSet {
 describe("classifyExclusion — internal domain (F-3)", () => {
   // Item 13, the majority path, not an edge case.
   //
-  // Addendum a row 6 pinned `person` as null on 165/165 events: email is not on the
+  // Addendum A row 6 pinned `person` as null on 165/165 events: email is not on the
   // event at all, so most sessions carry no email and never will. This is what the
   // common request looks like, and it must be kept.
   test('returns "none" when the email domain is absent', () => {

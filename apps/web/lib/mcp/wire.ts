@@ -1,106 +1,8 @@
-// The wire: The one file that knows this is MCP.
-//
-// The one import site
-//
-// This is the only source file in `apps/web/lib/**` and `apps/web/app/**` permitted to
-// name `@modelcontextprotocol/server`, and a source scan asserts that the list of files
-// naming it has exactly one entry. That confinement is what makes "we could swap the
-// transport out" a fact rather than a hope: swapping it changes this file's imports and
-// nothing else. No tool logic, no refusal sentence, no credential code, no schema.
-//
-// The v1 SDK package. The `/sdk` specifier under the same scope, seventeen runtime
-// dependencies, no modern-era machinery. Is imported nowhere in this workspace, and a
-// second scan asserts zero occurrences of its name anywhere. That scan is why its
-// specifier is not spelled out even in this comment: a prose mention would be an
-// occurrence, and the row would go red on a sentence that was only trying to be
-// helpful. If you are here from v1 muscle memory, the transport lives on the package
-// root export; there is no deep subpath.
-//
-// It renders, and it never decides
-//
-// Every decision this surface makes lives in `./call-tool.ts`, and every sentence it
-// says lives in `./refusals.ts`. What happens below is framing and nothing else: build
-// a server, hand it the three schemas somebody else declared, unwrap one JSON-RPC
-// message, and turn the union `callTool` returned into the shape the protocol carries a
-// result in. There is no branch here that reads a tool name, an organization, or a row.
-//
-// The handler is constructed per request, with `await handler.close` in a
-//  `finally`. That keeps `getDb` per-request inside the composition root's
-//  `resolveMcpDeps` — an invariant a module-scope memoised handler would
-//  silently break. (`createMcpHandler` returns an object, not a callable:
-//  serve with `handler.fetch(request)`.) Measured: the server factory runs
-//  per exchange, close is clean, and closing twice is a no-op.
-// `responseMode: "sse"` is written out as a property at the construction
-//  site, never left to the sdk's `'auto'` default and never `"json"`. The
-//  legacy leg — the one a stock client meets — has no framing option at all,
-//  so `"json"` would not make the wire JSON; it would split the wire in two
-//  and force every byte-identity row to be authored twice. One framing, one
-//  set of rows. The literal must stay visible here rather than being hoisted
-//  into a constant: a test asserts it is present at this construction site.
-// `legacy: "stateless"` is passed explicitly. It is the verified default,
-//  and it is load-bearing rather than decorative: the only alternative,
-//  `"reject"`, makes a stock client fail its first POST with `-32022`.
-// `maxSubscriptions: 0` refuses `subscriptions/listen` outright, and it is
-//  an availability control rather than a preference. See the option's own
-//  paragraph below `settled`.
-// `onerror` is the transport's own fault channel, and it is the third of
-//  three log sites rather than a duplicate of either. See its paragraph
-//  below.
-// Both protocol eras are served by this one handler, and nothing here is
-//  era-specific. A stock client negotiates the legacy floor through
-//  `initialize`; an opt-in client pinned to the modern era reaches the same
-//  three tools through `server/discover`. There is no modern-off switch in
-//  the transport's options, so this is not a preference — it is the only
-//  implementable shape. We write no `initialize` handler, no session id, no
-//  GET stream and no `_meta` of our own.
-// The three tools are registered with the shared Zod schemas verbatim, and
-//  then `tools/call` is overridden as one handler for the method, on the
-//  inner `Server`, after the registration loop. Registration alone is not
-//  enough — the facade resolves the tool name against its own registry first
-//  and answers an unknown name with a protocol error carrying none of our
-//  three tool names, which is precisely the refusal this surface exists to
-//  give well.
-// A refusal is rendered by calling `refusalToolResult` from `./refusals.ts`.
-//  This file contains no refusal literal — one producer per wire form is what
-//  makes two refusals built from one constant identical by construction, and
-//  that identity is the cross-tenant proof.
-// Every non-error result carries schema-valid `structuredContent`, built
-//  from the same parsed output value, uniformly on every success. A client
-//  that has listed the tools first compiles output validators from that
-//  listing and rejects a result without it — measured, and invisible to any
-//  server-side test.
-//
-// The errors this file does not produce
-//
-// Protocol-level errors, a body that is not JSON, a message with no `jsonrpc`, a method
-// nobody implements, params that do not fit the envelope. Are the transport's, because
-// they are framing. Nothing below emits a JSON-RPC error object, and `MALFORMED_BODY`
-// in `./refusals.ts` is deliberately not reachable from here: the pre-protocol envelope
-// reader that produced it is gone, and the transport's own parse error is the answer a
-// caller now gets. Its one producer today is `./server.ts`'s batch gate, which refuses
-// an array body before this file is reached at all. A shape decision made on the raw
-// bytes, in front of the transport, never a second parser behind it.
-//
-// There is also no catch here. `callTool` does not throw. A fault inside a read, a
-// renderer or an output schema is caught there, logged once, and comes back as a
-// refusal value we render like any other. `./server.ts` keeps an outer catch for a
-// fault in this file itself. Adding a third catch, or one that fires on faults those
-// two already own, is how one incident becomes two log lines that disagree.
-//
-// The `onerror` below is not that third catch, and the distinction is the whole reason
-// it exists. It is the transport's own fault channel, and it carries the faults neither
-// of the other two can observe: the sdk's `reportError` is ` => { try { onerror?.
-// } catch {} }`, and a fault inside the SDK is returned as `500 {"code":-32603}` rather
-// than thrown, so `./server.ts`'s catch never sees it, and `callTool`'s catch is a
-// layer further in. Left unwired, as it was until the post-sprint audit, a wire-layer
-// failure answered a caller with a 500 and wrote zero log lines. That was a regression
-// against the pre-transport behaviour, where the envelope reader was ours and its
-// faults threw into `./server.ts`'s catch.
-//
-// So the three channels partition rather than overlap: `callTool` owns a fault inside a
-// tool call, `./server.ts` owns a fault escaping this file, and this one owns a fault
-// inside the SDK that neither can reach. The message below is distinct from both for
-// exactly that reason. During an incident the sentence says which layer broke.
+// The wire: the one file that knows this surface speaks MCP. It renders and never
+// decides: every decision lives in `./call-tool.ts`, every refusal sentence in
+// `./refusals.ts`, and a source scan asserts this is the only shipped file under
+// `apps/web/lib/**` and `apps/web/app/**` that names the transport package.
+// Design rationale: docs/decisions/0006-mcp-wire-framing.md
 import { MCP_TOOLS } from "@growthmind/shared";
 import {
   McpServer,
@@ -157,9 +59,9 @@ export interface McpWireDeps {
  * codebase makes.
  *
  * The `request` is rebuilt by `./server.ts` and that is invisible here. A body can only
- * be read once and the two gates above had to read it, so what arrives is a fresh
- * `Request` over the same url, method, headers and bytes. Nothing below can tell, and
- * nothing below should have to.
+ * be read once and that file's size and batch gates had to read it, so what arrives is
+ * a fresh `Request` over the same url, method, headers and bytes. Nothing below can
+ * tell, and nothing below should have to.
  */
 export async function renderMcpWire(request: Request, deps: McpWireDeps): Promise<Response> {
   const handler = createMcpHandler(() => buildServer(deps), {
@@ -182,7 +84,7 @@ export async function renderMcpWire(request: Request, deps: McpWireDeps): Promis
 /**
  * The answer, finished, before the handler that produced it is torn down.
  *
- * ⚠️ this is not an optimisation and it is not decoration, without it the modern leg
+ * This is not an optimisation and it is not decoration, without it the modern leg
  * hangs. `close` aborts every modern exchange still in flight, and on that leg
  * `fetch` resolves with a response whose body is still being written: the frame is
  * streamed after the headers are handed back. Tearing the handler down at that moment
@@ -196,7 +98,7 @@ export async function renderMcpWire(request: Request, deps: McpWireDeps): Promis
  * no notifications, no progress and no logging, so a response is one frame and draining
  * it costs a copy of a few hundred bytes.
  *
- * ⚠️ "a response is one frame" was TRUE of every answer this file produces and FALSE of
+ * "a response is one frame" was TRUE of every answer this file produces and FALSE of
  * one the SDK produces behind it, and that gap was a hang. The modern leg carries
  * `subscriptions/listen`, answered by the sdk's own listen router with an SSE stream
  * that ends only on client disconnect or `handler.close`. The drain above then waited
@@ -241,8 +143,9 @@ async function settled(response: Response): Promise<Response> {
  * One line, and a sentence neither of the other two writes. `callTool` logs "a tool
  * call could not be completed"; `./server.ts` logs "the wire could not answer a
  * request"; this logs that the fault was inside the SDK, where neither of them can see
- * it. Three partitioned channels, never three claims on one event. The file header
- * argues the partition, and `__tests__/mcp/failure-isolation.test.ts` still requires
+ * it. Three partitioned channels, never three claims on one event.
+ * docs/decisions/0006-mcp-wire-framing.md argues the partition, and
+ * `__tests__/mcp/failure-isolation.test.ts` still requires
  * exactly one line for a broken read, which never reaches this channel because
  * `callTool` does not throw.
  *

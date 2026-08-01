@@ -38,7 +38,7 @@
 // removed, and it is the reason every row above asserts what arrives rather than that
 // we authored it.
 //
-// ⚠️ one gate of ours now sits in front of the transport, and it is not a parser.
+// One gate of ours now sits in front of the transport, and it is not a parser.
 // `server.ts` refuses a body over a byte ceiling and a body whose first non-whitespace
 // byte opens an array. A size and a shape, decided on raw bytes, with no envelope read
 // and no `JSON.parse` anywhere in that file. Both are availability bounds rather than
@@ -100,14 +100,14 @@ const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 
 describe("WIRE-W1 — a batch request is answered without crashing the handler", () => {
   /**
-   * ⚠️ the weakest row in the file, on purpose, and its answer has moved twice.
+   * The weakest row in the file, on purpose, and its answer has moved twice.
    *
    * A JSON-RPC batch is an array, and the revision this surface negotiates removed
    * batching, so the only thing this row is entitled to claim is that an array is a
    * shape the surface has an answer for, below 500, with something in it. That claim
    * has survived both moves, which is why the row is unchanged.
    *
-   * ⚠️ the original version of this comment said the answer was "our pre-protocol
+   * The original version of this comment said the answer was "our pre-protocol
    * `MALFORMED_BODY`, and after wave 8 whatever the transport frames". Both halves were
    * wrong by the end of the sprint, and the second one hid a hole. Measured after wave
    * 8: the transport did not refuse an array at all. It processed it. A 500-message
@@ -297,7 +297,7 @@ describe("WIRE-W8 — two identical tool calls produce two identical answers and
    * precisely so both calls share one, because the id is echoed into every answer and
    * two answers can only be byte-identical if it was held constant.
    *
-   * ⚠️ sdk-rendered band: `text/event-stream`, not `application/json`. Round 1 pinned
+   * Sdk-rendered band: `text/event-stream`, not `application/json`. Round 1 pinned
    * `responseMode: "json"` and this row was authored to it; round 2 measured that the
    * mode is inert on the legacy leg and pinned `"sse"`, which moved the whole
    * SDK-rendered band. the per-row line still carries the stale text; the band

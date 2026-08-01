@@ -28,7 +28,7 @@ import type { ThresholdRuleSet } from "../../src/rules/types";
  * The v1 rule set fetched by version, never by "whatever is current". The whole
  * property asserts is that this lookup keeps working, unchanged, after v2 lands. Copied
  * from `packages/shared/__tests__/exclusions/ classify.test.ts`'s `ruleSetV1`,
- * deliberately: That decision says these rule sets mirror `EXCLUSION_RULE_SETS`
+ * deliberately: the spec says these rule sets mirror `EXCLUSION_RULE_SETS`
  * exactly, and so do their tests.
  */
 function ruleSetV1(): ThresholdRuleSet {
@@ -38,7 +38,7 @@ function ruleSetV1(): ThresholdRuleSet {
 }
 
 /**
- * The words That decision requires, verbatim. A hash mismatch is not a puzzle to be
+ * The words the spec requires, verbatim. A hash mismatch is not a puzzle to be
  * solved by re-pinning the golden. It is a reviewer telling you that you edited a
  * decision that has already shipped.
  */
@@ -243,7 +243,7 @@ describe("THRESHOLD_RULE_SETS", () => {
     const serialised = canonicalJson(ruleSetV1());
     const actual = createHash("sha256").update(serialised, "utf8").digest("hex");
 
-    // Thrown rather than asserted so the words That decision requires are literally in
+    // Thrown rather than asserted so the words the spec requires are literally in
     // the failure output, not buried under a hex diff.
     if (actual !== V1_CONTENT_HASH) {
       throw new Error(

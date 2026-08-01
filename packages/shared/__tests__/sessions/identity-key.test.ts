@@ -2,7 +2,7 @@
 //
 // PostHog's `identify` is routinely called with a user's email address as the
 // `distinct_id`, so the raw value can carry PII. Only a hash of it may ever be
-// persisted or cross a port boundary (product-decisions).: the original hash was
+// persisted or cross a port boundary (product-decisions): the original hash was
 // unkeyed and salted only with the project id (public, plaintext, one table over) so an
 // email-shaped digest was reversible by dictionary in seconds from a database dump. The
 // keyed-ness tests below are what would have caught that.

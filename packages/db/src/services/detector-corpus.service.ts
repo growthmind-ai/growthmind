@@ -21,7 +21,7 @@
 // both ends). Once selected its events are returned whole, regardless of their own
 // `occurred_at`. The window is an injected parameter. There is no clock on this path.
 //
-// That decision is not applied here: the corpus returns every selected session carrying
+// The exclusion filter is not applied here: the corpus returns every selected session carrying
 // its own `exclusionReason`, and the detector filters to `"none"` and uses `basis.kept`
 // as its denominator. That keeps asserted against the tested pure layer rather than
 // against an untested SQL read.
@@ -55,7 +55,7 @@ export interface DetectorCorpusService {
    * `connectionState` comes from the existing `deriveConnectionState`, so "polled and
    *  found nothing" stays distinguishable from "never polled".
    * `coverage.truncated` reports the cap binding; a silent truncation reads as "no more
-   *  events" and was the.
+   *  events" and was the precedent incident.
    */
   read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpus>;
 }
@@ -131,7 +131,7 @@ export function createDetectorCorpusService(
       // cap fabricates a drop-off. The events proving the user reached the destination
       // are exactly the ones it would drop, so the detector would report a completion
       // as an abandonment. Capping by session makes every loaded session complete by
-      // construction. the That decision was a silent truncation that read as "no more
+      // construction. the precedent incident was a silent truncation that read as "no more
       // events"; reporting it here is that fix applied before the incident rather than
       // after it.
       const truncated = windowRows.length > DETECTOR_CORPUS_MAX_SESSIONS;
@@ -184,7 +184,7 @@ export function createDetectorCorpusService(
         }
       }
 
-      // That decision is not applied here (ruling 7): Every selected session is
+      // The exclusion filter is not applied here (ruling 7): every selected session is
       // returned carrying its own `exclusionReason`, and the detector filters to
       // `"none"`. That keeps asserted against the tested pure layer rather than against
       // an untested SQL read.

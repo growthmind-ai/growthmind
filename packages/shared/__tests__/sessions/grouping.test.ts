@@ -5,7 +5,7 @@
 // splitting them costs a few extra rows.
 //
 // The 30-minute bucket is fixed, not a sliding inactivity gap: a sliding window shifts
-// as late events arrive, forking the key of a session already on record. Addendum a row
+// as late events arrive, forking the key of a session already on record. Addendum A row
 // 4 pinned that late and backdated events are ordinary here, so arrival order must not
 // be able to change a key.
 import { describe, expect, test } from "bun:test";
@@ -94,7 +94,7 @@ describe("deriveSessionKey", () => {
       first,
     );
 
-    // Arrival order is not an input. Addendum a row 4 pinned that a backdated event
+    // Arrival order is not an input. Addendum A row 4 pinned that a backdated event
     // lands behind the newest-first walk, so the same three events read in either
     // direction must produce the same three keys.
     const events: SessionKeyInput[] = [

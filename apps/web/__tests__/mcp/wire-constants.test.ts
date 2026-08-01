@@ -8,7 +8,7 @@
 // package upgrade changes what this server negotiates with no diff of ours, and a
 // framing mode left to a default moves every byte-identity comparison in the sprint.
 //
-// ⚠️ this file is the most changed in the ROUND-2 regeneration
+// This file is the most changed in the ROUND-2 regeneration
 //
 // Round 1 authored `WIRE-K5` and `WIRE-K6` to two decisions round 2 reversed, and
 // writing either old version here would turn a row red against correct code. Both
@@ -106,7 +106,7 @@ const RESPONSE_MODE_PIN = 'responseMode: "sse"';
  * newlines preserved, and every string literal left intact, because string literals are
  * exactly what these rows are about.
  *
- * ⚠️ the inverse of `refusal-identity-guard.test.ts`'s scanner, and the difference
+ * The inverse of `refusal-identity-guard.test.ts`'s scanner, and the difference
  * matters. That one blanks comments and strings, because it asks "did an assertion get
  * loosened" and a token inside a string is data. These rows ask "is this value written
  * inline in the code", so the strings are the evidence and the comments are the noise.
@@ -216,7 +216,7 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
   const FRAMING_MODES = ["auto", "sse", "json"] as const;
 
   /**
-   * ⚠️ the exemption, encoded as data and not as a comment.
+   * The exemption, encoded as data and not as a comment.
    *
    * `responseMode: "sse"` is a member of the sdk's own `'auto' | 'sse' | 'json'` union,
    * so a wrong value is a compile error rather than a runtime one. The exact property
@@ -386,7 +386,7 @@ describe("WIRE-K4 — the legacy negotiation list is pinned, so a package upgrad
 
 describe("WIRE-K5 — the modern era is absent from the LEGACY NEGOTIATION LIST on purpose, and the reason is written down", () => {
   /**
-   * ⚠️ one half only. Round 1's halves and asserted that no source file defines
+   * One half only. Round 1's halves and asserted that no source file defines
    * a constant whose value is `2026-07-28`, and that the modern era is "neither served
    * nor negotiated". Both are now false. Wave 2 restored `MCP_PROTOCOL_ERA_TARGET`, and
    * the modern leg is served by the same handler with no way to switch it off.
@@ -525,7 +525,7 @@ describe("WIRE-K6 — the wire is SSE-framed on the SDK path and JSON on the pre
    * today: no `id:` line is emitted on either leg under any response mode, which is why
    * the exclusion list is empty rather than "empty except the id".
    *
-   * ⚠️ the status precondition is not decoration. This is an absence assertion, and a
+   * The status precondition is not decoration. This is an absence assertion, and a
    * 400 refusal carries no `id:` line either, so without first proving each response is
    * the one this row means to inspect, would pass today, pass through wave 8, and
    * pass on a surface that had stopped answering correctly altogether.

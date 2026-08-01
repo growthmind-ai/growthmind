@@ -1,5 +1,5 @@
 // Unit tests for evidence predicates: the eight named tests for the proof predicates, plus the
-// one assertion That decision requires.
+// one assertion the design review requires.
 //
 // What this file is for, in one sentence: the evidence gate is the product's identity,
 // and these predicates are the only thing standing between "we can prove it" and "we
@@ -314,7 +314,7 @@ describe("confusingProofSatisfied", () => {
     expect(confusingProofSatisfied([], rules)).toBe(false);
   });
 
-  // / (Wave 7). The assertion for this direction already existed above, as the positive
+  // Wave 7. The assertion for this direction already existed above, as the positive
   // test's own negative control, and it stays there, because a positive test keeping
   // its complement is what stops it passing against a predicate that returns `true` for
   // everything.
@@ -577,7 +577,7 @@ describe("instrumentationProofSatisfied", () => {
 describe("predicates read the rule-set parameter, never the module constant", () => {
   test("should follow the rule set it is handed when its proof-signal list differs from v1", () => {
     // A hypothetical rule set that admits the uncorrelated kind (this is exactly the
-    // one-line edit promises, and exactly the edit That decision says needs first-party
+    // one-line edit promises, and exactly the edit the design notes say needs first-party
     // capture before it is safe). If the predicate reached for
     // `BROKEN_PROOF_SIGNALS_V1` directly instead of reading its parameter, both
     // assertions below would come out the v1 way and this test would catch it.

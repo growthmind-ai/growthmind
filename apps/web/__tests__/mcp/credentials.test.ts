@@ -51,7 +51,7 @@
 // is what stops an identity row passing on a pair of 406s. The rows below therefore pin
 // status and content type first, and only then compare bytes.
 //
-// ⚠️ `WIRE-C6` is untouched, byte for byte. No id prefix, no band assertion, not a
+// `WIRE-C6` is untouched, byte for byte. No id prefix, no band assertion, not a
 // character. It is the proof PR #16's credential path is reused verbatim by this sprint
 // (row 33), and an edit to it would destroy the thing it exists to demonstrate.
 //

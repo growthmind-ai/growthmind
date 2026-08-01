@@ -1,4 +1,4 @@
-// Wave 0 (red) (`mcp-read-credential`, "Integration tests) repository and resolver
+// Wave 0 (red), `mcp-read-credential`, "Integration tests: repository and resolver
 // (PGlite, lane `apikey`, `fixtures.ts`)", all 11 rows.
 //
 // Subject: `packages/db/src/repositories/api-keys.repo.ts` and the `api_keys` table.

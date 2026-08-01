@@ -1,77 +1,9 @@
-// The signature ledger's consumer contract. The five entry points a later outcome's
-// analysis lane, delivery scheduler, and Slack responder call, plus the one composition
-// that turns a candidate into a signature.
-//
-// Parameter order: every method below takes `projectId` first, matching every other
-// repository/service in this package (`listForProject`, `findByKey`, `aggregateFor`,
-// …). The summary table lists a couple of these with `projectId` second; Wave 5's
-// fuller description (and this file) puts it first for consistency with the rest of the
-// codebase. the two mentions differ only in argument order, never in meaning.
-//
-// (producer/consumer wiring): each entry point's header names its intended caller and
-// the sprint that wires it. The rule this project has paid to learn twice. A computed
-// value dropped on the floor because no consumer ever reads it. Is closed by never
-// hand-passing a value a consumer could derive itself: every method here derives what
-// it needs from its own arguments (a `CandidateFinding`, a `SignatureHex`, a
-// `TenantContext`), never from an out-of-band field a caller forgot to thread.
-//
-// Reads must be uncached and committed-state only (AI-stack layer 2, staleness). A
-// stale "not seen" here is a duplicate delivered. There is no cache in front of any
-// read in this service, and a later wave must not add one without re-litigating this
-// note.
-//
-// `computeFindingSignature`'s dispatch composes `signatureTuple` (`@growthmind/core`,
-// pure) and `sha256Hex` (`../signatures/hex`, this package). The one function that
-// turns a candidate into a signature, and the only caller of `sha256Hex` in production
-// code.
-//
-// Every other method resolves its input signature forward through `signature_ancestry`
-// before touching the ledger (add). A stale pre-re-key signature (e.g. a Slack
-// interaction payload minted before a churn) must land on the live row, never silently
-// stamp a signature nothing consults anymore.
-//
-// The one fail direction for an unresolvable ancestry walk Stated once, here, because
-// the read path and the write paths must not disagree about it. An earlier revision had
-// `consultSignature` suppress on `unresolvable` while `resolveForward` degraded to the
-// unresolved input, so a dismissal was stamped onto a signature the read path had just
-// declared unknowable.
-//
-// The rule: an unresolvable walk never moves the system toward an extra delivery, and
-// never discards a customer's action. Concretely:
-//
-// `consultSignature` (read) → suppress / unresolvable_ancestry.
-// `recordDismissal` (write) → record against the unresolved
-//  input signature.
-// `markSignatureDelivered` (write) → stamp the unresolved input
-//  signature.
-//
-// Those are one direction, not two: every branch either withholds a delivery or records
-// something whose only effect is more suppression. Refusing the writes was considered
-// and rejected. A throw inside `recordDismissal` destroys the customer's "Not useful"
-// click outright (the failure names as the worst available), and it destroys it in
-// exactly the state where the ledger is already known to be sick. Recording against the
-// unresolved signature loses nothing: a dismissal keyed on that signature still
-// suppresses it, and if the ancestry chain is later repaired, `recordAncestry`'s
-// carry-forward propagates the dismissal onto the live row via `coalesce`. Both
-// unresolvable branches log at `console.error`.
-//
-// The dismissal is durable independently of the ledger `dismissals` and
-// `finding_signatures` have two independent producers with no ordering guarantee: a
-// Slack "Not useful" click can arrive before the analysis lane has ever recorded the
-// signature. `recordDismissal` therefore treats the `dismissals` row as the durable
-// record of the customer's decision and the ledger's `dismissed_at` as a denormalised
-// fast path, never the other way round. `consultSignature` reads both, so the
-// suppression holds regardless of arrival order.
-//
-// `recordDismissal` and `recordAncestry` each open exactly one `db.transaction(async
-//  => { … })` and write on `tx` directly, never through a repository factory
-// constructed over `tx`, because `ScopedDb` (`../repositories/types.ts`) is a union of
-// `NodePgDatabase` and `PgliteDatabase` that a transaction handle is not assignable to
-// without a cast. `../tenancy/ensure-organization.ts:67` is the precedent this copies:
-// `db: ScopedDb`, hand-written queries inside the callback, every query naming
-// `ctx.organizationId` literally. Repository factories (`createFindingSignaturesRepo`,
-// `createSignatureAncestryRepo`) are used everywhere else, where a single read or a
-// single atomic upsert is enough.
+// The signature ledger's consumer contract: five entry points (analysis lane, delivery
+// scheduler, Slack responder) plus `computeFindingSignature`, the one composition that
+// turns a candidate into a signature. Every entry point resolves its input signature
+// forward through `signature_ancestry` first, and an unresolvable walk only ever
+// withholds a delivery or adds suppression, never the reverse. Reads are uncached.
+// Design rationale: docs/decisions/0012-signature-ledger.md
 import {
   normaliseUrlPath,
   type AncestryReason,
@@ -168,7 +100,7 @@ function assertNormalisedSurfaceForSignature(surface: string): void {
 }
 
 /**
- * The one function that turns a candidate into a signature (fr-i). The only caller
+ * The one function that turns a candidate into a signature. The only caller
  * of `sha256Hex` in production code.
  *
  * `signatureTuple` (pure, `@growthmind/core`) produces the canonical tuple string;
@@ -221,11 +153,11 @@ export interface RecordAncestryInput {
 export interface SignatureLedgerService {
   /**
    * Caller: the analysis lane, on every candidate (a later outcome). Computes the
-   * signature from `candidate` via `computeFindingSignature` (the only producer,
-   * fr-i), then `upsertSeen`s the ledger row.
+   * signature from `candidate` via `computeFindingSignature` (the only
+   * producer), then `upsertSeen`s the ledger row.
    *
-   * Throws when `projectId` does not belong to `ctx.organizationId` (security audit
-   * ). See `assertProjectInOrg` for why every write entry point rejects loudly
+   * Throws when `projectId` does not belong to `ctx.organizationId` (security audit).
+   * See `assertProjectInOrg` for why every write entry point rejects loudly
    * rather than returning something success-shaped.
    */
   recordSignature(projectId: string, candidate: CandidateFinding): Promise<RecordSignatureResult>;
@@ -320,7 +252,7 @@ export function createSignatureLedgerService(
   const projectsRepo = createProjectsRepo(db, ctx);
 
   /**
-   * The tenancy guard for every write (security audit ).
+   * The tenancy guard for every write (security audit).
    *
    * `projectId` is caller-supplied on every entry point, and `projects.id` is
    * FK-enforced but not org-enforced, so without this check org A could write ledger /
@@ -387,7 +319,7 @@ export function createSignatureLedgerService(
    *
    * An unresolvable walk (a cycle or the hop cap) has no "live" answer, so it degrades
    * to the original input signature. Logged, never thrown. That is the write half of
-   * this file's one declared fail direction (see the header, review): the read path
+   * this file's one declared fail direction (see the design doc): the read path
    * suppresses, the write paths record against the unresolved signature, and both
    * branches only ever withhold a delivery or add suppression. Refusing here would
    * throw away the customer's dismissal, which is strictly worse.
@@ -412,7 +344,7 @@ export function createSignatureLedgerService(
     ): Promise<RecordSignatureResult> {
       await assertProjectInOrg(projectId);
 
-      // `recordSignature` is the only producer of a signature (fr-i). Every other
+      // `recordSignature` is the only producer of a signature. Every other
       // entry point either accepts one already computed or resolves one forward, never
       // re-derives it.
       const signature = computeFindingSignature(toComputeInput(projectId, candidate));
@@ -545,7 +477,7 @@ export function createSignatureLedgerService(
 
       // One transaction: the dismissal insert and the ledger's `dismissed_at` stamp
       // succeed together or not at all. A partial write would leave a dismissal that
-      // suppresses nothing. Written on `tx` directly (see this file's header), never
+      // suppresses nothing. Written on `tx` directly (see the design doc), never
       // through a repository factory, which `ScopedDb` cannot accept a transaction
       // handle for without a cast.
       return db.transaction(async (tx) => {

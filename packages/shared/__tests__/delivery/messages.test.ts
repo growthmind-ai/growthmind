@@ -120,7 +120,7 @@ describe("the plain-English audit", () => {
     }
     expect(offenders).toEqual([]);
 
-    // The banned list is the, in full. A shortened list would make the scan above pass
+    // The banned list is the spec's, in full. A shortened list would make the scan above pass
     // by scanning for less. One vocabulary, not two.
     const banned: readonly string[] = FORBIDDEN_PRODUCT_JARGON;
     expect(banned.toSorted()).toEqual([

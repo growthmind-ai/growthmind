@@ -314,7 +314,7 @@ export const slackMessageInputSchema = z.union([
 
 /**
  * True when the text names a cohort of human beings. A deterministic keyword gate, so
- * That decision applies: it misses, and the miss direction is chosen. A missed phrasing
+ * the classifier rule applies: it misses, and the miss direction is chosen. A missed phrasing
  * renders prose that overstates what a session count establishes, which the upstream
  * accuracy check is the primary defence against; this gate is the cheap last catch for
  * the exact nouns, not a claim to catch all of them.

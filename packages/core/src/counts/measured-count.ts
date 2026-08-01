@@ -130,7 +130,7 @@ export const measuredCountSchema = z.custom<MeasuredCount>((value) => isMeasured
 });
 
 /**
- * `measuredCountInputSchema` plus the two cross-field assertions That decision
+ * `measuredCountInputSchema` plus the two cross-field assertions the spec
  * requires.
  *
  * Module-private, and deliberately not folded into the exported input schema: that

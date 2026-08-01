@@ -29,7 +29,7 @@
  * `{"supportedVersions":["2026-07-28"]}`. A claim-less POST is classified legacy and
  * answers `-32601` there. That is the legacy leg being correct, not a missing feature.
  *
- * ⚠️ the trap, named. `SUPPORTED_PROTOCOL_VERSIONS` is the legacy-era negotiation list.
+ * The trap, named. `SUPPORTED_PROTOCOL_VERSIONS` is the legacy-era negotiation list.
  * A revision that has no handshake has nothing to negotiate, so its absence from a list
  * of negotiable versions is correct and is asserted on purpose. Anyone who makes a
  * failing revision assertion pass by adding `2026-07-28` to that list has misunderstood

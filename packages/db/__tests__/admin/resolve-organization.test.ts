@@ -1,4 +1,4 @@
-// Wave 0 (red) (`mcp-read-credential`, "Integration tests) admin organisation
+// Wave 0 (red), `mcp-read-credential`, "Integration tests: admin organisation
 // resolution (PGlite, lane `admorg`)", all 6 rows.
 //
 // Subject: `packages/db/src/admin/organizations.ts` → `resolveOrganizationForCli`,

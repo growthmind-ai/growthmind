@@ -1,4 +1,4 @@
-// Ssrf containment for the one outbound surface this adapter has (security audit
+// SSRF containment for the one outbound surface this adapter has (security audit
 // C-1/C-2).
 //
 // The host is customer-supplied and reaches `fetch` from a server the customer does

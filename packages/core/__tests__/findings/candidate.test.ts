@@ -450,7 +450,7 @@ const SCANNED_MODULES: readonly string[] = [
   "counts/measured-count.ts",
 ];
 
-/** The field names That decision is about: anything that reads as a measurement. */
+/** The field names the rule is about: anything that reads as a measurement. */
 const COUNT_LIKE = /count|total|numerator|sessions|hits/i;
 
 /** A bare number, the thing that must never carry a count. `number | null` counts as

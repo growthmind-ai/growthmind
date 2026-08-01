@@ -893,7 +893,7 @@ test("a retried task run does not double-persist findings or double-consume the 
   }
 });
 
-// W13, the surface gate stands before the ladder (security audit )
+// W13, the surface gate stands before the ladder (security audit)
 
 test("a candidate whose surface is not normalised is refused before any model call or cap claim", async () => {
   const summariser = cleanSummariser();
@@ -1276,7 +1276,7 @@ test("a summariser that throws still attributes the model it addressed on both t
 // content-derived. v1's prescribed an ordinal prefixed by the tick instant, which would
 // have made all three sentences false while every test above this line stayed green,
 // because none of them drives the walker twice, and "same input twice" is exactly what
-// That decision says proves nothing. These four close that.
+// the identity-churn rule says proves nothing. These four close that.
 
 /** A second PROJECT in the same organisation. `projectId` is an input to the signature,
  * so a walker that dropped it would collide two projects' identical problems onto one

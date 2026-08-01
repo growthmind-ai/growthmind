@@ -2,7 +2,7 @@
 // injected, so both jitter branches are asserted exactly and nothing in this file
 // waits.
 //
-// Addendum a row 5: `Retry-After` is present on a PostHog 429 and its value is bare
+// Addendum A row 5: `Retry-After` is present on a PostHog 429 and its value is bare
 // delta-seconds, never an HTTP-date. It is also the only rate-limit header, so
 // headroom is invisible until the limit trips.
 import { describe, expect, test } from "bun:test";

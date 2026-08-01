@@ -59,7 +59,7 @@
 // drives the modern leg against the same handler and the same deps object, which is
 // what makes it a both-eras proof rather than two unrelated tests.
 //
-// ⚠️ an honest shortfall, encoded rather than engineered around. Our 401's bytes are
+// An honest shortfall, encoded rather than engineered around. Our 401's bytes are
 // identical on both legs. It is produced before the SDK is in the call stack. But on
 // the modern leg the client's negotiation probe replaces our sentence with its own
 // (`Version negotiation failed: the server requires authorization (HTTP 401)`), so
@@ -88,7 +88,7 @@
 // What still has to be TRUE, now that nothing here is waiting on an implementation: a
 // row that goes red is a regression and not an unfinished feature, and the failure to
 // reach for first is the SDK-behaviour note the row carries rather than a missing
-// handler. The `⚠️` blocks below are the measurements; they are what a debugging
+// handler. The `` blocks below are the measurements; they are what a debugging
 // session should start from.
 //
 // Lane prefix `mcpe`.
@@ -152,7 +152,7 @@ const CLIENT_INFO = { name: "growthmind-real-client-test", version: "0.0.0" } as
  * What `list_open_fixes` must answer with while no `findings` table exists. A truthful
  * empty with its denominators, not an absent answer.
  *
- * ⚠️ this object is the contract, not a convenience. On the probe's first run the call
+ * This object is the contract, not a convenience. On the probe's first run the call
  * threw `ProtocolError -32600: Tool list_open_fixes has an output schema but did not
  * return structured content`; returning exactly this turned it green. If `wire.ts`
  * omits or mis-shapes it, the north star's "calls all three tools" fails on the one
@@ -348,7 +348,7 @@ describe("a real MCP client against the real exported handler", () => {
   test("WIRE-E1 — should complete the legacy initialize handshake with no client options at all", async () => {
     const wire = wireTo(serveReal);
 
-    // ⚠️ NO `ClientOptions`, not `{ versionNegotiation: { mode: 'legacy' } }`. The
+    // NO `ClientOptions`, not `{ versionNegotiation: { mode: 'legacy' } }`. The
     // claim is about what a stock client does out of the box, and a client told which
     // era to use would prove only that we can configure one.
     const client = new Client(CLIENT_INFO);
@@ -365,7 +365,7 @@ describe("a real MCP client against the real exported handler", () => {
       expect(client.getNegotiatedProtocolVersion()).toBe(MCP_PROTOCOL_LEGACY_FLOOR);
       expect(SUPPORTED_PROTOCOL_VERSIONS).toContain(MCP_PROTOCOL_LEGACY_FLOOR);
 
-      // ⚠️ `connect` issues three requests, not one. Measured. A reviewer who expects
+      // `connect` issues three requests, not one. Measured. A reviewer who expects
       // one will read the extra two as a bug; they are the handshake.
       await flush();
       expect(wire.exchanges).toHaveLength(3);
@@ -445,7 +445,7 @@ describe("a real MCP client against the real exported handler", () => {
         arguments: {},
       });
 
-      // ⚠️ its resolution is the assertion. If `wire.ts` returns no
+      // Its resolution is the assertion. If `wire.ts` returns no
       // `structuredContent`, this line is never reached. The client throws -32600
       // first, and the north star fails on the one tool with a non-error answer.
       expect(result.isError).toBeFalsy();
@@ -516,7 +516,7 @@ describe("a real MCP client against the real exported handler", () => {
   // WIRE-E7
 
   test("WIRE-E7 — should let a client pinned to the modern era connect and list the same three tools", async () => {
-    // ⚠️ un-inverted, and this is the row that flipped. Round 1 asserted the opposite
+    // Un-inverted, and this is the row that flipped. Round 1 asserted the opposite
     // (that a modern-pinned client is refused) on a probe that sent a claim-less POST,
     // which classifies legacy, where `-32601` is the correct answer. The modern leg
     // answers `server/discover` and names `2026-07-28`. Both eras are served by one
@@ -535,7 +535,7 @@ describe("a real MCP client against the real exported handler", () => {
     try {
       expect(client.getProtocolEra()).toBe("modern");
 
-      // ⚠️ by field, never by frame (rule 2). The modern result carries
+      // By field, never by frame (rule 2). The modern result carries
       // `resultType:"complete"` and `_meta.serverInfo` that the legacy frame lacks, so
       // a literal body comparison here would be asserting the other leg's bytes. Every
       // literal-frame row in this sprint is authored against the legacy leg for exactly
@@ -616,7 +616,7 @@ describe("a real MCP client against the real exported handler", () => {
   });
 
   test("WIRE-E8 — should resolve a deliberately broken result when the client never listed first, which proves nothing", async () => {
-    // ⚠️ this half is vacuous on purpose, and it is kept for exactly that reason. The
+    // This half is vacuous on purpose, and it is kept for exactly that reason. The
     // wire below strips `structuredContent` out of every result (the same defect
     // `WIRE-E9` catches) and the call still resolves, because a client that has
     // never called `tools/list` has no compiled validator and skips the check entirely.
@@ -671,7 +671,7 @@ describe("a real MCP client against the real exported handler", () => {
   });
 
   test("WIRE-E9(b) — should make a real client reject a non-error result that omits structured content", async () => {
-    // ⚠️ the negative control, and the row that guards the one defect in this sprint
+    // The negative control, and the row that guards the one defect in this sprint
     // that would have reached a customer's coding agent. Without it, `WIRE-E9` could
     // be passing because the client validates nothing.
     //
@@ -729,7 +729,7 @@ describe("a real MCP client against the real exported handler", () => {
 
 // WIRE-E10, the two tools that have never answered a real record to a real client
 //
-// ⚠️ this is the exact class this sprint already paid for once. `wire.ts` names it as a
+// This is the exact class this sprint already paid for once. `wire.ts` names it as a
 // live obligation in as many words: `get_fix` and `get_finding` "only escape it today
 // because they answer NOT_FOUND as execution errors, and execution errors are exempt;
 // the moment they return a real record they inherit this line unchanged". Every row
@@ -798,7 +798,7 @@ describe("a real MCP client reading real records out of a seeded store", () => {
       // vacuous half says so in detail).
       await client.listTools();
 
-      // ⚠️ each call resolving is the assertion. A result that omits or mis-shapes
+      // Each call resolving is the assertion. A result that omits or mis-shapes
       // `structuredContent` never reaches the lines below. The client throws
       // `ProtocolError -32600` first, exactly as `WIRE-E9` proves it does.
       const listed = await client.callTool({

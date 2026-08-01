@@ -6,7 +6,7 @@ import type { ExpectedLag } from "./types";
 
 /**
  * Decision 0001 measured the events-leg p90 retrieval lag at roughly 25 seconds.
- * Addendum a row 5 corrects how that number should be read: the throttling that made it
+ * Addendum A row 5 corrects how that number should be read: the throttling that made it
  * look inflated was on the session-recordings leg, not this one (the events list
  * absorbed 600 rapid requests with zero throttling), so this is a real measurement, not
  * a ceiling a politer poller would beat.

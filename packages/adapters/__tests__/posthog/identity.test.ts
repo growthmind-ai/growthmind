@@ -1,4 +1,4 @@
-// items 55–59, identity resolution (Addendum a row 6).
+// items 55–59, identity resolution (Addendum A row 6).
 //
 // `person` is `null` on every event: the events list returns the key but
 // never joins the person object, so email is unreachable from the item being filtered.

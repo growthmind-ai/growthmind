@@ -1,5 +1,5 @@
 // signature-ledger, "Integration tests, packages/db" T-DB-1 through T-DB-5, plus the
-// org-scoping companion That decision requires of every new table, and post-sprint
+// org-scoping companion the tenancy rules require of every new table, and post-sprint
 // audit Finding 3 (T-DB-4, T-DB-5 were never written against the real implementation).
 //
 // `createFindingSignaturesRepo`'s methods run real logic. Each test below asserts the

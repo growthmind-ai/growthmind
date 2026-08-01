@@ -1,5 +1,5 @@
 // items 31–33, the one tested formatter that stands between the watermark and Addendum
-// a row 2's silent-empty hazard: a malformed time value returns HTTP 200 with an empty
+// A row 2's silent-empty hazard: a malformed time value returns HTTP 200 with an empty
 // result set, so a typo'd watermark reads as "no new events" forever, with no error
 // anywhere.
 import { describe, expect, test } from "bun:test";

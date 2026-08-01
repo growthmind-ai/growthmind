@@ -189,7 +189,7 @@ function toolNamed(ad: Advertisement, name: string): AdvertisedTool | undefined 
 /**
  * The advertised `required` list, `[]` when the key is absent.
  *
- * ⚠️ the `?? []` is load-bearing and was measured into existence. `W0-P4` found that
+ * The `?? []` is load-bearing and was measured into existence. `W0-P4` found that
  * the SDK omits `required` entirely for a tool with no required properties
  * (`list_open_fixes`), so `expect(doc.required).not.toContain("limit")` throws on
  * `undefined` and fails the row for the wrong reason. It cannot assume absence either,
@@ -337,7 +337,7 @@ describe("WIRE-J3 — no advertised schema carries the standard-schema key", () 
 
 describe("WIRE-J4 — registering every tool with its shared Zod schemas does not throw", () => {
   test("should build the handler, register all three tools with both schemas, and answer tools/list", async () => {
-    // ⚠️ this is the row that would have caught the measured failure. Handing
+    // This is the row that would have caught the measured failure. Handing
     // `registerTool` a hand-built JSON Schema throws `TypeError:
     // inputSchema/outputSchema/argsSchema must be a Standard Schema` inside
     // `normalizeRawShapeSchema`. The probe result that struck. A throw during
@@ -369,7 +369,7 @@ describe("WIRE-J5 — the advertised dialect is draft 2020-12 and needs no conve
     const ad = await readAdvertisement();
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 
-    // ⚠️ measurement NOTE for wave 8. `W0-P4` printed the input documents verbatim,
+    // Measurement NOTE for wave 8. `W0-P4` printed the input documents verbatim,
     // `"$schema":"https://json-schema.org/draft/2020-12/schema"`, and reported the
     // output documents only by root `type`. Both sides render through the same Zod v4
     // path, so the claim is made about all six; if the three output documents turn out
@@ -389,7 +389,7 @@ describe("WIRE-J5 — the advertised dialect is draft 2020-12 and needs no conve
 
 describe("WIRE-J6 — every tool advertises an output schema the client can validate against", () => {
   test("should advertise a non-null object output schema with an object root for all three tools", async () => {
-    // ⚠️ the exclusion set is empty, and that is a measured result rather than an
+    // The exclusion set is empty, and that is a measured result rather than an
     // oversight. The add pre-authorised excluding any tool whose output schema would
     // not render; `W0-P4` registered all six shared schemas and nothing threw, so all
     // three tools are here and no tool is skipped. Round 1's "for any excluded tool,

@@ -13,7 +13,7 @@
 // The mandatory wire test drives the real repository/service entry points
 // against a real PGlite instance (`createTestDb`, every migration replayed). No fake
 // repository anywhere in it. A producer test plus a consumer test does not prove the
-// wire between them; this sprint has no production caller yet (That decision is
+// wire between them; this sprint has no production caller yet (its producer is
 // concurrent/unbuilt), so this test IS the wire. It proves the ledger decides suppress
 // end to end. It does not prove "no second delivery was sent", which needs the
 // scheduler and is out of scope here.
