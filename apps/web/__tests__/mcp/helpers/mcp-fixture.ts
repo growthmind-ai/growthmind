@@ -18,6 +18,37 @@
 // FIXTURE TIME IS A CONSTANT. Nothing here reads a clock, so a rendered spec is
 // the same string on every run and in every timezone.
 //
+// ---------------------------------------------------------------------------
+// EVERY REQUEST MINTED HERE IS A LEGACY-LEG REQUEST (O-013, D-13)
+// ---------------------------------------------------------------------------
+//
+// The transport serves TWO protocol eras from one handler, and which era a
+// request lands on is decided by the request itself, not by a server option. A
+// request is MODERN if and only if it carries the `_meta` claim keys
+// (`io.modelcontextprotocol/protocolVersion`, `…/clientInfo`,
+// `…/clientCapabilities`) together with matching `Mcp-Method` and — for a tool
+// call — `Mcp-Name` headers. NOTHING IN THIS FILE MINTS ANY OF THAT, so
+// everything it produces classifies LEGACY.
+//
+// That is deliberate and it is load-bearing, not an accident of convenience:
+//
+//   - Legacy is the leg a STOCK client meets. `new Client({name, version})`
+//     with no options negotiates `2025-11-25` and connects — measured. The
+//     north star is about that client, so the fixture-driven suite asserts
+//     against the leg that client actually reaches.
+//   - The two legs answer with DIFFERENT BYTES. A modern result carries
+//     `resultType:"complete"` and `_meta.serverInfo` that the legacy frame does
+//     not. Roughly forty rows across four other test files fingerprint the
+//     whole body, so a helper that quietly grew a modern envelope would move
+//     every one of them onto a different string while they kept passing.
+//   - `WIRE-G6` asserts the `Accept` 406, which fires on the LEGACY leg only —
+//     the modern leg answers 200 to `application/json` alone. Minted modern,
+//     that row would pass for the wrong reason.
+//
+// SO: DO NOT ADD A MODERN-ENVELOPE VARIANT TO THIS FILE WITHOUT A DECISION.
+// The modern leg is exercised where it belongs — through a real `Client` in
+// `../real-client.test.ts` — and nowhere else.
+//
 // Lane prefix `mcp` — shared with no other suite.
 import type { CandidateFinding, DetectorCoverage, MeasuredCount } from "@growthmind/core";
 import { candidateFindingSchema, measuredCount, traceEntry } from "@growthmind/core";
@@ -324,35 +355,223 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
   return { port, organizationsAsked };
 }
 
+/**
+ * A read port whose every method REJECTS — the "the database is not answering"
+ * path.
+ *
+ * Lives here rather than in one test file because three separate §6 rows need
+ * the same fake: `WIRE-S5` (a read that throws still comes back as a refusal
+ * value, never an exception and never a `Response`), `WIRE-B1` (the fault is
+ * logged and the caller gets a detail-free answer) and `WIRE-B2` (nothing
+ * escapes the mounted handler as an unhandled rejection). Three hand-rolled
+ * copies would be three chances to throw a subtly different thing and prove
+ * three different properties.
+ *
+ * The message names the fixture so a leaked stack frame is obvious in the row
+ * that scans a response for one.
+ */
+function unreachableRead(): Promise<never> {
+  return Promise.reject(new Error("mcp fixture: the read port is unreachable"));
+}
+
+export function throwingReadPort(): McpReadPort {
+  return {
+    listOpenFixes: unreachableRead,
+    getFix: unreachableRead,
+    getFinding: unreachableRead,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Driving the real entry point
 // ---------------------------------------------------------------------------
 
-const MCP_URL = "http://localhost:3000/api/mcp";
+export const MCP_URL = "http://localhost:3000/api/mcp";
 
-/** A tool call as a real `Request`. `key` omitted means no credential at all. */
+/**
+ * The headers EVERY minted request carries, in one constant applied by all
+ * three constructors so that no test can forget one.
+ *
+ * ⚠️ BOTH `accept` VALUES ARE REQUIRED BY THE TRANSPORT ON THE LEGACY LEG.
+ * Sending `application/json` alone is answered HTTP 406 there —
+ * `{"error":{"code":-32000,"message":"Not Acceptable: Client must accept both
+ * application/json and text/event-stream"}}` — before the body is parsed and
+ * before any tool is resolved. Measured, twice: it is a LEGACY-leg behaviour
+ * (the modern leg answers 200 to `application/json` alone), and the pinned
+ * `responseMode` does NOT relax it.
+ *
+ * This is the truthful default rather than a workaround: a real MCP client
+ * sends both values too. Around forty rows across four other files assert
+ * against what these constructors mint, and without this header every one of
+ * them would be asserting against the transport's 406 instead of the refusal,
+ * result or error frame it names. If you are here to "simplify" the second
+ * media type away, that is the thing you would be breaking.
+ */
+export const WIRE_HEADERS = {
+  "content-type": "application/json",
+  accept: "application/json, text/event-stream",
+} as const;
+
+/**
+ * A deliberate, per-row deviation from `WIRE_HEADERS` — never a default.
+ *
+ * Three §6 rows exist precisely to prove a header gate: `WIRE-G1` sends an
+ * `Origin`, `WIRE-G3` sends the wrong `content-type`, and `WIRE-G6(a)` sends a
+ * narrowed `accept`. They start from `WIRE_HEADERS` and override one entry, so
+ * the deviation is visible at the call site and everything else stays truthful.
+ *
+ * ⚠️ NOT A DOOR TO THE MODERN LEG. `Mcp-Method` / `Mcp-Name` are half of the
+ * modern classification and the `_meta` claim keys — the other half — are not
+ * reachable through this at all, because the body is built below. See the file
+ * header.
+ */
+export type WireHeaderOverrides = Readonly<Record<string, string>>;
+
+function wireHeaders(key: string | null | undefined, overrides?: WireHeaderOverrides): Headers {
+  const headers = new Headers(WIRE_HEADERS);
+  if (typeof key === "string") {
+    headers.set("authorization", `Bearer ${key}`);
+  }
+  for (const [name, value] of Object.entries(overrides ?? {})) {
+    headers.set(name, value);
+  }
+  return headers;
+}
+
+/**
+ * A `tools/call` as a real `Request`. `key` omitted means no credential at all.
+ *
+ * ⚠️ `id` DEFAULTS TO 1, AND THAT DEFAULT IS WHY THE EXCLUSION LIST IS EMPTY
+ * (D-6 rule 4). The identity rows compare two responses byte for byte over
+ * `await response.text()`; the JSON-RPC id is echoed into every answer, so two
+ * requests can only be byte-identical if they shared an id. Defaulting it here
+ * means a test has to go out of its way to vary it, and no row has to remember
+ * to pin it. Measured: nothing else in a response varies between two identical
+ * requests — no SSE `id:` line is emitted on either leg under any
+ * `responseMode` — so with the id held constant there is nothing to exclude.
+ */
 export function toolCallRequest(input: {
   tool: string;
   input?: unknown;
   key?: string | null;
+  id?: number | string;
+  headers?: WireHeaderOverrides;
 }): Request {
-  const headers = new Headers({ "content-type": "application/json" });
-  if (typeof input.key === "string") {
-    headers.set("authorization", `Bearer ${input.key}`);
+  return new Request(MCP_URL, {
+    method: "POST",
+    headers: wireHeaders(input.key, input.headers),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: input.id ?? 1,
+      method: "tools/call",
+      params: { name: input.tool, arguments: input.input ?? {} },
+    }),
+  });
+}
+
+/**
+ * Any JSON-RPC message, for the envelope suite.
+ *
+ * `params` is OMITTED from the body when it is not given, rather than sent as
+ * `null` or `{}` — `WIRE-W6` asserts that a request with no params at all is
+ * answered rather than thrown on, and a helper that always sent a params key
+ * would make that row untestable through the fixture.
+ *
+ * `id` follows `toolCallRequest`'s rule and defaults to 1. Pass `null`
+ * explicitly for `WIRE-W2` (a null id is answered rather than dropped); use
+ * `notificationRequest` for a message carrying no id key at all.
+ */
+export function rpcRequest(input: {
+  method: string;
+  params?: unknown;
+  id?: number | string | null;
+  key?: string | null;
+  headers?: WireHeaderOverrides;
+}): Request {
+  const body: Record<string, unknown> = {
+    jsonrpc: "2.0",
+    id: input.id === undefined ? 1 : input.id,
+    method: input.method,
+  };
+  if (input.params !== undefined) {
+    body.params = input.params;
   }
 
   return new Request(MCP_URL, {
     method: "POST",
-    headers,
-    body: JSON.stringify({ tool: input.tool, input: input.input ?? {} }),
+    headers: wireHeaders(input.key, input.headers),
+    body: JSON.stringify(body),
   });
 }
 
-/** A request whose body is not JSON at all. */
-export function rawBodyRequest(body: string, key: string): Request {
+/**
+ * A JSON-RPC NOTIFICATION — a message with no `id` key at all, which the
+ * protocol answers with no message in the body.
+ *
+ * Separate from `rpcRequest` rather than a fourth state of its `id` parameter,
+ * because "no id" and "id: null" are different messages on the wire and
+ * `WIRE-W2` and `WIRE-W4` assert different things about them. One name each is
+ * cheaper than one parameter that means three things.
+ */
+export function notificationRequest(input: {
+  method: string;
+  params?: unknown;
+  key?: string | null;
+  headers?: WireHeaderOverrides;
+}): Request {
+  const body: Record<string, unknown> = { jsonrpc: "2.0", method: input.method };
+  if (input.params !== undefined) {
+    body.params = input.params;
+  }
+
   return new Request(MCP_URL, {
     method: "POST",
-    headers: new Headers({ "content-type": "application/json", authorization: `Bearer ${key}` }),
+    headers: wireHeaders(input.key, input.headers),
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * A request on a verb other than POST — for the rows that prove nothing else is
+ * mounted (`WIRE-R7`, `WIRE-M2`) and the ones that sweep every answer for a
+ * header (`WIRE-G5`).
+ *
+ * No body, and the same headers as everything else: a verb row must fail on the
+ * verb, never on a header the helper forgot.
+ */
+export function verbRequest(input: {
+  method: string;
+  key?: string | null;
+  headers?: WireHeaderOverrides;
+}): Request {
+  return new Request(MCP_URL, {
+    method: input.method,
+    headers: wireHeaders(input.key, input.headers),
+  });
+}
+
+/**
+ * A request whose body is whatever string you hand it — not JSON at all, a
+ * JSON-RPC message missing a required field, or a batch array.
+ *
+ * ⚠️ THIS CARRIES `accept` TOO, AND THAT WAS A CORRECTION. The first draft
+ * marked this constructor unchanged; without both media types the transport
+ * answers 406 BEFORE the parser is reached, and `WIRE-R2` / `WIRE-W7` — which
+ * exist to prove a parse error — would assert against a content-negotiation
+ * refusal instead.
+ *
+ * `key` accepts `null` so the anonymous-caller rows (`WIRE-O1`, `WIRE-R22`) can
+ * mint through the same place as everything else rather than hand-rolling a
+ * `Request` that would forget the header this constructor exists to remember.
+ */
+export function rawBodyRequest(
+  body: string,
+  key: string | null,
+  headers?: WireHeaderOverrides,
+): Request {
+  return new Request(MCP_URL, {
+    method: "POST",
+    headers: wireHeaders(key, headers),
     body,
   });
 }
@@ -364,6 +583,26 @@ export function rawBodyRequest(body: string, key: string): Request {
  * differ in status, in content type, or in one byte of text are
  * distinguishable, and comparing parsed objects would hide exactly the
  * differences that matter.
+ *
+ * ⚠️ UNCHANGED, ON PURPOSE, AND THE BODY STAYS A RAW STRING. This is the first
+ * of the mechanisms that stop a future reader loosening the crown-jewel
+ * comparison: a parsed comparison is not reachable from this helper at all, so
+ * loosening one would mean hand-rolling `JSON.parse` in a test file — which the
+ * source scanner in `../refusal-identity-guard.test.ts` fails on. Do not
+ * "improve" this into returning a parsed object.
+ *
+ * NO EXCLUSION LIST, AND NONE IS NEEDED. Measured on both protocol legs under
+ * `auto` / `sse` / `json`: no SSE `id:` line is ever emitted, two identical
+ * requests are byte-identical, and a foreign-org id is byte-identical to an id
+ * that does not exist. The empty exclusion list is a property of the package,
+ * not a consequence of a framing choice.
+ *
+ * `contentType` reads one of TWO BANDS and both are asserted:
+ *   - `text/event-stream` where the SDK rendered the answer;
+ *   - `application/json;charset=utf-8` where our own `refusalResponse` did,
+ *     before the SDK was ever in the call stack (every 401, and the 405).
+ * A third value exists and is not a band: a `202` notification answer carries
+ * NO content-type at all, so a sweep over every response gets `null` there.
  */
 export interface ResponseFingerprint {
   readonly status: number;
@@ -377,4 +616,60 @@ export async function fingerprint(response: Response): Promise<ResponseFingerpri
     contentType: response.headers.get("content-type"),
     body: await response.text(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Reading an SSE frame without parsing it
+// ---------------------------------------------------------------------------
+
+/**
+ * The `data:` payloads of an SSE frame, in order, BY STRING OPERATIONS ONLY.
+ *
+ * Under the pinned `responseMode: "sse"` every SDK-rendered answer arrives as
+ * `event: message\ndata: {…}\n\n`, so a row that wants to assert on the
+ * JSON-RPC message rather than on the whole frame needs the `data:` line out of
+ * it. `split` and `startsWith` — never `JSON.parse`, never a regex that could
+ * be mistaken for one.
+ *
+ * WHY THIS LIVES HERE RATHER THAN IN EACH TEST FILE. Four separate test files
+ * need it, and `JSON.parse(` is a BANNED TOKEN in all four
+ * (`../refusal-identity-guard.test.ts` scans their source text for it). Four
+ * hand-rolled extractors is four chances for one of them to reach for the
+ * obvious parse; one extractor here is one place to get it right. The ADD's
+ * D-13 says extraction happens "inside the test, never in the helper" — that
+ * sentence is about not letting a helper perform a PARSED COMPARISON, which
+ * this does not do: it returns strings and compares nothing. Task 3.1 item 7
+ * makes the placement explicit.
+ *
+ * Returns `[]` for a body that is not an SSE frame — a pre-SDK refusal, say —
+ * so a row that reached for this on the wrong band gets an empty array it must
+ * assert about, rather than a silently plausible string.
+ */
+export function sseDataLines(frame: string): readonly string[] {
+  const payloads: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (!line.startsWith("data:")) {
+      continue;
+    }
+    const payload = line.slice("data:".length);
+    payloads.push(payload.startsWith(" ") ? payload.slice(1) : payload);
+  }
+  return payloads;
+}
+
+/**
+ * The single `data:` payload of a one-message SSE frame.
+ *
+ * Throws when there is not exactly one, naming how many it found — an answer
+ * that suddenly carries two messages, or none, should fail the row that assumed
+ * one rather than silently compare against `undefined`.
+ */
+export function sseDataLine(frame: string): string {
+  const payloads = sseDataLines(frame);
+  if (payloads.length !== 1) {
+    throw new Error(
+      `mcp fixture: expected exactly one \`data:\` line in the SSE frame, found ${payloads.length}. Frame: ${JSON.stringify(frame)}`,
+    );
+  }
+  return payloads[0] as string;
 }
