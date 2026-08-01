@@ -1,36 +1,33 @@
-// The analysis schema's comment-truth guard (O-011 ADD v2 AD-25.3).
+// The analysis schema's comment-truth guard.
 //
-// WHAT THIS SUITE IS FOR, in one sentence: a header that names a column is
-// making a checkable claim, and two retros in a row record headers that read
-// false ON ARRIVAL — one naming a column that did not exist — so the claim gets
-// checked by a machine rather than by eye.
+// What this suite is for, in one sentence: a header that names a column is making a
+// checkable claim, and two retros in a row record headers that read false on arrival
+// (one naming a column that did not exist) so the claim gets checked by a machine
+// rather than by eye.
 //
-// THE REFERENCES ARE RESOLVED AGAINST THE DRIZZLE TABLE OBJECTS, NEVER AGAINST
-// A HAND-WRITTEN LIST OF NAMES. Every legitimate kind of backticked
-// `snake_case` reference in these files resolves through something the schema
-// itself declares — a column, a column's `enum` tuple, an index name, a table
-// name in the barrel, or a `table.column` pair. That is what makes the guard
-// survive a rename: rename a column and the resolver's vocabulary moves with
-// it, so a header still naming the old name is the only thing left standing,
-// and it fails here.
+// The references are resolved against the drizzle table objects, never against a
+// hand-written list of names. Every legitimate kind of backticked `snake_case`
+// reference in these files resolves through something the schema itself declares. A
+// column, a column's `enum` tuple, an index name, a table name in the barrel, or a
+// `table.column` pair. That is what makes the guard survive a rename: rename a column
+// and the resolver's vocabulary moves with it, so a header still naming the old name is
+// the only thing left standing, and it fails here.
 //
-// Same shape as this codebase's proven answer to the false-claim defect class,
-// the citation resolver at `packages/shared/__tests__/summary/
-// assertion-contract.test.ts` — including its discipline that a reference which
-// cannot be resolved is a FAILURE and never a skip. A skip would turn a false
-// header into a green run, which is the exact thing this file exists to stop.
+// Same shape as this codebase's proven answer to the false-claim defect class, the
+// citation resolver at `packages/shared/__tests__/summary/ assertion-contract.test.ts`,
+// including its discipline that a reference which cannot be resolved is a failure and
+// never a skip. A skip would turn a false header into a green run, which is the exact
+// thing this file exists to stop.
 //
-// WHY `node:fs` IS FINE HERE. `packages/core` holds a package-wide purity
-// property over `src/` and keeps its suites on Bun APIs so they do not become
-// the offender they police. `packages/db` has no such property and its
-// structural suites already read source with `node:fs`
-// (`__tests__/system/reachability.test.ts`). Nothing here is imported by
-// production code.
+// Why `node:fs` is fine here. `packages/core` holds a package-wide purity property over
+// `src/` and keeps its suites on Bun APIs so they do not become the offender they
+// police. `packages/db` has no such property and its structural suites already read
+// source with `node:fs` (`__tests__/system/reachability.test.ts`). Nothing here is
+// imported by production code.
 //
-// EVERY HELPER BELOW IS AT MODULE SCOPE, DELIBERATELY. A scanner declared
-// inside a `test(...)` callback trips `unicorn/consistent-function-scoping`,
-// which is the rule that turned this repository's suite red three sprints
-// running.
+// Every helper below is at module scope, deliberately. A scanner declared inside a
+// `test` callback trips `unicorn/consistent-function-scoping`, which is the rule
+// that turned this repository's suite red three sprints running.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -43,7 +40,7 @@ import { analysisModelCalls } from "../../src/schema/analysis-model-calls";
 import { analysisRuns } from "../../src/schema/analysis-runs";
 import { findings } from "../../src/schema/findings";
 
-// --- the modules under scan -------------------------------------------------
+// -- the modules under scan
 
 /** A source file this guard reads, workspace-relative for failure messages. */
 interface ScannedModule {
@@ -62,7 +59,7 @@ function readSchemaModule(basename: string): ScannedModule {
 
 const FINDINGS_MODULE = readSchemaModule("findings.ts");
 
-/** The three tables O-011 added. Their headers are what AD-25.3 polices. */
+/** The three tables added. Their headers are what polices. */
 const SCANNED_MODULES: readonly ScannedModule[] = [
   FINDINGS_MODULE,
   readSchemaModule("analysis-model-calls.ts"),
@@ -73,7 +70,7 @@ const SCANNED_CONFIGS = [findings, analysisModelCalls, analysisRuns].map((table)
   getTableConfig(table),
 );
 
-// --- extracting the comments ------------------------------------------------
+// -- extracting the comments
 
 /** One physical line's worth of comment text. */
 interface CommentLine {
@@ -82,14 +79,13 @@ interface CommentLine {
 }
 
 /**
- * Every COMMENT character in a TypeScript source, one entry per physical line.
+ * Every comment character in a TypeScript source, one entry per physical line.
  *
- * A character-level walk rather than a line-prefix heuristic, because the
- * heuristic fails in BOTH directions on this codebase: a trailing
- * `// see \`foo_bar\`` on a code line would be missed, and
- * `sql\`${'$'}{table.status} = 'running'\`` (`analysis-runs.ts`) is a template
- * literal in CODE whose contents must never be read as a claim. String,
- * template and comment states are tracked so neither happens.
+ * A character-level walk rather than a line-prefix heuristic, because the heuristic
+ * fails in both directions on this codebase: a trailing `// see \`foo_bar\`` on a code
+ * line would be missed, and `sql\`${'$'}{table.status} = 'running'\``
+ * (`analysis-runs.ts`) is a template literal in code whose contents must never be read
+ * as a claim. String, template and comment states are tracked so neither happens.
  */
 function commentLines(source: string): readonly CommentLine[] {
   const lines: CommentLine[] = [];
@@ -138,8 +134,8 @@ function commentLines(source: string): readonly CommentLine[] {
         } else buffer += ch;
         break;
       }
-      // A string or template literal in CODE contributes nothing. Escapes are
-      // skipped so a closing quote inside one cannot end the literal early.
+      // A string or template literal in code contributes nothing. Escapes are skipped
+      // so a closing quote inside one cannot end the literal early.
       case "single": {
         if (ch === "\\") i += 1;
         else if (ch === "'") state = "code";
@@ -166,13 +162,13 @@ function commentLines(source: string): readonly CommentLine[] {
 const COMMENT_GUTTER = /^\s*\*+ ?/;
 
 /**
- * A run of CONSECUTIVE comment lines, joined into one string.
+ * A run of consecutive comment lines, joined into one string.
  *
- * Joined rather than scanned line by line because this codebase wraps prose at
- * 80 columns and a backticked citation legitimately straddles the wrap
- * (`analysis-runs.ts:11-12`). Pairing backticks per line would mis-pair every
- * later backtick on those lines — a scanner reporting confidently on text it
- * parsed wrong is worse than one that reports nothing.
+ * Joined rather than scanned line by line because this codebase wraps prose at 80
+ * columns and a backticked citation legitimately straddles the wrap
+ * (`analysis-runs.ts:11-12`). Pairing backticks per line would mis-pair every later
+ * backtick on those lines. A scanner reporting confidently on text it parsed wrong is
+ * worse than one that reports nothing.
  */
 interface CommentSegment {
   readonly text: string;
@@ -192,8 +188,8 @@ function commentSegments(source: string): readonly CommentSegment[] {
       current = { text: "", lineOf: [] };
       segments.push(current);
     } else {
-      // The wrap itself becomes a space, so two halves of a wrapped citation
-      // are one backticked span but never one token.
+      // The wrap itself becomes a space, so two halves of a wrapped citation are one
+      // backticked span but never one token.
       current.text += " ";
       current.lineOf.push(line);
     }
@@ -206,36 +202,36 @@ function commentSegments(source: string): readonly CommentSegment[] {
   return segments;
 }
 
-// --- deciding what is a column reference ------------------------------------
+// -- deciding what is a column reference
 
 const BACKTICK_QUOTED = /`([^`]+)`/g;
 
 /**
- * Anything that cannot be part of an identifier, a `table.column` pair, or a
- * path. Paths keep their `/` and `-` on purpose — that is what lets the file
- * test below reject `packages/db/src/schema/deliveries.ts` whole, instead of
- * shredding it into a `deliveries.ts` that reads like a table-qualified name.
+ * Anything that cannot be part of an identifier, a `table.column` pair, or a path.
+ * Paths keep their `/` and `-` on purpose. That is what lets the file test below reject
+ * `packages/db/src/schema/deliveries.ts` whole, instead of shredding it into a
+ * `deliveries.ts` that reads like a table-qualified name.
  */
 const TOKEN_SEPARATORS = /[^A-Za-z\d_./\\-]+/;
 
 /** A lowercase identifier: a single word, or `snake_case`. */
 const IDENTIFIER = /^[a-z][a-z\d]*(?:_[a-z\d]+)*$/;
 
-/** The same, but with at least one underscore — the shape a column has. */
+/** The same, but with at least one underscore. The shape a column has. */
 const SNAKE_CASE = /^[a-z][a-z\d]*(?:_[a-z\d]+)+$/;
 
 /**
- * A path or a filename, which is never a column reference. Necessary because
- * several tables share a stem with the file that declares them
- * (`deliveries.ts:95-97` is cited by `findings.ts`), and a filename is a claim
- * these headers make constantly and legitimately.
+ * A path or a filename, which is never a column reference. Necessary because several
+ * tables share a stem with the file that declares them (`deliveries.ts:95-97` is cited
+ * by `findings.ts`), and a filename is a claim these headers make constantly and
+ * legitimately.
  */
 const FILE_LIKE = /[/\\-]|\.(?:ts|tsx|js|mjs|cjs|json|sql|md|ya?ml|env|example|txt)$/;
 
 /** Every table in the Drizzle barrel, by its DB name, with its column names. */
 const COLUMNS_BY_TABLE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
-  // The barrel exports relations as well as tables, so `is` is the filter —
-  // there is no hand-maintained list of table names anywhere in this file.
+  // The barrel exports relations as well as tables, so `is` is the filter. There is no
+  // hand-maintained list of table names anywhere in this file.
   Object.values(schema).flatMap((value) => {
     if (!is(value, PgTable)) return [];
     const config = getTableConfig(value);
@@ -246,12 +242,12 @@ const COLUMNS_BY_TABLE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
 /**
  * True when a token is claiming to name a column at all.
  *
- * Unqualified, it must be `snake_case` — an unqualified single word is not
- * distinguishable from an English one, and AD-25.3 asks for column references.
- * Qualified `a.b`, it must read as TABLE-qualified: either a table that exists
- * (so `findings.no_such_column` is judged), or a `snake_case` prefix that no
- * table has (so a renamed table is judged too). `types.ts` and `z.number()`
- * fall out of both, which is why they are not reported.
+ * Unqualified, it must be `snake_case`. An unqualified single word is not
+ * distinguishable from an English one, and asks for column references. Qualified `a.b`,
+ * it must read as table-qualified: either a table that exists (so
+ * `findings.no_such_column` is judged), or a `snake_case` prefix that no table has (so
+ * a renamed table is judged too). `types.ts` and `z.number` fall out of both, which
+ * is why they are not reported.
  */
 function isColumnReference(token: string): boolean {
   if (FILE_LIKE.test(token)) return false;
@@ -279,7 +275,7 @@ function commentReferences(module: ScannedModule): readonly CommentReference[] {
 
   for (const segment of commentSegments(module.source)) {
     for (const quoted of segment.text.matchAll(BACKTICK_QUOTED)) {
-      // The line of the OPENING backtick — where a reader would go to fix it.
+      // The line of the opening backtick. Where a reader would go to fix it.
       const line = segment.lineOf[quoted.index ?? 0] ?? 0;
 
       for (const token of quoted[1].split(TOKEN_SEPARATORS)) {
@@ -291,7 +287,7 @@ function commentReferences(module: ScannedModule): readonly CommentReference[] {
   return references;
 }
 
-// --- resolving a reference against the schema -------------------------------
+// -- resolving a reference against the schema
 
 /** Columns of the three tables under scan. */
 const SCANNED_COLUMNS: ReadonlySet<string> = new Set(
@@ -299,10 +295,10 @@ const SCANNED_COLUMNS: ReadonlySet<string> = new Set(
 );
 
 /**
- * Members of those tables' `text(…, { enum })` tuples — `cap_exhausted`,
- * `floor_cap_exhausted`, `no_sessions_to_analyse` and the rest. They read
- * exactly like column names and the schema itself declares them, so they are
- * resolved off the column objects rather than listed by hand.
+ * Members of those tables' `text(…, { enum })` tuples, `cap_exhausted`,
+ * `floor_cap_exhausted`, `no_sessions_to_analyse` and the rest. They read exactly like
+ * column names and the schema itself declares them, so they are resolved off the column
+ * objects rather than listed by hand.
  */
 const SCANNED_ENUM_MEMBERS: ReadonlySet<string> = new Set(
   SCANNED_CONFIGS.flatMap((config) =>
@@ -310,29 +306,29 @@ const SCANNED_ENUM_MEMBERS: ReadonlySet<string> = new Set(
   ),
 );
 
-/** Index names those tables declare — `findings_org_project_signature_key`. */
+/** Index names those tables declare, `findings_org_project_signature_key`. */
 const SCANNED_INDEXES: ReadonlySet<string> = new Set(
   SCANNED_CONFIGS.flatMap((config) => config.indexes.map((index) => index.config.name ?? "")),
 );
 
 /**
- * The residue: backticked `snake_case` that is legitimately NOT resolvable from
- * the schema. Kept explicit, kept tiny, and every entry states why — a
- * catch-all here would quietly turn this whole suite into decoration. A test
- * below fails if an entry stops being referenced, so the list cannot rot.
+ * The residue: backticked `snake_case` that is legitimately not resolvable from the
+ * schema. Kept explicit, kept tiny, and every entry states why. A catch-all here would
+ * quietly turn this whole suite into decoration. A test below fails if an entry stops
+ * being referenced, so the list cannot rot.
  */
 const NON_COLUMN_ALLOWLIST: Readonly<Record<string, string>> = {
-  // A table this repository DELIBERATELY does not have. `findings.ts`'s header
-  // names it to explain why the delivery wire is cut (AD-12): the poster would
-  // be built from a `slack_connections` row that does not exist. If this one
-  // ever resolved, the deferral would have been built without the header being
-  // told, which is the same class of false claim in the other direction.
+  // A table this repository deliberately does not have. `findings.ts`'s header names it
+  // to explain why the delivery wire is cut: the poster would be built from a
+  // `slack_connections` row that does not exist. If this one ever resolved, the
+  // deferral would have been built without the header being told, which is the same
+  // class of false claim in the other direction.
   slack_connections:
     "the deliberately-absent delivery table, named by findings.ts to explain the cut wire (AD-12)",
   // A `ClaimModelCallResult` discriminant, not a stored value. It lives on the
-  // repository's return type (`analysis-runs.repo.ts`) and the cap ledger's
-  // header names it because the two refusals must never collapse. Nothing
-  // persists it, so no column and no column enum can carry it.
+  // repository's return type (`analysis-runs.repo.ts`) and the cap ledger's header
+  // names it because the two refusals must never collapse. Nothing persists it, so no
+  // column and no column enum can carry it.
   already_claimed:
     "a ClaimModelCallResult refusal member on analysis-runs.repo.ts, never a persisted value",
 };
@@ -340,14 +336,14 @@ const NON_COLUMN_ALLOWLIST: Readonly<Record<string, string>> = {
 /**
  * True when a reference names something the schema actually declares.
  *
- * The ladder, in order: a qualified `table.column` pair resolved in the barrel;
- * a column of one of the three scanned tables; a table name; one of those
- * tables' column enum members; one of their index names; and last the two
- * justified non-schema entries above.
+ * The ladder, in order: a qualified `table.column` pair resolved in the barrel; a
+ * column of one of the three scanned tables; a table name; one of those tables' column
+ * enum members; one of their index names; and last the two justified non-schema entries
+ * above.
  *
- * A qualified reference whose table is unknown resolves to FALSE rather than
- * falling through to the unqualified rungs — `no_such_table.signature` must
- * fail even though `signature` exists somewhere.
+ * A qualified reference whose table is unknown resolves to FALSE rather than falling
+ * through to the unqualified rungs, `no_such_table.signature` must fail even though
+ * `signature` exists somewhere.
  */
 function resolvesAgainstTheSchema(token: string): boolean {
   const dot = token.indexOf(".");
@@ -373,12 +369,12 @@ function unresolvedIn(modules: readonly ScannedModule[]): readonly string[] {
     .map((reference) => `${reference.file}:${reference.line} → \`${reference.token}\``);
 }
 
-// --- the synthetic fixtures that prove the scanner bites --------------------
+// -- the synthetic fixtures that prove the scanner bites
 
 /**
- * A module that is not in the tree, carrying planted offenders beside real
- * references. Its job is to FAIL — an assertion that cannot fail proves
- * nothing, and this one runs before anything is claimed about the real files.
+ * A module that is not in the tree, carrying planted offenders beside real references.
+ * Its job is to fail. An assertion that cannot fail proves nothing, and this one runs
+ * before anything is claimed about the real files.
  */
 const PLANTED_OFFENDER: ScannedModule = {
   file: "packages/db/src/schema/__synthetic__.ts",
@@ -392,7 +388,7 @@ const PLANTED_OFFENDER: ScannedModule = {
   ].join("\n"),
 };
 
-/** The same shape with every reference true — the control for the above. */
+/** The same shape with every reference true. The control for the above. */
 const CLEAN_FIXTURE: ScannedModule = {
   file: "packages/db/src/schema/__synthetic_clean__.ts",
   source: [
@@ -411,13 +407,13 @@ const DRILLED_COLUMN = "resolved_model_id";
 const DRILLED_RENAME = "resolved_model_ident";
 
 /**
- * The REAL `findings.ts`, with one column reference in its prose renamed to a
- * name no table has.
+ * The real `findings.ts`, with one column reference in its prose renamed to a name no
+ * table has.
  *
- * This is the AD-20 scenario reproduced exactly — a column renamed, a header
- * left behind — run against real source rather than a toy fixture, so the
- * guard cannot read as proven merely because a hand-written fixture was easy
- * to catch. The file on disk is never touched.
+ * This is the scenario reproduced exactly (a column renamed, a header left behind) run
+ * against real source rather than a toy fixture, so the guard cannot read as proven
+ * merely because a hand-written fixture was easy to catch. The file on disk is never
+ * touched.
  */
 const RENAME_DRILL: ScannedModule = {
   file: "packages/db/src/schema/findings.ts",
@@ -426,23 +422,23 @@ const RENAME_DRILL: ScannedModule = {
 
 describe("the analysis schema's comment-truth guard", () => {
   test("the comment scanner bites on a planted reference no table declares", () => {
-    // NON-VACUITY, BEFORE ANY CLAIM ABOUT THE REAL MODULES. A scanner that
-    // extracted nothing, or a resolver that said yes to everything, would make
-    // the suite below pass over an empty set and report green.
+    // Non-vacuity, before any claim about the real modules. A scanner that extracted
+    // nothing, or a resolver that said yes to everything, would make the suite below
+    // pass over an empty set and report green.
     expect(unresolvedIn([PLANTED_OFFENDER])).toEqual([
       "packages/db/src/schema/__synthetic__.ts:2 → `no_such_column_anywhere`",
       "packages/db/src/schema/__synthetic__.ts:3 → `findings.no_such_column`",
       "packages/db/src/schema/__synthetic__.ts:4 → `no_such_table.signature`",
     ]);
 
-    // The template literal on the fixture's last line is CODE, not a claim. If
-    // the scanner read it, the header of any file using `sql` would be judged
-    // on text its author never wrote as a statement.
+    // The template literal on the fixture's last line is code, not a claim. If the
+    // scanner read it, the header of any file using `sql` would be judged on text its
+    // author never wrote as a statement.
     const scanned = commentReferences(PLANTED_OFFENDER).map((reference) => reference.token);
     expect(scanned).not.toContain("not_a_comment_column");
 
-    // ...and the control, so the guard is not simply always-unresolved: a
-    // fixture of the same shape whose every reference is true reports nothing.
+    // ...and the control, so the guard is not simply always-unresolved: a fixture of
+    // the same shape whose every reference is true reports nothing.
     expect(unresolvedIn([CLEAN_FIXTURE])).toEqual([]);
     // Vacuously empty would pass that too, so prove the control was read.
     expect(commentReferences(CLEAN_FIXTURE).map((reference) => reference.token)).toEqual([
@@ -466,29 +462,29 @@ describe("the analysis schema's comment-truth guard", () => {
     expect(reported.length).toBeGreaterThan(0);
     for (const entry of reported) expect(entry).toContain(`\`${DRILLED_RENAME}\``);
 
-    // The unmutated file is the same read through the same pipeline, and it is
-    // clean — so the report above is the rename, not a scanner that always
-    // complains about `findings.ts`.
+    // The unmutated file is the same read through the same pipeline, and it is clean,
+    // so the report above is the rename, not a scanner that always complains about
+    // `findings.ts`.
     expect(unresolvedIn([FINDINGS_MODULE])).toEqual([]);
   });
 
   test("every column named in the analysis schema comments resolves to a real column", () => {
-    // The scanner must actually be looking at something: three real modules,
-    // and a non-trivial number of references extracted from them.
+    // The scanner must actually be looking at something: three real modules, and a
+    // non-trivial number of references extracted from them.
     expect(SCANNED_MODULES.length).toBe(3);
 
     const references = SCANNED_MODULES.flatMap((module) => commentReferences(module));
     expect(references.length).toBeGreaterThan(20);
 
-    // Reported as `file:line → token`, never as a count: a failure here must
-    // name the header that went false and where to go and fix it.
+    // Reported as `file:line → token`, never as a count: a failure here must name the
+    // header that went false and where to go and fix it.
     expect(unresolvedIn(SCANNED_MODULES)).toEqual([]);
   });
 
   test("every comment segment the scanner reads has balanced backticks", () => {
-    // The extractor pairs backticks within a joined RUN of comment lines. An
-    // odd count means a quoted reference was never closed, which would
-    // mis-pair every later backtick in that run.
+    // The extractor pairs backticks within a joined run of comment lines. An odd count
+    // means a quoted reference was never closed, which would mis-pair every later
+    // backtick in that run.
     const unbalanced = SCANNED_MODULES.flatMap((module) =>
       commentSegments(module.source)
         .filter((segment) => (segment.text.match(/`/g) ?? []).length % 2 !== 0)
@@ -511,8 +507,8 @@ describe("the analysis schema's comment-truth guard", () => {
       expect(referenced.has(token)).toBe(true);
       expect(why.trim().length).toBeGreaterThan(0);
 
-      // And it must not be a real column or table that was listed by mistake —
-      // an entry that would resolve anyway is a rung nobody needs.
+      // And it must not be a real column or table that was listed by mistake. An entry
+      // that would resolve anyway is a rung nobody needs.
       expect(SCANNED_COLUMNS.has(token)).toBe(false);
       expect(COLUMNS_BY_TABLE.has(token)).toBe(false);
     }

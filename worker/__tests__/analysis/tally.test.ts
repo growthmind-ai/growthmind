@@ -1,13 +1,13 @@
 // The run tally, asserted directly.
 //
-// Every rule below was already covered — through `runAnalysisTick`, eight
-// layers up, with a fake summariser and a fake claim ledger in the way. That
-// suite proves the LANE behaves; it is a poor place to prove an arithmetic
-// invariant, because a broken `addReported` shows up there as a wrong number on
-// a persisted row and could be explained by any of the layers between.
+// Every rule below was already covered. Through `runAnalysisTick`, eight layers up,
+// with a fake summariser and a fake claim ledger in the way. That suite proves the lane
+// behaves; it is a poor place to prove an arithmetic invariant, because a broken
+// `addReported` shows up there as a wrong number on a persisted row and could be
+// explained by any of the layers between.
 //
-// These are the assertions the extraction bought: input in, value out, one rule
-// per test.
+// These are the assertions the extraction bought: input in, value out, one rule per
+// test.
 import { describe, expect, it } from "bun:test";
 
 import type { AnalysisLane, CallAttribution } from "../../src/analysis/types";
@@ -17,8 +17,8 @@ const laneWith = (candidates: number, sessionsConsidered: number): AnalysisLane 
   organizationId: "org-1",
   organizationName: "Org One",
   projectId: "project-1",
-  // The tally only ever reads `.length`, so the contents are irrelevant here
-  // and a cast keeps a 40-field candidate fixture out of an arithmetic test.
+  // The tally only ever reads `.length`, so the contents are irrelevant here and a cast
+  // keeps a 40-field candidate fixture out of an arithmetic test.
   candidates: Array.from({ length: candidates }) as AnalysisLane["candidates"],
   sessionsConsidered,
 });
@@ -66,8 +66,8 @@ describe("applyAttribution", () => {
     const tally = newTally();
     applyAttribution(tally, attempted());
 
-    // FR-M9: a call the model served but did not meter must not read as a call
-    // that cost nothing. The attempt is counted; the cost stays unknown.
+    // A call the model served but did not meter must not read as a call that cost
+    // nothing. The attempt is counted; the cost stays unknown.
     expect(tally.modelCallsAttempted).toBe(1);
     expect(tally.resolvedModelId).toBe("model-a");
     expect(tally.tokensIn).toBeNull();
@@ -103,8 +103,7 @@ describe("applyAttribution", () => {
 
     expect(tally.modelCallsAttempted).toBe(2);
     expect(tally.tokensIn).toBe(8);
-    // Neither call reported an output count, so the total is still unknown —
-    // NOT zero.
+    // Neither call reported an output count, so the total is still unknown, not zero.
     expect(tally.tokensOut).toBeNull();
   });
 });
@@ -122,8 +121,8 @@ describe("outcomeFor", () => {
   });
 
   it("reports findings on a lane with candidates even when no sessions were counted", () => {
-    // The direction that matters on a FAILED run: a broken run must never
-    // describe the shape of an empty product.
+    // The direction that matters on a failed run: a broken run must never describe the
+    // shape of an empty product.
     expect(outcomeFor(laneWith(1, 0))).toBe("produced_findings");
   });
 });

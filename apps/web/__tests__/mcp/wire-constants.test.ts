@@ -1,53 +1,47 @@
-// THE PROTOCOL VOCABULARY, PINNED — WIRE-K1…K6 (O-013, lane W0-T-A, D9).
+// The protocol vocabulary, pinned, WIRE-K1…K6.
 //
-// Six rows over the values a wire protocol is spelled with: header names, error
-// codes, two protocol revisions, and the framing mode the responses arrive in.
-// None of them is about behaviour a user can see, and every one of them is
-// about a value that fails SILENTLY when it is wrong — a header name typo'd
-// inline reads nothing forever, an error code in a reserved band is a
-// well-formed lie, a revision string moved by a package upgrade changes what
-// this server negotiates with no diff of ours, and a framing mode left to a
-// default moves every byte-identity comparison in the sprint.
+// Six rows over the values a wire protocol is spelled with: header names, error codes,
+// two protocol revisions, and the framing mode the responses arrive in. None of them is
+// about behaviour a user can see, and every one of them is about a value that fails
+// silently when it is wrong. A header name typo'd inline reads nothing forever, an
+// error code in a reserved band is a well-formed lie, a revision string moved by a
+// package upgrade changes what this server negotiates with no diff of ours, and a
+// framing mode left to a default moves every byte-identity comparison in the sprint.
 //
-// ---------------------------------------------------------------------------
-// ⚠️ THIS FILE IS THE MOST CHANGED IN THE ROUND-2 REGENERATION
-// ---------------------------------------------------------------------------
+// ⚠️ this file is the most changed in the ROUND-2 regeneration
 //
-// Round 1 authored `WIRE-K5` and `WIRE-K6` to two decisions round 2 REVERSED,
-// and writing either old version here would turn a row red against correct
-// code. Both reversals came from one mis-measured probe — a claim-less POST to
-// `server/discover` that read `-32601`, concluded the modern era was unserved,
-// and drove (1) "ship legacy-only, delete `MCP_PROTOCOL_ERA_TARGET`" and
-// (2) `responseMode: "json"`. The POST was classified LEGACY, and `-32601` is
-// the correct legacy answer. Measured since:
+// Round 1 authored `WIRE-K5` and `WIRE-K6` to two decisions round 2 reversed, and
+// writing either old version here would turn a row red against correct code. Both
+// reversals came from one mis-measured probe. A claim-less POST to `server/discover`
+// that read `-32601`, concluded the modern era was unserved, and drove "ship
+// legacy-only, delete `MCP_PROTOCOL_ERA_TARGET`" and `responseMode: "json"`. The
+// POST was classified legacy, and `-32601` is the correct legacy answer. Measured
+// since:
 //
-//   - both eras are served by one handler and THERE IS NO MODERN-OFF SWITCH, so
-//     round 1's `WIRE-K5(b)(c)` ("the modern era is neither served nor
-//     negotiated") is not merely wrong but UNASSERTABLE — no test could produce
-//     the behaviour it claims. Half (a) survives, retitled.
-//   - `responseMode` is INERT on the legacy leg, so `"json"` does not make the
-//     wire JSON; it splits the wire in two. The pin is `"sse"`, and `WIRE-K6`
-//     is authored to it. Round 1's "no body starts with `event: `" is deleted
-//     as false by design: under the SSE pin every SDK-rendered body begins
-//     exactly that way.
+// Both eras are served by one handler and there is no modern-off switch, so
+//  round 1's `WIRE-K5` ("the modern era is neither served nor
+//  negotiated") is not merely wrong but unassertable — no test could produce
+//  the behaviour it claims. Half survives, retitled.
+// `responseMode` is inert on the legacy leg, so `"json"` does not make the
+//  wire JSON; it splits the wire in two. The pin is `"sse"`, and `WIRE-K6`
+//  is authored to it. Round 1's "no body starts with `event: `" is deleted
+//  as false by design: under the SSE pin every SDK-rendered body begins
+//  exactly that way.
 //
-// If a future reader finds `2026-07-28` missing from a negotiation list and
-// reaches to add it: that absence is asserted ON PURPOSE by `WIRE-K5`, and the
-// reason is written into `wire-constants.ts` itself. The modern era drops the
-// `initialize` handshake, so it has nothing to negotiate. `WIRE-E7` proves it
-// is served, by behaviour, with a real client.
+// If a future reader finds `2026-07-28` missing from a negotiation list and reaches to
+// add it: that absence is asserted on purpose by `WIRE-K5`, and the reason is written
+// into `wire-constants.ts` itself. The modern era drops the `initialize` handshake, so
+// it has nothing to negotiate. `WIRE-E7` proves it is served, by behaviour, with a real
+// client.
 //
-// ---------------------------------------------------------------------------
-// WHY THIS FILE MAY IMPORT THE TRANSPORT PACKAGE AND `wire-constants.ts` MAY NOT
-// ---------------------------------------------------------------------------
+// Why this file may import the transport package and `wire-constants.ts` may not
 //
-// `WIRE-S4` asserts that exactly ONE shipped source file names the transport
-// package, and it excludes test files from the scan. `wire-constants.ts`
-// therefore names no package at all — not even type-only, because a type-only
-// import still puts the name in the file's source text — and the comparison
-// against the package's own exported constants happens HERE instead. The ADD's
-// D-4 file table says otherwise; that cell is wrong, and following it would put
-// a second entry in `WIRE-S4`'s list.
+// `WIRE-S4` asserts that exactly one shipped source file names the transport package,
+// and it excludes test files from the scan. `wire-constants.ts` therefore names no
+// package at all, not even type-only, because a type-only import still puts the name in
+// the file's source text, and the comparison against the package's own exported
+// constants happens here instead. The file table says otherwise; that cell is
+// wrong, and following it would put a second entry in `WIRE-S4`'s list.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,45 +85,39 @@ function sourceOf(relative: string): string {
 }
 
 /**
- * THE ONE LITERAL TWO ROWS SHARE, DECLARED ONCE.
+ * The one literal two rows share, declared once.
  *
- * `WIRE-K6(a)` requires this exact text to be present in `wire.ts`'s CODE, and
- * `WIRE-K1` exempts this exact text from its inline-literal ban. One constant
- * for both means the exemption can never drift away from the thing it exempts:
- * if a future edit writes the property differently, both rows go red together
- * and point at the same fix, rather than one silently permitting what the other
- * cannot find.
+ * `WIRE-K6` requires this exact text to be present in `wire.ts`'s code, and
+ * `WIRE-K1` exempts this exact text from its inline-literal ban. One constant for both
+ * means the exemption can never drift away from the thing it exempts: if a future edit
+ * writes the property differently, both rows go red together and point at the same fix,
+ * rather than one silently permitting what the other cannot find.
  *
- * `"sse"` AND NOT `"json"`. The legacy leg — the one a stock client negotiates
- * — has no framing option at all, so `"json"` would leave the legacy wire SSE
- * and make the modern wire JSON: two framings, and every byte-identity row
- * authored twice.
+ * `"sse"` and not `"json"`. The legacy leg (the one a stock client negotiates) has no
+ * framing option at all, so `"json"` would leave the legacy wire SSE and make the
+ * modern wire JSON: two framings, and every byte-identity row authored twice.
  */
 const RESPONSE_MODE_PIN = 'responseMode: "sse"';
 
-// ---------------------------------------------------------------------------
 // A comment-blanking scanner (the code half of a source file)
-// ---------------------------------------------------------------------------
 
 /**
- * Returns `source` with every comment replaced by spaces, character for
- * character, newlines preserved — and every string literal LEFT INTACT, because
- * string literals are exactly what these rows are about.
+ * Returns `source` with every comment replaced by spaces, character for character,
+ * newlines preserved, and every string literal left intact, because string literals are
+ * exactly what these rows are about.
  *
- * ⚠️ THE INVERSE OF `refusal-identity-guard.test.ts`'s scanner, and the
- * difference matters. That one blanks comments AND strings, because it asks
- * "did an assertion get loosened" and a token inside a string is data. These
- * rows ask "is this value written inline in the code", so the strings are the
- * evidence and the comments are the noise.
+ * ⚠️ the inverse of `refusal-identity-guard.test.ts`'s scanner, and the difference
+ * matters. That one blanks comments and strings, because it asks "did an assertion get
+ * loosened" and a token inside a string is data. These rows ask "is this value written
+ * inline in the code", so the strings are the evidence and the comments are the noise.
  *
- * WITHOUT THIS, `WIRE-K6(a)` PASSES FOR THE WRONG REASON TODAY. `wire.ts`'s
- * header already discusses `responseMode: "sse"` in prose, so a raw-text scan
- * finds the literal, goes green, and stays green through a wave that never
- * writes the property at all. A row that a comment can satisfy is a row about
- * comments.
+ * Without this, `WIRE-K6` passes for the wrong reason today. `wire.ts`'s header
+ * already discusses `responseMode: "sse"` in prose, so a raw-text scan finds the
+ * literal, goes green, and stays green through a wave that never writes the property at
+ * all. A row that a comment can satisfy is a row about comments.
  *
- * Quotes are honoured so that a `//` inside a string cannot be mistaken for a
- * comment opener and blank the rest of a line.
+ * Quotes are honoured so that a `//` inside a string cannot be mistaken for a comment
+ * opener and blank the rest of a line.
  */
 function codeOnly(source: string): string {
   const out: string[] = [];
@@ -183,8 +171,8 @@ function codeOnly(source: string): string {
   return out.join("");
 }
 
-/** The comment text of a source file — the other half, for the row that asserts
- * a REASON is written down rather than a value. */
+/** The comment text of a source file. The other half, for the row that asserts a reason
+ * is written down rather than a value. */
 function commentsOnly(source: string): string {
   return source
     .split("\n")
@@ -195,22 +183,20 @@ function commentsOnly(source: string): string {
     .join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// WIRE-K1 — nothing protocol-shaped is written inline
-// ---------------------------------------------------------------------------
+// WIRE-K1, nothing protocol-shaped is written inline
 
 describe("WIRE-K1 — every header name and error code this surface names is an exported constant, never an inline literal", () => {
   /**
-   * The values that must come from `wire-constants.ts`, DERIVED FROM IT rather
-   * than retyped — so a fifth header added there is covered by this row the day
-   * it is added, with nobody remembering to widen a list.
+   * The values that must come from `wire-constants.ts`, derived from it rather than
+   * retyped, so a fifth header added there is covered by this row the day it is added,
+   * with nobody remembering to widen a list.
    *
    * The two protocol revisions are in the set as well as the header names.
    * `wire-constants.ts`'s own header states the rule that way ("every protocol
    * revision, header name and JSON-RPC error code … so that `./server.ts` and
-   * `./wire.ts` contain no inline literal of any of them"), and a revision
-   * string written inline is the same class of bug as a header name: a value
-   * the compiler cannot check, wrong silently.
+   * `./wire.ts` contain no inline literal of any of them"), and a revision string
+   * written inline is the same class of bug as a header name: a value the compiler
+   * cannot check, wrong silently.
    */
   const HOISTED_VALUES: readonly string[] = [
     ...Object.values(MCP_HEADER),
@@ -219,35 +205,35 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
   ];
 
   /**
-   * The SDK's framing-mode union, banned as a bare literal — and the reason the
+   * The sdk's framing-mode union, banned as a bare literal, and the reason the
    * exemption below exists at all.
    *
-   * The framing mode is decided in exactly ONE place: the construction site in
-   * `wire.ts`, spelled as the property `RESPONSE_MODE_PIN`. A bare `"sse"`
-   * anywhere else is a second place the framing is decided, and two places is
-   * how a wire ends up half-pinned.
+   * The framing mode is decided in exactly one place: the construction site in
+   * `wire.ts`, spelled as the property `RESPONSE_MODE_PIN`. A bare `"sse"` anywhere
+   * else is a second place the framing is decided, and two places is how a wire ends up
+   * half-pinned.
    */
   const FRAMING_MODES = ["auto", "sse", "json"] as const;
 
   /**
-   * ⚠️ THE EXEMPTION, ENCODED AS DATA AND NOT AS A COMMENT.
+   * ⚠️ the exemption, encoded as data and not as a comment.
    *
-   * `responseMode: "sse"` is a member of the SDK's own `'auto' | 'sse' | 'json'`
-   * union, so a wrong value is a COMPILE error rather than a runtime one — the
-   * exact property D9 asks a hoisted constant to provide, already provided by
-   * the type. And `WIRE-K6(a)` requires the literal to be visible AT THE
-   * CONSTRUCTION SITE, so hoisting it into a constant would break that row.
+   * `responseMode: "sse"` is a member of the sdk's own `'auto' | 'sse' | 'json'` union,
+   * so a wrong value is a compile error rather than a runtime one. The exact property
+   * asks a hoisted constant to provide, already provided by the type. And `WIRE-K6`
+   * requires the literal to be visible at the construction site, so hoisting it into a
+   * constant would break that row.
    *
-   * DO NOT "FIX" A `WIRE-K1` FAILURE BY MOVING THE LITERAL INTO A CONSTANT.
-   * The scanner strips this phrase before it looks, and the test below proves
-   * the strip is what makes the difference.
+   * Do not "fix" A `WIRE-K1` failure by moving the literal into a constant. The scanner
+   * strips this phrase before it looks, and the test below proves the strip is what
+   * makes the difference.
    */
   const EXEMPT_INLINE_LITERALS = [RESPONSE_MODE_PIN] as const;
 
   /**
-   * Every banned value written inline in the CODE of `source`, with the exempt
-   * phrases removed first. Returned as a list rather than a count so a failure
-   * names the literal that crept in.
+   * Every banned value written inline in the code of `source`, with the exempt phrases
+   * removed first. Returned as a list rather than a count so a failure names the
+   * literal that crept in.
    */
   function inlineOffences(source: string, exempt: readonly string[]): readonly string[] {
     let code = codeOnly(source);
@@ -266,8 +252,8 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
       }
     }
 
-    // Any JSON-RPC error code, not only the four we name: the ban is on writing
-    // one inline, and the codes nobody hoisted are the ones most likely to be.
+    // Any JSON-RPC error code, not only the four we name: the ban is on writing one
+    // inline, and the codes nobody hoisted are the ones most likely to be.
     for (const match of code.match(/-32\d{3}\b/g) ?? []) {
       offences.push(match);
     }
@@ -283,10 +269,9 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
     expect(inlineOffences(sourceOf(WIRE_SRC), EXEMPT_INLINE_LITERALS)).toEqual([]);
   });
 
-  // THE EXEMPTION, PROVED TO BE LOAD-BEARING. Without it the construction site
-  // is an offence; with it, it is not. If this pair ever stops disagreeing, the
-  // exemption has become decoration and `WIRE-K6(a)` is the only thing left
-  // holding the pin.
+  // The exemption, proved to be load-bearing. Without it the construction site is an
+  // offence; with it, it is not. If this pair ever stops disagreeing, the exemption has
+  // become decoration and `WIRE-K6` is the only thing left holding the pin.
   test("the construction-site literal is an offence without the exemption and clean with it", () => {
     const site = `const handler = createMcpHandler(factory, { ${RESPONSE_MODE_PIN}, legacy: "stateless" });`;
 
@@ -294,9 +279,9 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
     expect(inlineOffences(site, EXEMPT_INLINE_LITERALS)).toEqual([]);
   });
 
-  // NON-VACUITY. A scanner that reads nothing reports nothing forever, and this
-  // one has two ways to go blind: `codeOnly` could over-blank, or the derived
-  // value list could come back empty.
+  // Non-vacuity. A scanner that reads nothing reports nothing forever, and this one has
+  // two ways to go blind: `codeOnly` could over-blank, or the derived value list could
+  // come back empty.
   test("the scanner finds what it is looking for in a known-positive control, and ignores prose", () => {
     const guilty = [
       `const name = "${MCP_HEADER.SESSION_ID}";`,
@@ -304,8 +289,8 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
       `const era = "${MCP_PROTOCOL_ERA_TARGET}";`,
     ].join("\n");
 
-    // Sorted, so the list reads the same on every run — quoted literals first,
-    // because a quote sorts below a minus sign.
+    // Sorted, so the list reads the same on every run. Quoted literals first, because a
+    // quote sorts below a minus sign.
     expect(inlineOffences(guilty, EXEMPT_INLINE_LITERALS)).toEqual([
       `"${MCP_PROTOCOL_ERA_TARGET}"`,
       `"${MCP_HEADER.SESSION_ID}"`,
@@ -320,19 +305,16 @@ describe("WIRE-K1 — every header name and error code this surface names is an 
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-K2 — no code we emit is in a band that is not ours
-// ---------------------------------------------------------------------------
+// WIRE-K2, no code we emit is in a band that is not ours
 
 /**
- * The two bands a code of ours may never fall in: `-32099…-32020`, reserved by
- * the spec, and `-32019…-32000`, the legacy implementation-defined range.
+ * The two bands a code of ours may never fall in: `-32099…-32020`, reserved by the
+ * spec, and `-32019…-32000`, the legacy implementation-defined range.
  *
- * A TRIPWIRE, NOT A VOCABULARY IN USE. We emit none of these codes — protocol
- * errors are framing and framing is the transport's (D-7). `JSON_RPC_ERROR_CODE`
- * exists so that the day somebody hand-rolls an error object and adds its code
- * there, this row either passes (the code is legal) or fails loudly. A magic
- * number typed inline gets neither.
+ * A tripwire, not a vocabulary in use. We emit none of these codes. Protocol errors are
+ * framing and framing is the transport's. `JSON_RPC_ERROR_CODE` exists so that the day
+ * somebody hand-rolls an error object and adds its code there, this row either passes
+ * (the code is legal) or fails loudly. A magic number typed inline gets neither.
  */
 function inABannedBand(code: number): boolean {
   return (code >= -32099 && code <= -32020) || (code >= -32019 && code <= -32000);
@@ -342,8 +324,8 @@ describe("WIRE-K2 — no emitted error code falls in the spec-reserved or legacy
   test("every code in JSON_RPC_ERROR_CODE is outside both bands", () => {
     const entries = Object.entries(JSON_RPC_ERROR_CODE);
 
-    // The walk saw something: an empty object would satisfy the loop below
-    // without asserting anything at all.
+    // The walk saw something: an empty object would satisfy the loop below without
+    // asserting anything at all.
     expect(entries.length).toBeGreaterThan(0);
 
     for (const [name, code] of entries) {
@@ -351,7 +333,7 @@ describe("WIRE-K2 — no emitted error code falls in the spec-reserved or legacy
     }
   });
 
-  // NON-VACUITY: the predicate really does fire, on one value from each band.
+  // Non-vacuity: the predicate really does fire, on one value from each band.
   test("the band check fires on a reserved code and on a legacy one", () => {
     expect(inABannedBand(-32050)).toBe(true);
     expect(inABannedBand(-32010)).toBe(true);
@@ -360,21 +342,18 @@ describe("WIRE-K2 — no emitted error code falls in the spec-reserved or legacy
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-K3 / WIRE-K4 — the legacy negotiation list
-// ---------------------------------------------------------------------------
+// WIRE-K3 / WIRE-K4, the legacy negotiation list
 
-/** Widened to `readonly string[]` at the import boundary. The package declares
- * this as a plain `string[]`, and pinning the type here keeps `WIRE-K5`'s
- * `not.toContain` a runtime claim rather than something a literal tuple type
- * could make un-writable. */
+/** Widened to `readonly string[]` at the import boundary. The package declares this as
+ * a plain `string[]`, and pinning the type here keeps `WIRE-K5`'s `not.toContain` a
+ * runtime claim rather than something a literal tuple type could make un-writable. */
 const SUPPORTED: readonly string[] = SUPPORTED_PROTOCOL_VERSIONS;
 
 describe("WIRE-K3 — the legacy revision this server serves is one the package still negotiates", () => {
   /**
-   * A claim about the LEGACY pin only. The modern pin is proved by behaviour in
-   * `WIRE-E7`, with a real client, because a revision with no handshake cannot
-   * appear in a list of negotiable versions.
+   * A claim about the legacy pin only. The modern pin is proved by behaviour in
+   * `WIRE-E7`, with a real client, because a revision with no handshake cannot appear
+   * in a list of negotiable versions.
    */
   test("SUPPORTED_PROTOCOL_VERSIONS contains the legacy floor this surface pins", () => {
     expect(SUPPORTED).toContain(MCP_PROTOCOL_LEGACY_FLOOR);
@@ -383,13 +362,13 @@ describe("WIRE-K3 — the legacy revision this server serves is one the package 
 
 describe("WIRE-K4 — the legacy negotiation list is pinned, so a package upgrade cannot move what this server negotiates", () => {
   /**
-   * The literals are written out rather than derived, which is the whole point:
-   * a `bun update` that changed either value would be a green test suite and a
-   * different server. Recorded by probe W0-P5 and unchanged by round 2.
+   * The literals are written out rather than derived, which is the whole point: a `bun
+   * update` that changed either value would be a green test suite and a different
+   * server. Recorded by probe and unchanged by round 2.
    *
-   * THE `MCP_PROTOCOL_ERA_TARGET` CLAUSE STAYS REMOVED, even though the
-   * constant itself is restored. Comparing a handshake-free era against a
-   * negotiation list is the false assertion this ADD's first draft made.
+   * The `MCP_PROTOCOL_ERA_TARGET` clause stays removed, even though the constant itself
+   * is restored. Comparing a handshake-free era against a negotiation list is the false
+   * assertion this the first draft made.
    */
   test("the package's latest revision and its whole supported list are the measured ones", () => {
     expect(LATEST_PROTOCOL_VERSION).toBe("2025-11-25");
@@ -403,27 +382,24 @@ describe("WIRE-K4 — the legacy negotiation list is pinned, so a package upgrad
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-K5 — the modern era's absence from the legacy list, and the reason
-// ---------------------------------------------------------------------------
+// WIRE-K5, the modern era's absence from the legacy list, and the reason
 
 describe("WIRE-K5 — the modern era is absent from the LEGACY NEGOTIATION LIST on purpose, and the reason is written down", () => {
   /**
-   * ⚠️ ONE HALF ONLY. Round 1's halves (b) and (c) asserted that no source file
-   * defines a constant whose value is `2026-07-28`, and that the modern era is
-   * "neither served nor negotiated". Both are now false — Wave 2 restored
-   * `MCP_PROTOCOL_ERA_TARGET`, and the modern leg is served by the same handler
-   * with no way to switch it off. Authoring either would fail this row against
-   * correct code.
+   * ⚠️ one half only. Round 1's halves and asserted that no source file defines
+   * a constant whose value is `2026-07-28`, and that the modern era is "neither served
+   * nor negotiated". Both are now false. Wave 2 restored `MCP_PROTOCOL_ERA_TARGET`, and
+   * the modern leg is served by the same handler with no way to switch it off.
+   * Authoring either would fail this row against correct code.
    *
-   * WHAT THIS ROW MUST NOT ASSERT: that the era is unserved. `WIRE-E7` proves
-   * the opposite, with a real client.
+   * What this row must not assert: that the era is unserved. `WIRE-E7` proves the
+   * opposite, with a real client.
    */
   const REASON_MARKERS = [MCP_PROTOCOL_ERA_TARGET, "initialize", "server/discover"] as const;
 
-  /** Is the surprising absence explained in prose, in the file that holds the
-   * constant? The three markers are the load-bearing words: the era it is about,
-   * the handshake it drops, and what it advertises itself through instead. */
+  /** Is the surprising absence explained in prose, in the file that holds the constant?
+   * The three markers are the load-bearing words: the era it is about, the handshake it
+   * drops, and what it advertises itself through instead. */
   function namesTheReason(source: string): boolean {
     const prose = commentsOnly(source);
     return REASON_MARKERS.every((marker) => prose.includes(marker));
@@ -434,8 +410,8 @@ describe("WIRE-K5 — the modern era is absent from the LEGACY NEGOTIATION LIST 
     expect(namesTheReason(sourceOf(WIRE_CONSTANTS_SRC))).toBe(true);
   });
 
-  // NON-VACUITY: prose that states the absence without explaining it does not
-  // satisfy the scanner, and the scanner is reading comments rather than code.
+  // Non-vacuity: prose that states the absence without explaining it does not satisfy
+  // the scanner, and the scanner is reading comments rather than code.
   test("the reason scanner tells an explanation from a bare statement of the fact", () => {
     const explained = [
       `// The modern era ${MCP_PROTOCOL_ERA_TARGET} drops the initialize handshake, so it has`,
@@ -450,9 +426,7 @@ describe("WIRE-K5 — the modern era is absent from the LEGACY NEGOTIATION LIST 
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-K6 — the framing, written out and asserted as two bands
-// ---------------------------------------------------------------------------
+// WIRE-K6, the framing, written out and asserted as two bands
 
 const CREDENTIALS = fakeCredentials({ [KEY_A]: ORG_A });
 
@@ -460,18 +434,18 @@ function deps(): McpServerDeps {
   return { credentials: CREDENTIALS, reads: fakeReadPort().port };
 }
 
-/** The two bands (D-6), both measured exactly. The SDK-rendered band carries no
- * charset suffix; the pre-SDK band carries the one `Response.json` adds. */
+/** The two bands, both measured exactly. The SDK-rendered band carries no charset
+ * suffix; the pre-SDK band carries the one `Response.json` adds. */
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 const PRE_SDK_CONTENT_TYPE = "application/json;charset=utf-8";
 
 /**
- * The five answers the bands are asserted over: three the SDK renders and two
- * our own `refusalResponse` produces before the SDK is in the call stack.
+ * The five answers the bands are asserted over: three the SDK renders and two our own
+ * `refusalResponse` produces before the SDK is in the call stack.
  *
- * The 405 is a `DELETE` rather than a `GET`, because `GET` is the verb the
- * transport itself answers during a real client's connect and its handling is
- * the SDK's business; `DELETE` is unambiguously ours, in both waves.
+ * The 405 is a `DELETE` rather than a `GET`, because `GET` is the verb the transport
+ * itself answers during a real client's connect and its handling is the sdk's business;
+ * `DELETE` is unambiguously ours, in both waves.
  */
 const BAND_CASES: readonly {
   readonly name: string;
@@ -521,10 +495,10 @@ describe("WIRE-K6 — the wire is SSE-framed on the SDK path and JSON on the pre
     expect(codeOnly(sourceOf(WIRE_SRC))).toContain(RESPONSE_MODE_PIN);
   });
 
-  // NON-VACUITY, AND THE REASON THE SCANNER STRIPS COMMENTS. `wire.ts`'s header
-  // discusses the pin in prose today; a raw-text scan would find it there and
-  // pass while the property was never written. These two controls prove the
-  // strip is what separates a decision from a description.
+  // Non-vacuity, and the reason the scanner strips comments. `wire.ts`'s header
+  // discusses the pin in prose today; a raw-text scan would find it there and pass
+  // while the property was never written. These two controls prove the strip is what
+  // separates a decision from a description.
   test("(a) a commented pin does not satisfy the scan and a written one does", () => {
     expect(codeOnly(`// ${RESPONSE_MODE_PIN} is the pin\nconst a = 1;`)).not.toContain(
       RESPONSE_MODE_PIN,
@@ -542,21 +516,19 @@ describe("WIRE-K6 — the wire is SSE-framed on the SDK path and JSON on the pre
   }
 
   /**
-   * (c) THE ASSERTION THAT KEEPS THE EMPTY EXCLUSION LIST HONEST.
+   *  the assertion that keeps the empty exclusion list honest.
    *
-   * Byte-identity — the cross-tenant proof — compares whole response bodies.
-   * The SSE spec permits a per-event `id:` line, and a transport that started
-   * emitting one would make two identical requests differ by a line nobody
-   * asserted about, quietly turning every identity row into a comparison of
-   * bytes that are no longer stable. Measured today: no `id:` line is emitted
-   * on either leg under any response mode, which is why the exclusion list is
-   * EMPTY rather than "empty except the id".
+   * Byte-identity (the cross-tenant proof) compares whole response bodies. The SSE spec
+   * permits a per-event `id:` line, and a transport that started emitting one would
+   * make two identical requests differ by a line nobody asserted about, quietly turning
+   * every identity row into a comparison of bytes that are no longer stable. Measured
+   * today: no `id:` line is emitted on either leg under any response mode, which is why
+   * the exclusion list is empty rather than "empty except the id".
    *
-   * ⚠️ THE STATUS PRECONDITION IS NOT DECORATION. This is an absence assertion,
-   * and a 400 refusal carries no `id:` line either — so without first proving
-   * each response is the one this row means to inspect, (c) would pass today,
-   * pass through wave 8, and pass on a surface that had stopped answering
-   * correctly altogether.
+   * ⚠️ the status precondition is not decoration. This is an absence assertion, and a
+   * 400 refusal carries no `id:` line either, so without first proving each response is
+   * the one this row means to inspect, would pass today, pass through wave 8, and
+   * pass on a surface that had stopped answering correctly altogether.
    */
   for (const { name, status, run } of BAND_CASES) {
     test(`(c) ${name} contains no line beginning id:`, async () => {
@@ -567,20 +539,20 @@ describe("WIRE-K6 — the wire is SSE-framed on the SDK path and JSON on the pre
     });
   }
 
-  // NON-VACUITY: the scanner does match a control SSE frame carrying one.
+  // Non-vacuity: the scanner does match a control SSE frame carrying one.
   test("(c) the scanner finds an id: line in a control frame that has one", () => {
     const withId = "event: message\nid: 42\ndata: {}\n\n";
     const without = 'event: message\ndata: {"jsonrpc":"2.0","id":1}\n\n';
 
     expect(linesBeginningWithId(withId)).toEqual(["id: 42"]);
-    // The `"id":1` inside the payload is not an SSE event id, and a scanner
-    // that thought otherwise would fail every row for the wrong reason.
+    // The `"id":1` inside the payload is not an SSE event id, and a scanner that
+    // thought otherwise would fail every row for the wrong reason.
     expect(linesBeginningWithId(without)).toEqual([]);
   });
 });
 
-/** Every line of an SSE frame that begins an event-id field. String operations
- * only — never a parse, which would discard the framing this is about. */
+/** Every line of an SSE frame that begins an event-id field. String operations only,
+ * never a parse, which would discard the framing this is about. */
 function linesBeginningWithId(body: string): readonly string[] {
   return body.split("\n").filter((line) => line.startsWith("id:"));
 }

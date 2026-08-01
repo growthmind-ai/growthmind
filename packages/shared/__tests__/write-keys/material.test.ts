@@ -8,8 +8,8 @@ import {
 
 describe("hashWriteKeyMaterial", () => {
   test("hashWriteKeyMaterial is a deterministic sha256 hex of the material", () => {
-    // Known vector — computed independently with node:crypto:
-    //   sha256("gmwk_test-material-fixture-000000000000000") in hex
+    // Known vector, computed independently with node:crypto:
+    // sha256("gmwk_test-material-fixture-000000000000000") in hex
     const material = "gmwk_test-material-fixture-000000000000000";
     const expected = "cbade985c690498bb203644a3f4add9e2e68acd30e5dfb0040cc439f815ef746";
 
@@ -22,7 +22,7 @@ describe("hashWriteKeyMaterial", () => {
 
 describe("isWriteKeyFormat", () => {
   test("isWriteKeyFormat rejects empty, malformed, wrong-prefix, and truncated keys", () => {
-    // 43 base64url chars — the exact length a real 256-bit key encodes to.
+    // 43 base64url chars, the exact length a real 256-bit key encodes to.
     const validSuffix = "LbCBse67SgBdnrd4ac7ViyA8vPrrV6rDtp2_Kwre920";
     const validKey = `${WRITE_KEY_PREFIX}${validSuffix}`;
 

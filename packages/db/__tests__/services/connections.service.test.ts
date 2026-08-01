@@ -1,16 +1,14 @@
-// Service tests for `createConnectionsService` — ADD §9 items 90–96, plus the
-// seven-state expressibility O-008 depends on (Design Input) and the
-// no-key-material bar of FR-7.
+// Service tests for `createConnectionsService`. Items 90–96, plus the seven-state
+// expressibility depends on (Design Input) and the no-key-material bar of.
 //
-// Everything here runs against REAL SQL via `createTestDb()` and a FAKE
-// source. The fake is possible at all because `createSource` is an injected
-// dependency (D-11) — that injection is what keeps `packages/db` independent
-// of `packages/adapters`, and this suite deliberately imports nothing from
-// that package.
+// Everything here runs against real SQL via `createTestDb` and a fake source. The
+// fake is possible at all because `createSource` is an injected dependency. That
+// injection is what keeps `packages/db` independent of `packages/adapters`, and this
+// suite deliberately imports nothing from that package.
 //
-// WAVE 0: `createConnectionsService` is a typed stub that throws. Every test
-// below MUST fail with "TYPED STUB (O-003 scaffold)" — never a compile error,
-// a missing table, or a fixture collision.
+// Wave 0: `createConnectionsService` is a typed stub that throws. Every test below must
+// fail with "typed stub (scaffold)", never a compile error, a missing table, or a
+// fixture collision.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
@@ -55,14 +53,14 @@ import { OWNER_EMAIL_DOMAIN, seedWorkspace, seedWorkspaceWithoutOwner } from "./
 const FIXED_NOW = new Date("2026-07-30T12:00:00.000Z");
 
 /**
- * A resolved key made of 32 zero bytes. Obviously fake and unusable — this
- * repository is public — and enough to satisfy `CredentialKey`'s contract so
- * the service's own gate, not the fixture, is what the tests exercise.
+ * A resolved key made of 32 zero bytes. Obviously fake and unusable (this repository is
+ * public) and enough to satisfy `CredentialKey`'s contract so the service's own gate,
+ * not the fixture, is what the tests exercise.
  */
 const RESOLVED_KEY: CredentialKeyResolution = { ok: true, key: { bytes: new Uint8Array(32) } };
 
-/** What `resolveCredentialKey` returns in production under the published dev
- * default — the D-1 refusal the insecure-defaults bypass cannot open. */
+/** What `resolveCredentialKey` returns in production under the published dev default.
+ * The refusal the insecure-defaults bypass cannot open. */
 const INSECURE_DEFAULT_KEY: CredentialKeyResolution = {
   ok: false,
   reason: "insecure_default_key",
@@ -98,7 +96,7 @@ describe("createConnectionsService — attach", () => {
     await close();
   });
 
-  // --- item 90 -------------------------------------------------------------
+  // -- item 90
 
   test("refuses a second source, naming the existing attachment and the cutover path", async () => {
     const ws = await seedWorkspace(db, "second-source");
@@ -119,8 +117,8 @@ describe("createConnectionsService — attach", () => {
     if (second.ok) throw new Error("unreachable");
 
     expect(second.refusal.code).toBe("second_source");
-    // The message names the EXISTING attachment, not the rejected one, so the
-    // customer knows which one to detach.
+    // The message names the existing attachment, not the rejected one, so the customer
+    // knows which one to detach.
     expect(second.refusal.message).toBe(
       secondSourceRefusalMessage({ host: FAKE_HOST, sourceProjectId: FAKE_SOURCE_PROJECT_ID }),
     );
@@ -144,9 +142,9 @@ describe("createConnectionsService — attach", () => {
 
     expect(again.ok).toBe(true);
     if (!again.ok) throw new Error("unreachable");
-    // Same attachment, re-keyed — not a duplicate row and not a refusal.
+    // Same attachment, re-keyed, not a duplicate row and not a refusal.
     expect(again.connection.id).toBe(first.connection.id);
-    // The ROTATED key is what was validated, proving the update reached the source.
+    // The rotated key is what was validated, proving the update reached the source.
     expect(harness.configs.at(-1)?.personalApiKey).toBe(rotatedKey);
   });
 
@@ -168,7 +166,7 @@ describe("createConnectionsService — attach", () => {
     expect(state.connection.sourceProjectId).toBe(FAKE_SOURCE_PROJECT_ID);
   });
 
-  // --- item 91 -------------------------------------------------------------
+  // -- item 91
 
   test("a validation failure never leaves an ACTIVE connection behind", async () => {
     const ws = await seedWorkspace(db, "no-active-on-fail");
@@ -183,23 +181,22 @@ describe("createConnectionsService — attach", () => {
     const result = await service.connect(connectInput(ws.project.id));
     expect(result.ok).toBe(false);
 
-    // CR-13 fix: this used to read `if (state.status !== "not_connected") {
-    // expect(...isActive).toBe(false) }` — but a NEW attach that fails
-    // validation writes NOTHING (see the code comment above `refusalFor`'s
-    // call site in connections.service.ts), so `state.status` is ALWAYS
-    // `"not_connected"` here and that conditional's body never ran. Assert
-    // the actual, always-true fact directly instead of a dead branch.
+    // fix: this used to read `if (state.status !== "not_connected") {
+    // expect(...isActive).toBe(false) }`, but a new attach that fails validation writes
+    // nothing (see the code comment above `refusalFor`'s call site in
+    // connections.service.ts), so `state.status` is always `"not_connected"` here and
+    // that conditional's body never ran. Assert the actual, always-true fact directly
+    // instead of a dead branch.
     const state = await service.getState(ws.project.id);
     expect(state.status).toBe("not_connected");
   });
 
   test("a validation failure on a RE-KEY marks the EXISTING connection failing, without deactivating it", async () => {
-    // CR-13: the branch this covers (connections.service.ts's `if (isRekey
-    // && existing) { recordHealth(... "failing" ...) }`, just above
-    // `refusalFor`) had no test at all — every existing "validation failure"
-    // test above exercises only a brand-new, never-attached project, which
-    // can never take this branch (`isRekey` requires an existing active
-    // connection on the SAME source).
+    // The branch this covers (connections.service.ts's `if (isRekey && existing) {
+    // recordHealth(... "failing"...) }`, just above `refusalFor`) had no test at all.
+    // Every existing "validation failure" test above exercises only a brand-new,
+    // never-attached project, which can never take this branch (`isRekey` requires an
+    // existing active connection on the same source).
     const ws = await seedWorkspace(db, "rekey-fail-health");
     const working = makeFakeSource();
     const service = createConnectionsService(db, ws.ctx, deps(working));
@@ -208,8 +205,8 @@ describe("createConnectionsService — attach", () => {
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("unreachable");
 
-    // Same host/sourceProjectId/sourceKind as the first attach — `isSameSource`
-    // routes this to the re-key branch rather than FR-8's second-source path.
+    // Same host/sourceProjectId/sourceKind as the first attach, `isSameSource` routes
+    // this to the re-key branch rather than the second-source path.
     const failing = makeFakeSource({
       validation: failedValidation(FIXED_NOW, {
         code: "invalid_credentials",
@@ -226,9 +223,9 @@ describe("createConnectionsService — attach", () => {
     const state = await service.getState(ws.project.id);
     expect(state.status).not.toBe("not_connected");
     if (state.status === "not_connected") throw new Error("unreachable");
-    // The EXISTING attachment stays active — a bad re-key attempt must not
-    // silently disconnect a connection that was working a moment ago — but
-    // its health now reflects the failed check, terminally (never "validating").
+    // The existing attachment stays active. A bad re-key attempt must not silently
+    // disconnect a connection that was working a moment ago, but its health now
+    // reflects the failed check, terminally (never "validating").
     expect(state.connection.id).toBe(first.connection.id);
     expect(state.connection.isActive).toBe(true);
     expect(state.connection.health).toBe("failing");
@@ -250,9 +247,9 @@ describe("createConnectionsService — attach", () => {
 
     const state = await service.getState(ws.project.id);
 
-    // "validating" is a non-terminal state. A failed attach that persisted
-    // anything must never park the customer there — that is the stuck-forever
-    // shape the transparency rule exists to forbid.
+    // "validating" is a non-terminal state. A failed attach that persisted anything
+    // must never park the customer there. That is the stuck-forever shape the
+    // transparency rule exists to forbid.
     expect(state.status).not.toBe("validating");
     if (state.status !== "not_connected") {
       expect(["failing", "disconnected"]).toContain(state.connection.health);
@@ -275,12 +272,12 @@ describe("createConnectionsService — attach", () => {
     const service = createConnectionsService(db, ws.ctx, deps(working));
     const retry = await service.connect(connectInput(ws.project.id));
 
-    // A broken half-written row would surface here as a `second_source`
-    // refusal — the customer locked out of their own project by a typo.
+    // A broken half-written row would surface here as a `second_source` refusal. The
+    // customer locked out of their own project by a typo.
     expect(retry.ok).toBe(true);
   });
 
-  // --- item 92 -------------------------------------------------------------
+  // -- item 92
 
   const FAILURE_CASES: ReadonlyArray<{ source: SourceFailureCode; refusal: ConnectRefusalCode }> = [
     { source: "invalid_credentials", refusal: "invalid_credentials" },
@@ -299,8 +296,8 @@ describe("createConnectionsService — attach", () => {
       });
       const service = createConnectionsService(db, ws.ctx, deps(harness));
 
-      // Resolving at all is part of the contract: a wrong key is an answer,
-      // never a thrown exception at the boundary.
+      // Resolving at all is part of the contract: a wrong key is an answer, never a
+      // thrown exception at the boundary.
       const result = await service.connect(connectInput(ws.project.id));
 
       expect(result.ok).toBe(false);
@@ -357,9 +354,9 @@ describe("createConnectionsService — attach", () => {
 
   test("no key material reaches the refusal or the persisted health reason, in ANY encoding", async () => {
     const ws = await seedWorkspace(db, "no-key-material");
-    // A deliberately leaky source: it echoes the key back URL-encoded,
-    // JSON-escaped and truncated. Exact-whole-string scrubbing misses all
-    // three, which is exactly why FR-7's strengthening exists.
+    // A deliberately leaky source: it echoes the key back URL-encoded, JSON-escaped and
+    // truncated. Exact-whole-string scrubbing misses all three, which is exactly why
+    // the strengthening exists.
     const leaked = FAKE_PERSONAL_KEY_FORMS.join(" | ");
     const harness = makeFakeSource({
       validation: failedValidation(FIXED_NOW, {
@@ -389,7 +386,7 @@ describe("createConnectionsService — attach", () => {
     }
   });
 
-  // --- item 93 -------------------------------------------------------------
+  // -- item 93
 
   test("refuses with 'misconfigured' when the encryption key is the published default in production", async () => {
     const ws = await seedWorkspace(db, "misconfigured");
@@ -418,7 +415,7 @@ describe("createConnectionsService — attach", () => {
     expect(state.status).toBe("not_connected");
   });
 
-  // --- item 94 / 95 --------------------------------------------------------
+  // -- item 94 / 95
 
   test("infers the internal domain from the org creator's email and records its provenance", async () => {
     const ws = await seedWorkspace(db, "infer-domain");
@@ -442,13 +439,13 @@ describe("createConnectionsService — attach", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // F-2: a missing creator email must never produce a guess. A wrong
-    // internal domain silently excludes the customer's entire user base.
+    // F-2: a missing creator email must never produce a guess. A wrong internal domain
+    // silently excludes the customer's entire user base.
     expect(result.connection.inferredInternalDomain).toBeNull();
     expect(result.connection.internalDomainProvenance).toBeNull();
   });
 
-  // --- item 96 -------------------------------------------------------------
+  // -- item 96
 
   test("performs exactly ONE bounded inline first pull of ONE page", async () => {
     const ws = await seedWorkspace(db, "first-pull-bounds");
@@ -470,15 +467,14 @@ describe("createConnectionsService — attach", () => {
     expect(harness.pullRequests[0]?.watermarkAt).toBeNull();
   });
 
-  // --- CR-1 regression -------------------------------------------------------
-  // First-connect backlog stall: a brand-new attachment (never polled, so
-  // `watermarkAt` is null) whose inline first pull hits the page cap used to
-  // record NEITHER `watermarkAt` NOR `backfillBefore` — `advanceWatermark`
-  // needs a `Date` for `watermarkAt` and there was no watermark to hold
-  // steady. This test MUST FAIL against the pre-fix code: `attached.
-  // connection.backfillBefore` would be `null` instead of the resume cursor.
+  // -- regression First-connect backlog stall: a brand-new attachment (never polled, so
+  // `watermarkAt` is null) whose inline first pull hits the page cap used to record
+  // neither `watermarkAt` nor `backfillBefore`, `advanceWatermark` needs a `Date` for
+  // `watermarkAt` and there was no watermark to hold steady. This test must fail
+  // against the pre-fix code: `attached. connection.backfillBefore` would be `null`
+  // instead of the resume cursor.
 
-  test("CR-1: a page-capped inline first pull on a never-polled connection persists a resume cursor and does NOT advance the watermark", async () => {
+  test("a page-capped inline first pull on a never-polled connection persists a resume cursor and does NOT advance the watermark", async () => {
     const ws = await seedWorkspace(db, "cr1-first-pull-backlog");
     const resumeCursor =
       "https://eu.analytics.example.invalid/api/projects/00000/events?before=cr1-resume-token";
@@ -500,15 +496,15 @@ describe("createConnectionsService — attach", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
 
-    // THE FIX: the resume cursor survives even though this connection has
-    // never had a watermark.
+    // The fix: the resume cursor survives even though this connection has never had a
+    // watermark.
     expect(result.connection.backfillBefore).toBe(resumeCursor);
-    // The watermark invariant is preserved exactly as before the fix: a
-    // page-capped walk must never advance it.
+    // The watermark invariant is preserved exactly as before the fix: a page-capped
+    // walk must never advance it.
     expect(result.connection.watermarkAt).toBeNull();
 
-    // Read back through the service's own state surface too, so the
-    // assertion is not just on the in-memory return value.
+    // Read back through the service's own state surface too, so the assertion is not
+    // just on the in-memory return value.
     const state = await service.getState(ws.project.id);
     expect(state.status).not.toBe("not_connected");
     if (state.status === "not_connected") throw new Error("unreachable");
@@ -537,18 +533,16 @@ describe("createConnectionsService — attach", () => {
     if (!result.ok) throw new Error("unreachable");
     expect(result.firstPullEventsSeen).toBe(2);
 
-    // The glue moment is only real if the pull was PERSISTED, not just
-    // returned — so it is read back through the counter service, the same
-    // surface onboarding step 2 will read.
+    // The glue moment is only real if the pull was persisted, not just returned, so it
+    // is read back through the counter service, the same surface onboarding step 2 will
+    // read.
     const counter = await createEventsCounterService(db, ws.ctx).read(ws.project.id);
     expect(counter.totalReceived).toBe(2);
   });
 });
 
-// ---------------------------------------------------------------------------
-// The seven states O-008 renders (Design Input). Every one must be expressible
-// through the service, and no two may be the same answer.
-// ---------------------------------------------------------------------------
+// The seven states renders (Design Input). Every one must be expressible through the
+// service, and no two may be the same answer.
 
 const ALL_STATUSES: readonly ConnectionStateStatus[] = [
   "not_connected",
@@ -722,9 +716,9 @@ describe("createConnectionsService — disconnect", () => {
 
     await service.connect(connectInput(ws.project.id));
 
-    // The injected factory received the config — proof the service never
-    // constructs a vendor client of its own, which is what keeps
-    // packages/db independent of packages/adapters.
+    // The injected factory received the config. Proof the service never constructs a
+    // vendor client of its own, which is what keeps packages/db independent of
+    // packages/adapters.
     expect(harness.configs).toHaveLength(1);
     expect(harness.configs[0]?.host).toBe(FAKE_HOST);
     expect(harness.validateCalls.count).toBe(1);

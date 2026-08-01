@@ -9,20 +9,19 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { signUp } from "@/lib/auth-client";
 import { ROUTES } from "@/lib/routes";
 
-// Copy is normative (UX spec §3, First-Run Checklist rows 3-5) — shipped
-// verbatim. Never surface a raw Zod message or a Better Auth error code.
+// Copy is normative (UX spec, First-Run Checklist rows 3-5). Shipped verbatim. Never
+// surface a raw Zod message or a Better Auth error code.
 const PENDING_LABEL = "Creating your workspace…";
 const SHORT_PASSWORD_MESSAGE = "Passwords need at least 8 characters.";
 const NETWORK_FAILURE_MESSAGE = "Couldn't reach the server — check your connection and try again.";
 
 /**
- * Better Auth surfaces the machine-readable failure reason on
- * `error.body.code` (confirmed against the server-side `APIError` shape
- * pinned by `apps/web/__tests__/tenancy/signup-org.test.ts`). Read
- * defensively via `unknown` — the client fetch wrapper's error type is a
- * loose `Record<string, any>` union, and a top-level `.code` is also
- * accepted in case the client normalizes the shape differently than the
- * server-side throw.
+ * Better Auth surfaces the machine-readable failure reason on `error.body.code`
+ * (confirmed against the server-side `APIError` shape pinned by
+ * `apps/web/__tests__/tenancy/signup-org.test.ts`). Read defensively via `unknown`. The
+ * client fetch wrapper's error type is a loose `Record<string, any>` union, and a
+ * top-level `.code` is also accepted in case the client normalizes the shape
+ * differently than the server-side throw.
  */
 function readErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") {
@@ -55,8 +54,8 @@ export function SignUpForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isPending) {
-      // Belt: the button + fields are also disabled while pending, so this
-      // guards only a synthetic/programmatic re-submit (D6 note, UX §2).
+      // Belt: the button + fields are also disabled while pending, so this guards only
+      // a synthetic/programmatic re-submit (note, UX).
       return;
     }
 
@@ -99,9 +98,9 @@ export function SignUpForm() {
       } else if (code === "PASSWORD_TOO_SHORT") {
         setPasswordError(SHORT_PASSWORD_MESSAGE);
       } else {
-        // Unknown/malformed failure and genuine network failure land on the
-        // same plain-English message — neither a raw message nor a code
-        // ever reaches the screen.
+        // Unknown/malformed failure and genuine network failure land on the same
+        // plain-English message. Neither a raw message nor a code ever reaches the
+        // screen.
         setFormError(NETWORK_FAILURE_MESSAGE);
       }
     } catch {

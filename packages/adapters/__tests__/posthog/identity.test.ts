@@ -1,12 +1,12 @@
-// ADD §9 items 55–59 — identity resolution (D-5, Addendum A ROW 6).
+// items 55–59, identity resolution (Addendum a row 6).
 //
-// `person` is `null` on EVERY event (165/165): the events list returns the key
-// but never joins the person object, so email is unreachable from the item
-// being filtered. Resolution therefore runs at the SESSION level, harvesting
-// `properties.$set.email` for free before spending a budgeted `/persons` call.
+// `person` is `null` on every event: the events list returns the key but
+// never joins the person object, so email is unreachable from the item being filtered.
+// Resolution therefore runs at the session level, harvesting `properties.$set.email`
+// for free before spending a budgeted `/persons` call.
 //
-// FAIL DIRECTION (F-8): "we could not find out" is `unresolved` and is COUNTED
-// SEPARATELY — never laundered into "we checked and this is a real user".
+// Fail direction: "we could not find out" is `unresolved` and is counted
+// separately, never laundered into "we checked and this is a real user".
 import { describe, expect, test } from "bun:test";
 
 import { createIdentityResolver, harvestEmailFromEvents } from "../../src/posthog/identity";
@@ -21,7 +21,7 @@ import {
 const AD_EMAIL = "someone@ad-acme.invalid";
 const AD_DOMAIN = "ad-acme.invalid";
 
-/** An identify-shaped item: the only kind that carries an email (ROW 6). */
+/** An identify-shaped item: the only kind that carries an email (row 6). */
 function adIdentifyItem(id: string, email: string, distinctId = "ad-distinct-1") {
   return adEventItem({
     id,
@@ -32,11 +32,11 @@ function adIdentifyItem(id: string, email: string, distinctId = "ad-distinct-1")
 }
 
 describe("harvestEmailFromEvents", () => {
-  // Item 55 — D-5, step 1: harvest is free and comes first.
+  // Item 55 —, step 1: harvest is free and comes first.
   test("takes the first non-empty $set.email across the session's events", () => {
     const page = parseEventsPage(
       adEventsPage([
-        // An ordinary event carries no email at all — the majority shape.
+        // An ordinary event carries no email at all. The majority shape.
         adEventItem({ id: "ad-evt-1", event: "$pageview" }),
         adIdentifyItem("ad-evt-2", AD_EMAIL),
         adIdentifyItem("ad-evt-3", "second@ad-other.invalid"),
@@ -45,16 +45,16 @@ describe("harvestEmailFromEvents", () => {
 
     expect(harvestEmailFromEvents(page.events)).toBe(AD_EMAIL);
 
-    // A session with no identify-shaped event harvests nothing — the common
-    // case, not the edge case.
+    // A session with no identify-shaped event harvests nothing. The common case, not
+    // the edge case.
     const noEmail = parseEventsPage(adEventsPage([adEventItem({ id: "ad-evt-4" })]));
     expect(harvestEmailFromEvents(noEmail.events)).toBeNull();
     expect(harvestEmailFromEvents([])).toBeNull();
   });
 
-  // Item 56 — D5 shape-assumption guard. `$user_id` is a CUSTOMER-CHOSEN
-  // arbitrary id; reading it as an email is exactly the assumption this test
-  // exists to forbid, even when it happens to look like one.
+  // Item 56, shape-assumption guard. `$user_id` is a customer-chosen arbitrary id;
+  // reading it as an email is exactly the assumption this test exists to forbid, even
+  // when it happens to look like one.
   test("$user_id is never treated as an email", () => {
     const page = parseEventsPage(
       adEventsPage([
@@ -77,7 +77,7 @@ describe("harvestEmailFromEvents", () => {
 });
 
 describe("createIdentityResolver", () => {
-  // Item 55 — the ordering half: harvest short-circuits the lookup entirely.
+  // Item 55, the ordering half: harvest short-circuits the lookup entirely.
   test("spends no /persons lookup when an email was already harvested", async () => {
     const fake = createFakePersonsClient(() => ({
       ok: true,
@@ -102,8 +102,8 @@ describe("createIdentityResolver", () => {
     expect(resolver.lookupsUsed()).toBe(1);
   });
 
-  // Item 57 — the N+1 bound. The cache is per poll run, per connection, so it
-  // cannot go stale and cannot leak across organizations by construction.
+  // Item 57, the N+1 bound. The cache is per poll run, per connection, so it cannot go
+  // stale and cannot leak across organizations by construction.
   test("the identity cache issues exactly one /persons call for two sessions sharing a distinct_id", async () => {
     const fake = createFakePersonsClient(() => ({ ok: true, value: adPersonsBody(AD_EMAIL) }));
     const resolver = createIdentityResolver(fake.client, { budget: 50 });
@@ -117,8 +117,8 @@ describe("createIdentityResolver", () => {
     expect(second.emailDomain).toBe(first.emailDomain);
   });
 
-  // Item 58 — F-8. Deterministic first-seen order is what makes budget
-  // exhaustion reproducible in a test rather than random in production.
+  // Item 58, F-8. Deterministic first-seen order is what makes budget exhaustion
+  // reproducible in a test rather than random in production.
   test('budget exhaustion resolves remaining identities as "unresolved" in deterministic first-seen order', async () => {
     const fake = createFakePersonsClient((distinctId) => ({
       ok: true,
@@ -133,16 +133,16 @@ describe("createIdentityResolver", () => {
     expect(first.resolution).toBe("resolved");
     expect(second.resolution).toBe("resolved");
 
-    // The third is KEPT by the caller (fail-open) but visibly unchecked —
-    // "we did not find out", never "we checked and found nothing".
+    // The third is kept by the caller (fail-open) but visibly unchecked. "we did not
+    // find out", never "we checked and found nothing".
     expect(third.resolution).toBe("unresolved");
     expect(third.emailDomain).toBeNull();
 
     expect(fake.personCalls).toEqual(["ad-budget-1", "ad-budget-2"]);
     expect(resolver.lookupsUsed()).toBe(2);
 
-    // A completed lookup proving there is NO email is a different fact:
-    // `absent`, not `unresolved`.
+    // A completed lookup proving there is NO email is a different fact: `absent`, not
+    // `unresolved`.
     const noEmailFake = createFakePersonsClient(() => ({ ok: true, value: adPersonsBody(null) }));
     const noEmailResolver = createIdentityResolver(noEmailFake.client, { budget: 50 });
     const absent = await noEmailResolver.resolve({
@@ -170,7 +170,7 @@ describe("createIdentityResolver", () => {
     expect(noId.resolution).toBe("unresolved");
   });
 
-  // Item 59 — product-decisions §5: only the DOMAIN crosses the boundary.
+  // Item 59, product-decisions: only the domain crosses the boundary.
   test("only the email DOMAIN crosses the port boundary — no result carries an address", async () => {
     const fake = createFakePersonsClient(() => ({ ok: true, value: adPersonsBody(AD_EMAIL) }));
     const resolver = createIdentityResolver(fake.client, { budget: 50 });

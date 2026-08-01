@@ -7,7 +7,7 @@ import { organization } from "./auth";
 import { projectConnections } from "./project-connections";
 import { projects } from "./projects";
 
-// Enum tuples compile-pinned to @growthmind/shared's Zod unions (D9).
+// Enum tuples compile-pinned to @growthmind/shared's Zod unions.
 const POLL_RUN_STATUSES = ["running", "completed", "failed"] as const satisfies readonly [
   PollRunStatus,
   ...PollRunStatus[],
@@ -27,17 +27,16 @@ const FAILURE_CODES = [
 ] as const satisfies readonly [SourceFailureCode, ...SourceFailureCode[]];
 
 /**
- * One row per poll pass (O-003 D-7, FR-22).
+ * One row per poll pass.
  *
- * EVERY exit path finishes its row `completed` or `failed` with a
- * plain-English reason. A missed terminal state leaves a stuck "running" a
- * customer would see forever — the D8 failure this table exists to make
- * impossible to ship quietly.
+ * Every exit path finishes its row `completed` or `failed` with a plain-English reason.
+ * A missed terminal state leaves a stuck "running" a customer would see forever. The
+ * failure this table exists to make impossible to ship quietly.
  *
- * `outcome` separates `with_events` from `no_new_events` because an empty
- * page is never authoritative: a malformed time value returns HTTP 200 with
- * an empty result set, so a permanently-zero connection must be VISIBLE
- * rather than indistinguishable from a healthy quiet one (D-6g).
+ * `outcome` separates `with_events` from `no_new_events` because an empty page is never
+ * authoritative: a malformed time value returns HTTP 200 with an empty result set, so a
+ * permanently-zero connection must be visible rather than indistinguishable from a
+ * healthy quiet one.
  */
 export const sessionSourcePollRuns = pgTable(
   "session_source_poll_runs",
@@ -59,19 +58,19 @@ export const sessionSourcePollRuns = pgTable(
     status: text("status", { enum: POLL_RUN_STATUSES }).notNull(),
     outcome: text("outcome", { enum: POLL_RUN_OUTCOMES }),
     failureCode: text("failure_code", { enum: FAILURE_CODES }),
-    /** Plain English. Never the vendor's own `detail` text, and never any
-     * key material — the scrubber runs before anything lands here. */
+    /** Plain English. Never the vendor's own `detail` text, and never any key material.
+     * The scrubber runs before anything lands here. */
     failureMessage: text("failure_message"),
     eventsReceived: integer("events_received").default(0).notNull(),
     eventsPersisted: integer("events_persisted").default(0).notNull(),
-    /** Items the boundary parser skipped. Counted here and surfaced in the
-     * counter's `droppedUnreadable` — skipped, never silently discarded. */
+    /** Items the boundary parser skipped. Counted here and surfaced in the counter's
+     * `droppedUnreadable`. Skipped, never silently discarded. */
     eventsDroppedMalformed: integer("events_dropped_malformed").default(0).notNull(),
     sessionsTouched: integer("sessions_touched").default(0).notNull(),
     pagesFetched: integer("pages_fetched").default(0).notNull(),
     identityLookupsUsed: integer("identity_lookups_used").default(0).notNull(),
-    /** Non-null only when the walk was provably contiguous. A page-cap stop
-     * leaves this null and the connection's watermark untouched. */
+    /** Non-null only when the walk was provably contiguous. A page-cap stop leaves this
+     * null and the connection's watermark untouched. */
     watermarkAdvancedTo: timestamp("watermark_advanced_to", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

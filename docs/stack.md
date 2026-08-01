@@ -1,4 +1,4 @@
-# Growthmind — Stack Implementation Plan
+# Growthmind, Stack Implementation Plan
 
 > What we are building Growthmind on, why each piece is locked, and the order we
 > land it in. This is a plan, not a survey: every row below has an owner-facing
@@ -12,7 +12,7 @@ Growthmind's only growth channel is people running it. So every dependency is
 judged on one question:
 
 > **Can a stranger clone the repo, run `docker compose up`, and have the whole
-> thing working — no signup, no API key, no free tier?**
+> thing working, no signup, no API key, no free tier?**
 
 A dependency that fails that is friction on the growth channel, no matter how
 good it is. This is the same commitment as the self-host rule in
@@ -49,7 +49,7 @@ of the list.
 
 ## Implementation plan
 
-### Phase 0 — The quickstart is the first thing we build
+### Phase 0, The quickstart is the first thing we build
 
 Not the last. `docker compose up` + `bun dev` is the entire README quickstart, and
 CI runs it on every push so it can never silently break.
@@ -66,9 +66,9 @@ CI runs it on every push so it can never silently break.
 **Done when:** a clean clone with no prior setup reaches a running app in one
 command, and CI proves it on every commit.
 
-### Phase 1 — Postgres + Drizzle in `packages/db`
+### Phase 1, Postgres + Drizzle in `packages/db`
 
-Analytics _is_ the product — events, funnels, cohorts, retention curves,
+Analytics _is_ the product. Events, funnels, cohorts, retention curves,
 time-series rollups. That's window functions, `generate_series`, and lateral
 joins. SQL was built for it; we're not fighting our own core loop with a document
 store. Secondary wins: Postgres + Drizzle is the assumed stack in the contributor
@@ -79,7 +79,7 @@ run a container.
 - Drizzle schema + migrations, one migration per PR, checked in.
 - pgvector enabled in the compose image from day one so no later migration has to
   introduce an extension.
-- Repositories inject the org filter — see the tenant-boundary rules the
+- Repositories inject the org filter. See the tenant-boundary rules the
   contributor guide points at. No id-only mutation paths.
 
 **ORM choice:** Drizzle. SQL-native, small, first-class Better Auth adapter.
@@ -89,14 +89,14 @@ it.
 **Done when:** `bun run db:migrate` builds the schema from empty in compose, and
 `packages/db` has unit tests for every scoped-read helper.
 
-### Phase 2 — Better Auth with organizations
+### Phase 2, Better Auth with organizations
 
 Auth must be self-hostable, which rules out every hosted auth vendor: a
 self-hoster can't run the repo without creating an account, and no contribution
 touching auth could be reviewed without the reviewer having one either. Better
 Auth keeps sessions in our Postgres and its config is code. It absorbed Auth.js in
 early 2026, so it's the default for new TypeScript projects rather than a bet.
-Multi-tenancy — the thing hosted vendors are usually bought for — is a
+Multi-tenancy, the thing hosted vendors are usually bought for, is a
 first-class plugin.
 
 - Better Auth on the Drizzle adapter (the well-trodden path, which is part of why
@@ -109,9 +109,9 @@ first-class plugin.
 **Done when:** two users in one org and a user in a second org exist as test
 fixtures, and cross-org reads are proven impossible by test.
 
-### Phase 3 — Graphile Worker in `worker/`
+### Phase 3, Graphile Worker in `worker/`
 
-Postgres-backed, so the job queue adds no new infrastructure — one more container
+Postgres-backed, so the job queue adds no new infrastructure. One more container
 in compose, and self-hosters are already running compose.
 
 Why Graphile Worker specifically:
@@ -139,7 +139,7 @@ long-running process, so it can't live on Vercel serverless alone.
   operate.
 
 **Portability convention (implement this from the first job):** no queue
-abstraction layer — that's over-engineering. Every handler is a plain exported
+abstraction layer, that's over-engineering. Every handler is a plain exported
 async function taking a typed payload; queue registration is a thin separate
 file, and task names are exported constants, never raw strings.
 
@@ -158,21 +158,21 @@ rewritten and every handler plus its tests comes along untouched.
 registry is asserted complete by a test, and a cron job proves backfill on
 worker restart.
 
-### Phase 4 — Mantine v9 in `apps/web`
+### Phase 4, Mantine v9 in `apps/web`
 
 Mantine is MIT and installs as a package, so there's no open-source objection to
-answer — the only argument against it was ever ergonomic: models have seen more
+answer, the only argument against it was ever ergonomic: models have seen more
 shadcn, so unguided generation is more fluent there. That gap is about _unguided_
 generation, which isn't how this repo is worked on. Three mitigations close it,
 and all three are implementation work we do rather than assumptions we make:
 
-1. **`AGENTS.md` pins the stack** — "Mantine v9, semantic tokens only, no raw
+1. **`AGENTS.md` pins the stack**. "Mantine v9, semantic tokens only, no raw
    CSS". The failure mode is an agent silently reaching for Tailwind classes; an
    ESLint ban on `className` string literals kills that deterministically rather
    than by review discipline.
-2. **Point agents at Mantine's `llms.txt`** — the docs ship an LLM-facing
+2. **Point agents at Mantine's `llms.txt`**. The docs ship an LLM-facing
    surface, which beats generic recall.
-3. **Build a `components/` primitives layer of our own** — the
+3. **Build a `components/` primitives layer of our own**, the
    highest-leverage one. Once ~15 composed primitives exist, agents copy _our_
    patterns instead of recalling a library API, and library familiarity stops
    mattering.
@@ -185,10 +185,10 @@ not more.
 **Done when:** the ESLint rule is in place and failing on violations, and the
 primitives layer exists before the second page is built.
 
-### Phase 5 — Own the event pipeline in Postgres
+### Phase 5, Own the event pipeline in Postgres
 
 `packages/sdk-js` captures, masks, and excludes; the pipeline stores and rolls up
-in Postgres. We do **not** self-host PostHog for the analytics layer — it drags in
+in Postgres. We do **not** self-host PostHog for the analytics layer. It drags in
 ClickHouse, Kafka, and Redis, which is a heavy `docker compose` for a v1 and
 breaks the Phase 0 promise. Own the pipeline in Postgres first; split the event
 store out to ClickHouse when volume actually forces it, behind the same
@@ -220,6 +220,37 @@ we need adoption, and adoption is the strategy.
 **Every new dependency answers the compose question in its PR body.** One line:
 does a stranger still get a working app in one command?
 
+**Lint is type-aware, and the rules it does not enforce are written down.**
+`bun run lint` runs oxlint with `options.typeAware` on, which needs
+`oxlint-tsgolint` (installed as a dev dependency) and resolves types through
+TypeScript 7. It costs about 4 seconds against 0.4 for the syntax-only pass —
+worth it for one rule alone, `no-floating-promises`, which catches the
+un-awaited promise that is the most common defect in machine-written code here.
+`__tests__/toolchain.test.ts` asserts the flag, the dependency, and the binary
+all still exist, because losing any one of them downgrades the gate silently
+rather than failing it.
+
+Ten type-aware rules are switched **off** in `.oxlintrc.json` rather than
+enforced, and this is the record of why. They are all real, and none of them
+is disabled because it was wrong:
+
+| Rule(s)                                                                                                                                                                                                         | Findings today | Why deferred                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-unsafe-type-assertion`, `no-unnecessary-type-assertion`, `no-unnecessary-type-conversion`, `no-unnecessary-boolean-literal-compare`, `no-unnecessary-template-expression`, `no-unnecessary-type-parameters` | 165            | Almost entirely test fixtures asserting a narrow type onto a builder's return. A codebase-wide cleanup, not something to smuggle into an unrelated PR.                                                                                             |
+| `await-thenable`                                                                                                                                                                                                | 15             | Every site is a test awaiting a synchronous fake. The fix is the fixture's type, and removing an `await` where the real collaborator IS async would hide an ordering bug — so each one needs reading, not a sweep.                                 |
+| `consistent-return`                                                                                                                                                                                             | 10             | Exhaustive switches that fall through to an implicit `undefined`, four of them in `packages/core/src/evidence/predicates.ts`. Making the impossible branch throw is a behaviour change on core logic and belongs in its own PR with its own tests. |
+| `no-misused-spread`                                                                                                                                                                                             | 3              | The source scanners spread a string into code points and then index it against `.length` in UTF-16 units. The rule is right; fixing it means rewriting the scanners.                                                                               |
+| `no-redundant-type-constituents`                                                                                                                                                                                | 1              | One union in a sign-up form.                                                                                                                                                                                                                       |
+
+To see the current backlog for any of them:
+
+```bash
+bunx oxlint --type-aware -D typescript/consistent-return -D typescript/await-thenable
+```
+
+A rule leaves that table by having its findings fixed and its entry in
+`.oxlintrc.json` deleted, not by the table growing a new excuse.
+
 ---
 
 ## Considered and rejected
@@ -249,5 +280,5 @@ Clerk vs NextAuth, MongoDB's licence position and the FerretDB clash, the
 2024–2026 licence-change wave, Inngest and Trigger.dev alternatives and
 self-hosting requirements, the pg-boss vs Graphile Worker comparison, and Mantine
 vs shadcn/ui. Verified against each project's own docs and `LICENSE` file as of
-July 2026 — re-verify before citing any of it in a decision, since licences are
+July 2026, re-verify before citing any of it in a decision, since licences are
 exactly the thing that changes.

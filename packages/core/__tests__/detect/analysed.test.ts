@@ -1,34 +1,34 @@
-// `analysedSessions` — the ONE definition of "what this run actually analysed"
-// (O-004 FR-7, D-3, PL rulings 7, 16 and 24).
+// `analysedSessions`, the one definition of "what this run actually analysed" (PL
+// rulings 7, 16 and 24).
 //
-// WHY THIS FILE EXISTS. This module is the single implementation of FR-7 AND of
-// ruling 24, and it exists precisely BECAUSE the two detectors diverged on the
-// coverage denominator — `error_event` counted over kept sessions,
-// `funnel_dropoff` over every session it was handed, and two detectors
-// reporting coverage on different populations makes the number uncomparable
-// across a run (a D5 defect that reads as a product problem, not a bug).
+// Why this file exists. This module is the single implementation of and of ruling 24,
+// and it exists precisely because the two detectors diverged on the coverage
+// denominator, `error_event` counted over kept sessions, `funnel_dropoff` over every
+// session it was handed, and two detectors reporting coverage on different populations
+// makes the number uncomparable across a run (a defect that reads as a product problem,
+// not a bug).
 //
-// Until now it was tested only THROUGH the two detectors, and it was not
-// exported from the barrel — so it was structurally invisible to the FR-22
-// coverage gate, which is the same shape of gap as the divergence itself. Every
-// branch is asserted here directly, against the function's own contract.
+// Until now it was tested only through the two detectors, and it was not exported from
+// the barrel, so it was structurally invisible to the coverage gate, which is the same
+// shape of gap as the divergence itself. Every branch is asserted here directly,
+// against the function's own contract.
 //
-// THE THREE RULES, and the direction each fails in:
-//   - FR-7 (ruling 7): the analysed set is `exclusionReason === "none"`. A
-//     set-aside session reaches no numerator and inflates no denominator. It
-//     fails toward reporting LESS than was read, never more.
-//   - Ruling 16: `coverage.truncated` PROPAGATES. It is a fact about the READ
-//     and cannot be recomputed from the sessions — a recomputed `false` would
-//     be O-003's CR-1, a silent truncation reading as "no more events".
-//   - Ruling 24: `coverage.eventsWithoutUrlPath` is RECOMPUTED over the KEPT
-//     sessions only. The corpus's own value is NOT trusted, so the number is
-//     provably about what this run analysed.
+// The three rules, and the direction each fails in:
+// (ruling 7): the analysed set is `exclusionReason === "none"`. A
+//  set-aside session reaches no numerator and inflates no denominator. It
+//  fails toward reporting less than was read, never more.
+// Ruling 16: `coverage.truncated` propagates. It is a fact about the read
+//  and cannot be recomputed from the sessions — a recomputed `false` would
+//  be the, a silent truncation reading as "no more events".
+// Ruling 24: `coverage.eventsWithoutUrlPath` is recomputed over the kept
+//  sessions only. The corpus's own value is not trusted, so the number is
+//  provably about what this run analysed.
 //
-// CLOCK (ADD §6.5, PL ruling 3): every instant below is a fixture constant
-// passed explicitly into a helper. Nothing here reads `Date.now()`.
+// Clock: every instant below is a fixture constant passed explicitly into a helper.
+// Nothing here reads `Date.now`.
 //
-// LANE PREFIX: every id, session key, event name and path in this file is
-// prefixed `t1anl` — a NEW prefix, shared with no other suite (ADD §6.5).
+// Lane prefix: every id, session key, event name and path in this file is prefixed
+// `t1anl`. A new prefix, shared with no other suite.
 import type { ConnectionState, ExclusionReason } from "@growthmind/shared";
 import { exclusionReasonSchema } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -43,9 +43,7 @@ import type {
   TimelineEvent,
 } from "../../src/detect/types";
 
-// ---------------------------------------------------------------------------
-// Fixture time — required parameters, never a clock read
-// ---------------------------------------------------------------------------
+// Fixture time, required parameters, never a clock read
 
 const FIXTURE_WINDOW: AnalysisWindow = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -55,14 +53,12 @@ const FIXTURE_WINDOW: AnalysisWindow = {
 /** The instant every fixture event occurs at, well inside the window. */
 const T1ANL_EVENT_AT = new Date("2026-06-04T12:00:00.000Z");
 
-/** `base` shifted FORWARD by `offsetMs`. Both are parameters. */
+/** `base` shifted forward by `offsetMs`. Both are parameters. */
 function after(base: Date, offsetMs: number): Date {
   return new Date(base.getTime() + offsetMs);
 }
 
-// ---------------------------------------------------------------------------
-// Fixture vocabulary — all `t1anl`-prefixed, colliding with no other suite
-// ---------------------------------------------------------------------------
+// Fixture vocabulary, all `t1anl`-prefixed, colliding with no other suite
 
 const T1ANL_SURFACE = "/t1anl/dashboard";
 const T1ANL_EVENT_NAME = "t1anl_widget_clicked";
@@ -92,9 +88,9 @@ const T1ANL_CONNECTION_STATE: ConnectionState = {
 };
 
 /**
- * One session. `urlPaths` is the whole point of the builder: each entry becomes
- * one event, and a `null` entry is an event with no path — the thing ruling 24
- * counts. `baseAt` is a REQUIRED parameter (ADD §6.5).
+ * One session. `urlPaths` is the whole point of the builder: each entry becomes one
+ * event, and a `null` entry is an event with no path. The thing ruling 24 counts.
+ * `baseAt` is a required parameter.
  */
 function t1anlSession(input: {
   readonly key: string;
@@ -120,10 +116,10 @@ function t1anlSession(input: {
 }
 
 /**
- * `basis` is built from the sessions so the identity
- * `kept + Σ setAside === totalInWindow` holds, and `coverage` is a REQUIRED
- * parameter rather than a default — every test states what the corpus CLAIMS,
- * because whether that claim is trusted is exactly what is under test.
+ * `basis` is built from the sessions so the identity `kept + Σ setAside ===
+ * totalInWindow` holds, and `coverage` is a required parameter rather than a default.
+ * Every test states what the corpus claims, because whether that claim is trusted is
+ * exactly what is under test.
  */
 function t1anlCorpus(
   sessions: readonly SessionTimeline[],
@@ -153,18 +149,16 @@ function t1anlCorpus(
 /** The corpus coverage claim used wherever it is not itself under test. */
 const HONEST_CLAIM: DetectorCoverage = { truncated: false, eventsWithoutUrlPath: 0 };
 
-/** Every exclusion reason that is NOT `"none"`, enumerated from the schema
- * rather than hand-listed — a sixth reason is in scope the moment it is added,
- * which is how FR-7 stays total. */
+/** Every exclusion reason that is not `"none"`, enumerated from the schema rather than
+ * hand-listed. A sixth reason is in scope the moment it is added, which is how stays
+ * total. */
 const SET_ASIDE_REASONS: readonly ExclusionReason[] = exclusionReasonSchema.options.filter(
   (reason) => reason !== "none",
 );
 
-// ---------------------------------------------------------------------------
-
-describe("analysedSessions — FR-7, the analysed set", () => {
-  // Non-vacuity for the sweep below: the enumeration must not be empty, or
-  // every "no set-aside session survives" claim in this file is about nothing.
+describe("analysedSessions —, the analysed set", () => {
+  // Non-vacuity for the sweep below: the enumeration must not be empty, or every "no
+  // set-aside session survives" claim in this file is about nothing.
   test("should enumerate at least one set-aside reason to filter", () => {
     expect(SET_ASIDE_REASONS.length).toBeGreaterThan(0);
     expect(SET_ASIDE_REASONS).not.toContain("none");
@@ -196,15 +190,15 @@ describe("analysedSessions — FR-7, the analysed set", () => {
 
     const { kept } = analysedSessions(t1anlCorpus(sessions, HONEST_CLAIM));
 
-    // NON-VACUITY: the corpus really did carry every set-aside reason, so an
-    // empty `kept` would not be an acceptable way to pass this.
+    // Non-vacuity: the corpus really did carry every set-aside reason, so an empty
+    // `kept` would not be an acceptable way to pass this.
     expect(sessions.length).toBe(SET_ASIDE_REASONS.length + 2);
     expect(kept.map((session) => session.sessionId)).toEqual([
       "t1anl-session-kept-1",
       "t1anl-session-kept-2",
     ]);
-    // Order is preserved, and the objects are the corpus's own — nothing is
-    // rebuilt, so nothing can be quietly reshaped on the way through.
+    // Order is preserved, and the objects are the corpus's own. Nothing is rebuilt, so
+    // nothing can be quietly reshaped on the way through.
     expect(kept[0]).toBe(sessions[0]);
     expect(kept.every((session) => session.exclusionReason === "none")).toBe(true);
   });
@@ -214,8 +208,8 @@ describe("analysedSessions — FR-7, the analysed set", () => {
       t1anlSession({
         key: `all-aside-${reason}`,
         exclusionReason: reason,
-        // Null paths, so the coverage assertion below is not vacuously zero:
-        // these events WOULD be counted if the filter leaked.
+        // Null paths, so the coverage assertion below is not vacuously zero: these
+        // events would be counted if the filter leaked.
         urlPaths: [null, null],
         baseAt: T1ANL_EVENT_AT,
       }),
@@ -225,8 +219,8 @@ describe("analysedSessions — FR-7, the analysed set", () => {
 
     expect(sessions.length).toBeGreaterThan(0);
     expect(result.kept).toEqual([]);
-    // A corpus with nothing analysable reports coverage OF NOTHING — never the
-    // set-aside sessions' events wearing the analysed population's name.
+    // A corpus with nothing analysable reports coverage of nothing, never the set-aside
+    // sessions' events wearing the analysed population's name.
     expect(result.coverage.eventsWithoutUrlPath).toBe(0);
   });
 
@@ -249,8 +243,8 @@ describe("analysedSessions — FR-7, the analysed set", () => {
 
     const result = analysedSessions(t1anlCorpus(sessions, HONEST_CLAIM));
 
-    // ES-1's shape one level down: a session with nothing in it was still
-    // analysed, and dropping it would understate the population.
+    // 's shape one level down: a session with nothing in it was still analysed, and
+    // dropping it would understate the population.
     expect(result.kept.map((session) => session.sessionId)).toEqual(["t1anl-session-eventless"]);
     expect(result.coverage.eventsWithoutUrlPath).toBe(0);
   });
@@ -274,8 +268,8 @@ describe("analysedSessions — coverage.eventsWithoutUrlPath (PL ruling 24)", ()
       t1anlSession({
         key: "aside-blind",
         exclusionReason: "internal_domain",
-        // FOUR path-less events that must NOT be counted. Without them the
-        // assertion below would hold for a function that ignored the filter.
+        // Four path-less events that must not be counted. Without them the assertion
+        // below would hold for a function that ignored the filter.
         urlPaths: [null, null, null, null],
         baseAt: T1ANL_EVENT_AT,
       }),
@@ -283,9 +277,9 @@ describe("analysedSessions — coverage.eventsWithoutUrlPath (PL ruling 24)", ()
 
     const result = analysedSessions(t1anlCorpus(sessions, HONEST_CLAIM));
 
-    // NON-VACUITY, both ways: the set-aside session really does carry more
-    // path-less events than the kept ones do, so counting over everything
-    // handed in would give 7 rather than 3.
+    // Non-vacuity, both ways: the set-aside session really does carry more path-less
+    // events than the kept ones do, so counting over everything handed in would give 7
+    // rather than 3.
     const allPathless = sessions
       .flatMap((session) => session.events)
       .filter((event) => event.urlPath === null).length;
@@ -296,10 +290,10 @@ describe("analysedSessions — coverage.eventsWithoutUrlPath (PL ruling 24)", ()
   });
 
   test("should not trust the corpus's own eventsWithoutUrlPath and recompute it instead", () => {
-    // THE ruling-24 assertion. The corpus CLAIMS a number the sessions do not
-    // support; a propagating implementation reports the claim, a recomputing
-    // one reports the truth. This is what makes the value provably about what
-    // was actually analysed rather than about what someone upstream believed.
+    // The ruling-24 assertion. The corpus claims a number the sessions do not support;
+    // a propagating implementation reports the claim, a recomputing one reports the
+    // truth. This is what makes the value provably about what was actually analysed
+    // rather than about what someone upstream believed.
     const sessions = [
       t1anlSession({
         key: "recompute-1",
@@ -336,8 +330,8 @@ describe("analysedSessions — coverage.eventsWithoutUrlPath (PL ruling 24)", ()
 
     const result = analysedSessions(t1anlCorpus(sessions, HONEST_CLAIM));
 
-    // The boundary case at 100%: total blindness is REPORTED, not rendered as
-    // "nothing to report" (ES-4, BS-4).
+    // The boundary case at 100%: total blindness is reported, not rendered as "nothing
+    // to report".
     expect(result.coverage.eventsWithoutUrlPath).toBe(4);
     expect(result.kept.flatMap((session) => session.events).length).toBe(4);
   });
@@ -356,18 +350,17 @@ describe("analysedSessions — coverage.eventsWithoutUrlPath (PL ruling 24)", ()
       t1anlCorpus(sessions, { truncated: false, eventsWithoutUrlPath: 5 }),
     );
 
-    // The other boundary, and the control for the recompute test above: a
-    // corpus over-claiming coverage loss must not make the analysed set look
-    // blind either.
+    // The other boundary, and the control for the recompute test above: a corpus
+    // over-claiming coverage loss must not make the analysed set look blind either.
     expect(result.coverage.eventsWithoutUrlPath).toBe(0);
   });
 });
 
 describe("analysedSessions — coverage.truncated (PL ruling 16)", () => {
   test("should propagate a truncated read rather than recomputing it from the sessions", () => {
-    // Truncation is a fact about the READ. Nothing in `sessions` records it, so
-    // a recomputed value could only ever be `false` — and a silent truncation
-    // reading as "no more events" was O-003's CR-1.
+    // Truncation is a fact about the read. Nothing in `sessions` records it, so a
+    // recomputed value could only ever be `false`, and a silent truncation reading as
+    // "no more events" was the.
     const sessions = [
       t1anlSession({
         key: "truncated-1",
@@ -402,8 +395,8 @@ describe("analysedSessions — coverage.truncated (PL ruling 16)", () => {
   });
 
   test("should propagate truncated even when every session was set aside", () => {
-    // The interaction the two rules could get wrong together: an empty analysed
-    // set must not erase the fact that the read was capped.
+    // The interaction the two rules could get wrong together: an empty analysed set
+    // must not erase the fact that the read was capped.
     const sessions = [
       t1anlSession({
         key: "truncated-aside",
@@ -422,7 +415,7 @@ describe("analysedSessions — coverage.truncated (PL ruling 16)", () => {
   });
 });
 
-describe("analysedSessions — purity (FR-5)", () => {
+describe("analysedSessions — purity", () => {
   test("should not mutate the corpus it was handed", () => {
     const sessions = [
       t1anlSession({

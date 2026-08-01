@@ -7,22 +7,21 @@ import {
 } from "../../src/signatures/messages";
 import { suppressionReasonCodeSchema } from "../../src/signatures/types";
 
-// One test per row of the PRD's String Assertion Contract, with the row's own
-// test name. A row whose test does not exist is a P0 at review, so these names
-// are the contract's index — do not rename them without editing the PRD table.
+// One test per row of the prd's String Assertion Contract, with the row's own test
+// name. A row whose test does not exist is a P0 at review, so these names are the
+// contract's index. Do not rename them without editing the prd table.
 
-/** The vocabulary itself, read from the Zod enum. Never a hand-list: a
- * hand-list is exactly how a new reason code ships with no message. */
+/** The vocabulary itself, read from the Zod enum. Never a hand-list: a hand-list is
+ * exactly how a new reason code ships with no message. */
 const REASON_CODES = suppressionReasonCodeSchema.options;
 
-/** The two codes whose decision is DELIVER. Everything else suppresses. */
+/** The two codes whose decision is deliver. Everything else suppresses. */
 const DELIVER_CODES = ["not_seen_before", "seen_not_delivered"] as const;
 
 describe("SUPPRESSION_REASON_MESSAGES", () => {
   test("should provide a plain-English message for every suppression reason code", () => {
-    // The enum is the source of truth for the key set — enumerate it, so
-    // adding a code without a message fails here rather than rendering
-    // `undefined` to a customer.
+    // The enum is the source of truth for the key set. Enumerate it, so adding a code
+    // without a message fails here rather than rendering `undefined` to a customer.
     expect(REASON_CODES.length).toBeGreaterThan(0);
     for (const code of REASON_CODES) {
       expect(Object.hasOwn(SUPPRESSION_REASON_MESSAGES, code)).toBe(true);
@@ -36,8 +35,8 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
       }
     }
 
-    // Non-vacuity: the map holds no keys the enum does not name either, so
-    // this test cannot pass by the map having grown a stale extra entry.
+    // Non-vacuity: the map holds no keys the enum does not name either, so this test
+    // cannot pass by the map having grown a stale extra entry.
     expect(Object.keys(SUPPRESSION_REASON_MESSAGES).toSorted()).toEqual(
       [...REASON_CODES].toSorted(),
     );
@@ -48,11 +47,11 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
     expect(typeof message).toBe("string");
     const lower = (message as string).toLowerCase();
 
-    // MAY assert: a person on the team decided, and it will not come back.
+    // May assert: a person on the team decided, and it will not come back.
     expect(lower).toContain("not useful");
 
-    // MAY NOT assert: that the underlying problem is fixed or stopped —
-    // the ledger knows a decision was recorded, not a state of the product.
+    // May not assert: that the underlying problem is fixed or stopped. The ledger knows
+    // a decision was recorded, not a state of the product.
     for (const claim of [
       "fixed",
       "resolved",
@@ -71,11 +70,11 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
     expect(typeof message).toBe("string");
     const lower = (message as string).toLowerCase();
 
-    // MAY assert: that we reported it before. That is a fact about US.
+    // May assert: that we reported it before. That is a fact about US.
     expect(lower).toContain("already told you");
 
-    // MAY NOT assert: that it recurred. We know what we sent, not what a user
-    // hit since. This is the O-004 failure, spelled out.
+    // May not assert: that it recurred. We know what we sent, not what a user hit
+    // since. This is the failure, spelled out.
     for (const claim of [
       "again and again",
       "happened again",
@@ -91,9 +90,8 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
   });
 
   test("deliver decisions produce no customer-facing string", () => {
-    // A deliver decision is not a thing we say anything about — the finding
-    // itself is the message. `null`, explicitly, never "" and never a
-    // placeholder sentence.
+    // A deliver decision is not a thing we say anything about. The finding itself is
+    // the message. `null`, explicitly, never "" and never a placeholder sentence.
     for (const code of DELIVER_CODES) {
       expect(SUPPRESSION_REASON_MESSAGES[code]).toBeNull();
     }
@@ -110,11 +108,11 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
       expect(typeof message).toBe("string");
       const lower = (message as string).toLowerCase();
 
-      // MAY assert: we are not certain, so we held back and posted nothing.
+      // May assert: we are not certain, so we held back and posted nothing.
       expect(lower).toContain("could not");
       expect(lower).toContain("nothing was posted");
 
-      // MAY NOT assert: that the product is healthy / nothing happened.
+      // May not assert: that the product is healthy / nothing happened.
       for (const healthClaim of [
         "nothing happened",
         "nothing went wrong",
@@ -128,7 +126,7 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
         expect(lower).not.toContain(healthClaim);
       }
 
-      // MAY NOT assert: that this IS a repeat. Doubt is not a verdict.
+      // May not assert: that this IS a repeat. Doubt is not a verdict.
       for (const duplicationClaim of [
         "we already told you",
         "duplicate",
@@ -152,8 +150,8 @@ describe("SUPPRESSION_REASON_MESSAGES", () => {
       }
     }
 
-    // The banned list is the PRD's, in full — a shortened list would make the
-    // scan above pass by scanning for less.
+    // The banned list is the prd's, in full. A shortened list would make the scan above
+    // pass by scanning for less.
     const bannedWords: readonly string[] = FORBIDDEN_PRODUCT_JARGON;
     expect(bannedWords.toSorted()).toEqual([
       "candidate",

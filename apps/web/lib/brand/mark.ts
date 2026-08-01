@@ -1,10 +1,10 @@
 /**
- * The Growthmind mark — two open-stroke chevrons: a forward one in ink and a
- * smaller trailing one in the band green, nested inside it.
+ * The Growthmind mark, two open-stroke chevrons: a forward one in ink and a smaller
+ * trailing one in the band green, nested inside it.
  *
- * The geometry mirrors the marketing site's `lib/brand/mark.ts`, which is the
- * canonical source (its `bun run brand` generates the logo files). If the mark
- * ever changes there, update these coordinates to match.
+ * The geometry mirrors the marketing site's `lib/brand/mark.ts`, which is the canonical
+ * source (its `bun run brand` generates the logo files). If the mark ever changes
+ * there, update these coordinates to match.
  */
 
 export type Point = readonly [x: number, y: number];
@@ -32,7 +32,7 @@ export const markGeometry = {
   trailing: readonly Point[];
 };
 
-/** Turns a run of points into an SVG polyline `d`. */
+/** Turns a run of points into an svg polyline `d`. */
 export function pathData(points: readonly Point[]): string {
   return points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join(" ");
 }

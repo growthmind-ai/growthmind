@@ -1,64 +1,57 @@
-// THE GATES IN FRONT OF THE WIRE — WIRE-G1…G6 (O-013, lane W0-T-A).
+// The gates in front of the wire, WIRE-G1…G6.
 //
-// Four of these rows are about a request that never reaches a tool, one is
-// about a header that must never appear on the way out, and one is about a
-// refusal we deliberately do not author. Together they are the boundary between
-// "anyone can POST here" and "this is a machine surface with rules", and every
-// one of them has a fail DIRECTION that has to be chosen out loud rather than
-// inherited from whichever branch happened to be written first.
+// Four of these rows are about a request that never reaches a tool, one is about a
+// header that must never appear on the way out, and one is about a refusal we
+// deliberately do not author. Together they are the boundary between "anyone can POST
+// here" and "this is a machine surface with rules", and every one of them has a fail
+// direction that has to be chosen out loud rather than inherited from whichever branch
+// happened to be written first.
 //
-// ---------------------------------------------------------------------------
-// THE ORIGIN GATE IS A CLASSIFIER, AND CLASSIFIERS MISS (D10)
-// ---------------------------------------------------------------------------
+// The origin gate is a classifier, and classifiers miss
 //
-// `Origin` present → 403. `Origin` absent → proceed. That is the whole rule,
-// with no allow-list and no configuration, because no allow-list can be
-// configuration-free and `docker compose up` must work on any hostname (D-9).
+// `Origin` present → 403. `Origin` absent → proceed. That is the whole rule, with no
+// allow-list and no configuration, because no allow-list can be configuration-free and
+// `docker compose up` must work on any hostname.
 //
-// The miss direction is therefore load-bearing: failing CLOSED on absence would
-// refuse every real MCP client — an exclusion predicate firing on a superset of
-// its target, which is the single most common way a deterministic gate breaks a
-// product. `WIRE-G2` proves the direction behaviourally and `WIRE-G4` proves it
-// is written down in words, because a fail direction nobody wrote down is one
-// the next author reverses while tidying.
+// The miss direction is therefore load-bearing: failing closed on absence would refuse
+// every real MCP client. An exclusion predicate firing on a superset of its target,
+// which is the single most common way a deterministic gate breaks a product. `WIRE-G2`
+// proves the direction behaviourally and `WIRE-G4` proves it is written down in words,
+// because a fail direction nobody wrote down is one the next author reverses while
+// tidying.
 //
-// ---------------------------------------------------------------------------
-// WIRE-G6 IS LEG-QUALIFIED, AND THE QUALIFICATION IS THE POINT
-// ---------------------------------------------------------------------------
+// WIRE-G6 is leg-qualified, and the qualification is the point
 //
 // The transport serves two protocol eras from one handler, and the `Accept`
-// requirement — both `application/json` AND `text/event-stream` — is a LEGACY-LEG
-// behaviour. Measured: the modern leg answers 200 to `application/json` alone.
-// So a `WIRE-G6` authored against a modern-envelope request would pass for the
-// wrong reason, or fail and be "fixed" by deleting the assertion. Every request
-// in this file is fixture-minted and therefore legacy — no `_meta` claim keys,
-// no `Mcp-Method` header — which is the leg a stock client actually negotiates.
+// requirement. Both `application/json` and `text/event-stream`. Is a legacy-leg
+// behaviour. Measured: the modern leg answers 200 to `application/json` alone. So a
+// `WIRE-G6` authored against a modern-envelope request would pass for the wrong reason,
+// or fail and be "fixed" by deleting the assertion. Every request in this file is
+// fixture-minted and therefore legacy (no `_meta` claim keys, no `Mcp-Method` header)
+// which is the leg a stock client actually negotiates.
 //
-// ⚠️ A NOTE FOR ANYONE HOLDING AN EARLIER VERSION OF THIS TASK. It said
-// `WIRE-G6` "constructs its own Requests, bypassing the helper's WIRE_HEADERS".
-// It does not, and must not: the fixture grew a per-request `headers` override
-// for exactly these three rows (`WIRE-G1`'s `Origin`, `WIRE-G3`'s content type,
-// `WIRE-G6`'s narrowed `accept`), so a deviation is one visible entry at the
-// call site while everything else — the content type, the credential, the leg —
-// stays truthful. A hand-rolled `Request` would be one forgotten header away
-// from asserting against a different refusal entirely.
+// ⚠️ a NOTE for anyone holding an earlier version of this task. It said `WIRE-G6`
+// "constructs its own Requests, bypassing the helper's WIRE_HEADERS". It does not, and
+// must not: the fixture grew a per-request `headers` override for exactly these three
+// rows (`WIRE-G1`'s `Origin`, `WIRE-G3`'s content type, `WIRE-G6`'s narrowed `accept`),
+// so a deviation is one visible entry at the call site while everything else (the
+// content type, the credential, the leg) stays truthful. A hand-rolled `Request` would
+// be one forgotten header away from asserting against a different refusal entirely.
 //
-// ---------------------------------------------------------------------------
-// ALL SIX ARE GREEN, AND TWO MORE GATES HAVE LANDED SINCE
-// ---------------------------------------------------------------------------
+// All six are green, and two more gates have landed since
 //
 // These rows were authored red: as of Wave 0 `server.ts` imported neither
-// `BROWSER_ORIGIN` nor `WRONG_CONTENT_TYPE` and answered every JSON-RPC body
-// with a pre-protocol `MALFORMED_BODY` 400. Waves 7–8 built both gates and the
-// wire behind them, and every row here passes. `WIRE-G6(b)` was green from the
-// start and must stay so — it is the row saying authentication can never move
-// behind a content-negotiation check.
+// `BROWSER_ORIGIN` nor `WRONG_CONTENT_TYPE` and answered every JSON-RPC body with a
+// pre-protocol `MALFORMED_BODY` 400. Waves 7–8 built both gates and the wire behind
+// them, and every row here passes. `WIRE-G6` was green from the start and must stay
+// so. It is the row saying authentication can never move behind a content-negotiation
+// check.
 //
-// TWO GATES OF `server.ts` ARE NOT COVERED HERE, DELIBERATELY. The post-sprint
-// audit added a body size ceiling and a batch (array-body) refusal, both firing
-// after the four gates above. They are availability bounds rather than header
-// gates, they need bodies this file's rows never mint, and they live in
-// `./wire-bounds.test.ts` with the measurements that produced them.
+// Two gates of `server.ts` are not covered here, deliberately. The post-sprint audit
+// added a body size ceiling and a batch (array-body) refusal, both firing after the
+// four gates above. They are availability bounds rather than header gates, they need
+// bodies this file's rows never mint, and they live in `./wire-bounds.test.ts` with the
+// measurements that produced them.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,25 +82,22 @@ function spyDeps(): { readonly spy: RecordingReadPort; readonly deps: McpServerD
   return { spy, deps: { credentials: CREDENTIALS, reads: spy.port } };
 }
 
-/** The two content-type bands (D-6), both measured exactly. The pre-SDK band
- * carries the charset suffix `Response.json` adds; the SDK-rendered band, under
- * the pinned `responseMode: "sse"`, carries none. */
+/** The two content-type bands, both measured exactly. The pre-SDK band carries the
+ * charset suffix `Response.json` adds; the SDK-rendered band, under the pinned
+ * `responseMode: "sse"`, carries none. */
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 
-/** Both media types the legacy leg requires, in the header value a real client
- * sends. Named here because `WIRE-G6` asserts the refusal SENTENCE names them
- * individually. */
+/** Both media types the legacy leg requires, in the header value a real client sends.
+ * Named here because `WIRE-G6` asserts the refusal sentence names them individually. */
 const REQUIRED_MEDIA_TYPES = ["application/json", "text/event-stream"] as const;
 
-// ---------------------------------------------------------------------------
-// WIRE-G1 — a browser caller
-// ---------------------------------------------------------------------------
+// WIRE-G1, a browser caller
 
 describe("WIRE-G1 — a request carrying a browser origin is refused before the body is read", () => {
   /**
-   * The credential is VALID on purpose. A 403 for a request that would have
-   * been refused anyway proves nothing about the origin gate; this one would
-   * have been served.
+   * The credential is valid on purpose. A 403 for a request that would have been
+   * refused anyway proves nothing about the origin gate; this one would have been
+   * served.
    */
   test("an authenticated tools/list with an Origin header is refused 403, and the port is untouched", async () => {
     const { spy, deps } = spyDeps();
@@ -124,15 +114,12 @@ describe("WIRE-G1 — a request carrying a browser origin is refused before the 
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-G2 — no origin at all
-// ---------------------------------------------------------------------------
+// WIRE-G2, no origin at all
 
 describe("WIRE-G2 — a request with no origin header is served, so a self-hosted stack works on any hostname", () => {
   /**
-   * The declared fail-open direction, proved rather than described — and
-   * `WIRE-G1`'s non-vacuity half: a gate that refused everything would satisfy
-   * `WIRE-G1` perfectly.
+   * The declared fail-open direction, proved rather than described, and `WIRE-G1`'s
+   * non-vacuity half: a gate that refused everything would satisfy `WIRE-G1` perfectly.
    */
   test("the identical request minus Origin answers with the three tools", async () => {
     const { deps } = spyDeps();
@@ -149,9 +136,7 @@ describe("WIRE-G2 — a request with no origin header is served, so a self-hoste
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-G3 — a body that did not arrive as JSON
-// ---------------------------------------------------------------------------
+// WIRE-G3, a body that did not arrive as JSON
 
 describe("WIRE-G3 — a request that does not arrive as JSON is refused with the content type named", () => {
   test("content-type: text/plain is refused 415 with the sentence that says what to send", async () => {
@@ -171,8 +156,8 @@ describe("WIRE-G3 — a request that does not arrive as JSON is refused with the
     expect(print.body).toContain(WRONG_CONTENT_TYPE.message);
   });
 
-  // NON-VACUITY. A gate that refused every content type would pass the row
-  // above and break every real client.
+  // Non-vacuity. A gate that refused every content type would pass the row above and
+  // break every real client.
   test("the same request as JSON is still served", async () => {
     const { deps } = spyDeps();
 
@@ -184,13 +169,11 @@ describe("WIRE-G3 — a request that does not arrive as JSON is refused with the
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-G4 — the fail direction, in words
-// ---------------------------------------------------------------------------
+// WIRE-G4, the fail direction, in words
 
-/** The leading comment block of a module — everything above the first line of
- * code. A declaration buried beside the function that implements it is not a
- * header, and a reader looking for the rules reads the top. */
+/** The leading comment block of a module. Everything above the first line of code. A
+ * declaration buried beside the function that implements it is not a header, and a
+ * reader looking for the rules reads the top. */
 function moduleHeader(source: string): string {
   const header: string[] = [];
   for (const line of source.split("\n")) {
@@ -204,19 +187,18 @@ function moduleHeader(source: string): string {
 }
 
 /**
- * Does the header state which way a MISSING `Origin` sends the request?
+ * Does the header state which way a missing `Origin` sends the request?
  *
- * PROXIMITY RATHER THAN SENTENCE SPLITTING, DELIBERATELY. Prose in this
- * codebase wraps across lines and is full of full stops inside backticked file
- * names, so splitting on `.` would cut a declaration in half and fail the row
- * for a punctuation reason. Instead: find every statement of a direction, and
- * require the header to be talking about the origin gate within a paragraph's
- * distance of it.
+ * Proximity rather than sentence splitting, deliberately. Prose in this codebase wraps
+ * across lines and is full of full stops inside backticked file names, so splitting on
+ * `.` would cut a declaration in half and fail the row for a punctuation reason.
+ * Instead: find every statement of a direction, and require the header to be talking
+ * about the origin gate within a paragraph's distance of it.
  *
- * Either direction satisfies this scanner. The row's claim is that the decision
- * is DECLARED, not which decision it is — `WIRE-G1` and `WIRE-G2` are what
- * prove the behaviour, and a header claiming a direction the code does not take
- * would fail there, loudly, rather than here.
+ * Either direction satisfies this scanner. The row's claim is that the decision is
+ * declared, not which decision it is, `WIRE-G1` and `WIRE-G2` are what prove the
+ * behaviour, and a header claiming a direction the code does not take would fail there,
+ * loudly, rather than here.
  */
 function declaresAFailDirection(source: string): boolean {
   const header = moduleHeader(source);
@@ -249,9 +231,9 @@ describe("WIRE-G4 — the origin gate's fail direction is declared in words in t
     expect(declaresAFailDirection(source)).toBe(true);
   });
 
-  // NON-VACUITY, both ways. A scanner that answered `true` for anything would
-  // pass on a header that never mentions the gate, and one that answered
-  // `false` for everything would make the row above unpassable.
+  // Non-vacuity, both ways. A scanner that answered `true` for anything would pass on a
+  // header that never mentions the gate, and one that answered `false` for everything
+  // would make the row above unpassable.
   test("the scanner tells a header that declares the direction from one that only mentions the gate", () => {
     const declares = [
       "// THE HANDLER.",
@@ -271,29 +253,26 @@ describe("WIRE-G4 — the origin gate's fail direction is declared in words in t
 
     expect(declaresAFailDirection(declares)).toBe(true);
     expect(declaresAFailDirection(silent)).toBe(false);
-    // And the direction must be in the HEADER, not merely somewhere in the file.
+    // And the direction must be in the header, not merely somewhere in the file.
     expect(declaresAFailDirection(["const x = 1;", "// origin: fails open"].join("\n"))).toBe(
       false,
     );
   });
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-G5 — no session id, ever
-// ---------------------------------------------------------------------------
+// WIRE-G5, no session id, ever
 
 describe("WIRE-G5 — no response ever carries a session id header", () => {
   /**
-   * This surface is STATELESS, and the header is how a client would learn
-   * otherwise. A session id appearing on one answer would tell a client to send
-   * it back on the next, and the next request would be answered from a session
-   * this server never stored.
+   * This surface is stateless, and the header is how a client would learn otherwise. A
+   * session id appearing on one answer would tell a client to send it back on the next,
+   * and the next request would be answered from a session this server never stored.
    *
-   * ⚠️ EACH CASE ASSERTS ITS OWN STATUS BEFORE READING THE HEADER, AND THAT
-   * PRECONDITION IS NOT DECORATION. An absence assertion is vacuous unless the
-   * response really is the one it means to inspect: four refusals of the wrong
-   * kind carry no session id either, and the row would pass forever while the
-   * wire behind it answered nothing correctly.
+   * ⚠️ each case asserts its own status before reading the header, and that
+   * precondition is not decoration. An absence assertion is vacuous unless the response
+   * really is the one it means to inspect: four refusals of the wrong kind carry no
+   * session id either, and the row would pass forever while the wire behind it answered
+   * nothing correctly.
    */
   const cases: readonly {
     readonly name: string;
@@ -335,13 +314,11 @@ describe("WIRE-G5 — no response ever carries a session id header", () => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// WIRE-G6 — the Accept refusal, on the legacy leg, behind the credential
-// ---------------------------------------------------------------------------
+// WIRE-G6, the Accept refusal, on the legacy leg, behind the credential
 
 describe("WIRE-G6 — a LEGACY-leg request that will not accept both media types is refused by the transport with a sentence that says which, and never before the credential is checked", () => {
-  /** The deviation, at the call site: one header, narrowed. Everything else —
-   * the content type, the legacy leg, the JSON-RPC body — is the fixture's. */
+  /** The deviation, at the call site: one header, narrowed. Everything else, the
+   * content type, the legacy leg, the JSON-RPC body. Is the fixture's. */
   const NARROWED_ACCEPT = { accept: "application/json" } as const;
 
   test("(a) an authenticated tools/list that accepts only JSON is refused 406, naming both media types", async () => {
@@ -353,32 +330,31 @@ describe("WIRE-G6 — a LEGACY-leg request that will not accept both media types
     );
     const print = await fingerprint(response);
 
-    // The positive half first: this is the transport's content-negotiation
-    // refusal and not something else that happened to be unhelpful.
+    // The positive half first: this is the transport's content-negotiation refusal and
+    // not something else that happened to be unhelpful.
     expect(print.status).toBe(406);
     for (const mediaType of REQUIRED_MEDIA_TYPES) {
       expect(print.body).toContain(mediaType);
     }
 
-    // Only now the absences. The refusal is the SDK's, not ours (D-4, D-7) — we
-    // author no Accept gate, because ours would be the same kind of hand-rolled
-    // classifier D-12 declined for the protocol-version header — so this half
-    // is a claim about somebody else's sentence, and worth making for exactly
-    // that reason.
+    // Only now the absences. The refusal is the sdk's, not ours. We author no Accept
+    // gate, because ours would be the same kind of hand-rolled classifier declined for
+    // the protocol-version header, so this half is a claim about somebody else's
+    // sentence, and worth making for exactly that reason.
     expect(carriesStackFrame(print.body)).toBe(false);
     expect(carriesFilePath(print.body)).toBe(false);
   });
 
-  // NON-VACUITY for the two leak scanners above. A scanner that has gone blind
-  // reports "no leak" on a body that is nothing but leak.
+  // Non-vacuity for the two leak scanners above. A scanner that has gone blind reports
+  // "no leak" on a body that is nothing but leak.
   test("(a) the leak scanners do find a stack frame and a file path in a known-positive control", () => {
     const leaky =
       "TypeError: x is not a function\n    at renderMcpWire (apps/web/lib/mcp/wire.ts:97:9)";
 
     expect(carriesStackFrame(leaky)).toBe(true);
     expect(carriesFilePath(leaky)).toBe(true);
-    // And they do not fire on an ordinary refusal sentence — the fixture window
-    // carries ISO timestamps, which look like positions to a loose matcher.
+    // And they do not fire on an ordinary refusal sentence. The fixture window carries
+    // ISO timestamps, which look like positions to a loose matcher.
     expect(carriesStackFrame(BROWSER_ORIGIN.message)).toBe(false);
     expect(carriesFilePath("the window ran from 2026-06-01T00:00:00.000Z")).toBe(false);
   });
@@ -396,11 +372,11 @@ describe("WIRE-G6 — a LEGACY-leg request that will not accept both media types
     expect(narrowed.status).toBe(401);
     expect(narrowed.body).toContain(UNAUTHENTICATED.message);
 
-    // The whole claim, in one comparison: what an anonymous caller gets back
-    // does not depend on what it said it would accept. If the transport's 406
-    // ever moved in front of the credential check, this is the row that fails —
-    // and what it would be failing about is an unauthenticated oracle, because
-    // a caller able to make the answer change has learned something.
+    // The whole claim, in one comparison: what an anonymous caller gets back does not
+    // depend on what it said it would accept. If the transport's 406 ever moved in
+    // front of the credential check, this is the row that fails, and what it would be
+    // failing about is an unauthenticated oracle, because a caller able to make the
+    // answer change has learned something.
     expect(narrowed).toEqual(full);
   });
 

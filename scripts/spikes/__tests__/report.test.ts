@@ -1,10 +1,10 @@
-// Wave 1 RED tests for the pure renderers (ADD §4 file 12, D-9; PRD FR-12/FR-13,
-// P-2 plain-English bar). Asserts the PUBLIC contract of scripts/spikes/lib/report.ts:
-// renderVerdictLine, renderSummaryTable, renderDecisionDocBlock — all pure,
-// all return string. Stubs throw "not implemented" — these tests MUST fail
-// until Wave 2. Assertions are substring/pattern-based: implementers keep
-// wording freedom within the P-2 constraints (every count carries its
-// denominator; "p50"/"p90" only alongside plain-English equivalents).
+// Wave 1 red tests for the pure renderers (file 12,; prd /, P-2 plain-English bar).
+// Asserts the public contract of scripts/spikes/lib/report.ts: renderVerdictLine,
+// renderSummaryTable, renderDecisionDocBlock. All pure, all return string. Stubs throw
+// "not implemented". These tests must fail until Wave 2. Assertions are
+// substring/pattern-based: implementers keep wording freedom within the P-2 constraints
+// (every count carries its denominator; "p50"/"p90" only alongside plain-English
+// equivalents).
 
 import { describe, expect, test } from "bun:test";
 
@@ -57,10 +57,9 @@ function completedLeg(signalType: SignalType, trials: readonly TrialRecord[]): L
 }
 
 /**
- * The table/doc renderers may print latencies as raw ms ("3200") or as
- * seconds to one decimal ("3.2") — both satisfy "values match recomputed
- * stats". Fixture values are chosen non-round so the seconds form is
- * distinctive.
+ * The table/doc renderers may print latencies as raw ms or as seconds to one
+ * decimal. Both satisfy "values match recomputed stats". Fixture values are
+ * chosen non-round so the seconds form is distinctive.
  */
 function containsMsValue(text: string, ms: number): boolean {
   return text.includes(String(ms)) || text.includes((ms / 1_000).toFixed(1));
@@ -95,20 +94,19 @@ describe("renderVerdictLine", () => {
     expect(line).toContain("3.2");
     // Worst case in seconds form.
     expect(line).toContain("8.1");
-    // Denominator: the number AND the word "trials" ("across 20 trials").
+    // Denominator: the number and the word "trials" ("across 20 trials").
     expect(line).toMatch(/\b20\b/);
     expect(line).toMatch(/trials/i);
-    // Jargon gate (FR-12): "p50" may appear only alongside its plain-English
-    // equivalent.
+    // Jargon gate: "p50" may appear only alongside its plain-English equivalent.
     if (line.includes("p50")) {
       expect(line.toLowerCase()).toContain("median");
     }
   });
 
   test("should render distinct output for zero-retrieved, leg-failed, and leg-not-run", () => {
-    // Completed leg where every trial timed out: 0 of 5 retrieved. With an
-    // empty retrieved subset there are no percentiles, so the stats input is
-    // the no-data marker (D-5) — counts must come from the leg's own records.
+    // Completed leg where every trial timed out: 0 of 5 retrieved. With an empty
+    // retrieved subset there are no percentiles, so the stats input is the no-data
+    // marker. Counts must come from the leg's own records.
     const zeroRetrievedLeg = completedLeg("custom-event", [
       timedOutTrial("custom-event", 0),
       timedOutTrial("custom-event", 1),
@@ -132,7 +130,7 @@ describe("renderVerdictLine", () => {
     const failedLine = renderVerdictLine(failedLeg, NO_DATA);
     const notRunLine = renderVerdictLine(notRunLeg, NO_DATA);
 
-    // Pairwise different — the three states are never conflated (D-5).
+    // Pairwise different, the three states are never conflated.
     expect(zeroLine).not.toBe(failedLine);
     expect(zeroLine).not.toBe(notRunLine);
     expect(failedLine).not.toBe(notRunLine);
@@ -148,8 +146,8 @@ describe("renderVerdictLine", () => {
 
 describe("renderSummaryTable", () => {
   test("should render summary-table values that match recomputed stats from the same records", () => {
-    // Non-round elapsed values so both ms and seconds renderings are
-    // distinctive: 1100, 2300, 3600, 8100ms retrieved + 1 timed out.
+    // Non-round elapsed values so both ms and seconds renderings are distinctive: 1100,
+    // 2300, 3600, 8100ms retrieved + 1 timed out.
     const records: TrialRecord[] = [
       retrievedTrial("custom-event", 0, 1_100),
       retrievedTrial("custom-event", 1, 2_300),
@@ -159,9 +157,8 @@ describe("renderSummaryTable", () => {
     ];
     const leg = completedLeg("custom-event", records);
 
-    // The real consistency contract (FR-13): the table's values equal the
-    // stats helper recomputed from the same records. RED until BOTH stats.ts
-    // and report.ts land.
+    // The real consistency contract: the table's values equal the stats helper
+    // recomputed from the same records. Red until both stats.ts and report.ts land.
     const stats = computeStats([...records]);
     expect(stats.kind).toBe("stats");
     if (stats.kind !== "stats") throw new Error("expected stats over retrieved records");
@@ -171,7 +168,7 @@ describe("renderSummaryTable", () => {
     expect(containsMsValue(table, stats.p50)).toBe(true);
     expect(containsMsValue(table, stats.p90)).toBe(true);
     expect(containsMsValue(table, stats.max)).toBe(true);
-    // n counts attempted trials — timeouts included in the denominator.
+    // n counts attempted trials. Timeouts included in the denominator.
     expect(stats.n).toBe(5);
     expect(table).toMatch(/\b5\b/);
   });
@@ -202,15 +199,15 @@ describe("renderDecisionDocBlock", () => {
     expect(block).toMatch(/custom.?events?/i);
     expect(block).toMatch(/exception/i);
 
-    // Every count carries its denominator, "X of Y" style (D-9, P-2 bar):
-    // retrieved counts...
+    // Every count carries its denominator, "X of Y" style (P-2 bar): retrieved
+    // counts...
     expect(block).toMatch(/\b18\s+of\s+(?:the\s+)?20\b/);
     expect(block).toMatch(/\b10\s+of\s+(?:the\s+)?10\b/);
     // ...and the timed-out count.
     expect(block).toMatch(/\b2\s+of\s+(?:the\s+)?20\b/);
 
-    // Jargon gate: "p90" may appear only with a plain-English explanation
-    // ("9 out of 10" or similar).
+    // Jargon gate: "p90" may appear only with a plain-English explanation ("9 out of
+    // 10" or similar).
     if (block.includes("p90")) {
       expect(block).toMatch(/9\s+(?:out\s+of|in)\s+(?:every\s+)?10|90\s?%|90\s+percent/i);
     }

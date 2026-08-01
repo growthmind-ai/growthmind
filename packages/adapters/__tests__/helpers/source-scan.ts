@@ -1,10 +1,9 @@
-// Source-text scanning for the three grep guards in this lane (ADD §9 items
-// 44, 60, 61).
+// Source-text scanning for the three grep guards in this lane.
 //
-// Comments are stripped before every search, deliberately: `posthog/
-// session-source.ts` DISCUSSES HogQL and `/query` in its header comment
-// precisely to stop a future contributor putting them back on the hot path. A
-// naive grep would fire on the warning rather than on a violation.
+// Comments are stripped before every search, deliberately: `posthog/ session-source.ts`
+// discusses HogQL and `/query` in its header comment precisely to stop a future
+// contributor putting them back on the hot path. A naive grep would fire on the warning
+// rather than on a violation.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

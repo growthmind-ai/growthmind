@@ -1,11 +1,11 @@
-// `createAnthropicModel` — the one place a model provider is constructed
-// (O-011, AD-3, AD-15, ADD §9, `src/anthropic/model.ts`).
+// `createAnthropicModel`, the one place a model provider is constructed (
+// `src/anthropic/model.ts`).
 //
-// NO NETWORK AND NO REAL KEY. Nothing here calls the model: `probe.test.ts`
-// already proved that constructing a provider and obtaining a model from it
-// perform no I/O, so every assertion below reads a value rather than a response.
-// The one test that needs a live model uses `MockLanguageModelV3` from `ai/test`,
-// exactly as `probe.test.ts` and `summariser.test.ts` do.
+// No network and no real key. Nothing here calls the model: `probe.test.ts` already
+// proved that constructing a provider and obtaining a model from it perform no I/O, so
+// every assertion below reads a value rather than a response. The one test that needs a
+// live model uses `MockLanguageModelV3` from `ai/test`, exactly as `probe.test.ts` and
+// `summariser.test.ts` do.
 import { describe, expect, test } from "bun:test";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
@@ -18,21 +18,21 @@ import { createAnthropicSessionSummariser } from "../../src/anthropic/summariser
 const FAKE_API_KEY = "sk-ant-api03-not-a-real-key-0000000000000000";
 
 /**
- * Deliberately NOT one of `AnthropicModelId`'s known literals. The id is
- * CARRIED, never chosen (AD-3) — if the factory ever substituted a default or a
- * hardcoded id for what it was handed, this string could not come back out.
+ * Deliberately not one of `AnthropicModelId`'s known literals. The id is carried, never
+ * chosen. If the factory ever substituted a default or a hardcoded id for what it was
+ * handed, this string could not come back out.
  */
 const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-anthropic-id";
 
-/** The fields the AI SDK's own model objects expose, read for assertions only.
- * `LanguageModel` is a union that includes a bare string, so reading them
- * requires narrowing — which is itself the first assertion below. */
+/** The fields the AI sdk's own model objects expose, read for assertions only.
+ * `LanguageModel` is a union that includes a bare string, so reading them requires
+ * narrowing, which is itself the first assertion below. */
 type ModelShape = { readonly modelId: string; readonly provider: string };
 
-/** Runs `body` with `ANTHROPIC_API_KEY` absent from the process, restored after.
- * The factory must depend on the key it was HANDED, never on the ambient one —
- * an env-var fallback would make the composition root's no-key branch a lie on
- * any machine that happens to have one exported. */
+/** Runs `body` with `ANTHROPIC_API_KEY` absent from the process, restored after. The
+ * factory must depend on the key it was handed, never on the ambient one. An env-var
+ * fallback would make the composition root's no-key branch a lie on any machine that
+ * happens to have one exported. */
 function withoutAmbientKey(body: () => void): void {
   const previousKey = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -48,12 +48,11 @@ function withoutAmbientKey(body: () => void): void {
 }
 
 describe("createAnthropicModel — it returns a model object, never a model id", () => {
-  // THE LOAD-BEARING TEST. `LanguageModel` is
-  // `GlobalProviderModelId | LanguageModelV4 | LanguageModelV3 | LanguageModelV2`,
-  // so returning the bare id string would typecheck and then resolve through the
-  // Vercel AI Gateway instead of Anthropic — every call on a keyed installation
-  // would fail, and would fail looking like a broken model call rather than a
-  // broken wire.
+  // The load-bearing test. `LanguageModel` is `GlobalProviderModelId | LanguageModelV4
+  // | LanguageModelV3 | LanguageModelV2`, so returning the bare id string would
+  // typecheck and then resolve through the Vercel AI Gateway instead of Anthropic.
+  // Every call on a keyed installation would fail, and would fail looking like a broken
+  // model call rather than a broken wire.
   test("the returned value is a model object, not the id string", () => {
     withoutAmbientKey(() => {
       const model = createAnthropicModel({
@@ -78,7 +77,7 @@ describe("createAnthropicModel — it returns a model object, never a model id",
   });
 });
 
-describe("createAnthropicModel — the id it selects is the id it was handed (AD-3)", () => {
+describe("createAnthropicModel — the id it selects is the id it was handed", () => {
   test("a configured model id reaches the model unchanged", () => {
     withoutAmbientKey(() => {
       const model = createAnthropicModel({
@@ -90,9 +89,9 @@ describe("createAnthropicModel — the id it selects is the id it was handed (AD
     });
   });
 
-  // The default is resolved by the COMPOSITION ROOT and passed in like any
-  // other configured value; this factory has no fallback of its own. Pinned so
-  // nobody adds one here, where it would become a second home for AD-3.
+  // The default is resolved by the composition root and passed in like any other
+  // configured value; this factory has no fallback of its own. Pinned so nobody adds
+  // one here, where it would become a second home for.
   test("the default model id, when the caller resolved to it, arrives unchanged too", () => {
     withoutAmbientKey(() => {
       const model = createAnthropicModel({
@@ -106,10 +105,10 @@ describe("createAnthropicModel — the id it selects is the id it was handed (AD
 });
 
 describe("createAnthropicModel — construction, and what it does not do", () => {
-  // `probe.test.ts:181-203` proves the throw is deferred to the network edge, so
-  // this factory can never be the place "is a key configured?" is answered. It
-  // must therefore not attempt construction-time validation of any kind: the
-  // decision belongs to the composition root, BEFORE this is ever called.
+  // `probe.test.ts:181-203` proves the throw is deferred to the network edge, so this
+  // factory can never be the place "is a key configured?" is answered. It must
+  // therefore not attempt construction-time validation of any kind: the decision
+  // belongs to the composition root, before this is ever called.
   test("constructing with a syntactically valid key does not throw and makes no call", () => {
     withoutAmbientKey(() => {
       expect(() =>
@@ -118,9 +117,9 @@ describe("createAnthropicModel — construction, and what it does not do", () =>
     });
   });
 
-  // The key goes in and nothing comes back out. The provider holds it inside a
-  // lazy header closure, so the value this factory returns carries no credential
-  // into a run row, a log line, or a crash dump built by serialising it.
+  // The key goes in and nothing comes back out. The provider holds it inside a lazy
+  // header closure, so the value this factory returns carries no credential into a run
+  // row, a log line, or a crash dump built by serialising it.
   test("the returned model does not serialise the api key", () => {
     withoutAmbientKey(() => {
       const model = createAnthropicModel({
@@ -138,9 +137,9 @@ describe("createAnthropicModel — the model it returns satisfies the summariser
     .object({ headline: z.string().min(1), context: z.string().min(1) })
     .strict();
 
-  // The wire, end to end at the type level and at the value level: what this
-  // factory returns is exactly what `AnthropicSummariserDeps.model` takes. The
-  // composition root does these two calls back to back and nothing else.
+  // The wire, end to end at the type level and at the value level: what this factory
+  // returns is exactly what `AnthropicSummariserDeps.model` takes. The composition root
+  // does these two calls back to back and nothing else.
   test("the factory's output is accepted as the summariser's model", () => {
     withoutAmbientKey(() => {
       const summariser = createAnthropicSessionSummariser({
@@ -156,9 +155,9 @@ describe("createAnthropicModel — the model it returns satisfies the summariser
     });
   });
 
-  // …and the port really does drive whatever model it is handed, proven against
-  // a stub so no call leaves the process. Without this, the test above would
-  // only show that a value was accepted, not that it is the value called.
+  // …and the port really does drive whatever model it is handed, proven against a stub
+  // so no call leaves the process. Without this, the test above would only show that a
+  // value was accepted, not that it is the value called.
   test("the port renders through the model it was given, with no network", async () => {
     const summariser = createAnthropicSessionSummariser({
       model: new MockLanguageModelV3({

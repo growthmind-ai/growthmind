@@ -7,10 +7,9 @@ import { resolveActiveOrganization } from "./resolve-active-organization";
 
 /**
  * Composes `resolveActiveOrganization` over `input.memberships` with
- * `input.session.activeOrganizationId`, then shapes the result into a
- * `TenantContext` for the resolved organization — or `null` when no
- * organization resolves (zero memberships; the self-heal trigger state,
- * ADD D-C/D8). Pure.
+ * `input.session.activeOrganizationId`, then shapes the result into a `TenantContext`
+ * for the resolved organization, or `null` when no organization resolves (zero
+ * memberships; the self-heal trigger state, add). Pure.
  *
  * Implemented in a later wave against the test names in
  * `packages/shared/__tests__/tenancy/derive-tenant-context.test.ts`.

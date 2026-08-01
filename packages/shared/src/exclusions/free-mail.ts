@@ -1,19 +1,19 @@
-// Free-mail guard on internal-domain inference (O-003 F-1).
+// Free-mail guard on internal-domain inference.
 //
-// FAIL DIRECTION: toward free-mail ⇒ infer nothing. Inferring `gmail.com` as
-// a company's internal domain would exclude essentially the entire real user
-// base — the single most destructive outcome available here, and
-// unrecoverable in perception, because the product simply appears to have no
-// users. When in doubt, treat a domain as free mail and infer nothing.
+// Fail direction: toward free-mail ⇒ infer nothing. Inferring `gmail.com` as a
+// company's internal domain would exclude essentially the entire real user base. The
+// single most destructive outcome available here, and unrecoverable in perception,
+// because the product simply appears to have no users. When in doubt, treat a domain as
+// free mail and infer nothing.
 //
-// Matching is EXACT, on the whole domain. `gmail.acme.com` is a company
-// domain, not free mail — a suffix or substring rule would fire on a superset
-// of its target, which is the D10 conflation this sprint exists to prevent.
+// Matching is exact, on the whole domain. `gmail.acme.com` is a company domain, not
+// free mail. A suffix or substring rule would fire on a superset of its target, which
+// is the conflation this sprint exists to prevent.
 
 /**
- * The v1 free-mail domain list. Real, final data — tests assert against it.
- * Consumed through `CURRENT_EXCLUSION_RULE_SET.freeMailDomains`; kept here so
- * a version bump is a new set, never an edit to a live one (D12).
+ * The v1 free-mail domain list. Real, final data, tests assert against it. Consumed
+ * through `CURRENT_EXCLUSION_RULE_SET.freeMailDomains`; kept here so a version bump is
+ * a new set, never an edit to a live one.
  */
 export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
   "gmail.com",
@@ -92,15 +92,15 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Exact whole-domain membership test against `FREE_MAIL_DOMAINS`,
- * case-insensitive. Never a suffix match, never a substring match.
+ * Exact whole-domain membership test against `FREE_MAIL_DOMAINS`, case-insensitive.
+ * Never a suffix match, never a substring match.
  *
- * FAIL DIRECTION (F-1): a domain we do not recognise is NOT free mail, so
- * inference proceeds. The destructive direction is the other one — calling a
- * company domain free mail only costs an inference we would have made anyway,
- * while calling `gmail.com` a company domain sets aside the whole user base.
- * Exactness is what keeps both errors small: `gmail.acme.com` is a company
- * running its own mail, and a suffix rule would erase it silently.
+ * Fail direction: a domain we do not recognise is not free mail, so inference
+ * proceeds. The destructive direction is the other one. Calling a company domain free
+ * mail only costs an inference we would have made anyway, while calling `gmail.com` a
+ * company domain sets aside the whole user base. Exactness is what keeps both errors
+ * small: `gmail.acme.com` is a company running its own mail, and a suffix rule would
+ * erase it silently.
  */
 export function isFreeMailDomain(domain: string): boolean {
   const normalised = domain.trim().toLowerCase();

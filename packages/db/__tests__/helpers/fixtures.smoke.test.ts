@@ -1,8 +1,7 @@
-// Proves the shared seeding fixture (./fixtures.ts) actually works before
-// other agents build repository test suites against it. Touches no
-// stubbed repository code — only raw schema tables and the pure
-// `makeTenantContext` helper — so unlike the repository suites, this test
-// MUST pass in Wave 0.
+// Proves the shared seeding fixture (./fixtures.ts) actually works before other agents
+// build repository test suites against it. Touches no stubbed repository code. Only raw
+// schema tables and the pure `makeTenantContext` helper, so unlike the repository
+// suites, this test must pass in Wave 0.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
@@ -36,9 +35,9 @@ describe("repository test fixtures", () => {
       email: "owner-b@example.com",
     });
 
-    // A single user shared across the fixture, added as a SECOND, non-owner
-    // member of org A — the exact shape the §9 cross-tenant proof needs
-    // (two orgs, plus a non-owner teammate in org A).
+    // A single user shared across the fixture, added as a second, non-owner member of
+    // org A. The exact shape the cross-tenant proof needs (two orgs, plus a non-owner
+    // teammate in org A).
     const teammate = await seedUser(db, {
       name: "Org A Teammate",
       email: "teammate@example.com",
@@ -81,8 +80,8 @@ describe("repository test fixtures", () => {
     });
 
     // The owner context returned by seedOrgWithOwner is itself built via
-    // makeTenantContext — assert it round-trips through the real schema
-    // rather than trusting the fixture's own construction.
+    // makeTenantContext. Assert it round-trips through the real schema rather than
+    // trusting the fixture's own construction.
     expect(tenantContextSchema.parse(orgA.ctx)).toEqual(orgA.ctx);
 
     const explicit = makeTenantContext({

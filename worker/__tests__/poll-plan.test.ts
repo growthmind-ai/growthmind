@@ -1,8 +1,8 @@
-// O-003 §9 item 114 — `resolvePollPlan` (D-7 / OQ-3).
+// item 114, `resolvePollPlan`.
 //
-// The onboarding acceleration is a PURE function precisely so the window is
-// testable without waiting for one: `now` is a parameter, there is no clock
-// read, no I/O, and no randomness. These tests never sleep.
+// The onboarding acceleration is a pure function precisely so the window is testable
+// without waiting for one: `now` is a parameter, there is no clock read, no I/O, and no
+// randomness. These tests never sleep.
 import { expect, test } from "bun:test";
 
 import {
@@ -41,8 +41,8 @@ test("outside the onboarding window the plan is exactly one pass with no sleep",
 });
 
 test("the moment of connection is inside the window", () => {
-  // The glue moment: someone who has just finished onboarding step 2 is
-  // staring at the counter. This is the case the acceleration exists for.
+  // The glue moment: someone who has just finished onboarding step 2 is staring at the
+  // counter. This is the case the acceleration exists for.
   const plan = resolvePollPlan({
     connectedAt: CONNECTED_AT,
     now: CONNECTED_AT,
@@ -53,8 +53,8 @@ test("the moment of connection is inside the window", () => {
 });
 
 test("the window boundary is exclusive — exactly ONBOARDING_WINDOW_MINUTES elapsed is outside", () => {
-  // Stated rather than left to the implementation, so the boundary can never
-  // drift silently between the scheduler and a future test.
+  // Stated rather than left to the implementation, so the boundary can never drift
+  // silently between the scheduler and a future test.
   const justInside = resolvePollPlan({
     connectedAt: CONNECTED_AT,
     now: new Date(at(ONBOARDING_WINDOW_MINUTES).getTime() - 1),
@@ -71,9 +71,9 @@ test("the window boundary is exclusive — exactly ONBOARDING_WINDOW_MINUTES ela
 });
 
 test("four accelerated passes fill one cron tick and never overrun it", () => {
-  // The reason MAX_ONBOARDING_PASSES is what it is: the cron line fires every
-  // minute, so the passes plus the sleeps between them must not hold a worker
-  // slot past the next tick's arrival.
+  // The reason MAX_ONBOARDING_PASSES is what it is: the cron line fires every minute,
+  // so the passes plus the sleeps between them must not hold a worker slot past the
+  // next tick's arrival.
   const plan = resolvePollPlan({
     connectedAt: CONNECTED_AT,
     now: at(2),
@@ -84,10 +84,9 @@ test("four accelerated passes fill one cron tick and never overrun it", () => {
 });
 
 test("a connection whose own interval is already fast is not slowed by the plan", () => {
-  // `poll_interval_seconds` is per-connection and changeable without a deploy.
-  // Outside the window the plan is one pass regardless of that value — the
-  // interval governs WHEN the claim makes it due, not how many passes a tick
-  // makes.
+  // `poll_interval_seconds` is per-connection and changeable without a deploy. Outside
+  // the window the plan is one pass regardless of that value. The interval governs when
+  // the claim makes it due, not how many passes a tick makes.
   const plan = resolvePollPlan({
     connectedAt: CONNECTED_AT,
     now: at(ONBOARDING_WINDOW_MINUTES + 5),

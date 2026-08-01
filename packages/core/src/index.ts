@@ -1,16 +1,16 @@
-// `@growthmind/core` — the product's own judgement and maths.
+// `@growthmind/core`, the product's own judgement and maths.
 //
-// `@growthmind/shared` means "shapes both sides of a wire agree on", which is
-// why its zod-only rule reads as a rule rather than an accident. THIS package
-// means "the product's own judgement": the T1 detectors, the evidence gate,
-// measured counts, the threshold rule sets, and `evidence_shape`.
+// `@growthmind/shared` means "shapes both sides of a wire agree on", which is why its
+// zod-only rule reads as a rule rather than an accident. This package means "the
+// product's own judgement": the T1 detectors, the evidence gate, measured counts, the
+// threshold rule sets, and `evidence_shape`.
 //
-// TWO DEPENDENCIES, EVER: `@growthmind/shared` and `zod` (D-1). NO NODE
-// BUILTIN IS IMPORTED ANYWHERE IN THIS PACKAGE — that is what makes FR-5's
-// "no clock, no randomness" auditable by construction, and a test asserts it.
-// The dependency arrow is `db -> core`, never `core -> db`.
+// Two dependencies, ever: `@growthmind/shared` and `zod`. No node builtin is imported
+// anywhere in this package. That is what makes the "no clock, no randomness" auditable
+// by construction, and a test asserts it. The dependency arrow is `db -> core`, never
+// `core -> db`.
 
-// --- counts (D-8, D-7, FR-10, FR-7, BS-3) -----------------------------------
+// -- counts
 export {
   measuredCount,
   rateOf,
@@ -26,14 +26,14 @@ export {
   type Rate,
 } from "./counts/measured-count";
 
-// --- canonical serialisation (D-13) -----------------------------------------
+// -- canonical serialisation
 export {
   canonicalJson,
   type CanonicalValue,
   type CanonicalObject,
 } from "./serialise/canonical-json";
 
-// --- rules (D-9, D-14, FR-8, FR-9, FR-11) -----------------------------------
+// -- rules
 export {
   findingClassSchema,
   detectorProposedClassSchema,
@@ -49,7 +49,7 @@ export {
   CURRENT_THRESHOLD_RULE_SET,
 } from "./rules/thresholds";
 
-// --- detect (D-2, D-3, D-4, D-5, D-17, D-18, FR-1, FR-2) --------------------
+// -- detect
 export {
   DETECTOR_CORPUS_MAX_SESSIONS,
   analysisWindowSchema,
@@ -63,17 +63,17 @@ export {
   type DetectorResult,
 } from "./detect/types";
 export { orderTimeline } from "./detect/order";
-// FR-7 + D-3 in one call, and the ONE implementation of PL ruling 24. It is
-// exported because a module that decides the denominator BOTH detectors report
-// on must be visible to the FR-22 coverage gate — an unexported one is
-// structurally exempt from the test that proves every pure function is covered,
-// which is exactly how the two detectors diverged here in the first place.
+// + in one call, and the one implementation of. It is exported because a module that
+// decides the denominator both detectors report on must be visible to the coverage
+// gate. An unexported one is structurally exempt from the test that proves every pure
+// function is covered, which is exactly how the two detectors diverged here in the
+// first place.
 export { analysedSessions, type AnalysedSessions } from "./detect/analysed";
 export { detectFunnelDropoff } from "./detect/funnel-dropoff";
 export { detectErrorEvent } from "./detect/error-event";
 export { NOT_BUILT_DETECTORS, type NotBuiltDetector } from "./detect/not-built";
 
-// --- evidence (D-10, D-11, D-19, FR-12, FR-13, FR-13B, FR-14, FR-19) --------
+// -- evidence
 export {
   evidenceSignalSchema,
   evidenceSignalKindSchema,
@@ -114,7 +114,7 @@ export {
   type DowngradeTrace,
 } from "./evidence/trace";
 
-// --- findings (D-12, FR-16, FR-17) ------------------------------------------
+// -- findings
 export {
   candidateFindingSchema,
   rankingInputsSchema,
@@ -130,10 +130,9 @@ export {
   type EvidenceShapeInput,
   type EvidenceShapeSerialiser,
 } from "./findings/evidence-shape";
-// The candidate assembler (O-012) — the join between the detectors, the gate,
-// and the candidate contract. `confidenceBasisForPass` is exported beside it
-// because the assembler's derivation must be testable against the predicate
-// maths it lives next to.
+// The candidate assembler, the join between the detectors, the gate, and the candidate
+// contract. `confidenceBasisForPass` is exported beside it because the assembler's
+// derivation must be testable against the predicate maths it lives next to.
 export {
   assembleCandidates,
   type AssembledCandidates,
@@ -141,7 +140,7 @@ export {
 } from "./findings/assemble";
 export { confidenceBasisForPass } from "./evidence/predicates";
 
-// --- O-006 -------------------------------------------------------------------
+// --
 export {
   signatureTuple,
   SIGNATURE_TUPLE_VERSION,
@@ -159,24 +158,24 @@ export {
   type SuppressionPolicy,
 } from "./findings/suppression-policy";
 
-// --- O-005: the deterministic floor renderer ---------------------------------
+// --: the deterministic floor renderer
 //
-// EXACTLY FOUR VALUES AND FOUR TYPES, and the shortness of this list is the
-// decision rather than an oversight. `coverage.test.ts:164` makes every
-// barrel-exported FUNCTION owe a mirroring `__tests__/<specifier>.test.ts` and
-// a call by name — so `renderFloorSummary` and `resolveCounts` are exported
-// precisely because `__tests__/summary/floor.test.ts` and
-// `__tests__/summary/count-roles.test.ts` exist and call them.
+// Exactly four values and four types, and the shortness of this list is the decision
+// rather than an oversight. `coverage.test.ts:164` makes every barrel-exported function
+// owe a mirroring `__tests__/<specifier>.test.ts` and a call by name, so
+// `renderFloorSummary` and `resolveCounts` are exported precisely because
+// `__tests__/summary/floor.test.ts` and `__tests__/summary/count-roles.test.ts` exist
+// and call them.
 //
-// DELIBERATELY NOT EXPORTED: `substitute`, `placeholdersIn`, and all four
-// scanners. Each would owe its own mirror file and would become a production
-// surface with no production caller — the D11 dead wire this sprint exists not
-// to add to. `substitute` has one caller inside the package and is asserted
-// through the renderer's own suite; the scanners are test-local by design.
+// Deliberately not exported: `substitute`, `placeholdersIn`, and all four scanners.
+// Each would owe its own mirror file and would become a production surface with no
+// production caller. The dead wire this sprint exists not to add to. `substitute` has
+// one caller inside the package and is asserted through the renderer's own suite; the
+// scanners are test-local by design.
 //
-// NOTHING HERE IS CALLED IN PRODUCTION YET. No worker task, no service and no
-// route invokes `renderFloorSummary`; exporting it is what lets the sprint that
-// wires the lane import it without reopening this file.
+// Nothing here is called in production yet. No worker task, no service and no route
+// invokes `renderFloorSummary`; exporting it is what lets the sprint that wires the
+// lane import it without reopening this file.
 export {
   COUNT_ROLES,
   resolveCounts,
@@ -190,13 +189,13 @@ export {
   type FloorSummarySource,
 } from "./summary/types";
 
-// --- O-011: the model lane's output shape, sentence join, and SAC guard ------
+// --: the model lane's output shape, sentence join, and sac guard
 //
-// The three functions are exported because the model lane's callers live
-// outside this package: `worker` renders through the port and must judge what
-// comes back before persisting it. Each has its mirroring
-// `__tests__/summary/output-schema.test.ts` and is called there by name, which
-// is what `coverage.test.ts` requires of every barrel-exported function.
+// The three functions are exported because the model lane's callers live outside this
+// package: `worker` renders through the port and must judge what comes back before
+// persisting it. Each has its mirroring `__tests__/summary/output-schema.test.ts` and
+// is called there by name, which is what `coverage.test.ts` requires of every
+// barrel-exported function.
 export {
   modelSummaryOutputSchema,
   splitSentences,
@@ -209,7 +208,7 @@ export {
   type SacOffence,
 } from "./summary/output-schema";
 
-// --- O-007 -------------------------------------------------------------------
+// --
 export {
   scanResidualPii,
   isCleanForDelivery,
@@ -250,7 +249,7 @@ export {
   type SlackMessage,
 } from "./delivery/slack-message";
 
-// --- O-009: the minimal fix spec ---------------------------------------------
+// --: the minimal fix spec
 export {
   renderFixSpec,
   isCodeShaped,

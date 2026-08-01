@@ -1,18 +1,18 @@
-// Wave 0 (RED) — O-009 `mcp-read-credential`, ADD §8 "Integration tests —
-// admin organisation resolution (PGlite, lane `admorg`)", all 6 rows.
+// Wave 0 (red) (`mcp-read-credential`, "Integration tests) admin organisation
+// resolution (PGlite, lane `admorg`)", all 6 rows.
 //
-// Subject: `packages/db/src/admin/organizations.ts` → `resolveOrganizationForCli`
-// (ADD D-9), imported through the `src/admin` barrel because that is the
-// surface `scripts/` reaches via the `"./admin"` subpath. It does not exist
-// yet, so this suite is red at module resolution until Wave 3.
+// Subject: `packages/db/src/admin/organizations.ts` → `resolveOrganizationForCli`,
+// imported through the `src/admin` barrel because that is the surface `scripts/`
+// reaches via the `"./admin"` subpath. It does not exist yet, so this suite is red at
+// module resolution until Wave 3.
 //
-// Lane discipline (ADD D-6): `packages/db` lane, seeded through
-// `__tests__/helpers/fixtures.ts`, fixture prefix `admorg`.
+// Lane discipline: `packages/db` lane, seeded through `__tests__/helpers/fixtures.ts`,
+// fixture prefix `admorg`.
 //
-// Each row gets its OWN PGlite database. The function's whole job is deciding
-// what to do with the number of organisations that exist, so "how many exist"
-// is the input under test — a shared database would let one row's seeding
-// silently answer another row's question.
+// Each row gets its own PGlite database. The function's whole job is deciding what to
+// do with the number of organisations that exist, so "how many exist" is the input
+// under test. A shared database would let one row's seeding silently answer another
+// row's question.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 
@@ -44,8 +44,8 @@ function refusalOrThrow(
   return result;
 }
 
-/** `seedOrgWithOwner` does not surface the generated slug, and OQ-1's slug
- * row needs it — so it is read back from the row it just wrote. */
+/** `seedOrgWithOwner` does not surface the generated slug, and OQ-1's slug row needs
+ * it, so it is read back from the row it just wrote. */
 async function slugOf(db: TestDb, organizationId: string): Promise<string> {
   const [row] = await db
     .select({ slug: schema.organization.slug })
@@ -76,15 +76,15 @@ describe("resolveOrganizationForCli", () => {
       email: NAMES.email("only"),
     });
 
-    // A count of exactly one is not a pick — it is the only possible answer,
-    // and it is what makes minting a genuine one-command flow (OQ-2).
+    // A count of exactly one is not a pick. It is the only possible answer, and it is
+    // what makes minting a genuine one-command flow.
     const organization = okOrThrow(await resolveOrganizationForCli(db, {}));
 
     expect(organization.id).toBe(seeded.organizationId);
     expect(organization.name).toBe(seeded.organizationName);
     expect(organization.slug).toBe(await slugOf(db, seeded.organizationId));
-    // The owner comes back WITH the organisation, in the same call — that is
-    // what makes `no_owner` a resolution failure the caller cannot forget.
+    // The owner comes back with the organisation, in the same call. That is what makes
+    // `no_owner` a resolution failure the caller cannot forget.
     expect(organization.ownerUserId).toBe(seeded.userId);
     expect(organization.ownerEmail).toBe(NAMES.email("only"));
   });
@@ -104,8 +104,8 @@ describe("resolveOrganizationForCli", () => {
     const refusal = refusalOrThrow(await resolveOrganizationForCli(db, {}));
 
     expect(refusal.reason).toBe("ambiguous");
-    // Every candidate, not just the first — the operator has to be able to
-    // pass `--org <id>` without going to the database themselves.
+    // Every candidate, not just the first. The operator has to be able to pass `--org
+    // <id>` without going to the database themselves.
     expect(refusal.candidates.map((candidate) => candidate.id).toSorted()).toEqual(
       [first.organizationId, second.organizationId].toSorted(),
     );
@@ -126,8 +126,8 @@ describe("resolveOrganizationForCli", () => {
       await resolveOrganizationForCli(db, { org: "no-such-organization" }),
     );
 
-    // Never a fallback to "the only one" when the operator named something
-    // else — an explicit `--org` that misses is a refusal, not a hint.
+    // Never a fallback to "the only one" when the operator named something else. An
+    // explicit `--org` that misses is a refusal, not a hint.
     expect(refusal.reason).toBe("not_found");
     expect(refusal.candidates.map((candidate) => candidate.id)).toContain(seeded.organizationId);
   });
@@ -147,9 +147,9 @@ describe("resolveOrganizationForCli", () => {
       name: NAMES.userName("no-owner"),
       email: NAMES.email("no-owner"),
     });
-    // A plain member, not an owner — Better Auth's shape after the owner
-    // leaves. The CLI builds a real owner `TenantContext`, so with no owner
-    // there is nothing truthful to build it from.
+    // A plain member, not an owner. Better Auth's shape after the owner leaves. The CLI
+    // builds a real owner `TenantContext`, so with no owner there is nothing truthful
+    // to build it from.
     await seedMember(db, {
       organizationId: organization.id,
       userId: user.id,
@@ -159,8 +159,8 @@ describe("resolveOrganizationForCli", () => {
     const refusal = refusalOrThrow(await resolveOrganizationForCli(db, {}));
 
     expect(refusal.reason).toBe("no_owner");
-    // Not vacuous: the organisation is genuinely there and would have been
-    // the single auto-resolved answer if an owner existed.
+    // Not vacuous: the organisation is genuinely there and would have been the single
+    // auto-resolved answer if an owner existed.
     expect(
       await db
         .select()
@@ -169,12 +169,11 @@ describe("resolveOrganizationForCli", () => {
     ).toHaveLength(1);
   });
 
-  // ── WHICH OWNER (readOwners) ──────────────────────────────────────────────
-  // The three rows below cover `readOwners`' selection rule, which every row
-  // above leaves untested by seeding exactly one owner per organisation. This
-  // is not a cosmetic gap: `ownerUserId` becomes `ctx.userId` in the
-  // `TenantContext` the mint runs under, so a regression here mints a
-  // credential as the WRONG PERSON with nothing failing.
+  // Which owner (readOwners) The three rows below cover `readOwners`' selection rule,
+  // which every row above leaves untested by seeding exactly one owner per
+  // organisation. This is not a cosmetic gap: `ownerUserId` becomes `ctx.userId` in the
+  // `TenantContext` the mint runs under, so a regression here mints a credential as the
+  // wrong person with nothing failing.
 
   it("should act as the earliest owner when an organization has more than one", async () => {
     const organization = await seedOrganization(db, { name: NAMES.orgName("two-owners") });
@@ -187,8 +186,8 @@ describe("resolveOrganizationForCli", () => {
       email: NAMES.email("two-owners-later"),
     });
 
-    // The LATER owner is inserted FIRST, so physical row order cannot be what
-    // answers below — only `member.createdAt` can.
+    // The later owner is inserted first, so physical row order cannot be what answers
+    // below. Only `member.createdAt` can.
     await seedMember(db, {
       organizationId: organization.id,
       userId: later.id,
@@ -206,8 +205,8 @@ describe("resolveOrganizationForCli", () => {
 
     expect(resolved.ownerUserId).toBe(earlier.id);
     expect(resolved.ownerEmail).toBe(NAMES.email("two-owners-earlier"));
-    // Non-vacuity: the other owner is genuinely an owner of the same
-    // organisation, so this row really did choose between two candidates.
+    // Non-vacuity: the other owner is genuinely an owner of the same organisation, so
+    // this row really did choose between two candidates.
     expect(resolved.ownerUserId).not.toBe(later.id);
   });
 
@@ -222,8 +221,8 @@ describe("resolveOrganizationForCli", () => {
       email: NAMES.email("tied-owners-two"),
     });
 
-    // Identical `createdAt` — the realistic shape when two owners are seeded by
-    // the same migration or the same transaction.
+    // Identical `createdAt`, the realistic shape when two owners are seeded by the same
+    // migration or the same transaction.
     const tiedAt = new Date("2026-03-01T00:00:00.000Z");
     const firstMember = await seedMember(db, {
       organizationId: organization.id,
@@ -238,17 +237,16 @@ describe("resolveOrganizationForCli", () => {
       createdAt: tiedAt,
     });
 
-    // Whichever member id sorts first is the documented answer. Computed from
-    // the seeded ids rather than hardcoded, because they are random UUIDs —
-    // the point is that the answer is DETERMINED, not that it is any
-    // particular person.
+    // Whichever member id sorts first is the documented answer. Computed from the
+    // seeded ids rather than hardcoded, because they are random UUIDs. The point is
+    // that the answer is determined, not that it is any particular person.
     const expectedUserId = firstMember.id < secondMember.id ? first.id : second.id;
 
     const resolved = okOrThrow(await resolveOrganizationForCli(db, {}));
     expect(resolved.ownerUserId).toBe(expectedUserId);
 
-    // And it is stable: the same database answers the same way twice, so a
-    // re-run never quietly mints as the other person.
+    // And it is stable: the same database answers the same way twice, so a re-run never
+    // quietly mints as the other person.
     expect(okOrThrow(await resolveOrganizationForCli(db, {}))).toEqual(resolved);
   });
 
@@ -263,18 +261,18 @@ describe("resolveOrganizationForCli", () => {
 
     const refusal = refusalOrThrow(await resolveOrganizationForCli(db, {}));
 
-    // Same fail direction `creatorEmail()` documents: infer NOTHING rather than
-    // act as somebody who is not really there. A CLI that mints as a
-    // half-present actor is worse than one that refuses.
+    // Same fail direction `creatorEmail` documents: infer nothing rather than act as
+    // somebody who is not really there. A CLI that mints as a half-present actor is
+    // worse than one that refuses.
     expect(refusal.reason).toBe("no_owner");
-    // The organisation is still named, so the operator can see WHY it refused.
+    // The organisation is still named, so the operator can see why it refused.
     const candidate = refusal.candidates.find((row) => row.id === organization.id);
     expect(candidate).toBeDefined();
     expect(candidate?.ownerEmail).toBeNull();
 
-    // Non-vacuity: the membership genuinely exists AND genuinely carries the
-    // owner role, so the refusal is the empty-email rule and not a missing or
-    // mis-roled member row.
+    // Non-vacuity: the membership genuinely exists and genuinely carries the owner
+    // role, so the refusal is the empty-email rule and not a missing or mis-roled
+    // member row.
     const [member] = await db
       .select()
       .from(schema.member)
@@ -289,8 +287,8 @@ describe("resolveOrganizationForCli", () => {
       userName: NAMES.userName("by-slug-target"),
       email: NAMES.email("by-slug-target"),
     });
-    // A second organisation, so auto-resolve cannot be what answers below —
-    // `{}` here would be `ambiguous`. Only the explicit `--org` can resolve.
+    // A second organisation, so auto-resolve cannot be what answers below, `{}` here
+    // would be `ambiguous`. Only the explicit `--org` can resolve.
     await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("by-slug-other"),
       userName: NAMES.userName("by-slug-other"),
@@ -303,8 +301,8 @@ describe("resolveOrganizationForCli", () => {
 
     expect(byId.id).toBe(target.organizationId);
     expect(bySlug).toEqual(byId);
-    // Non-vacuity for the "second org" guard: without `--org` this database
-    // is genuinely ambiguous, so neither answer above came from a count of one.
+    // Non-vacuity for the "second org" guard: without `--org` this database is
+    // genuinely ambiguous, so neither answer above came from a count of one.
     expect(refusalOrThrow(await resolveOrganizationForCli(db, {})).reason).toBe("ambiguous");
   });
 });

@@ -1,16 +1,15 @@
-// Service tests for `persistPullResult` — ADD §9 item 97, plus the exclusion
-// stamping and partial-progress guarantees the counter and the future
-// `exclusions.backfill` both rest on.
+// Service tests for `persistPullResult`. Item 97, plus the exclusion stamping and
+// partial-progress guarantees the counter and the future `exclusions.backfill` both
+// rest on.
 //
-// The property under test is FR-14's: everything the classifier consumed is on
-// the session row, so a stored stamp is reproducible from persisted data alone
-// with ZERO source access. This suite therefore never constructs a source at
-// all — it re-runs the real classifier over rows read back through the
-// repository and asserts the stamps match.
+// The property under test is the: everything the classifier consumed is on the session
+// row, so a stored stamp is reproducible from persisted data alone with zero source
+// access. This suite therefore never constructs a source at all. It re-runs the real
+// classifier over rows read back through the repository and asserts the stamps match.
 //
-// WAVE 0: `persistPullResult` is a typed stub that throws. Every test below
-// MUST fail with "TYPED STUB (O-003 scaffold)" — never a compile error, a
-// missing table, or a fixture collision.
+// Wave 0: `persistPullResult` is a typed stub that throws. Every test below must fail
+// with "typed stub (scaffold)", never a compile error, a missing table, or a fixture
+// collision.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
@@ -35,7 +34,7 @@ import { seedWorkspace, type SeededWorkspace } from "./seed";
 /** The internal domain stamped on the connection under test. Obviously fake. */
 const INTERNAL_DOMAIN = "acme-internal-example.test";
 
-/** An outside visitor's email domain — the kept case. */
+/** An outside visitor's email domain. The kept case. */
 const OUTSIDE_DOMAIN = "outside-example.test";
 
 const HEADLESS_UA =
@@ -127,7 +126,7 @@ describe("persistPullResult", () => {
     });
 
     const row = await createSessionsRepo(db, ws.ctx).findByKey(ws.project.id, "ph:kept-1");
-    // "none" means CLASSIFIED AND KEPT — never "not classified".
+    // "none" means classified and kept, never "not classified".
     expect(row?.exclusionReason).toBe("none");
   });
 
@@ -150,8 +149,8 @@ describe("persistPullResult", () => {
     });
 
     const row = await createSessionsRepo(db, ws.ctx).findByKey(ws.project.id, "ph:unresolved-1");
-    // F-8: fail open, and keep the gap visible via `identity_resolution`
-    // rather than by excluding.
+    // F-8: fail open, and keep the gap visible via `identity_resolution` rather than by
+    // excluding.
     expect(row?.exclusionReason).toBe("none");
     expect(row?.identityResolution).toBe("unresolved");
   });
@@ -169,8 +168,8 @@ describe("persistPullResult", () => {
 
     const row = await createSessionsRepo(db, ws.ctx).findByKey(ws.project.id, "ph:provenance-1");
 
-    // The provenance of the stamp — what the classifier SAW at stamp time,
-    // not the project's current domain. Reproducing a stamp needs this.
+    // The provenance of the stamp. What the classifier saw at stamp time, not the
+    // project's current domain. Reproducing a stamp needs this.
     expect(row?.internalDomainAtStamp).toBe(INTERNAL_DOMAIN);
     expect(row?.exclusionRuleSetVersion).toBe(EXCLUSION_RULE_SET_VERSION);
     expect(row?.groupingVersion).toBe(SESSION_GROUPING_VERSION);
@@ -197,7 +196,7 @@ describe("persistPullResult", () => {
     expect(JSON.stringify(row)).not.toContain("@");
   });
 
-  // --- item 97 -------------------------------------------------------------
+  // -- item 97
 
   test("re-running the classifier over persisted rows reproduces every stored stamp exactly, with no source access", async () => {
     const { ws, connection } = await seedIntakeTarget(db, "reproducible");
@@ -239,9 +238,9 @@ describe("persistPullResult", () => {
       expect(rules).toBeDefined();
       if (!rules) throw new Error("unreachable");
 
-      // Every input rebuilt from PERSISTED COLUMNS ONLY. Nothing is re-fetched
-      // and no vendor client exists in this file — that is the whole property
-      // the future backfill depends on.
+      // Every input rebuilt from persisted columns only. Nothing is re-fetched and no
+      // vendor client exists in this file. That is the whole property the future
+      // backfill depends on.
       const facts: SessionFacts = {
         identityEmailDomain: row.identityEmailDomain,
         identityResolution: row.identityResolution,
@@ -271,21 +270,21 @@ describe("persistPullResult", () => {
     expect(EXCLUSION_RULE_SETS.get(row.exclusionRuleSetVersion)).toBe(CURRENT_EXCLUSION_RULE_SET);
   });
 
-  // --- the normalisation stamp asserts, it does not assume (M-1) -----------
+  // -- the normalisation stamp asserts, it does not assume
 
   test("stamps the normalisation version only on a path that is already normalised, and null on one that is not", async () => {
     const { ws, connection } = await seedIntakeTarget(db, "normalisation-stamp");
 
-    // An UN-NORMALISED path, in the exact shape the stamp exists to protect:
-    // an identifier-shaped segment `normaliseUrlPath` would redact. The value
-    // is an all-zero placeholder uuid — obviously fake, authenticates nothing,
-    // and this repository is public. A second source adapter forwarding a raw
-    // `$current_url` produces exactly this shape.
+    // An un-normalised path, in the exact shape the stamp exists to protect: an
+    // identifier-shaped segment `normaliseUrlPath` would redact. The value is an
+    // all-zero placeholder uuid. Obviously fake, authenticates nothing, and this
+    // repository is public. A second source adapter forwarding a raw `$current_url`
+    // produces exactly this shape.
     const unnormalised = "/reset-password/00000000-0000-4000-8000-000000000000";
 
-    // ANTI-VACUITY: if a later normalisation change made this fixture already
-    // normalised, the assertion below would pass for the wrong reason. Pin the
-    // premise rather than trusting it.
+    // Anti-vacuity: if a later normalisation change made this fixture already
+    // normalised, the assertion below would pass for the wrong reason. Pin the premise
+    // rather than trusting it.
     expect(normaliseUrlPath(unnormalised, null)).not.toBe(unnormalised);
 
     await persistPullResult(db, ws.ctx, {
@@ -312,29 +311,29 @@ describe("persistPullResult", () => {
     const byId = new Map(rows.map((row) => [row.sourceEventId, row]));
     expect(byId.size).toBe(3);
 
-    // The whole point: `null` means "redaction status unknown, remediate me",
-    // and IS selected by the §5 remediation query
-    // (`WHERE url_path_normalisation_version IS NULL OR < N`). A version stamp
-    // on this row would hide a live token from that query permanently.
+    // The whole point: `null` means "redaction status unknown, remediate me", and IS
+    // selected by the remediation query (`WHERE url_path_normalisation_version IS NULL
+    // OR < N`). A version stamp on this row would hide a live token from that query
+    // permanently.
     expect(byId.get("evt-norm-raw")?.urlPathNormalisationVersion).toBeNull();
-    // FAIL DIRECTION: flagged, never dropped. Intake is a write path, so an
+    // Fail direction: flagged, never dropped. Intake is a write path, so an
     // un-normalised path costs a remediation flag, not the event.
     expect(byId.get("evt-norm-raw")?.urlPath).toBe(unnormalised);
 
-    // Its siblings in the SAME batch are unaffected — the stamp is per-value,
-    // not per-write.
+    // Its siblings in the same batch are unaffected. The stamp is per-value, not
+    // per-write.
     expect(byId.get("evt-norm-clean")?.urlPathNormalisationVersion).toBe(
       URL_PATH_NORMALISATION_VERSION,
     );
-    // A no-path row still carries the version (D-15): `NULL` in this column
-    // must keep meaning exactly one thing.
+    // A no-path row still carries the version: `NULL` in this column must keep meaning
+    // exactly one thing.
     expect(byId.get("evt-norm-nopath")?.urlPath).toBeNull();
     expect(byId.get("evt-norm-nopath")?.urlPathNormalisationVersion).toBe(
       URL_PATH_NORMALISATION_VERSION,
     );
   });
 
-  // --- partial progress ----------------------------------------------------
+  // -- partial progress
 
   test("a FAILED pull still persists its partial sessions and events", async () => {
     const { ws, connection } = await seedIntakeTarget(db, "partial-progress");
@@ -351,9 +350,9 @@ describe("persistPullResult", () => {
       }),
     });
 
-    // The walk is newest-first, so a mid-walk failure has ALREADY retrieved
-    // the newest events. Throwing them away would make FR-22's "partial
-    // progress survives" a hope rather than a guarantee.
+    // The walk is newest-first, so a mid-walk failure has already retrieved the newest
+    // events. Throwing them away would make the "partial progress survives" a hope
+    // rather than a guarantee.
     expect(counts.eventsPersisted).toBe(2);
     expect(counts.sessionsTouched).toBe(1);
 

@@ -1,31 +1,29 @@
-// ADD §7 "Unit — evidence predicates" — the eight named tests for the proof
-// predicates (D-11, FR-12, FR-15, FR-19), plus the one D-14 assertion PL
-// ruling 6 requires.
+// Unit tests for evidence predicates: the eight named tests for the proof predicates, plus the
+// one assertion That decision requires.
 //
-// What this file is for, in one sentence: the evidence gate is the product's
-// identity, and these predicates are the only thing standing between "we can
-// prove it" and "we said it". §6's three-way split is pass / downgrade /
-// reject, and a `broken` claim without the failed-or-absent request degrades
-// to `confusing` rather than being asserted.
+// What this file is for, in one sentence: the evidence gate is the product's identity,
+// and these predicates are the only thing standing between "we can prove it" and "we
+// said it". the three-way split is pass / downgrade / reject, and a `broken` claim
+// without the failed-or-absent request degrades to `confusing` rather than being
+// asserted.
 //
-// THE LOAD-BEARING ONE IS THE NEGATIVE. `failure_uncorrelated` is deliberately
-// NOT admissible proof of `broken` (ES-13): an `$exception` that could not be
-// tied to the user's action is not evidence that the user's action broke, and
-// admitting it is exactly the over-permissive predicate the PRD names as a
-// High risk.
+// The load-bearing one is the negative. `failure_uncorrelated` is deliberately not
+// admissible proof of `broken`: an `$exception` that could not be tied to the
+// user's action is not evidence that the user's action broke, and admitting it is
+// exactly the over-permissive predicate the prd names as a High risk.
 //
-// House rules honoured here (STATE.md standing constraints):
-//   - FIXTURE TIME IS A REQUIRED PARAMETER. There is no `Date.now()` in this
-//     file; every instant is one of the frozen constants below.
-//   - D-14: every predicate is handed a rule set as a PARAMETER, and the rule
-//     set is fetched BY VERSION (`THRESHOLD_RULE_SETS.get(1)`), never as
-//     "whatever is current". A dedicated test proves the predicates read their
-//     signal lists off that parameter rather than off the module constants.
-//   - D-6: boundaries are INCLUSIVE, and the two instrumentation tests sit
-//     exactly on theirs. PL ruling 1: `instrumentationDropRatioPercent` is an
-//     INTEGER PERCENT (20), compared with exact integer arithmetic.
-//   - No node builtin. The one test that reads source text uses `Bun.file` and
-//     `import.meta.dir`, not `node:fs`.
+// House rules honoured here (state.md standing constraints):
+// Fixture time is a required parameter. There is no `Date.now` in this
+//  file; every instant is one of the frozen constants below.
+// : every predicate is handed a rule set as a parameter, and the rule
+//  set is fetched by version (`THRESHOLD_RULE_SETS.get`), never as
+//  "whatever is current". A dedicated test proves the predicates read their
+//  signal lists off that parameter rather than off the module constants.
+// : boundaries are inclusive, and the two instrumentation tests sit
+//  exactly on theirs: `instrumentationDropRatioPercent` is an
+//  Integer percent, compared with exact integer arithmetic.
+// No node builtin. The one test that reads source text uses `Bun.file` and
+//  `import.meta.dir`, not `node:fs`.
 import { describe, expect, test } from "bun:test";
 
 import type { MeasuredCount } from "../../src/counts/measured-count";
@@ -42,37 +40,36 @@ import { BROKEN_PROOF_SIGNALS_V1 } from "../../src/evidence/signals";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 
-// --- frozen fixture time (STATE.md: no `Date.now()` anywhere) ---------------
+// -- frozen fixture time (state.md: no `Date.now` anywhere)
 
 const WINDOW_START = new Date("2026-07-01T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-08T00:00:00.000Z");
 const EXCEPTION_AT = new Date("2026-07-03T12:00:00.000Z");
 
-// --- rule set, fetched by version, never "current" (D-14) -------------------
+// -- rule set, fetched by version, never "current"
 
 /**
- * The version stamped on rule sets this file INVENTS to exercise a predicate.
+ * The version stamped on rule sets this file invents to exercise a predicate.
  *
- * It must never collide with a version the registry hands out, because a
- * synthetic rule set wearing a registered version is a D12 identity fork: the
- * moment anything persists `thresholdRuleSetVersion`, a replay through
- * `THRESHOLD_RULE_SETS.get(...)` reproduces a decision this rule set never
- * made. Registered versions are positive and assigned in increasing order
- * (`src/rules/thresholds.ts` — "add version 3 for the next change"), so a
- * NEGATIVE version collides with nothing today and with no future bump either.
- * `3` could not promise that.
+ * It must never collide with a version the registry hands out, because a synthetic rule
+ * set wearing a registered version is a identity fork: the moment anything persists
+ * `thresholdRuleSetVersion`, a replay through `THRESHOLD_RULE_SETS.get` reproduces
+ * a decision this rule set never made. Registered versions are positive and assigned in
+ * increasing order (`src/rules/thresholds.ts`. "add version 3 for the next change"), so
+ * a negative version collides with nothing today and with no future bump either. `3`
+ * could not promise that.
  */
 const SYNTHETIC_RULE_SET_VERSION = -1;
 
-/** The v1 rule set fetched BY VERSION. After v2 lands this still reproduces a
- * v1 verdict exactly, which is the property D-14 exists to give us. */
+/** The v1 rule set fetched by version. After v2 lands this still reproduces a v1
+ * verdict exactly, which is the property exists to give us. */
 function ruleSetV1(): ThresholdRuleSet {
   const rules = THRESHOLD_RULE_SETS.get(1);
   if (!rules) throw new Error("rule set version 1 must remain resolvable forever");
   return rules;
 }
 
-// --- signal fixtures --------------------------------------------------------
+// -- signal fixtures
 
 function failureCorrelated(): EvidenceSignal {
   return {
@@ -81,8 +78,8 @@ function failureCorrelated(): EvidenceSignal {
     occurredAt: EXCEPTION_AT,
     precedingActionName: "save_clicked",
     correlationWindowMs: 30_000,
-    // The proven cohort, required since audit C-1: `broken` may not pass on a
-    // single correlated session while its count reports a larger population.
+    // The proven cohort, required since audit C-1: `broken` may not pass on a single
+    // correlated session while its count reports a larger population.
     correlatedSessions: measuredCount({
       numerator: 3,
       denominator: 10,
@@ -98,21 +95,21 @@ function failureUncorrelated(): EvidenceSignal {
 }
 
 /** The cohort every struggle fixture is measured over. Comfortably above every
- * magnitude in play, so a cohort NUMERATOR is the only thing that ever moves. */
+ * magnitude in play, so a cohort numerator is the only thing that ever moves. */
 const STRUGGLE_COHORT_KEPT = 40;
 
 /** A cohort that clears `struggleMinStrugglingSessions` without sitting on its
- * boundary — the boundary itself is walked by its own test below. */
+ * boundary. The boundary itself is walked by its own test below. */
 const STRUGGLING_SESSIONS_ABOVE_MINIMUM = 8;
 
 /**
- * `attempts` is a REQUIRED parameter so no test can accidentally lean on a
- * default that happens to sit on the right side of `struggleRepeatedAttemptMin`.
+ * `attempts` is a required parameter so no test can accidentally lean on a default that
+ * happens to sit on the right side of `struggleRepeatedAttemptMin`.
  *
  * `strugglingSessions` defaults to a cohort that clears
- * `struggleMinStrugglingSessions`, so every assertion written before that
- * magnitude existed still tests the magnitude it was written for. The tests
- * that are ABOUT the cohort pass it explicitly.
+ * `struggleMinStrugglingSessions`, so every assertion written before that magnitude
+ * existed still tests the magnitude it was written for. The tests that are about the
+ * cohort pass it explicitly.
  */
 function struggle(
   attempts: number,
@@ -127,13 +124,12 @@ function struggle(
   };
 }
 
-/** The OTHER struggle subkind. No producer this sprint (ruling 18) and NOT
- * admissible proof at any magnitude (ruling 36) — and it must STILL block
- * `changed_mind` at any `attempts`, zero included (ruling 19, unchanged).
+/** The other struggle subkind. No producer this sprint (ruling 18) and not admissible
+ * proof at any magnitude (ruling 36), and it must still block `changed_mind` at any
+ * `attempts`, zero included (ruling 19, unchanged).
  *
- * Its cohort is deliberately above every minimum: an assertion about
- * `backtrack` must turn on the SUBKIND, never on a fixture that was quietly
- * too small. */
+ * Its cohort is deliberately above every minimum: an assertion about `backtrack` must
+ * turn on the subkind, never on a fixture that was quietly too small. */
 function backtrack(attempts: number): EvidenceSignal {
   return {
     kind: "struggle",
@@ -159,10 +155,10 @@ function sessionsCount(numerator: number, denominator: number): MeasuredCount {
 }
 
 /**
- * Observed and expected deliberately share ONE denominator, so "observed is
- * 20% of expected" reads identically whether the predicate compares the two
- * numerators or the two rates. The test therefore pins the THRESHOLD BEHAVIOUR
- * without pinning an implementation detail the ADD never fixed.
+ * Observed and expected deliberately share one denominator, so "observed is 20% of
+ * expected" reads identically whether the predicate compares the two numerators or the
+ * two rates. The test therefore pins the threshold behaviour without pinning an
+ * implementation detail the add never fixed.
  */
 const RATE_DROP_DENOMINATOR = 200;
 
@@ -175,8 +171,8 @@ function rateDrop(observedNumerator: number, expectedNumerator: number): Evidenc
   };
 }
 
-/** One representative signal per kind, built LAZILY (per kind, on demand) so a
- * test that only walks `["failure_correlated"]` never constructs a count. */
+/** One representative signal per kind, built lazily (per kind, on demand) so a test
+ * that only walks `["failure_correlated"]` never constructs a count. */
 function signalOfKind(kind: EvidenceSignalKind): EvidenceSignal {
   switch (kind) {
     case "failure_correlated":
@@ -192,12 +188,12 @@ function signalOfKind(kind: EvidenceSignalKind): EvidenceSignal {
   }
 }
 
-// --- source-text helper (test 3) -------------------------------------------
+// -- source-text helper (test 3)
 
 /**
- * The contiguous run of `//` comment lines immediately above `declaration`.
- * "Carrying the comment" means the comment sits AT the constant — a matching
- * string somewhere else in the file does not count.
+ * The contiguous run of `//` comment lines immediately above `declaration`. "Carrying
+ * the comment" means the comment sits AT the constant. A matching string somewhere else
+ * in the file does not count.
  */
 function commentBlockAbove(source: string, declaration: string): string {
   const at = source.indexOf(declaration);
@@ -217,11 +213,9 @@ function commentBlockAbove(source: string, declaration: string): string {
   return block.join("\n");
 }
 
-// ---------------------------------------------------------------------------
 // broken
-// ---------------------------------------------------------------------------
 
-describe("brokenProofSatisfied (FR-12, FR-19, ES-13)", () => {
+describe("brokenProofSatisfied", () => {
   test("should satisfy broken proof when a failure_correlated signal is present", () => {
     expect(brokenProofSatisfied([failureCorrelated()], ruleSetV1())).toBe(true);
   });
@@ -229,13 +223,13 @@ describe("brokenProofSatisfied (FR-12, FR-19, ES-13)", () => {
   test("should NOT satisfy broken proof from a failure_uncorrelated signal", () => {
     const rules = ruleSetV1();
 
-    // The whole of ES-13 in one line: an exception the pipeline could not tie
-    // to a preceding action inside the window is recorded HONESTLY as
-    // uncorrelated — and is then not proof of anything.
+    // The whole of in one line: an exception the pipeline could not tie to a
+    // preceding action inside the window is recorded honestly as uncorrelated, and is
+    // then not proof of anything.
     expect(brokenProofSatisfied([failureUncorrelated()], rules)).toBe(false);
 
-    // Uncorrelated exceptions do not ACCUMULATE into proof either. Three
-    // coincidences are still coincidences; volume is not correlation.
+    // Uncorrelated exceptions do not accumulate into proof either. Three coincidences
+    // are still coincidences; volume is not correlation.
     expect(
       brokenProofSatisfied(
         [failureUncorrelated(), failureUncorrelated(), failureUncorrelated()],
@@ -243,39 +237,37 @@ describe("brokenProofSatisfied (FR-12, FR-19, ES-13)", () => {
       ),
     ).toBe(false);
 
-    // And a correlated signal sitting BESIDE uncorrelated ones still proves
-    // `broken` — the exclusion is of the uncorrelated kind, not a poisoning of
-    // the whole signal list.
+    // And a correlated signal sitting beside uncorrelated ones still proves `broken`.
+    // The exclusion is of the uncorrelated kind, not a poisoning of the whole signal
+    // list.
     expect(brokenProofSatisfied([failureUncorrelated(), failureCorrelated()], rules)).toBe(true);
   });
 
-  test("should name BROKEN_PROOF_SIGNALS_V1 as a versioned constant carrying the BS-1(a) blind-spot comment", async () => {
+  test("should name BROKEN_PROOF_SIGNALS_V1 as a versioned constant carrying the (a) blind-spot comment", async () => {
     const source = await Bun.file(`${import.meta.dir}/../../src/evidence/signals.ts`).text();
     const comment = commentBlockAbove(source, "export const BROKEN_PROOF_SIGNALS_V1");
 
-    // (a) VERSIONED. The name carries its version, and the v1 rule set wires
-    // this exact constant — that is what makes FR-19's "admitting a new signal
-    // is a one-line addition plus a version bump" true rather than claimed.
+    //  versioned. The name carries its version, and the v1 rule set wires this exact
+    // constant. That is what makes the "admitting a new signal is a one-line addition
+    // plus a version bump" true rather than claimed.
     expect(source).toContain("export const BROKEN_PROOF_SIGNALS_V1");
     expect(BROKEN_PROOF_SIGNALS_V1).toEqual(["failure_correlated"]);
     expect(ruleSetV1().brokenProofSignals).toBe(BROKEN_PROOF_SIGNALS_V1);
 
-    // (b) THE ESCALATION LIVES IN CODE (ESC-1). BS-1(a) is the absent request:
-    // the silent no-op save where nothing throws and no event fires. It is
-    // undetectable over the current `events` schema — no `properties` column,
-    // no status code, no network-request property — and this comment is the
-    // only place a future contributor meets that fact before trusting the
-    // predicate. A test asserts it stays there.
-    expect(comment).toContain("KNOWN BLIND SPOT");
-    expect(comment).toContain("BS-1a");
+    //  the escalation lives in code. is the absent request: the silent no-op
+    // save where nothing throws and no event fires. It is undetectable over the current
+    // `events` schema. No `properties` column, no status code, no network-request
+    // property, and this comment is the only place a future contributor meets that fact
+    // before trusting the predicate. A test asserts it stays there.
+    expect(comment).toContain("Known blind spot");
+    expect(comment).toContain("absent request");
     expect(comment).toContain("properties");
     expect(comment).toContain("status code");
     expect(comment).toContain("network-request property");
-    expect(comment).toContain("ESC-1");
 
-    // (c) The constant is not decorative: every kind it lists is admitted by
-    // the predicate. Without this, "one-line change" would be a comment rather
-    // than a property of the code.
+    //  The constant is not decorative: every kind it lists is admitted by the
+    // predicate. Without this, "one-line change" would be a comment rather than a
+    // property of the code.
     for (const kind of BROKEN_PROOF_SIGNALS_V1) {
       expect(brokenProofSatisfied([signalOfKind(kind)], ruleSetV1())).toBe(true);
     }
@@ -283,39 +275,37 @@ describe("brokenProofSatisfied (FR-12, FR-19, ES-13)", () => {
 
   test("should downgrade a broken claim with struggle signals but no failure signal to confusing", () => {
     const rules = ruleSetV1();
-    // A user who tried three times and never saw an exception. We can prove
-    // they struggled; we cannot prove anything broke.
+    // A user who tried three times and never saw an exception. We can prove they
+    // struggled; we cannot prove anything broke.
     const signals = [
       struggle(rules.struggleRepeatedAttemptMin),
       struggle(rules.struggleRepeatedAttemptMin),
     ];
 
-    // This file asserts the PREDICATE PAIR that produces the downgrade — the
-    // `broken` rung fails, the `confusing` rung it steps to succeeds. The
-    // descent itself (DOWNGRADE_PATH, the trace) is gate.test.ts's subject.
+    // This file asserts the predicate pair that produces the downgrade. The `broken`
+    // rung fails, the `confusing` rung it steps to succeeds. The descent itself
+    // (DOWNGRADE_PATH, the trace) is gate.test.ts's subject.
     expect(brokenProofSatisfied(signals, rules)).toBe(false);
     expect(confusingProofSatisfied(signals, rules)).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
 // confusing
-// ---------------------------------------------------------------------------
 
-describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
+describe("confusingProofSatisfied", () => {
   test("should satisfy confusing proof when a struggle signal is present", () => {
     const rules = ruleSetV1();
 
-    // INCLUSIVE at exactly the threshold (D-6). Fail direction is carried by
-    // the magnitude — "two visits to a path is navigation; three is a
-    // pattern" — never by boundary strictness.
+    // Inclusive at exactly the threshold. Fail direction is carried by the magnitude.
+    // "two visits to a path is navigation; three is a pattern", never by boundary
+    // strictness.
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin)], rules)).toBe(true);
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin + 1)], rules)).toBe(
       true,
     );
 
-    // The complement, so the test cannot pass against a predicate that returns
-    // true for everything: one attempt below the minimum is not a struggle.
+    // The complement, so the test cannot pass against a predicate that returns true for
+    // everything: one attempt below the minimum is not a struggle.
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin - 1)], rules)).toBe(
       false,
     );
@@ -324,36 +314,34 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
     expect(confusingProofSatisfied([], rules)).toBe(false);
   });
 
-  // FR-22 / FR-9 (Wave 7). The assertion for this direction already existed
-  // above, as the positive test's own negative control — and it stays there,
-  // because a positive test keeping its complement is what stops it passing
-  // against a predicate that returns `true` for everything.
+  // / (Wave 7). The assertion for this direction already existed above, as the positive
+  // test's own negative control, and it stays there, because a positive test keeping
+  // its complement is what stops it passing against a predicate that returns `true` for
+  // everything.
   //
-  // What did NOT exist was a test whose NAME states the direction. That is the
-  // whole of FR-22's requirement here: a reader scanning this suite, or the
-  // coverage map in `coverage.test.ts` scanning it mechanically, must be able to
-  // see which way `struggleRepeatedAttemptMin` fails without opening the file
-  // and reading the assertions inside a test called "should satisfy…".
+  // What did not exist was a test whose name states the direction. That is the whole of
+  // the requirement here: a reader scanning this suite, or the coverage map in
+  // `coverage.test.ts` scanning it mechanically, must be able to see which way
+  // `struggleRepeatedAttemptMin` fails without opening the file and reading the
+  // assertions inside a test called "should satisfy…".
   test("should not satisfy confusing proof below struggleRepeatedAttemptMin", () => {
     const rules = ruleSetV1();
     const belowMinimum = rules.struggleRepeatedAttemptMin - 1;
 
-    // The near miss must be a REAL revisit, or this degenerates into the
-    // single-attempt case and stops testing the boundary at all.
+    // The near miss must be a real revisit, or this degenerates into the single-attempt
+    // case and stops testing the boundary at all.
     expect(belowMinimum).toBeGreaterThanOrEqual(2);
 
-    // FAIL DIRECTION: UNDER-DETECT (FR-9). "Two visits to a path is navigation;
-    // three is a pattern" — so one below the minimum is not proof of confusion,
-    // and the consequence is deliberate: a `confusing` claim with no proof hits
-    // the FR-13B floor and is DROPPED. Silence, not a softer claim (ADD
-    // trade-off 6, ESC-1).
+    // Fail direction: Under-detect. "Two visits to a path is navigation; three is a
+    // pattern", so one below the minimum is not proof of confusion, and the consequence
+    // is deliberate: a `confusing` claim with no proof hits the floor and is dropped.
+    // Silence, not a softer claim.
     expect(confusingProofSatisfied([struggle(belowMinimum)], rules)).toBe(false);
     expect(confusingProofSatisfied([struggle(1)], rules)).toBe(false);
 
-    // Sub-threshold struggles do not ACCUMULATE into proof either. Three people
-    // each glancing at a page twice is not one person stuck on it — the same
-    // per-session reading `funnel-dropoff.test.ts` pins on the producing side
-    // (PL ruling 31).
+    // Sub-threshold struggles do not accumulate into proof either. Three people each
+    // glancing at a page twice is not one person stuck on it, the same per-session
+    // reading `funnel-dropoff.test.ts` pins on the producing side.
     expect(
       confusingProofSatisfied(
         [struggle(belowMinimum), struggle(belowMinimum), struggle(belowMinimum)],
@@ -361,39 +349,37 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
       ),
     ).toBe(false);
 
-    // NON-VACUITY, AND THE INCLUSIVE HALF (D-6): the same predicate, the same
-    // signal kind, one attempt higher, DOES fire. So every `false` above is this
-    // magnitude holding — never a predicate that rejects struggle signals
-    // outright. (PL ruling 18: the minimum gates the `repeated_attempt` subkind
-    // only, which is what `struggle()` builds.)
+    // Non-vacuity, and the inclusive half: the same predicate, the same signal kind,
+    // one attempt higher, does fire. So every `false` above is this magnitude holding,
+    // never a predicate that rejects struggle signals outright. (the minimum gates the
+    // `repeated_attempt` subkind only, which is what `struggle` builds.)
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin)], rules)).toBe(true);
   });
 
-  // ── THE COHORT HALF (H-1). ────────────────────────────────────────────────
+  // The cohort half.
   //
-  // WHY A SECOND MAGNITUDE EXISTS AT ALL. `attempts` is a PER-SESSION maximum
-  // over every kept session at the surface (PL ruling 31), so as an AGGREGATE
-  // predicate it is monotonically increasing in corpus size: at
-  // `DETECTOR_CORPUS_MAX_SESSIONS` (500), ONE session revisiting a comparison
-  // page three times would set `struggle` for the whole surface. The predicate
-  // would then fire on "at least one session came back" — a SUPERSET of its
-  // target, the D10 conflation this sprint exists to prevent — and it would do
-  // so at the single gate between drop-off arithmetic and a delivered finding,
-  // because `struggle` is `confusing`'s only proof and `confusing` is the only
-  // class a T1 detector can carry through the gate.
+  // Why a second magnitude exists at all. `attempts` is a per-session maximum over
+  // every kept session at the surface, so as an aggregate predicate it is monotonically
+  // increasing in corpus size: at `DETECTOR_CORPUS_MAX_SESSIONS`, one session
+  // revisiting a comparison page three times would set `struggle` for the whole
+  // surface. The predicate would then fire on "at least one session came back". A
+  // superset of its target, the conflation this sprint exists to prevent, and it would
+  // do so at the single gate between drop-off arithmetic and a delivered finding,
+  // because `struggle` is `confusing`'s only proof and `confusing` is the only class a
+  // T1 detector can carry through the gate.
   test("should not satisfy confusing proof below struggleMinStrugglingSessions", () => {
     const rules = ruleSetV1();
     const outlier = rules.struggleMinStrugglingSessions - 1;
 
-    // The near miss must be a REAL cohort, or this degenerates into the
-    // no-struggle case and stops testing the boundary at all.
+    // The near miss must be a real cohort, or this degenerates into the no-struggle
+    // case and stops testing the boundary at all.
     expect(outlier).toBeGreaterThanOrEqual(1);
 
-    // THE OUTLIER, at every per-session depth including a dramatic one. The
-    // magnitude a founder reads (`attempts`) may be as loud as we like; the
-    // number of PEOPLE it happened to is not enough, and that is the one that
-    // decides. FAIL DIRECTION: UNDER-DETECT (FR-9) — the claim then hits the
-    // FR-13B floor and is DROPPED. Silence, not a softer claim.
+    // The outlier, at every per-session depth including a dramatic one. The magnitude a
+    // founder reads (`attempts`) may be as loud as we like; the number of people it
+    // happened to is not enough, and that is the one that decides. Fail direction:
+    // Under-detect, the claim then hits the floor and is dropped. Silence, not a softer
+    // claim.
     expect(
       confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin, outlier)], rules),
     ).toBe(false);
@@ -401,8 +387,8 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
       confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin * 10, outlier)], rules),
     ).toBe(false);
 
-    // Nor do several sub-threshold cohorts ACCUMULATE into one. Each signal is
-    // its own surface's claim; volume across signals is not a cohort.
+    // Nor do several sub-threshold cohorts accumulate into one. Each signal is its own
+    // surface's claim; volume across signals is not a cohort.
     expect(
       confusingProofSatisfied(
         [
@@ -414,10 +400,9 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
       ),
     ).toBe(false);
 
-    // NON-VACUITY, AND THE INCLUSIVE HALF (D-6): the same predicate, the same
-    // per-session depth, ONE more struggling session, DOES fire. So every
-    // `false` above is this magnitude holding — never a predicate that rejects
-    // struggle signals outright.
+    // Non-vacuity, and the inclusive half: the same predicate, the same per-session
+    // depth, one more struggling session, does fire. So every `false` above is this
+    // magnitude holding, never a predicate that rejects struggle signals outright.
     expect(
       confusingProofSatisfied(
         [struggle(rules.struggleRepeatedAttemptMin, rules.struggleMinStrugglingSessions)],
@@ -426,19 +411,18 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
     ).toBe(true);
   });
 
-  // ── PL RULING 36 (H-2). ───────────────────────────────────────────────────
+  // .
   //
-  // `backtrack` used to be admitted on KIND ALONE — no magnitude gate at all —
-  // three lines below a comment explaining why that must not happen. Users
-  // navigate back constantly, so a single back-navigation fires on a superset
-  // of its target, and it was admitted at any magnitude at the one gate between
-  // drop-off arithmetic and a delivered finding. The only thing preventing a
-  // false `confusing` finding was that no detector emits `backtrack` this
-  // sprint (ruling 18); "no producer" is not a guard, and ESC-6 has O-005
-  // attaching a MODEL to `ProposedClaim`.
+  // `backtrack` used to be admitted on kind alone (no magnitude gate at all) three
+  // lines below a comment explaining why that must not happen. Users navigate back
+  // constantly, so a single back-navigation fires on a superset of its target, and it
+  // was admitted at any magnitude at the one gate between drop-off arithmetic and a
+  // delivered finding. The only thing preventing a false `confusing` finding was that
+  // no detector emits `backtrack` this sprint (ruling 18); "no producer" is not a
+  // guard, and has attaching a model to `ProposedClaim`.
   //
-  // Fail direction: UNDER-DETECT. When a real producer exists, O-005/O-006 may
-  // admit it deliberately with its own calibrated magnitude gate.
+  // Fail direction: Under-detect. When a real producer exists, / may admit it
+  // deliberately with its own calibrated magnitude gate.
   test("should not satisfy confusing proof from a backtrack signal at any magnitude", () => {
     const rules = ruleSetV1();
 
@@ -450,35 +434,33 @@ describe("confusingProofSatisfied (FR-12, FR-9, D-6)", () => {
     expect(confusingProofSatisfied([backtrack(9), backtrack(9), backtrack(9)], rules)).toBe(false);
     expect(confusingProofSatisfied([backtrack(9), cleanExit()], rules)).toBe(false);
 
-    // NON-VACUITY: the same kind, the other subkind, at the same cohort, DOES
-    // prove `confusing`. So every `false` above is the subkind being refused —
-    // never a predicate that rejects struggle signals outright.
+    // Non-vacuity: the same kind, the other subkind, at the same cohort, does prove
+    // `confusing`. So every `false` above is the subkind being refused, never a
+    // predicate that rejects struggle signals outright.
     expect(confusingProofSatisfied([struggle(rules.struggleRepeatedAttemptMin)], rules)).toBe(true);
 
-    // AND RULING 19 IS UNCHANGED — the half that must NOT be weakened.
-    // `backtrack` proves nothing and still DISQUALIFIES `changed_mind`, at any
-    // magnitude, because that class's proof is the absence of everything and a
-    // back-navigation is still something happening. "Proves nothing" and
-    // "shows nothing happened" are different statements.
+    // And ruling 19 is unchanged. The half that must not be weakened. `backtrack`
+    // proves nothing and still disqualifies `changed_mind`, at any magnitude, because
+    // that class's proof is the absence of everything and a back-navigation is still
+    // something happening. "Proves nothing" and "shows nothing happened" are different
+    // statements.
     expect(changedMindProofSatisfied([cleanExit(), backtrack(1)], rules)).toBe(false);
   });
 });
 
-// ---------------------------------------------------------------------------
-// changed_mind — the class whose proof is the ABSENCE of everything
-// ---------------------------------------------------------------------------
+// changed_mind, the class whose proof is the absence of everything
 
-describe("changedMindProofSatisfied (FR-12)", () => {
+describe("changedMindProofSatisfied", () => {
   test("should satisfy changed_mind proof only when clean_exit is present AND no failure and no struggle signal exist", () => {
     const rules = ruleSetV1();
 
     // The presence half.
     expect(changedMindProofSatisfied([cleanExit()], rules)).toBe(true);
 
-    // The ABSENCE half, which is the load-bearing one and which the signal
-    // LIST cannot express — a list can only say what must be present. Each
-    // case below carries `clean_exit`, so anything other than `false` means
-    // the absence requirement is not being enforced in the predicate.
+    // The absence half, which is the load-bearing one and which the signal list cannot
+    // express. A list can only say what must be present. Each case below carries
+    // `clean_exit`, so anything other than `false` means the absence requirement is not
+    // being enforced in the predicate.
     expect(changedMindProofSatisfied([cleanExit(), failureCorrelated()], rules)).toBe(false);
     expect(changedMindProofSatisfied([cleanExit(), failureUncorrelated()], rules)).toBe(false);
     expect(
@@ -489,53 +471,50 @@ describe("changedMindProofSatisfied (FR-12)", () => {
     expect(changedMindProofSatisfied([], rules)).toBe(false);
   });
 
-  // ── PL RULING 19, AT THE MAGNITUDE THAT MATTERS ────────────────────────────
+  // At the magnitude that matters
   //
-  // Fail direction: UNDER-DETECT toward `drop`. A struggle signal of ANY
-  // subkind at ANY magnitude blocks `changed_mind`.
+  // Fail direction: Under-detect toward `drop`. A struggle signal of any subkind at any
+  // magnitude blocks `changed_mind`.
   //
-  // WHY THIS TEST EXISTS SEPARATELY, and why the case above does not cover it.
-  // The test above feeds a struggle at EXACTLY `struggleRepeatedAttemptMin` —
-  // a magnitude strong enough to prove `confusing` on its own. So it passes
-  // whether the disqualification is KIND-level (correct, ruling 19) or
-  // MAGNITUDE-level (wrong). The distinction only becomes visible BELOW the
-  // threshold.
+  // Why this test exists separately, and why the case above does not cover it. The test
+  // above feeds a struggle at exactly `struggleRepeatedAttemptMin`. A magnitude strong
+  // enough to prove `confusing` on its own. So it passes whether the disqualification
+  // is kind-level (correct, ruling 19) or magnitude-level (wrong). The distinction only
+  // becomes visible below the threshold.
   //
   // The regression it guards: routing the disqualification through
-  // `anySignalProves(signals, ["struggle"], ruleSet)` — which is
-  // magnitude-gated, reads naturally, and looks like a tidy reuse of the
-  // helper the other two predicates use. That change would let a session with
-  // one or two visible repeated attempts pass as `changed_mind`: the product
-  // telling a founder "they simply moved on" about a user who was visibly
-  // struggling. `changed_mind` is the most product-flattering class there is,
-  // and its proof is the ABSENCE of everything — so a sub-threshold struggle
+  // `anySignalProves(signals, ["struggle"], ruleSet)`, which is magnitude-gated, reads
+  // naturally, and looks like a tidy reuse of the helper the other two predicates use.
+  // That change would let a session with one or two visible repeated attempts pass as
+  // `changed_mind`: the product telling a founder "they simply moved on" about a user
+  // who was visibly struggling. `changed_mind` is the most product-flattering class
+  // there is, and its proof is the absence of everything, so a sub-threshold struggle
   // is still evidence that something happened, which is the whole claim.
   test("should block changed_mind on a struggle signal of any kind at any magnitude", () => {
     const rules = ruleSetV1();
 
-    // NON-VACUITY. Without a struggle present the predicate is satisfied, so
-    // every `false` below is the struggle doing the work and not a fixture
-    // that fails for some unrelated reason.
+    // Non-vacuity. Without a struggle present the predicate is satisfied, so every
+    // `false` below is the struggle doing the work and not a fixture that fails for
+    // some unrelated reason.
     expect(changedMindProofSatisfied([cleanExit()], rules)).toBe(true);
 
-    // (1) SUB-THRESHOLD `repeated_attempt`, every magnitude below the minimum
-    // down to zero. Each is too weak to PROVE `confusing` — asserted directly
-    // — and each must still block `changed_mind`.
+    //  sub-threshold `repeated_attempt`, every magnitude below the minimum down to
+    // zero. Each is too weak to prove `confusing` (asserted directly) and each must
+    // still block `changed_mind`.
     for (let attempts = 0; attempts < rules.struggleRepeatedAttemptMin; attempts += 1) {
       const weak = struggle(attempts);
 
-      // The magnitude really is sub-threshold: this signal cannot prove
-      // `confusing`. If this ever goes true the loop is testing nothing.
+      // The magnitude really is sub-threshold: this signal cannot prove `confusing`. If
+      // this ever goes true the loop is testing nothing.
       expect(confusingProofSatisfied([weak], rules)).toBe(false);
 
       // ...and yet it blocks the flattering class.
       expect(changedMindProofSatisfied([cleanExit(), weak], rules)).toBe(false);
     }
 
-    // (2) The `backtrack` SUBKIND, which has no producer this sprint (ruling
-    // 18) and is admitted on kind alone. It must block regardless of
-    // magnitude — including at zero attempts, where any magnitude gate would
-    // wave it through.
+    //  The `backtrack` subkind, which has no producer this sprint (ruling
+    // 18) and is admitted on kind alone. It must block regardless of magnitude,
+    //  including at zero attempts, where any magnitude gate would wave it through.
     expect(changedMindProofSatisfied([cleanExit(), backtrack(0)], rules)).toBe(false);
     expect(changedMindProofSatisfied([cleanExit(), backtrack(1)], rules)).toBe(false);
     expect(
@@ -544,23 +523,21 @@ describe("changedMindProofSatisfied (FR-12)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // instrumentation
-// ---------------------------------------------------------------------------
 
-describe("instrumentationProofSatisfied (FR-15, FR-9, D-6, PL ruling 1)", () => {
+describe("instrumentationProofSatisfied", () => {
   test("should satisfy instrumentation proof when the rate crosses instrumentationDropRatio", () => {
     const rules = ruleSetV1();
 
-    // Comfortably clear of the expected-count floor, so this test isolates the
-    // RATIO gate and nothing else.
+    // Comfortably clear of the expected-count floor, so this test isolates the ratio
+    // gate and nothing else.
     const expectedNumerator = rules.instrumentationMinExpected * 2;
-    // PL ruling 1: the ratio is an INTEGER PERCENT (20), so the boundary is
-    // exact integer arithmetic — `observed * 100 <= dropRatioPercent * expected`
-    // — never `observed / expected >= 0.2`, which is ulp-fragile.
+    // The ratio is an integer percent, so the boundary is exact integer
+    // arithmetic, `observed * 100 <= dropRatioPercent * expected`, never `observed /
+    // expected >= 0.2`, which is ulp-fragile.
     const atBoundary = (expectedNumerator * rules.instrumentationDropRatioPercent) / 100;
 
-    // INCLUSIVE (D-6): exactly at the ratio FIRES.
+    // Inclusive: exactly at the ratio fires.
     expect(instrumentationProofSatisfied([rateDrop(atBoundary, expectedNumerator)], rules)).toBe(
       true,
     );
@@ -568,8 +545,8 @@ describe("instrumentationProofSatisfied (FR-15, FR-9, D-6, PL ruling 1)", () => 
     // A collapse well past the ratio fires too.
     expect(instrumentationProofSatisfied([rateDrop(0, expectedNumerator)], rules)).toBe(true);
 
-    // One session the safe side of the boundary does NOT fire — the complement
-    // that stops this passing against an always-true predicate.
+    // One session the safe side of the boundary does not fire. The complement that
+    // stops this passing against an always-true predicate.
     expect(
       instrumentationProofSatisfied([rateDrop(atBoundary + 1, expectedNumerator)], rules),
     ).toBe(false);
@@ -578,47 +555,41 @@ describe("instrumentationProofSatisfied (FR-15, FR-9, D-6, PL ruling 1)", () => 
   test("should not satisfy instrumentation proof below instrumentationMinExpected", () => {
     const rules = ruleSetV1();
 
-    // The most extreme ratio there is — the event stopped firing entirely —
-    // on an expected baseline one session below the floor. It must still not
-    // fire. FAIL DIRECTION: UNDER-DETECT (FR-9). "This event stopped firing"
-    // is indistinguishable from "this event was always rare" down here, and a
-    // false instrumentation claim burns the credibility the MVP exists to test.
+    // The most extreme ratio there is (the event stopped firing entirely) on an
+    // expected baseline one session below the floor. It must still not fire. Fail
+    // direction: Under-detect. "This event stopped firing" is indistinguishable from
+    // "this event was always rare" down here, and a false instrumentation claim burns
+    // the credibility the MVP exists to test.
     expect(
       instrumentationProofSatisfied([rateDrop(0, rules.instrumentationMinExpected - 1)], rules),
     ).toBe(false);
 
-    // INCLUSIVE at the floor (D-6): exactly `instrumentationMinExpected` is a
-    // large enough baseline, so the boundary is the magnitude's job, not the
-    // comparison operator's.
+    // Inclusive at the floor: exactly `instrumentationMinExpected` is a large enough
+    // baseline, so the boundary is the magnitude's job, not the comparison operator's.
     expect(
       instrumentationProofSatisfied([rateDrop(0, rules.instrumentationMinExpected)], rules),
     ).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// D-14 — PL ruling 6: the predicates read their signal lists off the PARAMETER
-// ---------------------------------------------------------------------------
+// —: the predicates read their signal lists off the parameter
 
-describe("D-14 — predicates read the rule-set parameter, never the module constant", () => {
+describe("predicates read the rule-set parameter, never the module constant", () => {
   test("should follow the rule set it is handed when its proof-signal list differs from v1", () => {
-    // A hypothetical rule set that admits the uncorrelated kind (this is
-    // exactly the one-line edit FR-19 promises, and exactly the edit ESC-1
-    // says needs first-party capture before it is safe). If the predicate
-    // reached for `BROKEN_PROOF_SIGNALS_V1` directly instead of reading its
-    // parameter, both assertions below would come out the v1 way and this
-    // test would catch it.
+    // A hypothetical rule set that admits the uncorrelated kind (this is exactly the
+    // one-line edit promises, and exactly the edit That decision says needs first-party
+    // capture before it is safe). If the predicate reached for
+    // `BROKEN_PROOF_SIGNALS_V1` directly instead of reading its parameter, both
+    // assertions below would come out the v1 way and this test would catch it.
     //
-    // STAMPED WITH A SYNTHETIC VERSION, NOT `2`. This once read `version: 2`
-    // on the reasoning that it is "honestly not v1" — true only while no v2
-    // existed. O-005 shipped `RULE_SET_V2` and registered it at
-    // `THRESHOLD_RULE_SETS.get(2)`, so stamping `2` here would mint a THIRD
-    // distinct rule set claiming to be version 2. That is the D12 identity
-    // fork the v2 bump was made to prevent: the moment anything persists
-    // `thresholdRuleSetVersion`, a replay through the registry would
-    // reproduce a decision this rule set never made. A negative version
-    // collides with nothing registered today and with no future bump either,
-    // which `3` could not promise.
+    // Stamped with a synthetic version, not `2`. This once read `version: 2` on the
+    // reasoning that it is "honestly not v1". True only while no v2 existed. shipped
+    // `RULE_SET_V2` and registered it at `THRESHOLD_RULE_SETS.get`, so stamping `2`
+    // here would mint a third distinct rule set claiming to be version 2. That is the
+    // identity fork the v2 bump was made to prevent: the moment anything persists
+    // `thresholdRuleSetVersion`, a replay through the registry would reproduce a
+    // decision this rule set never made. A negative version collides with nothing
+    // registered today and with no future bump either, which `3` could not promise.
     const admitsUncorrelated: ThresholdRuleSet = {
       ...ruleSetV1(),
       version: SYNTHETIC_RULE_SET_VERSION,
@@ -642,12 +613,12 @@ describe("D-14 — predicates read the rule-set parameter, never the module cons
   });
 });
 
-// --- confidenceBasisForPass (O-012) -----------------------------------------
+// -- confidenceBasisForPass
 //
-// The assembler's ranking derivation, defined HERE beside the predicate maths
-// it must agree with. These tests pin the D-6 vocabulary: `at_threshold` is
-// "every proving magnitude sits exactly at its inclusive boundary", and one
-// signal clearing with room is enough to say `threshold_met`.
+// The assembler's ranking derivation, defined here beside the predicate maths it must
+// agree with. These tests pin the vocabulary: `at_threshold` is "every proving
+// magnitude sits exactly at its inclusive boundary", and one signal clearing with room
+// is enough to say `threshold_met`.
 describe("confidenceBasisForPass", () => {
   test("reports at_threshold when the proving struggle sits exactly at both minimums", () => {
     const rules = ruleSetV1();
@@ -658,8 +629,8 @@ describe("confidenceBasisForPass", () => {
 
   test("reports at_threshold when EITHER struggle magnitude is at its boundary, since one fewer would not fire", () => {
     const rules = ruleSetV1();
-    // Attempts at the minimum, cohort clear of it: the claim is still
-    // boundary-fragile in one dimension, and O-006 may rank it lower.
+    // Attempts at the minimum, cohort clear of it: the claim is still boundary-fragile
+    // in one dimension, and may rank it lower.
     const attemptsAtBoundary = struggle(
       rules.struggleRepeatedAttemptMin,
       STRUGGLING_SESSIONS_ABOVE_MINIMUM,
@@ -700,8 +671,8 @@ describe("confidenceBasisForPass", () => {
 
   test("reports at_threshold for a broken pass whose correlated cohort is exactly the minimum", () => {
     const rules = ruleSetV1();
-    // `failureCorrelated()` carries numerator 3 — exactly
-    // `errorMinAffectedSessions` at v1, the audit C-1 cohort gate's boundary.
+    // `failureCorrelated` carries numerator 3. Exactly `errorMinAffectedSessions` at
+    // v1, the audit C-1 cohort gate's boundary.
     expect(rules.errorMinAffectedSessions).toBe(3);
 
     expect(confidenceBasisForPass([failureCorrelated()], "broken", rules)).toBe("at_threshold");
@@ -709,9 +680,9 @@ describe("confidenceBasisForPass", () => {
 
   test("ignores a signal of an unadmitted kind when deriving the basis, as the predicates do", () => {
     const rules = ruleSetV1();
-    // The struggle proves `confusing` at its boundary; the uncorrelated
-    // failure is not admitted proof of `confusing` and must not move the
-    // basis, exactly as it moves no predicate.
+    // The struggle proves `confusing` at its boundary; the uncorrelated failure is not
+    // admitted proof of `confusing` and must not move the basis, exactly as it moves no
+    // predicate.
     const signals = [
       struggle(rules.struggleRepeatedAttemptMin, rules.struggleMinStrugglingSessions),
       failureUncorrelated(),

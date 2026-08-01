@@ -1,19 +1,17 @@
-// Wave 1 RED tests for the effect-injected trial runner (ADD D-5) and leg
-// orchestration (ADD D-6). Asserts ONLY the public contract of
-// scripts/spikes/lib/trial.ts: runTrialLoop(config, deps) and runLegs(legs),
-// observed through returned records and onTrialComplete calls.
-// Stubs throw "not implemented" — these tests MUST fail until Wave 2.
+// Wave 1 red tests for the effect-injected trial runner and leg orchestration. Asserts
+// only the public contract of scripts/spikes/lib/trial.ts: runTrialLoop(config, deps)
+// and runLegs(legs), observed through returned records and onTrialComplete calls. Stubs
+// throw "not implemented". These tests must fail until Wave 2.
 //
 // Fake-deps timing model (the contract Wave 2 implements against):
-// - sleep(ms) advances the fake clock by exactly ms; nothing else moves it.
-// - Trial t0 = now() at capture; first poll tick happens immediately after
-//   capture success, with sleep(pollIntervalMs) BETWEEN ticks — so tick N
-//   observes elapsed (N - 1) * pollIntervalMs.
-// - A timed-out trial records the cap (timeoutMs) as the elapsed value for
-//   each endpoint the poll reported, in elapsedMsByEndpoint.
-// - After the first satisfying endpoint, polling continues for the remaining
-//   endpoints until they match or the trial times out (FR-10 per-endpoint
-//   elapsed).
+// Sleep advances the fake clock by exactly ms; nothing else moves it.
+// Trial t0 = now at capture; first poll tick happens immediately after capture success,
+//  with sleep(pollIntervalMs) between ticks, so tick N observes elapsed *
+//  pollIntervalMs.
+// A timed-out trial records the cap (timeoutMs) as the elapsed value for each endpoint
+//  the poll reported, in elapsedMsByEndpoint.
+// After the first satisfying endpoint, polling continues for the remaining endpoints
+//  until they match or the trial times out (per-endpoint elapsed).
 
 import { describe, expect, test } from "bun:test";
 
@@ -34,8 +32,8 @@ function tickOutcome(matched: boolean, extra?: Partial<EndpointPollOutcome>): En
 }
 
 /**
- * Per-marker tick-scripted poll: `script(marker, tick)` where tick is 1-based
- * and counted per marker (each trial's poll loop starts at tick 1).
+ * Per-marker tick-scripted poll: `script(marker, tick)` where tick is 1-based and
+ * counted per marker (each trial's poll loop starts at tick 1).
  */
 type PollScript = (marker: string, tick: number) => PollResult;
 
@@ -139,8 +137,8 @@ describe("runTrialLoop", () => {
   });
 
   test("should record elapsed ms per trial from capture success to first matching poll", async () => {
-    // Trial 1 matches on tick 3 (elapsed 2000ms at 1000ms interval);
-    // trial 2 matches on tick 5 (elapsed 4000ms). Per-trial, never averaged.
+    // Trial 1 matches on tick 3 (elapsed 2000ms at 1000ms interval); trial 2 matches on
+    // tick 5 (elapsed 4000ms). Per-trial, never averaged.
     const world = makeFakeWorld({
       pollScript: (marker, tick) => {
         const matchTick = marker === "marker-1" ? 3 : 5;
@@ -159,7 +157,7 @@ describe("runTrialLoop", () => {
     expect(first.elapsedMsByEndpoint.events).toBe(2000);
     expect(second.elapsedMsByEndpoint.events).toBe(4000);
 
-    // Elapsed is anchored on THIS trial's capture, not the run start.
+    // Elapsed is anchored on this trial's capture, not the run start.
     expect((first.firstRetrievableTimestamp as number) - first.captureTimestamp).toBe(2000);
     expect((second.firstRetrievableTimestamp as number) - second.captureTimestamp).toBe(4000);
   });
@@ -180,7 +178,7 @@ describe("runTrialLoop", () => {
 
     expect(records).toHaveLength(1);
     const record = records[0] as TrialRecord;
-    // Parse failures did NOT abort the loop: tick 3 still retrieved.
+    // Parse failures did not abort the loop: tick 3 still retrieved.
     expect(record.outcome).toBe("retrieved");
     expect(record.parseFailureCount).toBe(2);
   });
@@ -200,8 +198,8 @@ describe("runTrialLoop", () => {
   });
 
   test("should call onTrialComplete after every trial including timed-out and errored ones", async () => {
-    // marker-1 retrieved on tick 1; marker-2 never matches (times out at
-    // 3000ms); marker-3's capture fails (errored).
+    // marker-1 retrieved on tick 1; marker-2 never matches (times out at 3000ms);
+    // marker-3's capture fails (errored).
     const world = makeFakeWorld({
       captureScript: (marker) =>
         marker === "marker-3" ? { ok: false, reason: "capture refused" } : { ok: true },
@@ -221,7 +219,7 @@ describe("runTrialLoop", () => {
   });
 
   test("should record the endpoint that satisfied retrievability and both endpoints' elapsed when both were polled", async () => {
-    // events matches at tick 2 (elapsed 1000ms), query at tick 4 (3000ms).
+    // events matches at tick 2 (elapsed 1000ms), query at tick 4.
     const world = makeFakeWorld({
       pollScript: (_marker, tick) => ({
         events: tickOutcome(tick >= 2),
@@ -234,9 +232,9 @@ describe("runTrialLoop", () => {
     expect(records).toHaveLength(1);
     const record = records[0] as TrialRecord;
     expect(record.outcome).toBe("retrieved");
-    // The FIRST endpoint to return the marker satisfies retrievability.
+    // The first endpoint to return the marker satisfies retrievability.
     expect(record.satisfyingEndpoint).toBe("events");
-    // Both endpoints' elapsed are carried (FR-10 endpoint comparison data).
+    // Both endpoints' elapsed are carried (endpoint comparison data).
     expect(record.elapsedMsByEndpoint.events).toBe(1000);
     expect(record.elapsedMsByEndpoint.query).toBe(3000);
     expect((record.firstRetrievableTimestamp as number) - record.captureTimestamp).toBe(1000);
@@ -269,7 +267,7 @@ describe("runLegs", () => {
       },
     ];
 
-    // Must not throw — a leg failure is isolated, not propagated (D8).
+    // Must not throw, a leg failure is isolated, not propagated.
     const results = await runLegs(legs);
 
     expect(results).toHaveLength(2);
