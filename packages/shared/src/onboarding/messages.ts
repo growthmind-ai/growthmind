@@ -52,10 +52,11 @@
 // constant that is exported and not registered fails the completeness row
 // rather than escaping every scan below it — silently, and forever.
 //
-// Interpolation tokens are `{channel}`, `{domain}`, `{page}`, `{count}` and
-// `{when}`. THE TOKEN NAMES THEMSELVES ARE AUDITED TEXT: `{surface}` would trip
-// the UX vocabulary ban on the word "surface", and any `{snake_case}` token
-// would trip the machine-identifier ban. Keep them one plain lowercase word.
+// Interpolation tokens are `{channel}`, `{domain}`, `{page}`, `{count}`,
+// `{project}` and `{when}`. THE TOKEN NAMES THEMSELVES ARE AUDITED TEXT:
+// `{surface}` would trip the UX vocabulary ban on the word "surface", and any
+// `{snake_case}` token would trip the machine-identifier ban. Keep them one
+// plain lowercase word.
 
 /**
  * The ONLY proper nouns this surface may name, and why.
@@ -126,8 +127,77 @@ export const FIELD_PERSONAL_KEY_LABEL = "Your personal API key";
 export const FIELD_PERSONAL_KEY_HELPER =
   "In PostHog: Settings → Personal API keys. Your personal key, not the project key.";
 
+// ---------------------------------------------------------------------------
+// What the key buys — the projects it can reach (AD-1, AD-2, AD-3)
+// ---------------------------------------------------------------------------
+//
+// The project number stops being something a founder goes and looks up. The key
+// alone tells us which projects they have, so the screen either picks for them
+// and says so, or shows the ones it found. Both of those need words, and so
+// does the one refusal the shipped table cannot say.
+
+/**
+ * More than one project came back, so the founder picks.
+ *
+ * It opens by confirming the key, because that is the thing they just did and
+ * the thing they were least sure about — a bare list leaves them wondering
+ * whether the paste worked at all. Then one instruction, naming who reads it,
+ * so choosing is a decision about us rather than a form field.
+ */
+export const PROJECT_PICK_PROMPT =
+  "That key works. Choose the project you want Growthmind to read.";
+
+/**
+ * Exactly one project came back, so nothing was asked and the connection is
+ * already made (AD-3).
+ *
+ * IT NAMES THE PROJECT, AND THAT IS THE WHOLE POINT. A product that quietly
+ * decides for someone and moves on has taken a decision away from them without
+ * telling them, and the first they would learn of it is a run against the wrong
+ * project. `{project}` is the chosen project's own name, as their account
+ * spells it, so it can be checked at a glance.
+ *
+ * The second sentence is the way back out. Without it this reads as a decision
+ * that cannot be undone, which is worse than being asked.
+ */
+export const PROJECT_AUTO_SELECTED_TEMPLATE =
+  "You have one project, {project}, so we connected it for you. Disconnect if that is the wrong one.";
+
+/**
+ * The key is real but cannot read the project list.
+ *
+ * The shipped `invalid_credentials` sentence says "that key did not work", and
+ * here that would be false and would send a founder off to make a second key
+ * with the same fault. This says which permission is missing and where it is
+ * turned on — the vendor's own menu path, which is what AD-4's allow-list
+ * exists for.
+ *
+ * No status number, in any spelling. A three-digit code on this screen is a
+ * developer's word that escaped, and it tells the person reading it nothing
+ * about what to change.
+ */
+export const PROJECT_PERMISSION_REFUSAL =
+  "That key works, but it is not allowed to read your projects. In PostHog: Settings → Personal API keys → edit the key, give it read access to projects, then try again.";
+
 /** The collapsed disclosure. Folded because it is prefilled and correct for most. */
 export const FIELD_REGION_DISCLOSURE = "Using the EU region, or self-hosting?";
+
+/**
+ * THE EARNED DISCLOSURE, and it replaces the question above at the point where
+ * the screen actually asks it (AD-2).
+ *
+ * `FIELD_REGION_DISCLOSURE` asks every founder whether they are on the EU
+ * region. We now try both regions ourselves before saying anything, so by the
+ * time this appears that question is already answered and asking it again
+ * would be telling somebody we had not looked. What is left is the one case
+ * the two addresses we ship cannot cover: an account that lives somewhere
+ * else.
+ *
+ * It appears ONLY after both tries have come back refused, beneath the refusal,
+ * so a founder who is on either hosted region never sees an address field at
+ * all. Do not render it before then, and do not render both.
+ */
+export const FIELD_SELF_HOST_DISCLOSURE = "Running PostHog at an address of your own?";
 
 export const FIELD_REGION_LABEL = "Region address";
 
@@ -246,6 +316,48 @@ export const RECEIPT_CLOSING_LINE = "Nothing here is a setting. There is nothing
 export const STEP_SLACK_TITLE = "Connect Slack.";
 
 export const STEP_SLACK_HELPER = "This is where what we find arrives once setup is done.";
+
+/**
+ * The one control on the hosted path (AD-6). It replaces eight actions in
+ * somebody else's product with one consent screen.
+ *
+ * The words are the ones Slack itself puts on this button everywhere it is
+ * offered, and that familiarity is the reason to keep them rather than write
+ * something of our own: a founder who has installed anything into Slack before
+ * already knows what pressing this does and where it takes them.
+ */
+export const ADD_TO_SLACK_LABEL = "Add to Slack";
+
+/**
+ * The way through for somebody who cannot use the button above.
+ *
+ * It only exists on the hosted path, where the button is the obvious thing and
+ * this is folded behind a disclosure. On an installation with no Slack app of
+ * its own there is no button, the pasted-token form IS the card, and this
+ * sentence must not appear at all — a disclosure hiding the only path is the
+ * dead end AD-6 exists to avoid.
+ *
+ * It says what pressing it gives you, because "not using our Slack app?" on its
+ * own is a question with no visible answer. And it says "your own" out loud: a
+ * bot token comes from an app the founder made, so anybody who has not made one
+ * is being pointed at the button instead.
+ */
+export const SLACK_OWN_APP_DISCLOSURE =
+  "Not using our Slack app? Paste your own bot token instead.";
+
+/**
+ * After the workspace is attached and before a channel is chosen — the state
+ * AD-4 creates by making the two acts separate.
+ *
+ * The second sentence is the half-connected state said out loud. A workspace
+ * with no channel looks connected and delivers nothing, and a founder who walks
+ * away here would never learn that from the screen. It is deliberately not the
+ * same sentence as `SETUP_NEXT_CHANNEL`, which is the blocker line at the top
+ * of the page: that one says where to go, this one says what is at stake once
+ * you are here.
+ */
+export const SLACK_CHANNEL_PICK_PROMPT =
+  "Choose the channel we should post in. Nothing arrives anywhere until you pick one.";
 
 export const FIELD_BOT_TOKEN_LABEL = "Bot token";
 
@@ -572,7 +684,11 @@ export const ONBOARDING_MESSAGES = {
   projectNumberPlaceholder: FIELD_PROJECT_NUMBER_PLACEHOLDER,
   personalKeyLabel: FIELD_PERSONAL_KEY_LABEL,
   personalKeyHelper: FIELD_PERSONAL_KEY_HELPER,
+  projectPickPrompt: PROJECT_PICK_PROMPT,
+  projectAutoSelectedTemplate: PROJECT_AUTO_SELECTED_TEMPLATE,
+  projectPermissionRefusal: PROJECT_PERMISSION_REFUSAL,
   regionDisclosure: FIELD_REGION_DISCLOSURE,
+  selfHostDisclosure: FIELD_SELF_HOST_DISCLOSURE,
   regionLabel: FIELD_REGION_LABEL,
   regionPrefill: FIELD_REGION_PREFILL,
   connect: CONNECT_ACTION_LABEL,
@@ -588,6 +704,9 @@ export const ONBOARDING_MESSAGES = {
 
   stepSlackTitle: STEP_SLACK_TITLE,
   stepSlackHelper: STEP_SLACK_HELPER,
+  addToSlack: ADD_TO_SLACK_LABEL,
+  slackOwnAppDisclosure: SLACK_OWN_APP_DISCLOSURE,
+  slackChannelPickPrompt: SLACK_CHANNEL_PICK_PROMPT,
   botTokenLabel: FIELD_BOT_TOKEN_LABEL,
   botTokenPlaceholder: FIELD_BOT_TOKEN_PLACEHOLDER,
   channelIdLabel: FIELD_CHANNEL_ID_LABEL,
@@ -643,7 +762,11 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   FIELD_PROJECT_NUMBER_PLACEHOLDER,
   FIELD_PERSONAL_KEY_LABEL,
   FIELD_PERSONAL_KEY_HELPER,
+  PROJECT_PICK_PROMPT,
+  PROJECT_AUTO_SELECTED_TEMPLATE,
+  PROJECT_PERMISSION_REFUSAL,
   FIELD_REGION_DISCLOSURE,
+  FIELD_SELF_HOST_DISCLOSURE,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
   CONNECT_ACTION_LABEL,
@@ -667,6 +790,9 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   STEP_SLACK_TITLE,
   STEP_SLACK_HELPER,
+  ADD_TO_SLACK_LABEL,
+  SLACK_OWN_APP_DISCLOSURE,
+  SLACK_CHANNEL_PICK_PROMPT,
   FIELD_BOT_TOKEN_LABEL,
   FIELD_BOT_TOKEN_PLACEHOLDER,
   FIELD_CHANNEL_ID_LABEL,
