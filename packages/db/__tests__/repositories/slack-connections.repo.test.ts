@@ -139,6 +139,74 @@ async function seedOrgWithTeammate(db: TestDb, label: string): Promise<OrgWithTe
   };
 }
 
+/** Removes comments so prose about a credential cannot be read as a
+ *  declaration. Same approach as `no-org-param.test.ts:59-61`. */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+
+/**
+ * A public name that could hand a caller credential material.
+ *
+ * MENTIONS a credential AND IS NOT A WRITE. Both halves are load-bearing.
+ * Without the first, nothing is ever flagged; without the second,
+ * `updateCredential` — which O-003's PostHog repository ships, and which takes
+ * an envelope IN and returns a credential-free summary — reads as a door, and
+ * Wave 2 gets a red for copying the pattern it was told to copy. A door is
+ * something that RETURNS the secret, and the write verbs below cannot.
+ */
+const CREDENTIAL_DOOR = /credential|token|secret/i;
+const WRITE_VERB = /^(?:update|set|insert|write|store|persist|rotate|replace|clear|delete|remove)/;
+
+function isCredentialDoor(name: string): boolean {
+  return CREDENTIAL_DOOR.test(name) && !WRITE_VERB.test(name);
+}
+
+/**
+ * The names a module offers to the rest of the codebase: every exported
+ * function, and every method declared on an exported interface.
+ *
+ * Written this way rather than as a grep over every `name(` in the file
+ * because the invariant is about the module's SURFACE. A module-private
+ * `decryptStoredCredential` helper is an implementation detail with no caller
+ * outside the file; an exported one is a second door. The brace walk is the
+ * trimmed form of `no-org-param.test.ts:110-144`'s collector — that file's
+ * version also captures parameter lists, which nothing here needs.
+ */
+function publicSurfaceNames(source: string): Set<string> {
+  const clean = stripComments(source);
+  const names = new Set<string>();
+
+  for (const match of clean.matchAll(/export\s+(?:async\s+)?function\s+(\w+)\s*\(/g)) {
+    if (match[1]) names.add(match[1]);
+  }
+
+  const interfaceHead = /export\s+interface\s+\w+[^{]*\{/g;
+  let head: RegExpExecArray | null = interfaceHead.exec(clean);
+  while (head !== null) {
+    let depth = 0;
+    let end = clean.length;
+    for (let i = head.index + head[0].length - 1; i < clean.length; i += 1) {
+      const char = clean[i];
+      if (char === "{") depth += 1;
+      else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    const body = clean.slice(head.index + head[0].length, end);
+    for (const method of body.matchAll(/(\w+)\s*(?:<[^>]*>)?\s*\(/g)) {
+      if (method[1]) names.add(method[1]);
+    }
+    head = interfaceHead.exec(clean);
+  }
+
+  return names;
+}
+
 async function readCredentialColumn(
   db: TestDb,
   connectionId: string,
@@ -242,18 +310,18 @@ describe("slack_connections — the org's credential, and the teammate who set n
     // THE ONE DOOR, AND IT IS SINGULAR AND NAMED. §5's Wave 2 table gives the
     // credential exactly one exit — `openCredentialForOrg()`, "composition-root
     // only" — mirroring the greppable-by-design function O-003 already uses for
-    // the PostHog key. A second exported reader added later would make the
+    // the PostHog key. A second PUBLIC reader added later would leave the
     // enumeration above true and the guarantee false.
+    //
+    // THE PUBLIC SURFACE ONLY (exported functions + exported interface
+    // members), never every function in the file. A private helper is not a
+    // door, and flagging one would push Wave 2 into renaming correct code.
     const source = readSourceUnderConstruction({
       repoRelativePath: REPO_SOURCE_PATH,
       ownedBy: OWNER,
     });
-    const credentialReturningExports = [
-      ...source.matchAll(/^\s*(?:export\s+)?(?:async\s+)?(\w+)\s*\(/gm),
-    ]
-      .map((match) => match[1] ?? "")
-      .filter((name) => /credential|token|secret/i.test(name));
-    expect(credentialReturningExports).toEqual(["openCredentialForOrg"]);
+    const doors = [...publicSurfaceNames(source)].filter(isCredentialDoor).toSorted();
+    expect(doors).toEqual(["openCredentialForOrg"]);
   });
 
   // --- row 3 ---------------------------------------------------------------
@@ -416,5 +484,73 @@ describe("slack_connections — the org's credential, and the teammate who set n
     expect(served?.id).toBe(inserted.id);
     expect(served?.organizationId).toBe(org.organizationId);
     expect(served?.channelId).toBe(CHANNEL_ID);
+  });
+});
+
+// ===========================================================================
+// PLANTED-OFFENDER CONTROL — GREEN BY DESIGN, AND NOT A CONTRACT ROW.
+//
+// The ADD's standing rule: every scanner ships one, because a collector whose
+// pattern silently matches nothing turns its invariant into decoration. Row 2's
+// door check is the contract row; these three prove it can see, and can refuse.
+// ===========================================================================
+
+/** A module offering exactly the surface §5's Wave 2 table describes. */
+const CLEAN_SURFACE_FIXTURE = `
+  export interface SlackConnectionsRepo {
+    getActiveForOrg(): Promise<SlackConnectionSummary | null>;
+    insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary>;
+    deactivate(id: string): Promise<SlackConnectionSummary | null>;
+    openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null>;
+  }
+  export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext) {
+    async function decryptStoredCredential(row: SlackConnectionRow) { return row; }
+    return { async getActiveForOrg() { return decryptStoredCredential; } };
+  }
+`;
+
+/** THE PLANTED OFFENDER: a SECOND public reader beside the named door. Every
+ *  runtime enumeration in row 2 still passes with this in the file. */
+const SECOND_DOOR_FIXTURE = `
+  export interface SlackConnectionsRepo {
+    getActiveForOrg(): Promise<SlackConnectionSummary | null>;
+    openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null>;
+    botTokenFor(id: string): Promise<string | null>;
+  }
+`;
+
+describe("planted-offender control — proving the one-door check bites", () => {
+  test("the collector reads the public surface and finds only the named door", () => {
+    const names = publicSurfaceNames(CLEAN_SURFACE_FIXTURE);
+
+    // Anti-vacuity: it really did collect the interface members and the
+    // exported factory, so an empty door list below means something.
+    expect(names.has("getActiveForOrg")).toBe(true);
+    expect(names.has("createSlackConnectionsRepo")).toBe(true);
+    // …and the module-PRIVATE helper is not surface, so it is not a door.
+    expect(names.has("decryptStoredCredential")).toBe(false);
+
+    expect([...names].filter(isCredentialDoor).toSorted()).toEqual(["openCredentialForOrg"]);
+  });
+
+  test("the collector flags a second public reader beside the named door", () => {
+    expect(
+      [...publicSurfaceNames(SECOND_DOOR_FIXTURE)].filter(isCredentialDoor).toSorted(),
+    ).toEqual(["botTokenFor", "openCredentialForOrg"]);
+  });
+
+  test("a credential WRITE on the shipped PostHog repository is not read as a door", () => {
+    // The precedent, not a fixture. `project-connections.repo.ts` ships
+    // `updateCredential` — it takes an envelope IN and returns a credential-free
+    // summary — and its real reader lives in `src/system/`, outside the
+    // repository layer. If this file were read as carrying a door, Wave 2 would
+    // get a red for copying the pattern it was told to copy.
+    const precedent = readSourceUnderConstruction({
+      repoRelativePath: "packages/db/src/repositories/project-connections.repo.ts",
+      ownedBy: "already shipped (O-003)",
+    });
+    const names = publicSurfaceNames(precedent);
+    expect(names.has("updateCredential")).toBe(true);
+    expect([...names].filter(isCredentialDoor)).toEqual([]);
   });
 });
