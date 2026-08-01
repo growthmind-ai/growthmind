@@ -16,12 +16,12 @@
 // organization, silently.
 //
 // ── THE BOT TOKEN LEAVES BY EXACTLY ONE DOOR, AND IT IS NAMED ───────────────
-// `getActiveForOrg` / `insertActive` / `deactivate` all return
-// `SlackConnectionSummary`, built field-by-field by `toSlackConnectionSummary`
-// below — NEVER a spread of the row — so `credential_ciphertext` and
-// `credential_key_id` cannot ride out by accident. The one function that opens
-// the credential is `openCredentialForOrg`, it is org-keyed by construction,
-// and it is greppable by design: the same discipline
+// `getActiveForOrg` / `insertActive` / `attachChannel` / `deactivate` all
+// return `SlackConnectionSummary`, built field-by-field by
+// `toSlackConnectionSummary` below — NEVER a spread of the row — so
+// `credential_ciphertext` and `credential_key_id` cannot ride out by accident.
+// The one function that opens the credential is `openCredentialForOrg`, it is
+// org-keyed by construction, and it is greppable by design: the same discipline
 // `project-connections.repo.ts:8-12` states for the PostHog credential, and the
 // same reason `readConnectionCredential` is blunt about its own name.
 //
@@ -61,9 +61,29 @@ export interface SlackConnectionSummary {
   /** Stamped directly on the row, per the `project_connections` denormalization
    * discipline. The column every read filters on (D2). */
   readonly organizationId: string;
-  /** FR-O13: the delivery address, read by the lane source off THIS ROW and
-   * never accepted from a payload. */
-  readonly channelId: string;
+  /**
+   * FR-O13: the delivery address, read by the lane source off THIS ROW and
+   * never accepted from a payload.
+   *
+   * `null` MEANS "A WORKSPACE IS ATTACHED AND NOTHING CAN BE DELIVERED" (AD-4)
+   * — not "no Slack", which is this whole summary being `null`. The two are
+   * different answers with different next actions, and the type is widened here
+   * rather than left `string` because a consumer that still believes this
+   * cannot be null compiles happily against a lie and hands `null` to a poster
+   * that interpolates it into the four characters `null`. Every consumer that
+   * needs a postable address goes through `isDeliveryTarget`, whose predicate
+   * form means no call site needs a `!`.
+   */
+  readonly channelId: string | null;
+  /**
+   * Slack's own name for the workspace, for "Connected to {workspace}.".
+   *
+   * NOT A CREDENTIAL — it is visible to everyone in the workspace, so unlike
+   * `credential_ciphertext` it may ride out in a summary. `null` on the
+   * pasted-token path, which is never told one; the sentence is then simply not
+   * rendered rather than rendered around an empty hole.
+   */
+  readonly workspaceName: string | null;
   readonly isActive: boolean;
   /** ATTRIBUTION ONLY — never a filter. `null` once that user row is deleted. */
   readonly connectedByUserId: string | null;
@@ -82,7 +102,30 @@ export interface SlackConnectionSummary {
  * it. The test post is the separate, deliberate step that moves it.
  */
 export interface InsertActiveSlackConnectionInput {
-  readonly channelId: string;
+  /**
+   * `null` ON THE OAUTH PATH, and that is the state AD-4 exists to make
+   * writable: the callback holds a real bot token and does not yet know which
+   * channel the founder wants. The pasted-token path supplies both at once and
+   * passes a string. `attachChannel` is what fills the null in later.
+   */
+  readonly channelId: string | null;
+  /**
+   * Slack's `team.name` from the OAuth exchange. Absent or `null` from the
+   * pasted-token path, which is handed a token and a channel and is never told
+   * a workspace name.
+   *
+   * OPTIONAL, AND THE OPTIONALITY IS A KNOWN D11 EXPOSURE RATHER THAN A
+   * PREFERENCE. Required would be the stronger contract — a value one surface
+   * computes and another must store is precisely the wire that goes
+   * un-connected in silence, and here the only symptom of forgetting it is a
+   * sentence that never renders. It is optional because the shipped
+   * `insertActive` callers predate this field and one of them is a test
+   * contract this change is required to satisfy without editing. The exposure
+   * is closed by a test on the OAuth callback asserting the name is PERSISTED,
+   * not by this signature; a callback that reads `team.name` and drops it
+   * type-checks.
+   */
+  readonly workspaceName?: string | null;
   /** The `v1.<keyId>.<iv>.<tag>.<ciphertext>` envelope. */
   readonly credentialCiphertext: string;
   /** `keyIdOf(key)` — the 8-hex fingerprint, never the key (D12). */
@@ -102,6 +145,30 @@ export interface SlackConnectionsRepo {
    * same moment cannot both win, and the loser learns it from Postgres.
    */
   insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary>;
+  /**
+   * The second half of the OAuth flow: the channel the founder picked, stamped
+   * onto the organization's own active row (AD-4).
+   *
+   * TAKES A CHANNEL AND NO CONNECTION ID, and that is the D7 property rather
+   * than a convenience. The channel id arrives on a request body; the ROW is
+   * chosen by this repository's own `(organization_id, is_active)` filter, so
+   * there is no parameter through which one organization could name another's
+   * connection. It is the same reasoning `deactivate` states for keying on
+   * `(organization_id, id)`, taken one step further — here there is no id at
+   * all.
+   *
+   * ONE `UPDATE … RETURNING`, never a read-then-write (D6): two members
+   * finishing the picker at the same moment produce a last-writer-wins channel
+   * rather than a lost update over a row one of them had already read.
+   *
+   * `channelId` is `string`, NOT `string | null`. Attaching is choosing an
+   * address; there is no "detach" and this method must never be the route
+   * through which a null is laundered back onto a connected row.
+   *
+   * `null` means the organization has no active connection — nothing was
+   * updated, and the caller learns that rather than being told it succeeded.
+   */
+  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
   /**
    * FR-O9's ORG-WIDE revocation. Never a DELETE — the row survives so history
    * outlives a reconnect and "an installation whose only connection is
@@ -207,6 +274,7 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
     id: row.id,
     organizationId: row.organizationId,
     channelId: row.channelId,
+    workspaceName: row.workspaceName,
     isActive: row.isActive,
     connectedByUserId: row.connectedByUserId,
     connectedAt: row.connectedAt,
@@ -241,6 +309,11 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
           .values({
             organizationId: ctx.organizationId,
             channelId: input.channelId,
+            // `?? null` rather than letting the key go missing: an absent key
+            // and an explicit null must land on the column as the same value,
+            // or "we were never told" and "there is no name" would be two
+            // different persisted states of one fact.
+            workspaceName: input.workspaceName ?? null,
             credentialCiphertext: input.credentialCiphertext,
             credentialKeyId: input.credentialKeyId,
             isActive: true,
@@ -260,6 +333,38 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
         }
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }
+    },
+
+    async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
+      // THE ROW IS FOUND BY THIS CONTEXT, NEVER BY ANYTHING ON THE REQUEST
+      // (D7). The only identifying values in this statement are
+      // `ctx.organizationId` and `is_active`; the channel id — the one value
+      // that did arrive from a payload — appears solely in the SET clause. An
+      // organization therefore cannot address another's connection, because
+      // there is no parameter through which it could name one.
+      //
+      // A SINGLE `UPDATE … RETURNING`, not a read-then-write (D6). The
+      // half-connected row is the org's one active row by the partial unique
+      // index, so this matches at most one, and two members finishing the
+      // picker together settle it in Postgres rather than by racing a prior
+      // read.
+      //
+      // NO `health` CHANGE HERE. Choosing an address proves nothing about
+      // delivery, exactly as pasting a token proves nothing about the token —
+      // the test post is the separate, deliberate step that moves that column,
+      // and a failed test post must not undo a correct pick (D8).
+      const [row] = await db
+        .update(slackConnections)
+        .set({ channelId })
+        .where(
+          and(
+            eq(slackConnections.organizationId, ctx.organizationId),
+            eq(slackConnections.isActive, true),
+          ),
+        )
+        .returning();
+
+      return row ? toSlackConnectionSummary(row) : null;
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {

@@ -106,6 +106,17 @@ export function slackCredentialAad(ctx: TenantContext): string {
  * companions are stamped-but-never-filtered: a later read that narrowed by
  * `health` would have to make the write path stamp it first.
  *
+ * `channel_id` is now stamped in TWO places rather than one — `insertActive`
+ * writes it (as NULL on the OAuth path, which learns the workspace before it
+ * learns the channel), and `attachChannel` writes it again when the channel is
+ * finally chosen. It is still NEVER a filter, and that is the half of the
+ * symmetry that matters here: a read narrowed by `channel_id IS NOT NULL` would
+ * make the half-connected organization invisible to `getActiveForOrg`, so the
+ * screen would offer "Connect Slack" to a founder who has just connected Slack
+ * and the next consent would trip the partial unique index. Two stamps are safe
+ * precisely because zero reads narrow by them. `workspace_name` is stamped once,
+ * at insert, and is likewise never a filter.
+ *
  * ── ONE ACTIVE CONNECTION PER ORG, BY CONSTRAINT (D6, EC-O6) ────────────────
  * `slack_connections_active_org_uidx` is UNIQUE on `(organization_id)` WHERE
  * `is_active`, exactly as `project_connections_active_project_uidx` is one
@@ -114,6 +125,13 @@ export function slackCredentialAad(ctx: TenantContext): string {
  * Deactivated rows STAY — history survives a reconnect, and "an installation
  * whose only connection is deactivated" stays distinguishable from one that
  * never connected.
+ *
+ * THE NULLABLE `channel_id` DOES NOT WEAKEN THIS INDEX and the index is
+ * unchanged by AD-4. It is keyed on `(organization_id)` alone, not on the
+ * channel, so a row with no channel occupies the org's one active slot exactly
+ * as a channelled row does. That is the behaviour we want: a second consent
+ * while a workspace is already attached is refused by Postgres rather than
+ * quietly creating a second installation the founder never asked for.
  *
  * ── THE CREDENTIAL LEAVES BY ONE DOOR, AND NOT THROUGH THIS TABLE'S SUMMARY ─
  * `credential_ciphertext` is the `v1.<keyId>.<iv>.<tag>.<ciphertext>` envelope
@@ -132,12 +150,54 @@ export const slackConnections = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /** The delivery address, read by the lane source off THIS ROW and never
+    /**
+     * The delivery address, read by the lane source off THIS ROW and never
      * accepted from a payload (FR-O13). A channel id that can arrive on a
      * message is a way to post one organization's finding into another's
-     * channel — reading it from the lane's own row makes that impossible
-     * rather than forbidden (D7). */
-    channelId: text("channel_id").notNull(),
+     * channel — reading it from the lane's own row makes that impossible rather
+     * than forbidden (D7).
+     *
+     * NULLABLE SINCE AD-4, AND NULL IS A STATE RATHER THAN A MISSING VALUE. It
+     * means both of these at once, and they are not the same thing:
+     *
+     *   A WORKSPACE IS ATTACHED — the OAuth callback stored a real bot token,
+     *   `is_active` is true, and the organization has a Slack installation.
+     *
+     *   NOTHING CAN BE DELIVERED — no channel has been chosen, so there is no
+     *   address to post to.
+     *
+     * EVERY READER MUST DISTINGUISH THAT ROW FROM A CONNECTED ONE, and getting
+     * it wrong is silent in both directions. A reader that calls the row
+     * "connected" because the row exists tells a founder setup is finished when
+     * it is not, and hands `null` to a poster that types its channel `string` —
+     * which does not throw, it interpolates, and the four characters `null`
+     * reach Slack's API. A reader that calls it "not connected" loses the
+     * workspace and re-asks for a token the organization has already given us.
+     * The eight sites are enumerated in the ADD (AD-4) and enforced by
+     * `apps/web/__tests__/first-run/nullable-channel-readers.test.ts`.
+     *
+     * NULL, never the empty string. A sentinel would make "no channel" and "a
+     * channel named nothing" the same value, which is the collapse the whole
+     * enumeration exists to prevent.
+     */
+    channelId: text("channel_id"),
+    /**
+     * Slack's own name for the workspace the bot was installed into, learned
+     * from the `team` object the OAuth exchange returns.
+     *
+     * PRESENTATION ONLY — it exists so the screen can say "Connected to
+     * {workspace}." rather than making a founder verify by memory which of
+     * their workspaces consented. Nothing branches on it and no read filters by
+     * it, so a stale name after a Slack-side rename is a cosmetic drift rather
+     * than a delivery fault.
+     *
+     * NULL on the pasted-token path, which is given a token and a channel and
+     * never learns a workspace name — so absence here means "we were never
+     * told", and the sentence is simply not rendered. It is not a credential:
+     * the name is visible to anyone in the workspace, so it may ride in a
+     * summary while `credential_ciphertext` may not.
+     */
+    workspaceName: text("workspace_name"),
     /**
      * The AES-256-GCM envelope: `v1.<keyId>.<iv>.<tag>.<ciphertext>`.
      * Self-describing and versioned, so a row written under a retired key is

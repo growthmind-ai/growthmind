@@ -72,7 +72,20 @@ export interface SlackDeliveryOrganization {
    * `TenantContext` without a second query. */
   readonly organizationName: string;
   readonly connectionId: string;
-  readonly channelId: string;
+  /**
+   * `null` SINCE AD-4 — an organization mid-OAuth is active, has a real token,
+   * and has no address. This population is deliberately not filtered on the
+   * channel (see the function below), so the null arrives here and the caller
+   * decides.
+   *
+   * WIDENED ON PURPOSE, AND `DeliveryLane.channelId` IS NOT. A lane is the
+   * thing that gets posted; keeping its channel `string` means a lane cannot be
+   * constructed for a channel-less organization at all, and "refuse to post"
+   * becomes a compile-time funnel rather than a runtime check somebody forgets
+   * at the next call site. The narrowing happens once, at
+   * `isDeliveryTarget`, whose predicate form leaves no call site needing a `!`.
+   */
+  readonly channelId: string | null;
 }
 
 /**
@@ -85,6 +98,13 @@ export interface SlackDeliveryOrganization {
  *
  * An installation with nobody connected returns `[]`, which the tick's
  * vocabulary already names as an ordinary answer rather than a fault.
+ *
+ * NOT FILTERED ON `channel_id IS NOT NULL`, and that is a decision (AD-4). It
+ * would work, and it would put the answer to "may we post to this
+ * organization?" in a SQL predicate that no test reads and every future query
+ * would have to remember to copy. The population stays "who has an active
+ * installation" — one honest question with one answer — and the postability
+ * narrowing happens once, in the guard the delivery path consults.
  */
 export async function listOrgsWithActiveSlackConnection(
   db: ScopedDb,

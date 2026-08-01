@@ -89,6 +89,14 @@ const BOT_TOKEN = "xoxb-fixture-only-never-a-real-token";
 
 const CHANNEL_ID = "C01AB2CD3EF";
 
+/** The channel chosen AFTER consent, on the OAuth path. Deliberately not
+ *  `CHANNEL_ID`: an attach row that asserted the value it started from would
+ *  pass against a repository that stamped nothing. */
+const PICKED_CHANNEL = "C07PICKED01";
+
+/** Slack's own name for the workspace, as the OAuth exchange reports it. */
+const WORKSPACE_NAME = "Fixture workspace";
+
 const CONNECTED_AT = new Date("2026-08-01T09:00:00.000Z");
 
 /** AD-20: the AAD's second argument is the LITERAL `"slack"`, never a project
@@ -484,6 +492,165 @@ describe("slack_connections — the org's credential, and the teammate who set n
     expect(served?.id).toBe(inserted.id);
     expect(served?.organizationId).toBe(org.organizationId);
     expect(served?.channelId).toBe(CHANNEL_ID);
+  });
+
+  // -------------------------------------------------------------------------
+  // AD-4 — the write side of the half-connected window
+  //
+  // The reader side is enumerated in
+  // `apps/web/__tests__/first-run/nullable-channel-readers.test.ts`. These rows
+  // are the other half: the state has to be WRITABLE, and the channel has to be
+  // fillable later without a payload ever naming a row.
+  // -------------------------------------------------------------------------
+
+  // --- row 8 ---------------------------------------------------------------
+  test("a workspace can be attached with no channel, and the row is active", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "attach-null");
+
+    const inserted = await createSlackConnectionsRepo(db, org.owner).insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    expect(inserted.channelId).toBeNull();
+
+    // NULL IN THE COLUMN, not the empty string. A sentinel would make "no
+    // channel" and "a channel named nothing" the same value, and every reader
+    // downstream would have to know which one this table chose.
+    expect(
+      await readRawScalar(
+        db,
+        sql`select channel_id from slack_connections where id = ${inserted.id}`,
+      ),
+    ).toBeNull();
+
+    // AND IT IS ACTIVE. A half-connected workspace is not a deactivated one —
+    // the token is real, so `getActiveForOrg` must find it and the org's one
+    // active slot is taken. A row that were inactive here would leave the next
+    // consent creating a second installation instead of being refused.
+    expect(inserted.isActive).toBe(true);
+    expect((await createSlackConnectionsRepo(db, org.teammate).getActiveForOrg())?.id).toBe(
+      inserted.id,
+    );
+  });
+
+  // --- row 9 ---------------------------------------------------------------
+  test("attachChannel fills this org's active row, and every member sees the channel", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "attach-fill");
+
+    const inserted = await createSlackConnectionsRepo(db, org.owner).insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    const attached = await createSlackConnectionsRepo(db, org.owner).attachChannel(PICKED_CHANNEL);
+
+    // The SAME row, not a second one — the partial unique index would refuse a
+    // second active connection anyway, so an implementation that inserted here
+    // would fail loudly; this asserts it did the quiet correct thing instead.
+    expect(attached?.id).toBe(inserted.id);
+    expect(attached?.channelId).toBe(PICKED_CHANNEL);
+
+    // ORG-SCOPED, like every other read on this table (D1). The founder who
+    // picked the channel is not the only person whose findings now have an
+    // address.
+    const served = await createSlackConnectionsRepo(db, org.teammate).getActiveForOrg();
+    expect(served?.channelId).toBe(PICKED_CHANNEL);
+
+    // THE WORKSPACE NAME SURVIVED THE ATTACH. `.set({ channelId })` writes one
+    // column; a `.set(summary)` written by whoever touches this next would
+    // silently blank the name the OAuth exchange paid a round trip for.
+    expect(served?.workspaceName).toBe(WORKSPACE_NAME);
+  });
+
+  // --- row 10 --------------------------------------------------------------
+  test("attachChannel cannot reach another organization's row, and says so when there is none", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const orgA = await seedOrgWithTeammate(db, "attach-tenant-a");
+    const orgB = await seedOrgWithTeammate(db, "attach-tenant-b");
+
+    await createSlackConnectionsRepo(db, orgA.owner).insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(orgA.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: orgA.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    // D7, AND THE REASON THE SIGNATURE TAKES NO CONNECTION ID. Org B holds the
+    // only thing a request body can carry — a channel — and there is no
+    // parameter through which it could name org A's row. `null` because org B
+    // has no active connection of its own, which is the honest answer rather
+    // than a silent success.
+    expect(
+      await createSlackConnectionsRepo(db, orgB.owner).attachChannel(PICKED_CHANNEL),
+    ).toBeNull();
+
+    // Org A's row is untouched — still half-connected, still waiting for its
+    // own founder to pick. Without this line the row above would pass against
+    // an implementation that wrote to A and returned null by accident.
+    expect(
+      (await createSlackConnectionsRepo(db, orgA.owner).getActiveForOrg())?.channelId,
+    ).toBeNull();
+  });
+
+  // --- row 11 --------------------------------------------------------------
+  test("attachChannel touches only the ACTIVE row and returns no credential material", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "attach-inactive");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+    const envelope = slackEnvelopeFor(org.organizationId);
+
+    const first = await repo.insertActive({
+      channelId: CHANNEL_ID,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: envelope,
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    await repo.deactivate(first.id);
+
+    const second = await repo.insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: envelope,
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    const attached = await repo.attachChannel(PICKED_CHANNEL);
+    expect(attached?.id).toBe(second.id);
+
+    // THE DEACTIVATED ROW IS HISTORY AND STAYS AS IT WAS. `is_active` is half
+    // of this update's WHERE clause; drop it and one org's reconnect rewrites
+    // the channel of every connection it ever had, which is the audit trail
+    // quietly becoming fiction.
+    expect(
+      await readRawScalar(db, sql`select channel_id from slack_connections where id = ${first.id}`),
+    ).toBe(CHANNEL_ID);
+
+    // The same enumeration row 2 applies to the other three summary methods —
+    // a `.returning()` hands back the whole row, including both credential
+    // columns, so this method is one careless spread away from being a door.
+    const keys = Object.keys(attached as object);
+    expect(keys).not.toContain("credentialCiphertext");
+    expect(keys).not.toContain("credentialKeyId");
+    const serialised = JSON.stringify(attached);
+    expect(serialised).not.toContain(envelope);
+    expect(serialised).not.toContain(BOT_TOKEN);
   });
 });
 

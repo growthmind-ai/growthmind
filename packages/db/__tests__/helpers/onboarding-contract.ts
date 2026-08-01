@@ -104,8 +104,13 @@ export type SlackConnectionSummary = {
    *  discipline". The column every read filters on (D2). */
   readonly organizationId: string;
   /** FR-O13: the delivery address, read by the lane source, NEVER accepted
-   *  from a payload. */
-  readonly channelId: string;
+   *  from a payload. `null` since AD-4 — a workspace is attached and nothing
+   *  can be delivered. Mirroring it as `string` here would make this helper the
+   *  lie the widening exists to remove. */
+  readonly channelId: string | null;
+  /** AD-4: Slack's own workspace name, for "Connected to {workspace}.". Not a
+   *  credential, so unlike the two columns above it may ride in a summary. */
+  readonly workspaceName: string | null;
   readonly isActive: boolean;
   /** AD-8: "exists so the test message can name who connected it (OQ-O6)". */
   readonly connectedByUserId: string | null;
@@ -129,7 +134,14 @@ export type SlackConnectionSummary = {
  * this connection is org-scoped and has no project.
  */
 export interface InsertActiveSlackConnectionInput {
-  readonly channelId: string;
+  /** `null` on the OAuth path, which holds a real token and does not yet know
+   *  the channel (AD-4). `attachChannel` fills it in later. */
+  readonly channelId: string | null;
+  /** Slack's `team.name`, absent or `null` from the pasted-token path. Optional
+   *  because the shipped callers predate it — a KNOWN D11 exposure, closed by a
+   *  test asserting the OAuth callback PERSISTS the name, never by this
+   *  signature. */
+  readonly workspaceName?: string | null;
   /** The `v1.<keyId>.<iv>.<tag>.<ciphertext>` envelope. */
   readonly credentialCiphertext: string;
   /** `keyIdOf(key)` — the 8-hex fingerprint, never the key (D12). */
@@ -163,6 +175,11 @@ export interface SlackConnectionsRepo {
    * — to refuse a second active connection. NO read-then-write (EC-O6, D6).
    */
   insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary>;
+  /** AD-4's second half: stamps the picked channel onto THIS org's active row.
+   *  Takes a channel and no connection id — the row is chosen by the
+   *  repository's own filter, so a payload cannot name another org's connection
+   *  (D7). `null` when the org has no active connection. */
+  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
   /** FR-O9's org-wide revocation. `null` for another org's id — affected zero
    *  rows, never a silent success (D7). */
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
