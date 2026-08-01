@@ -44,8 +44,8 @@ started the wait.
 | 10   | "Get it fixed" is a spec their agent can read                     | Hypothesis: they're glued                            |
 
 The five setup steps and their confirmations are specified in
-[`mvp.md` §2](mvp.md#2-onboarding-flow); this table adds the pacing and the
-proof each beat must deliver on screen.
+[`mvp.md` §2](mvp.md#2-onboarding-flow); this table adds the order and the proof
+each beat must deliver on screen.
 
 ## 3. The surfaces
 
