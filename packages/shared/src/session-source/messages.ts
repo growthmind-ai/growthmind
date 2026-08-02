@@ -25,21 +25,7 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
     "This project is already attached to an analytics account. Detach that one first, then attach this one — we keep everything we already collected.",
   invalid_credentials:
     "That key did not work. Check you pasted your personal key rather than the project key, and that it is allowed to read events.",
-  // TWO PATHS PRODUCE THIS CODE, AND NEITHER OF THEM HAS A NUMBER TO CHECK.
-  // Discovery refuses an empty project list with it (`discovery.ts`,
-  // `resultFromBody`) — the key authenticated and reached nothing we can read.
-  // A read against an already-chosen project answers 404 and maps to it too
-  // (`errors.ts`, `mapFailure`) — the project was reachable and has stopped
-  // being so. The sentence names both, because the founder has no way to tell
-  // which one they are in.
-  //
-  // It used to end "check the project number in your analytics settings", and
-  // that instruction is now unfollowable: the project number is discovered from
-  // the key rather than typed, so there is no field on this screen to check it
-  // against and nothing on the vendor's page the founder is being sent to
-  // compare. What IS actionable in both cases is what the key is allowed to
-  // read, so that is what it asks for — without naming the vendor, which this
-  // module bans for the reason its header states.
+  // Never "check the project number" — discovered from the key now, not typed: no field to check.
   project_not_found:
     "The key works, but it reaches no project we can read — either it has access to none, or the one it reached before is gone. Check what this key is allowed to read in your analytics account, then try again.",
   unreachable:

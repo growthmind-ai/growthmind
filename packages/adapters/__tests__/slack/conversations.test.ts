@@ -1,23 +1,5 @@
-// The Slack channel walk and its envelope parsers, driven end to end through the real
-// `listSlackConversations` against a fake `fetch`. No network, no mocks of the module
-// under test.
-//
-// WHAT THESE ROWS ARE FOR
-//
-// The module's comments claim four properties that nothing would otherwise enforce, and
-// a claim in a comment with no row behind it is the thing this repository keeps finding
-// out was never true:
-//
-//   1. The walk is BOUNDED. A remote handing back the same cursor forever must cost a
-//      fixed number of requests, not a hung web request.
-//   2. HTTP 200 IS NOT SUCCESS. Slack answers `{"ok":false,"error":…}` with a 200, and
-//      a reader that trusted the status would report an empty channel list to a founder
-//      whose token is missing a scope.
-//   3. ONE BAD ITEM DOES NOT ERASE THE PAGE. Parsing the array wholesale would tell a
-//      founder their workspace has no channels the first time Slack returned a shape we
-//      had not seen.
-//   4. THE TOKEN NEVER COMES BACK. Every failure arm is a code, so there is no
-//      expression through which it could.
+// Four properties nothing else enforces: (1) the walk is BOUNDED, (2) HTTP 200 is not
+// success, (3) one bad item does not erase the page, (4) the token never comes back.
 import { describe, expect, test } from "bun:test";
 
 import { listSlackConversations } from "../../src/slack/conversations";
@@ -25,7 +7,6 @@ import { parseSlackConversationsPage, parseSlackOAuthAccess } from "../../src/sl
 
 const BOT_TOKEN = "xoxb-fixture-not-a-real-token";
 
-/** One conversation as Slack sends it. */
 const channel = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
   name,
@@ -35,7 +16,6 @@ const channel = (id: string, name: string, extra: Record<string, unknown> = {}) 
   ...extra,
 });
 
-/** A fake `fetch` answering from a scripted queue, recording every url it was given. */
 function fakeFetch(pages: readonly unknown[]): {
   readonly fetch: typeof globalThis.fetch;
   readonly urls: readonly string[];
@@ -43,13 +23,10 @@ function fakeFetch(pages: readonly unknown[]): {
   const urls: string[] = [];
   let next = 0;
 
-  // `string | URL` rather than the platform's `RequestInfo`: this package type-checks
-  // against `lib: ["esnext"]` with no DOM, and the subject only ever calls its fetch
-  // with the string url it built itself.
   const fetch = (async (input: string | URL): Promise<Response> => {
     urls.push(typeof input === "string" ? input : input.href);
-    // The LAST scripted page repeats once the queue is exhausted, which is exactly the
-    // "same cursor forever" remote row 1 is about.
+    // The LAST scripted page repeats once the queue is exhausted — the "same cursor
+    // forever" remote row 1 is about.
     const body = pages[Math.min(next, pages.length - 1)];
     next += 1;
     return Response.json(body);
@@ -85,8 +62,6 @@ describe("listSlackConversations — AD-7's live walk", () => {
 
     expect(result.ok ? result.conversations.map((c) => c.id) : []).toEqual(["C1", "C2"]);
     expect(urls.length).toBe(2);
-    // The cursor travels as a query parameter on our own constant url. The remote never
-    // names a host, which is why this walk needs no origin re-check.
     expect(urls[1]).toContain("cursor=cursor-two");
     expect(urls[1]?.startsWith("https://slack.com/api/conversations.list?")).toBe(true);
   });
@@ -99,12 +74,10 @@ describe("listSlackConversations — AD-7's live walk", () => {
 
     expect(result.ok).toBe(true);
     expect(urls.length).toBe(5);
-    // Bounded AND still useful: what was collected is returned rather than refused.
     expect(result.ok ? result.conversations.length : 0).toBe(1);
   });
 
   test("one conversation repeated across a cursor boundary is listed once", async () => {
-    // The list is live by design, so it can change underneath the walk (D3).
     const { fetch } = fakeFetch([
       page([channel("C1", "growth")], "cursor-two"),
       page([channel("C1", "growth"), channel("C2", "general")]),
@@ -116,8 +89,7 @@ describe("listSlackConversations — AD-7's live walk", () => {
   });
 
   test("HTTP 200 with ok:false is a refusal, not an empty workspace", async () => {
-    // ROW 2, and the realistic one: a bot token from an app whose scopes somebody chose
-    // by hand. Reading the status alone tells a founder their workspace has no channels.
+    // ROW 2. Reading the status alone tells a founder their workspace has no channels.
     const { fetch } = fakeFetch([{ ok: false, error: "missing_scope" }]);
 
     const result = await listSlackConversations({ botToken: BOT_TOKEN }, { fetch });
@@ -131,7 +103,6 @@ describe("listSlackConversations — AD-7's live walk", () => {
     const result = await listSlackConversations({ botToken: BOT_TOKEN }, { fetch });
 
     expect(result).toEqual({ ok: false, code: "call_failed" });
-    // A human is waiting. The poll client's backoff is for background runs.
     expect(urls.length).toBe(1);
   });
 
@@ -145,8 +116,6 @@ describe("listSlackConversations — AD-7's live walk", () => {
   });
 
   test("an unreadable body is call_failed rather than a claim about the token", async () => {
-    // A captive portal's html page. We do not know what happened, and "reconnect your
-    // workspace" would be telling somebody to fix a thing we have no evidence is broken.
     const fetch = (() =>
       Promise.resolve(new Response("<html>login</html>"))) as unknown as typeof globalThis.fetch;
 
@@ -156,7 +125,6 @@ describe("listSlackConversations — AD-7's live walk", () => {
   });
 
   test("no failure arm can carry the bot token", async () => {
-    // ROW 4. Structural: the arm is `{ ok: false, code }` and nothing else.
     const { fetch } = fakeFetch([{ ok: false, error: "invalid_auth" }]);
 
     const result = await listSlackConversations({ botToken: BOT_TOKEN }, { fetch });
@@ -168,8 +136,6 @@ describe("listSlackConversations — AD-7's live walk", () => {
 
 describe("parseSlackConversationsPage — the boundary, D5", () => {
   test("one unreadable item does not erase the page", () => {
-    // ROW 3. `z.array(itemSchema)` would return nothing here, and the founder would be
-    // told a workspace full of channels has none.
     const parsed = parseSlackConversationsPage(
       page([channel("C1", "growth"), { id: "C2" }, channel("C3", "general")]),
     );
@@ -182,17 +148,12 @@ describe("parseSlackConversationsPage — the boundary, D5", () => {
   });
 
   test("an empty next_cursor is the end of the walk, not a cursor", () => {
-    // Slack signals the last page with `""`, not by omitting the field. Reading the
-    // empty string as a cursor re-requests page one forever.
     expect(parseSlackConversationsPage(page([]))?.ok === true).toBe(true);
     const parsed = parseSlackConversationsPage(page([]));
     expect(parsed?.ok === true ? parsed.value.nextCursor : "unset").toBeNull();
   });
 
   test("absent flags are null rather than false", () => {
-    // Slack sets these per conversation type. Reading an absent flag as `false` asserts
-    // something the vendor never said, and the ordering policy branches on the
-    // difference.
     const parsed = parseSlackConversationsPage({ ok: true, channels: [{ id: "C1", name: "g" }] });
     const first = parsed?.ok === true ? parsed.value.conversations[0] : undefined;
 
@@ -201,8 +162,6 @@ describe("parseSlackConversationsPage — the boundary, D5", () => {
   });
 
   test("a body that is not a Slack envelope is null, never a refusal", () => {
-    // Three outcomes, not two: `null` is "we could not read this", which must not be
-    // reported to a founder as "Slack refused you".
     for (const body of [null, undefined, "<html>", 42, [], { channels: [] }]) {
       expect(parseSlackConversationsPage(body)).toBeNull();
     }
@@ -228,8 +187,6 @@ describe("parseSlackOAuthAccess — the boundary, D5", () => {
   });
 
   test("a missing team NAME degrades to undefined rather than losing the credential", () => {
-    // The name is what a sentence renders; the token is what delivery depends on.
-    // Refusing the install over the label would trade the second for the first.
     const parsed = parseSlackOAuthAccess({ ...grant, team: { id: "T1" } });
 
     expect(parsed).toEqual({

@@ -1,46 +1,14 @@
-// READING A RENDERED FIRST-RUN CARD THE WAY A FOUNDER DOES. Not a suite —
-// `bun test` never picks this file up, and nothing in production imports it.
-//
-// ###########################################################################
-// # WHY THIS IS PLUMBING AND NOT A PREDICATE.
-// #
-// # `renderToStaticMarkup` returns a string, and a substring search on that
-// # string cannot tell "on the screen" from "in the DOM but folded away" —
-// # which is the distinction two different suites now turn on: AD-6's card asks
-// # whether the token form is behind a disclosure, and the channel picker's
-// # empty state asks whether a picker rendered at all. So the markup is walked
-// # once, and what comes back is what a person could read or a screen reader
-// # announce: text outside every hidden subtree, plus the accessible name of
-// # each control.
-// #
-// # Hidden means what the browser means by it — `display:none`, `hidden`,
-// # `inert`, `aria-hidden="true"`, or a `<details>` nobody has opened. That set
-// # is deliberately wider than any one widget: a collapsed Mantine `Collapse`
-// # renders no children at all, a `<details>` renders them and hides them, and
-// # this reader gives the same answer for both.
-// #
-// # IT HOLDS NO PREDICATE THAT DECIDES WHETHER A ROW PASSES, for the reason
-// # `first-run-source.ts` gives one door down: a scanner separated from its
-// # planted-offender and clean-fixture controls is a scanner nobody can see is
-// # vacuous. Each suite keeps its own control row, asserting on its own
-// # fixtures, that this reader can tell the two apart before it claims anything
-// # about a real render.
-// ###########################################################################
+// Only what reaches a person: outside display:none/hidden/inert/aria-hidden, and <details> only when open — a closed Collapse renders nothing, a closed <details> renders and hides.
 
-/** What one render of a first-run card looks like from the outside. */
 export interface RenderedCard {
-  /** Everything readable, joined — text nodes and accessible names. */
   readonly text: string;
-  /** The accessible label of each visible button, link and summary. */
   readonly controls: readonly string[];
 }
 
 interface Frame {
   readonly hidden: boolean;
   readonly opaque: boolean;
-  /** A closed `<details>`: its children are folded away, its `<summary>` is not. */
   readonly detailsClosed: boolean;
-  /** The buffer collecting this element's label, when it is a control. */
   readonly control: string[] | null;
 }
 
@@ -61,10 +29,8 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-/** Elements whose contents are instructions to the browser, not words. */
 const OPAQUE_ELEMENTS = new Set(["style", "script", "template"]);
 
-/** What a founder can press. `summary` is here because a disclosure is one. */
 const CONTROL_ELEMENTS = new Set(["a", "button", "summary"]);
 
 const ARIA_HIDDEN = /(^|\s)aria-hidden\s*=\s*["']true["']/;
@@ -109,7 +75,6 @@ function accessibleNames(attributes: string): readonly string[] {
   return found;
 }
 
-/** Walk the markup once, keeping only what reaches a person. */
 export function readMarkup(html: string): RenderedCard {
   const words: string[] = [];
   const controls: string[] = [];
@@ -141,7 +106,6 @@ export function readMarkup(html: string): RenderedCard {
 
     emit(html.slice(index, open));
 
-    // A comment or a doctype — neither carries words.
     if (html.startsWith("<!", open)) {
       const close = html.indexOf(">", open);
       index = close === -1 ? html.length : close + 1;
@@ -155,9 +119,6 @@ export function readMarkup(html: string): RenderedCard {
     while (cursor < html.length && /[A-Za-z0-9:_-]/.test(html[cursor] ?? "")) cursor += 1;
     const name = html.slice(nameStart, cursor).toLowerCase();
 
-    // Attribute values are scanned with quote awareness rather than by looking
-    // for the next `>`: a `>` inside a quoted style or label would otherwise
-    // end the tag early and spill markup into the text channel.
     let quote: string | null = null;
     const attributesStart = cursor;
 

@@ -20,14 +20,8 @@ async function findingRowExists(
     const [row] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
     return row !== undefined;
   } catch (error) {
-    // `describeError` RATHER THAN THE CAUGHT VALUE. This was the only
-    // unscrubbed error sink on the surface — every other log here prints reason
-    // codes — and the shapes that reach it are not all Zod's. A `pg` driver
-    // error carries `.query` and `.parameters`, so logging the object whole
-    // writes the statement and its bound values into the log, and the values
-    // bound on this surface are tenancy ids and whatever a row happened to
-    // hold. The message is what a person debugging needs; the rest is the
-    // row's own neighbourhood.
+    // `describeError`, not the caught value: a `pg` error carries `.query` and
+    // `.parameters`, so logging it whole writes bound tenancy ids into the log.
     console.error("onboarding status: a finding row exists for this project but cannot be read", {
       organizationId: ctx.organizationId,
       projectId,

@@ -1,47 +1,15 @@
-// Wave 0 (task 0.2). The contract for `discoverProjects` (ADD AD-1, AD-2, AD-3), written
-// before the function existed and RED until wave 3 landed `discovery.ts`.
-//
-// The rows assert what the SPIKE observed, not what the ADD originally assumed —
-// `scripts/spikes/notes/posthog-projects-endpoint.md`, run 2026-08-01 against a live
-// account. Two of its four findings contradict the ADD's first draft:
-//
-//   - a wrong-region key answers 401, NOT 403. Both fall through to the next origin here,
-//     but 401 is the one the live account actually produced;
-//   - the list response carries no event count at all. `ingested_event` is a boolean, and
-//     it is the whole ordering signal. Nothing below asserts a count, because asserting
-//     one would pin a number the vendor does not report.
-//
-// The load-bearing row is "sourceProjectId comes from `id`". The result object carries
-// BOTH `id` and `project_id`, they hold DIFFERENT values, and both are plausible names
-// for the segment `eventsUrl` interpolates. Taking the wrong one builds a valid-looking
-// url for somebody else's project and nothing anywhere errors.
-//
-// Public contract only: `DiscoveryResult`, the request count, and the recorded requests.
-// No internal is reached for.
-//
-// Wave 0 loaded both subjects through `await import(<variable>)`, because a static import
-// of a file that did not exist yet fails `bun run typecheck` — which would have stopped
-// the task's own verify before a single assertion ran. Task 3.2 landed the subject, so
-// they are ordinary static imports now, exactly as that comment promised. The types come
-// from the subject too rather than being transcribed here: a locally-restated contract
-// stays green while the real exported shape drifts away from it, which is the failure
-// this file exists to prevent, one level up.
+// The contract for `discoverProjects` (AD-1, AD-2, AD-3), asserted against what the live
+// spike observed rather than what the ADD assumed.
 import { describe, expect, test } from "bun:test";
 
 import { PROBE_ORIGINS } from "../../src/posthog/constants";
 import { discoverProjects } from "../../src/posthog/discovery";
 import { AD_FAKE_PERSONAL_KEY, AD_HOST, createFakeDeps, createFakeFetch } from "../helpers/fakes";
 
-/**
- * What the spike verified `PROBE_ORIGINS` must be: the ingest-origin family, US before
- * EU. `/api/projects/` answered 200 on `eu.i.posthog.com` with a body identical to the
- * app origin's, so a discovered host needs no translation before the connect path stores
- * it. Task 1.3 adds the constant; the first row below pins it against this list.
- */
 const EXPECTED_PROBE_ORIGINS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"] as const;
 const [US_PROBE_ORIGIN, EU_PROBE_ORIGIN] = EXPECTED_PROBE_ORIGINS;
 
-/** The envelope a wrong-region key actually produced. Status 401, not 403. */
+// The envelope a wrong-region key actually produced. Status 401, not 403.
 const AD_UNAUTHORIZED_BODY = {
   type: "authentication_error",
   code: "authentication_failed",
@@ -49,11 +17,6 @@ const AD_UNAUTHORIZED_BODY = {
   attr: null,
 };
 
-/**
- * A 404 of the DRF shape. Deliberately NOT the vendor's "project not found" — this is
- * what a path that is not routed on an origin returns, which is the only thing a 404 can
- * mean on the LIST endpoint (no project id is in the request to be missing).
- */
 const AD_NOT_FOUND_BODY = {
   type: "invalid_request",
   code: "not_found",
@@ -69,19 +32,13 @@ const AD_THROTTLED_BODY = {
 };
 
 interface AdProjectOverrides {
-  /** A number on the wire. PostHog reports project ids as integers. */
   readonly id?: number;
-  /** Present, different from `id`, and never the field the mapper wants. */
+  // Present, different from `id`, and never the field the mapper wants.
   readonly project_id?: number;
   readonly name?: string;
   readonly ingested_event?: boolean;
 }
 
-/**
- * One result of the pinned wire shape: the twelve keys the spike observed, of which the
- * mapper wants three. `id` and `project_id` default to different values so a fixture can
- * never accidentally make the two indistinguishable.
- */
 function adProject(overrides: AdProjectOverrides = {}): Record<string, unknown> {
   return {
     id: overrides.id ?? 31_337,
@@ -99,7 +56,6 @@ function adProject(overrides: AdProjectOverrides = {}): Record<string, unknown> 
   };
 }
 
-/** The envelope the spike recorded: `results[]`, and nothing this adapter reads besides. */
 function adProjectsBody(results: readonly Record<string, unknown>[]): Record<string, unknown> {
   return { results };
 }
@@ -119,9 +75,6 @@ function requestOrigins(urls: readonly { readonly url: string }[]): string[] {
 }
 
 describe("PROBE_ORIGINS", () => {
-  // Pins task 1.3 against the spike rather than against the ADD's superseded text: the
-  // list endpoint IS served on the ingest origin, so this is the same origin family the
-  // connect path already stores.
   test("is the ordered US-then-EU ingest pair the spike verified", () => {
     expect(PROBE_ORIGINS).toEqual([...EXPECTED_PROBE_ORIGINS]);
   });
@@ -134,8 +87,6 @@ describe("discoverProjects walks the probe origins", () => {
 
     const result = await discoverProjects(discoveryInput(), deps);
 
-    // US answered, so EU is never contacted. A walk that probes both regardless would
-    // double every founder's wait for nothing.
     expect(requestOrigins(fake.requests)).toEqual([US_PROBE_ORIGIN]);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -162,8 +113,6 @@ describe("discoverProjects walks the probe origins", () => {
     expect(fake.requests[0]?.authorization).toBe(`Bearer ${AD_FAKE_PERSONAL_KEY}`);
   });
 
-  // The spike's fallthrough trigger, observed live: an EU-issued key answered 401 on US,
-  // then 200 on EU. This is the row the whole ordered walk exists for.
   test("falls through to the second origin on a 401 — the status a wrong-region key returns", async () => {
     const fake = createFakeFetch((url) =>
       url.startsWith(US_PROBE_ORIGIN)
@@ -180,9 +129,8 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.host).toBe(EU_PROBE_ORIGIN);
   });
 
-  // The ADD's original assumption. Never observed, still handled: both statuses mean
-  // "try the next origin", and refusing on 403 while falling through on 401 would strand
-  // whichever founders a future PostHog change points at the other one.
+  // 403 was the ADD's assumption and was never observed; 401 is what a live wrong-region
+  // key returned. Both mean "try the next origin", so a change to either strands founders.
   test("falls through to the second origin on a 403 as well", async () => {
     const fake = createFakeFetch((url) =>
       url.startsWith(US_PROBE_ORIGIN)
@@ -199,16 +147,6 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.host).toBe(EU_PROBE_ORIGIN);
   });
 
-  // The row that protects US founders against an inference nobody has observed. The
-  // spike only ever saw a 200 from the EU family; that `https://us.i.posthog.com` serves
-  // `/api/projects/` at all is read off the SHAPE of its 401, not off a 200. If that is
-  // wrong, US ingest answers 404 to this probe — and a 404 that refused would turn away
-  // every US founder at the first field of setup, with a message about their projects not
-  // being found rather than about us looking on the wrong origin.
-  //
-  // Falling through is unambiguous here in a way it would not be anywhere else in this
-  // adapter: the LIST path carries no project id, so a 404 cannot mean "your project does
-  // not exist" — there is no project in the request to not find.
   test("falls through to the second origin on a 404 — the list path has no project id to be missing", async () => {
     const fake = createFakeFetch((url) =>
       url.startsWith(US_PROBE_ORIGIN)
@@ -225,11 +163,6 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.host).toBe(EU_PROBE_ORIGIN);
   });
 
-  // Fallthrough is not forgiveness. Once every origin has answered, the walk refuses on
-  // the last origin's failure exactly as it does for 401 — and for a 404 that failure is
-  // `project_not_found`, the code `mapFailure` gives status 404. Pinned rather than left
-  // implicit, so a later edit that starts inventing a status the vendor never sent (or
-  // rewrites the final refusal) has to come through this row.
   test("refuses with project_not_found when EVERY origin 404s, after asking both", async () => {
     const fake = createFakeFetch(() => ({ status: 404, body: AD_NOT_FOUND_BODY }));
     const { deps, sleeps } = createFakeDeps(fake.fetch);
@@ -243,9 +176,8 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.failure.code).toBe("project_not_found");
   });
 
-  // The row that catches a retry loop being added later. A human is staring at a form;
-  // the client's five exponential sleeps belong to a poll that must survive a throttle,
-  // never to this call.
+  // Catches a retry loop being added later: a human is at a form, and the client's
+  // exponential sleeps belong to the poll path, never to this call.
   test("costs exactly one request per origin when every origin refuses, and never retries", async () => {
     const fake = createFakeFetch(() => ({ status: 401, body: AD_UNAUTHORIZED_BODY }));
     const { deps, sleeps } = createFakeDeps(fake.fetch);
@@ -259,8 +191,6 @@ describe("discoverProjects walks the probe origins", () => {
     expect(result.failure.code).toBe("invalid_credentials");
   });
 
-  // AD-1: a 429 on discovery is an immediate, named refusal. The temptation to reuse the
-  // client's backoff is exactly what this row forbids.
   test("refuses a 429 immediately, with no backoff sleep", async () => {
     const fake = createFakeFetch(() => ({
       status: 429,
@@ -280,10 +210,8 @@ describe("discoverProjects walks the probe origins", () => {
 });
 
 describe("discoverProjects maps the result list", () => {
-  // THE ROW THAT CATCHES THE SILENT BUG. `id` and `project_id` are both present, both
-  // plausible, and hold different values. `project_id` builds a valid-looking url for a
-  // project that is not the founder's, and nothing errors — not the request, not the
-  // parse, not the poll that follows.
+  // THE SILENT BUG: both keys are present with different values, and `project_id` builds
+  // a valid-looking url for someone else's project with nothing erroring anywhere.
   test("takes sourceProjectId from `id`, never from `project_id`", async () => {
     const fake = createFakeFetch(() => ({
       status: 200,
@@ -299,8 +227,6 @@ describe("discoverProjects maps the result list", () => {
     expect(result.projects[0]?.sourceProjectId).not.toBe("90210");
   });
 
-  // "Opaque text, never a number" — the wire carries an integer and every consumer
-  // downstream interpolates a string into a url path.
   test("holds sourceProjectId as text, though the wire carries a number", async () => {
     const fake = createFakeFetch(() => ({
       status: 200,
@@ -315,8 +241,6 @@ describe("discoverProjects maps the result list", () => {
     expect(typeof result.projects[0]?.sourceProjectId).toBe("string");
   });
 
-  // AD-3. One project is the common case, and the caller auto-connects rather than
-  // asking a founder to pick from a list of one.
   test("returns the single project so the caller can auto-select it", async () => {
     const fake = createFakeFetch(() => ({
       status: 200,
@@ -333,8 +257,6 @@ describe("discoverProjects maps the result list", () => {
     ]);
   });
 
-  // AD-3. Zero is a refusal, not a pick list of zero. An empty list rendered as a
-  // chooser is a screen that asks a founder to choose nothing.
   test("refuses an empty results list as project_not_found, never an empty pick list", async () => {
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([]) }));
     const { deps } = createFakeDeps(fake.fetch);
@@ -346,9 +268,7 @@ describe("discoverProjects maps the result list", () => {
     expect(result.failure.code).toBe("project_not_found");
   });
 
-  // The whole ordering signal, and it is a boolean. Naive "sort by name" would give
-  // alpha/bravo/charlie/zulu and no sort at all would give the input order, so this
-  // fixture separates all three.
+  // The fixture separates all three orderings: input order, name-only, and this one.
   test("orders projects with ingested events first, then by name", async () => {
     const fake = createFakeFetch(() => ({
       status: 200,
@@ -373,8 +293,6 @@ describe("discoverProjects maps the result list", () => {
     ]);
   });
 
-  // There is no event count on this endpoint. A count on the screen that nothing
-  // measured is worse than no count at all, so the mapped shape must not grow one.
   test("carries no event count, because the endpoint reports none", async () => {
     const fake = createFakeFetch(() => ({
       status: 200,
@@ -397,9 +315,6 @@ describe("discoverProjects maps the result list", () => {
 });
 
 describe("discoverProjects on the self-host branch", () => {
-  // `host !== null` is the earned disclosure: it is only ever sent after both probes
-  // refused. One request, to the host the founder gave, and the cloud origins are not
-  // touched.
   test("makes one request to a customer-supplied host and never probes the cloud origins", async () => {
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
@@ -412,12 +327,8 @@ describe("discoverProjects on the self-host branch", () => {
     expect(result.host).toBe(AD_HOST);
   });
 
-  // THE ROW THAT PROVES THE 404 FALLTHROUGH DID NOT LEAK. On the walk a 404 means "this
-  // origin does not serve this path, ask the next" and advances. Here there IS no next
-  // origin — the customer named this host — so the same status must refuse on the spot.
-  // The load-bearing assertion is the request COUNT: a fallthrough that leaked into this
-  // branch would show up as a second request to a cloud origin the customer never asked
-  // us to contact, sending their personal key somewhere they did not name.
+  // Proves the walk's 404 fallthrough did not leak here: there is no next origin, so the
+  // request COUNT is the assertion — a leak would send the key to a host nobody named.
   test("refuses a 404 on a customer-supplied host immediately, with no second request", async () => {
     const fake = createFakeFetch(() => ({
       status: 404,
@@ -434,10 +345,8 @@ describe("discoverProjects on the self-host branch", () => {
     expect(result.failure.code).toBe("project_not_found");
   });
 
-  // The ssrf gate, and the assertion that matters is the request COUNT. A refusal that
-  // arrives after the request has already left has protected nothing: the packet reached
-  // the metadata service, and the distinguishable refusal codes make the answer a
-  // port-scanning oracle.
+  // The ssrf gate: a blocked host must make ZERO requests. A refusal that arrives after
+  // the packet has left protects nothing.
   test("refuses a blocked hostname without making any request at all", async () => {
     const fake = createFakeFetch(() => ({ status: 200, body: adProjectsBody([adProject()]) }));
     const { deps } = createFakeDeps(fake.fetch);
@@ -455,10 +364,8 @@ describe("discoverProjects on the self-host branch", () => {
 });
 
 describe("discoverProjects never leaks the credential", () => {
-  // The vendor echoes the key back inside `detail`. Nothing of the response body reaches
-  // a returned failure, and the key is threaded in as a scrubbed secret besides — so a
-  // later edit that starts folding response content into a message is caught here rather
-  // than in a customer's error log.
+  // The vendor echoes the key back inside `detail`, and none of that body may reach a
+  // returned failure.
   test("keeps the personal key out of every returned failure", async () => {
     const fake = createFakeFetch(() => ({
       status: 401,

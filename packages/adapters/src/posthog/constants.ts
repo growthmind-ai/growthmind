@@ -26,6 +26,7 @@ export function projectsUrl(host: string): string {
 // wrong-region key answers 401, not 403 — so both statuses mean "try the next origin".
 export const PROBE_ORIGINS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"] as const;
 
+// Every key is SDK-set and may be absent: PostHog derives none server-side. Always optional.
 export const PH_PROP = {
   SET: "$set",
 
