@@ -153,15 +153,39 @@ export const SLACK_OAUTH_STATE_COOKIE = "growthmind_slack_oauth_state";
 const STATE_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; SameSite=Lax";
 
 /**
- * `Secure` is decided by CONFIGURATION, never by the request.
+ * `Secure` is decided by THE RUNTIME, never by the request and never by
+ * `BETTER_AUTH_URL`.
  *
- * The same argument `slackOAuthRedirectUri` makes: `X-Forwarded-Proto` is
- * caller-controlled, so a cookie whose `Secure` flag came from a header is one
- * an attacker can ask us to drop. A self-hosted installation on plain http still
- * has to work, which is why this is derived rather than hard-coded to `true`.
+ * The request half of that is the argument `slackOAuthRedirectUri` makes:
+ * `X-Forwarded-Proto` is caller-controlled, so a cookie whose `Secure` flag came
+ * from a header is one an attacker can ask us to drop.
+ *
+ * THE SECOND HALF IS WHY THIS DOES NOT READ `BETTER_AUTH_URL` EITHER, AND THIS
+ * REPOSITORY HAS ALREADY MADE THE ARGUMENT ONCE. `apps/web/lib/auth.ts` sets
+ * `advanced.useSecureCookies` from `process.env.NODE_ENV` rather than letting
+ * Better Auth derive it from `baseURL`, and the comment there says why: the
+ * shipped compose profile's `BETTER_AUTH_URL` is `http://localhost:3000`, so a
+ * self-hoster who terminates TLS at a proxy and never overrides it would be
+ * handed cookies with no `Secure` flag. This function was the same derivation,
+ * re-introduced.
+ *
+ * It is worse here than it is there. `cookieValue` and `stateParameter` are the
+ * SAME STRING (`signOAuthState` below), so a state cookie recovered off the wire
+ * defeats BOTH halves of the callback's dual check at once: the attacker puts
+ * the stolen value in a callback url beside their own `code`, `SameSite=Lax`
+ * sends the cookie on the victim's top-level navigation, the pair matches, the
+ * signature verifies, and the identity matches because the state was minted FOR
+ * the victim. The attacker's workspace is then this organisation's delivery
+ * channel and nothing anywhere reports an error.
+ *
+ * A self-hosted installation on plain http still works, because `NODE_ENV` is
+ * not `production` under `bun run dev`. A production deployment served over
+ * plain http does not, which is the same trade `auth.ts` already makes for
+ * session cookies — an installation that cannot hold a session cannot complete
+ * this round trip either.
  */
-function isSecurelyAddressed(env: ServerEnv): boolean {
-  return new URL(env.BETTER_AUTH_URL).protocol === "https:";
+function isSecurelyAddressed(): boolean {
+  return process.env.NODE_ENV === "production";
 }
 
 /**
@@ -172,14 +196,14 @@ function isSecurelyAddressed(env: ServerEnv): boolean {
  * produces `state_expired` on a round trip the browser still believes in, which
  * reads to a founder as the button being broken.
  */
-export function slackOAuthStateCookie(state: SignedOAuthState, env: ServerEnv, now: Date): string {
+export function slackOAuthStateCookie(state: SignedOAuthState, now: Date): string {
   const maxAgeSeconds = Math.max(0, Math.ceil((state.expiresAt.getTime() - now.getTime()) / 1000));
   const parts = [
     `${SLACK_OAUTH_STATE_COOKIE}=${state.cookieValue}`,
     STATE_COOKIE_ATTRIBUTES,
     `Max-Age=${maxAgeSeconds}`,
   ];
-  if (isSecurelyAddressed(env)) parts.push("Secure");
+  if (isSecurelyAddressed()) parts.push("Secure");
   return parts.join("; ");
 }
 
@@ -192,9 +216,9 @@ export function slackOAuthStateCookie(state: SignedOAuthState, env: ServerEnv, n
  * a failure as after a success — a refusal we cleared nothing for is a refusal
  * that can simply be retried.
  */
-export function clearedSlackOAuthStateCookie(env: ServerEnv): string {
+export function clearedSlackOAuthStateCookie(): string {
   const parts = [`${SLACK_OAUTH_STATE_COOKIE}=`, STATE_COOKIE_ATTRIBUTES, "Max-Age=0"];
-  if (isSecurelyAddressed(env)) parts.push("Secure");
+  if (isSecurelyAddressed()) parts.push("Secure");
   return parts.join("; ");
 }
 

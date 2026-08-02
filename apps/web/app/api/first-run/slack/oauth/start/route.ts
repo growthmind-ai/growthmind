@@ -108,7 +108,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
       // app can read the value that authorises a workspace to be attached to
       // this organization; SameSite=Lax so a third-party page cannot cause the
       // round trip to be walked with the victim's cookie attached.
-      "set-cookie": slackOAuthStateCookie(state, env, now),
+      "set-cookie": slackOAuthStateCookie(state, now),
     },
   });
 }

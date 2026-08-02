@@ -104,20 +104,28 @@ function outcomeOfStateRefusal(code: OAuthStateRefusalCode): SlackOAuthOutcome {
   return code === "state_expired" ? "expired" : "failed";
 }
 
+/**
+ * EVERY EXIT FROM THE HANDLER. The cookie is cleared on ALL of them: a state is
+ * single-use, and one left in a browser after the round trip is settled is
+ * exactly as redeemable to whoever finds it as it was before.
+ *
+ * At module scope, and it takes no configuration. It used to close over the
+ * handler's `env` because the cleared cookie's `Secure` flag was derived from
+ * `BETTER_AUTH_URL`; that derivation is gone (`@/lib/slack/oauth`,
+ * `isSecurelyAddressed`, which cites `apps/web/lib/auth.ts:44-49`), so the
+ * response depends on the outcome word and on nothing else.
+ */
+const land = (outcome: SlackOAuthOutcome): Response =>
+  new Response(null, {
+    status: 302,
+    headers: {
+      location: firstRunLandingFor(outcome),
+      "set-cookie": clearedSlackOAuthStateCookie(),
+    },
+  });
+
 export async function handle(request: Request, deps: FirstRunRouteDeps): Promise<Response> {
   const env = parseServerEnv(process.env);
-
-  /** Every exit from here down. The cookie is cleared on ALL of them: a state
-   *  is single-use, and one left in a browser after the round trip is settled
-   *  is exactly as redeemable to whoever finds it as it was before. */
-  const land = (outcome: SlackOAuthOutcome): Response =>
-    new Response(null, {
-      status: 302,
-      headers: {
-        location: firstRunLandingFor(outcome),
-        "set-cookie": clearedSlackOAuthStateCookie(env),
-      },
-    });
 
   // THE PREAMBLE, WITH ITS ONE DELIBERATE DEPARTURE — see this file's header.
   // `requireTenant` would answer a 401 JSON body, which is the right answer for
