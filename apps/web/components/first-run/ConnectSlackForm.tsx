@@ -38,9 +38,9 @@
 // # "Try again" there is a button that can never succeed, and the founder
 // # presses it until they give up. The route already computes which ones are
 // # retryable from the delivery lane's own opinion, so this form renders that
-// # answer rather than forming a second one. The one retry this form adds of
-// # its own is the channel list, because a list that did not arrive is exactly
-// # the failure a second press does fix.
+// # answer rather than forming a second one. The retry this form adds of its
+// # own is the channel list, on the two states where asking again is the whole
+// # of the fix — see the note on `noChannelsVisible`.
 // #
 // # ONE PRESS, TWO CALLS, ON BOTH PATHS. "Send a test message" attaches and
 // # then posts — the token and channel together on the pasted path, the chosen
@@ -130,6 +130,69 @@ const OAUTH_NOTICES: Record<SlackOAuthOutcome, OutcomeNotice> = {
   failed: { sentence: ONBOARDING_MESSAGES.slackOAuthFailed, unexpected: true },
 };
 
+/**
+ * A LIST THAT ARRIVED WITH NOTHING IN IT, WHICH IS NOT A LIST THAT DID NOT
+ * ARRIVE. `null` is "we have not got it back yet, or we could not read it"; an
+ * empty array is a successful answer meaning "your workspace showed us nothing".
+ *
+ * The two states look identical from the picker's own point of view — there is
+ * nothing to choose either way — and they have OPPOSITE next actions. One is
+ * ours to fetch again; the other needs somebody to go into Slack and invite the
+ * bot before a second fetch can say anything different. Collapsing them into one
+ * condition hands one of the two the other one's instruction, which is how the
+ * founder ends up pressing a button that cannot change anything.
+ *
+ * One home for the predicate, because both the parent's retry wiring and the
+ * picker's own branch ask the same question and must never drift apart.
+ */
+export function noChannelsVisible(channels: readonly SlackChannelChoice[] | null): boolean {
+  return channels !== null && channels.length === 0;
+}
+
+interface ChannelPickerProps {
+  readonly channels: readonly SlackChannelChoice[] | null;
+  readonly value: string | null;
+  readonly onChange: (value: string | null) => void;
+  /** The form's own lock. Absence of a list disables the picker on top of it. */
+  readonly disabled: boolean;
+}
+
+/**
+ * The picker, or the sentence that stands where it would have been.
+ *
+ * AN EMPTY PICKER IS NOT A PICKER — it is a control whose only outcome is the
+ * one the founder already has, sitting under an instruction to pick, with
+ * nothing on screen saying why there is nothing in it. `readChannelList`'s own
+ * note says the same thing one layer down. So the empty answer replaces the
+ * control rather than filling it, and the retry beside it re-lists rather than
+ * re-posting.
+ *
+ * EXPORTED FOR ITS OWN TEST. The list arrives through an effect, and the server
+ * renderer the first-run suites use runs no effects — so the empty state is
+ * unreachable through the parent and would be the one state nothing covers.
+ */
+export function ChannelPicker(props: ChannelPickerProps): ReactNode {
+  if (noChannelsVisible(props.channels)) {
+    return (
+      <Text size="sm" c="dimmed">
+        {ONBOARDING_MESSAGES.slackNoChannelsVisible}
+      </Text>
+    );
+  }
+
+  return (
+    <Select
+      label={ONBOARDING_MESSAGES.channelLabel}
+      description={ONBOARDING_MESSAGES.slackChannelPickPrompt}
+      data={(props.channels ?? []).map((channel) => ({ value: channel.id, label: channel.name }))}
+      value={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled || props.channels === null}
+      searchable
+    />
+  );
+}
+
 interface ConnectSlackFormProps {
   readonly step: WorkStep;
   readonly view: StepView;
@@ -185,7 +248,13 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   const offerOAuth = props.slackOAuthAvailable && !workspaceAttached;
 
   const listUnavailable = picking && channels === null && failure !== null;
-  const retryable = listUnavailable || (outcome !== null && !outcome.ok && outcome.retryable);
+  const listEmpty = picking && noChannelsVisible(channels);
+
+  // The two list states share ONE mechanism and not one sentence: asking again
+  // is the whole of the fix for both, and what the founder has to do first is
+  // different. `retry()` branches on this; `card()` branches on `listEmpty`.
+  const relistable = listUnavailable || listEmpty;
+  const retryable = relistable || (outcome !== null && !outcome.ok && outcome.retryable);
 
   // AD-7, and the reason nothing is cached: a founder told to pick a
   // destination very often goes and MAKES one first, and a stored list refuses
@@ -318,9 +387,16 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
     setFailure(null);
     setOutcome(null);
 
-    // The list never arrived. Asking for it again is the whole retry — there is
-    // nothing to post through until it does.
-    if (listUnavailable) {
+    // The list never arrived, or it arrived empty and the founder has since gone
+    // and invited the bot. Asking for it again is the whole retry either way —
+    // there is nothing to post through until something comes back.
+    //
+    // THE OLD ANSWER GOES BACK TO "WE DO NOT KNOW" FIRST. Without that, a second
+    // attempt that fails outright would leave last attempt's "your workspace has
+    // no channels" on screen beside a network failure — a claim about the
+    // workspace made from an answer we no longer have.
+    if (relistable) {
+      setChannels(null);
       setListingAttempt((attempt) => attempt + 1);
       return;
     }
@@ -370,15 +446,7 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
 
     if (picking) {
       return (
-        <Select
-          label={ONBOARDING_MESSAGES.channelLabel}
-          description={ONBOARDING_MESSAGES.slackChannelPickPrompt}
-          data={(channels ?? []).map((channel) => ({ value: channel.id, label: channel.name }))}
-          value={choice}
-          onChange={setChoice}
-          disabled={locked || channels === null}
-          searchable
-        />
+        <ChannelPicker channels={channels} value={choice} onChange={setChoice} disabled={locked} />
       );
     }
 

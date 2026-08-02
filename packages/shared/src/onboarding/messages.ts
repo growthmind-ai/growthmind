@@ -382,6 +382,28 @@ export const SLACK_OWN_APP_DISCLOSURE =
 export const SLACK_CHANNEL_PICK_PROMPT =
   "Choose the channel we should post in. Nothing arrives anywhere until you pick one.";
 
+/**
+ * THE LIST ARRIVED AND IT IS EMPTY, WHICH IS NOT THE SAME FACT AS A LIST THAT
+ * DID NOT ARRIVE — and the two may never share a sentence.
+ *
+ * A list that did not arrive is ours to fetch again, and the shipped
+ * network-failure sentence already says so. A list that arrived with nothing in
+ * it is a state of the founder's own workspace: every channel private, a
+ * workspace made minutes ago, a bot nobody has invited anywhere yet. The next
+ * action for the first is "press the button again"; for this one it is "go into
+ * Slack and invite the bot", and a founder given the wrong one of those presses
+ * a button that cannot change anything until they give up.
+ *
+ * SO IT NAMES THE WORKSPACE, NOT A FAULT. Nothing failed on either side, so
+ * there is nothing to apologise for and nobody to tell off. It says what the
+ * workspace looks like from here, names the one act that changes it and where
+ * that act happens, and then points at the retry sitting beside it — without
+ * that last clause somebody who has just invited the bot has no way back to the
+ * list except the consent trip they already made.
+ */
+export const SLACK_NO_CHANNELS_VISIBLE =
+  "Your Slack workspace has no channels the bot can see yet. Invite the bot to the channel you want us to post in, then try again.";
+
 export const FIELD_BOT_TOKEN_LABEL = "Bot token";
 
 export const FIELD_BOT_TOKEN_PLACEHOLDER = "xoxb-…";
@@ -831,6 +853,7 @@ export const ONBOARDING_MESSAGES = {
   addToSlack: ADD_TO_SLACK_LABEL,
   slackOwnAppDisclosure: SLACK_OWN_APP_DISCLOSURE,
   slackChannelPickPrompt: SLACK_CHANNEL_PICK_PROMPT,
+  slackNoChannelsVisible: SLACK_NO_CHANNELS_VISIBLE,
   botTokenLabel: FIELD_BOT_TOKEN_LABEL,
   botTokenPlaceholder: FIELD_BOT_TOKEN_PLACEHOLDER,
   channelIdLabel: FIELD_CHANNEL_ID_LABEL,
@@ -920,6 +943,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   ADD_TO_SLACK_LABEL,
   SLACK_OWN_APP_DISCLOSURE,
   SLACK_CHANNEL_PICK_PROMPT,
+  SLACK_NO_CHANNELS_VISIBLE,
   FIELD_BOT_TOKEN_LABEL,
   FIELD_BOT_TOKEN_PLACEHOLDER,
   FIELD_CHANNEL_ID_LABEL,
