@@ -111,6 +111,9 @@ services:
       # blast radius is a customer PostHog account, not just this deployment.
       GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
+      # `parseServerEnv` withholds the dev defaults under NODE_ENV=production, so
+      # every var the schema requires has to be forwarded here as well as to web.
+      BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
       # The analysis lane's model key, and which model it asks. Forwarded ONLY
       # here: the worker is where the lane runs, and a key set in .env that
       # never crossed into this container was a wire that looked connected and
