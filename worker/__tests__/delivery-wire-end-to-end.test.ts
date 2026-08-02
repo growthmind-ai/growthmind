@@ -266,11 +266,23 @@ interface LedgerWatch {
   reads(): number;
 }
 
+/**
+ * Re-bind a method to the object it was read from.
+ *
+ * A `Proxy` `get` trap hands back the raw function, so calling it would lose
+ * `this` and the delegating handle would stop being a real database. Module
+ * scope rather than a closure: it captures nothing, and a helper recreated on
+ * every property read of a proxy that wraps every query is the shape the lint
+ * rule exists to catch.
+ */
+function bindIfCallable(owner: object, value: unknown): unknown {
+  return typeof value === "function"
+    ? (value as (...args: unknown[]) => unknown).bind(owner)
+    : value;
+}
+
 function watchLedgerReads(real: TestDb): LedgerWatch {
   let reads = 0;
-
-  const bindIfCallable = (owner: object, value: unknown): unknown =>
-    typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(owner) : value;
 
   const watched = new Proxy(real as object, {
     get(target, property) {

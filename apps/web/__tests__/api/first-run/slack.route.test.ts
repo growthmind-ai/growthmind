@@ -453,7 +453,13 @@ describe("POST /api/first-run/slack/test (FR-O11, EC-O1, D8)", () => {
     // completed consent back through a screen they already finished, and
     // leaves them exactly where they were.
     expect(error?.code).not.toBe("no_channel_connected");
-    expect(String(error?.message ?? "").length).toBeGreaterThan(20);
+    // `message` is read as a string rather than stringified: the refusal body
+    // is `Record<string, unknown>`, so a non-string here would coerce to
+    // "[object Object]" and still clear a length check — asserting the type is
+    // what makes the length mean anything.
+    const message = error?.message;
+    expect(typeof message).toBe("string");
+    expect((message as string).length).toBeGreaterThan(20);
 
     // THE CONTROL, ON THE SAME POSTER INSTANCE. Without it a fake that
     // recorded nothing — or a `depsFor` that never reached the route's poster
