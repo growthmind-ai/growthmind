@@ -200,6 +200,18 @@ interface ConnectSlackFormProps {
   readonly channelId: string | null;
   /** AD-4 row 4: EXISTENCE, not address. Never re-derived from `channelId`. */
   readonly slackWorkspaceAttached: boolean;
+  /**
+   * Slack's own name for the attached workspace, and REQUIRED rather than
+   * optional on purpose (D11). An optional prop is the severed wire's own
+   * shape: every render site keeps typechecking with nothing attached, the
+   * "when present…" branch never runs, and the permanent absence reads as the
+   * legitimate no-name case. Required makes a caller that forgets it a compile
+   * error.
+   *
+   * `null` on the pasted-token path, which is handed a token and a channel and
+   * is never told a name.
+   */
+  readonly slackWorkspaceName: string | null;
   /** AD-6. Server-computed, and the client never reads the environment. */
   readonly slackOAuthAvailable: boolean;
 }
@@ -246,6 +258,21 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   // workspace was attached must not be asked to paste a token it cannot use.
   const picking = !settled && workspaceAttached && !channelAttached;
   const offerOAuth = props.slackOAuthAvailable && !workspaceAttached;
+
+  // A NAME WE ACTUALLY HAVE, AND THE TEST IS TOTAL RATHER THAN `!== null`.
+  //
+  // Three different absences reach this line and all three must render the same
+  // nothing. `null` is the pasted-token path, which is handed a token and a
+  // channel and is never told a name. An empty or blank column is the same
+  // absence wearing a different shape — prod holds every value ever written,
+  // not the one the type declares (D5). And ABSENT ENTIRELY is reachable
+  // despite the required prop: a payload parsed from JSON that predates the
+  // field, and any caller outside this typecheck, hand `undefined`. A
+  // `=== null` test lets that one through to `.trim()` and takes the whole
+  // delivery step down with it, which is a worse outcome than the missing
+  // sentence this exists to add.
+  const named = props.slackWorkspaceName;
+  const workspaceName = typeof named === "string" && named.trim() !== "" ? named : null;
 
   const listUnavailable = picking && channels === null && failure !== null;
   const listEmpty = picking && noChannelsVisible(channels);
@@ -490,6 +517,26 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
           {notice.sentence}
         </Text>
       )}
+
+      {/* WHICH WORKSPACE, DIRECTLY ABOVE THE PICKER — the one place a founder
+          back from a consent screen is looking, and the one moment the answer
+          changes what they do next. Somebody with two workspaces picking a
+          channel in the wrong one finds out when what we find arrives somewhere
+          nobody reads.
+
+          Gated on `picking` rather than on the name alone: once a channel is
+          chosen the workspace is settled and repeating it is noise. Gated on
+          `workspaceName` rather than on `props.slackWorkspaceName` so the
+          pasted-token path — which is never told a name — renders NOTHING here
+          instead of a sentence with an empty hole in it. */}
+      {picking && workspaceName !== null ? (
+        <Text size="sm" c="dimmed">
+          {ONBOARDING_MESSAGES.slackWorkspaceConnectedTemplate.replaceAll(
+            "{workspace}",
+            workspaceName,
+          )}
+        </Text>
+      ) : null}
 
       {card()}
 

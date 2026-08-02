@@ -53,10 +53,12 @@
 // rather than escaping every scan below it — silently, and forever.
 //
 // Interpolation tokens are `{channel}`, `{domain}`, `{page}`, `{count}`,
-// `{project}` and `{when}`. THE TOKEN NAMES THEMSELVES ARE AUDITED TEXT:
-// `{surface}` would trip the UX vocabulary ban on the word "surface", and any
-// `{snake_case}` token would trip the machine-identifier ban. Keep them one
-// plain lowercase word.
+// `{project}`, `{when}` and `{workspace}`. THE TOKEN NAMES THEMSELVES ARE
+// AUDITED TEXT: `{surface}` would trip the UX vocabulary ban on the word
+// "surface", and any `{snake_case}` token would trip the machine-identifier
+// ban. Keep them one plain lowercase word. A NEW TOKEN IS ADDED TO THIS LIST
+// IN THE SAME EDIT THAT INTRODUCES IT — a list that stops enumerating them is
+// a list nobody can check the next one against.
 
 /**
  * The ONLY proper nouns this surface may name, and why.
@@ -367,6 +369,27 @@ export const ADD_TO_SLACK_LABEL = "Add to Slack";
  */
 export const SLACK_OWN_APP_DISCLOSURE =
   "Not using our Slack app? Paste your own bot token instead.";
+
+/**
+ * WHICH WORKSPACE, NAMED. The half of "connected" a founder cannot see for
+ * themselves.
+ *
+ * Somebody with more than one Slack workspace finishes a consent screen inside
+ * somebody else's product, lands back here, and has nothing on the page saying
+ * which of their workspaces they just handed over. The picker directly beneath
+ * this sentence is what makes that expensive rather than merely untidy:
+ * choosing a channel in the wrong workspace is a mistake they discover when
+ * what we find arrives somewhere nobody reads.
+ *
+ * `{workspace}` is Slack's own name for it, as their account spells it, so it
+ * can be checked at a glance — the same reason `PROJECT_AUTO_SELECTED_TEMPLATE`
+ * names the project it picked rather than announcing that it picked one.
+ *
+ * IT RENDERS ONLY WHERE THERE IS A NAME. The pasted-token path is handed a
+ * token and a channel and is never told one, so on that path the sentence is
+ * ABSENT rather than rendered around an empty hole.
+ */
+export const SLACK_WORKSPACE_CONNECTED_TEMPLATE = "Connected to {workspace}.";
 
 /**
  * After the workspace is attached and before a channel is chosen — the state
@@ -852,6 +875,7 @@ export const ONBOARDING_MESSAGES = {
   stepSlackHelper: STEP_SLACK_HELPER,
   addToSlack: ADD_TO_SLACK_LABEL,
   slackOwnAppDisclosure: SLACK_OWN_APP_DISCLOSURE,
+  slackWorkspaceConnectedTemplate: SLACK_WORKSPACE_CONNECTED_TEMPLATE,
   slackChannelPickPrompt: SLACK_CHANNEL_PICK_PROMPT,
   slackNoChannelsVisible: SLACK_NO_CHANNELS_VISIBLE,
   botTokenLabel: FIELD_BOT_TOKEN_LABEL,
@@ -942,6 +966,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STEP_SLACK_HELPER,
   ADD_TO_SLACK_LABEL,
   SLACK_OWN_APP_DISCLOSURE,
+  SLACK_WORKSPACE_CONNECTED_TEMPLATE,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_NO_CHANNELS_VISIBLE,
   FIELD_BOT_TOKEN_LABEL,

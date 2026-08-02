@@ -165,6 +165,10 @@ const readPickingCard = (): RenderedCard =>
         view: ACTIVE_VIEW,
         channelId: null,
         slackWorkspaceAttached: true,
+        // The pasted-token path's answer: attached, and never told a name.
+        // `workspace-name-wire.test.ts` owns what the name does when there IS
+        // one; this suite is about the list, and holds it absent.
+        slackWorkspaceName: null,
         slackOAuthAvailable: true,
       }),
     ),

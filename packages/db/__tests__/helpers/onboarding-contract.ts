@@ -13,10 +13,12 @@
 // One shape, two ends, no hand-passed field to drop on the floor.
 //
 // WHAT THIS MIRROR IS. Every declaration below is derived from a CITED line of
-// `docs/adds/onboarding-five-steps.md` — the Wave 2 file table (§5) names each
-// method, AD-7 and AD-8 name each column. Where the ADD names a method without
-// declaring its parameters, the derivation is stated in a comment and the
-// residual ambiguity is FLAGGED rather than resolved silently.
+// this sprint's architecture document — a local working artefact that is not
+// published with this repository, so it is named here rather than linked: its
+// Wave 2 file table (§5) names each method, and its decisions AD-7 and AD-8
+// name each column. Where it names a method without declaring its parameters,
+// the derivation is stated in a comment and the residual ambiguity is FLAGGED
+// rather than resolved silently.
 //
 // WHAT IT CANNOT PROVE, stated plainly so nobody reads more into it: the
 // loaders cast to these types, so a Wave 2 signature drift is not a compile

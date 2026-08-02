@@ -29,8 +29,9 @@
 // produces `Invalid hook call`, and the two ways to "fix" it (globally
 // suppressing the error, or monkeypatching React's dispatcher) are both
 // forbidden outright: they hollow out every component test in the repository
-// while reporting green. See `.claude/rules/test-requirements.md`, "Never patch
-// the test harness to make a test pass".
+// while reporting green. See `REVIEW.md` ("Tests": a test that mocks the
+// boundary proves your mock's behaviour, not the boundary's) and
+// `.agents/skills/writing-a-unit-test/SKILL.md` ("Drive the real entry point").
 //
 // This file therefore renders through `react-dom/server`, which dispatches
 // hooks properly, inside the two providers the card's own tree needs:
