@@ -381,6 +381,36 @@ const STATE_SEPARATOR = ".";
 const encodePart = (value: string): string => Buffer.from(value, "utf8").toString("base64url");
 
 /**
+ * THE DOMAIN-SEPARATION LABEL, AND WHY A SHARED SECRET NEEDS ONE.
+ *
+ * `BETTER_AUTH_SECRET` signs Better Auth's session cookies AND this state's MAC. Two
+ * mechanisms keyed by one secret with no separation means a signature minted by either
+ * is a signature the other will accept — so the day any Better Auth surface HMACs a
+ * caller-influenced value under this key, that surface becomes a signing oracle and a
+ * forged state follows immediately: sign a payload of the attacker's choosing, present
+ * it as both cookie and parameter, and the callback seals their workspace into whatever
+ * organisation the payload names. No such oracle exists today. The label costs one line
+ * and does not depend on that staying true, which is the point — it is priced against a
+ * future upgrade of a dependency, not against a present exploit.
+ *
+ * A fixed prefix inside the MAC's input is what does it: to forge a state, an attacker
+ * would now need a signature over a message BEGINNING WITH this label, rather than over
+ * any message at all. `packages/shared/src/sessions/identity-key.ts` makes the same
+ * argument one level up with hkdf and `HKDF_INFO`; a subkey would work here too, and a
+ * labelled MAC is the cheaper form of the same separation for a single consumer.
+ *
+ * VERSIONED, so a future change to the payload format or the labelling scheme is a
+ * visible migration rather than a silent re-key.
+ *
+ * ADDING IT INVALIDATES EVERY STATE SIGNED BEFORE IT, and that is acceptable: a state
+ * lives ten minutes (`OAUTH_STATE_LIFETIME_MS`) and nothing is deployed. The worst case
+ * is a founder mid-consent at the moment of a deploy seeing `state_signature_invalid`,
+ * which lands on "start again" — the same instruction every other forgery-shaped refusal
+ * gives. Changing this literal later carries the same cost, so change it deliberately.
+ */
+const STATE_MAC_DOMAIN = "growthmind.slack-oauth-state.v1";
+
+/**
  * The MAC, computed over THE ENCODED PAYLOAD STRING rather than over the decoded
  * object.
  *
@@ -388,9 +418,16 @@ const encodePart = (value: string): string => Buffer.from(value, "utf8").toStrin
  * input: the bytes are authenticated first, and only bytes we signed are ever handed to
  * `JSON.parse`. Verifying a re-encoding of the decoded object instead would make the
  * signature depend on key order and on whatever the parser was willing to accept.
+ *
+ * ONE PRODUCER FOR BOTH SIDES. `signOAuthState` and `verifyOAuthState` both go through
+ * here, so the label cannot be applied on one side and forgotten on the other — a
+ * mistake whose symptom would be every legitimate round trip refused.
  */
 function signPart(encodedPayload: string, secret: string): string {
-  return createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+  return createHmac("sha256", secret)
+    .update(STATE_MAC_DOMAIN)
+    .update(encodedPayload)
+    .digest("base64url");
 }
 
 /**
