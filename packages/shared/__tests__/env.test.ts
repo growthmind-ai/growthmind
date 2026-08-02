@@ -73,6 +73,54 @@ describe("parseServerEnv", () => {
     expect(() => parseServerEnv(incomplete)).toThrow(/DATABASE_URL/);
   });
 
+  /**
+   * THE ROW THAT STOPS SOMEBODY RESTORING `z.url().default("http://localhost:3000")`.
+   *
+   * A schema-level default survives the production branch below, which withholds
+   * `DEV_DEFAULTS` and nothing else — so BETTER_AUTH_URL was this file's own
+   * docstring's counterexample: "in production there are no fallbacks" was true
+   * of every variable except the one that decides where sign-in links point and
+   * where Slack is told to deliver authorization codes
+   * (`apps/web/lib/slack/oauth.ts`, `slackOAuthRedirectUri`). A production deploy
+   * that omitted it booted clean and pointed both at localhost.
+   *
+   * The fix is a `DEV_DEFAULTS` entry rather than a field default, and this row
+   * is what makes moving it back a red test rather than a silent regression.
+   */
+  test("production has no fallbacks — a missing BETTER_AUTH_URL throws", () => {
+    const { BETTER_AUTH_URL: _omitted, ...incomplete } = PROD_COMPLETE;
+    expect(() => parseServerEnv(incomplete)).toThrow(/BETTER_AUTH_URL/);
+  });
+
+  /**
+   * The other half, and the reason the `DEV_DEFAULTS` entry is the right home
+   * rather than a bare `required` in the schema.
+   *
+   * The documented setup is `cp.env.example.env`, and.env.example necessarily
+   * ships `BETTER_AUTH_URL=http://localhost:3000` so local dev works. Copy it,
+   * run the production profile, and the variable IS set — absence-based guards
+   * pass it straight through to a deployment whose Slack `redirect_uri` is on
+   * localhost. Membership of `DEV_DEFAULTS` puts it in the by-value rejection
+   * loop, the same as the secret and the encryption key.
+   */
+  test("production rejects the.env.example BETTER_AUTH_URL literal", () => {
+    expect(() =>
+      parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_URL: "http://localhost:3000" }),
+    ).toThrow(/still set to the public example value/);
+  });
+
+  // The quickstart compose stack sets BETTER_AUTH_URL to localhost AND sets the
+  // bypass flag (docker-compose.yml), so `docker compose up` from a clean clone
+  // must still reach a working app. CI boots that stack on every push.
+  test("GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 permits the localhost BETTER_AUTH_URL in production", () => {
+    const env = parseServerEnv({
+      ...PROD_COMPLETE,
+      BETTER_AUTH_URL: "http://localhost:3000",
+      GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1",
+    });
+    expect(env.BETTER_AUTH_URL).toBe("http://localhost:3000");
+  });
+
   test("production rejects a short BETTER_AUTH_SECRET", () => {
     expect(() => parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_SECRET: "short" })).toThrow(
       /BETTER_AUTH_SECRET/,

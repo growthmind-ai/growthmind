@@ -26,7 +26,27 @@ export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(16),
-  BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
+  /**
+   * The address this deployment is actually reachable at. NO `.default()` HERE,
+   * and the localhost value lives in `DEV_DEFAULTS` below instead.
+   *
+   * A schema-level default survives the production branch in `parseServerEnv`,
+   * because that branch withholds `DEV_DEFAULTS` and nothing else — so this was
+   * the one variable this file's own docstring was wrong about. A production
+   * deploy that simply omitted it booted clean, with Better Auth's `baseURL` on
+   * localhost, sign-in links pointing at a machine that is not the operator's,
+   * and the Slack `redirect_uri` (`apps/web/lib/slack/oauth.ts`,
+   * `slackOAuthRedirectUri`) telling Slack to deliver authorization codes there.
+   * Nothing complained.
+   *
+   * Moving the value into `DEV_DEFAULTS` makes production require it and fail
+   * loudly, while a clean clone still boots with no.env — and it enrols the
+   * variable in the literal-rejection loop for free, which is the other half:
+   * the documented setup is `cp.env.example.env`, and.env.example necessarily
+   * ships `http://localhost:3000`, so absence was never the only way to reach a
+   * localhost production deployment.
+   */
+  BETTER_AUTH_URL: z.url(),
   /**
    * Better Auth Infrastructure (dash.better-auth.com) API key. Optional by design: the
    * hosted dashboard is an operator convenience for this deployment, never a dependency
@@ -85,9 +105,20 @@ export const serverEnvSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
+/**
+ * The local values, and the ONLY place a fallback may be written.
+ *
+ * Two mechanisms hang off this object and both are keyed by its entries: the
+ * production branch in `parseServerEnv` withholds all of it, and the
+ * literal-rejection loop walks all of it. A default written on the schema
+ * instead (`z.url().default(...)`) participates in neither, which is exactly how
+ * BETTER_AUTH_URL came to be the counterexample to this file's own docstring.
+ * A new variable with a local value belongs here, never on the field.
+ */
 const DEV_DEFAULTS = {
   DATABASE_URL: "postgres://growthmind:growthmind@localhost:5432/growthmind",
   BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars!",
+  BETTER_AUTH_URL: "http://localhost:3000",
   GROWTHMIND_ENCRYPTION_KEY: DEV_ENCRYPTION_KEY,
 } as const;
 
@@ -112,7 +143,8 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       if (source[key] === devValue) {
         throw new Error(
           `Invalid environment: ${key} is still set to the public example value from .env.example. ` +
-            `Generate a real one (BETTER_AUTH_SECRET and GROWTHMIND_ENCRYPTION_KEY: openssl rand -base64 32) before running in production. ` +
+            `Set a real one before running in production (BETTER_AUTH_SECRET and GROWTHMIND_ENCRYPTION_KEY: openssl rand -base64 32; ` +
+            `DATABASE_URL and BETTER_AUTH_URL: the addresses this deployment actually uses). ` +
             `The quickstart docker-compose stack sets GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 to bypass this for local demos only.`,
         );
       }
