@@ -151,7 +151,8 @@ function contextFor(organizationId: string, organizationName: string): TenantCon
 interface SeededOrg {
   workspace: SeededWorkspace;
   ctx: TenantContext;
-  channelId: string;
+  /** `null` is the AD-4 half-connected row — see `SeedSlackConnectionParams`. */
+  channelId: string | null;
   findingId: string;
 }
 
@@ -166,7 +167,7 @@ interface SeededOrg {
  */
 async function seedOrgWithFinding(input: {
   label: string;
-  channelId: string;
+  channelId: string | null;
   context?: readonly string[];
 }): Promise<SeededOrg> {
   const workspace = await seedPollableWorkspace(db, {
@@ -222,6 +223,83 @@ async function runTheTick(poster: RecordingPoster): Promise<{
 
 async function deliveryRows() {
   return db.select().from(schema.deliveries);
+}
+
+// ===========================================================================
+// Watching the ledger read — AD-4 row 7's observation seam
+// ===========================================================================
+
+/**
+ * A `TestDb` that DELEGATES EVERYTHING and counts reads of the `deliveries`
+ * table.
+ *
+ * WHY THIS EXISTS AT ALL. AD-4 row 7 is about `deliveries.findFor(finding.id,
+ * organization.channelId)` — the delivery ledger's dedup key. A null channel
+ * does not error there; it matches ZERO ROWS, so `isSpokenFor` answers false,
+ * the tick concludes the finding was never sent, and the customer receives their
+ * whole backlog again every week with nothing in a log. The invariant is
+ * therefore "that call never happens for a channel-less organization", and the
+ * only observable form of a call that never happens is the query it would have
+ * issued.
+ *
+ * WHY IT IS NOT A FAKE `DeliveriesRepo`. `createDeliveryLaneSource` builds its
+ * own repository from the `db` it was handed (`createDeliveriesRepo(deps.db,
+ * ctx)`), which is the D7 property the module is written for — there is nowhere
+ * for a caller to inject a different ledger. `deliveriesFor` on the TICK is a
+ * different repository for a different question, and a fake there would never
+ * receive `findFor` even with the guard removed, so the assertion would be
+ * vacuous. The db is the one seam the lane source actually has.
+ *
+ * WHY IT IS A DELEGATING PROXY RATHER THAN A STUB. Every read below still runs
+ * as real SQL against the same PGlite; the proxy adds a counter and changes no
+ * answer. A stub would make "zero lanes" a statement about the stub.
+ *
+ * The table is matched by REFERENCE against `schema.deliveries` rather than by
+ * name: `worker` declares no `drizzle-orm` dependency of its own (see
+ * `helpers/wire-fixtures.ts`'s header), so `getTableName` is not importable
+ * here, and reference equality is stricter anyway.
+ */
+interface LedgerWatch {
+  /** Hand this to `createDeliveryLaneSource` instead of the raw handle. */
+  readonly db: TestDb;
+  /** How many `select … from deliveries` statements the lane source issued. */
+  reads(): number;
+}
+
+function watchLedgerReads(real: TestDb): LedgerWatch {
+  let reads = 0;
+
+  const bindIfCallable = (owner: object, value: unknown): unknown =>
+    typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(owner) : value;
+
+  const watched = new Proxy(real as object, {
+    get(target, property) {
+      const value = Reflect.get(target, property) as unknown;
+      if (property !== "select" || typeof value !== "function") {
+        return bindIfCallable(target, value);
+      }
+
+      return (...args: unknown[]): unknown => {
+        const builder = (value as (...a: unknown[]) => unknown).apply(target, args) as object;
+
+        return new Proxy(builder, {
+          get(builderTarget, builderProperty) {
+            const inner = Reflect.get(builderTarget, builderProperty) as unknown;
+            if (builderProperty !== "from" || typeof inner !== "function") {
+              return bindIfCallable(builderTarget, inner);
+            }
+
+            return (table: unknown): unknown => {
+              if (table === schema.deliveries) reads += 1;
+              return (inner as (t: unknown) => unknown).call(builderTarget, table);
+            };
+          },
+        });
+      };
+    },
+  }) as TestDb;
+
+  return { db: watched, reads: () => reads };
 }
 
 async function findingRows() {
@@ -350,6 +428,61 @@ test("the channel id comes from the stored connection row and no caller can supp
 
   const [relanded] = await lanes.listDueLanes(NOW);
   expect(relanded?.channelId).toBe(CHANNEL_B);
+});
+
+// ###########################################################################
+// Row 4b — AD-4 ROW 7. THE DEDUP KEY IS NEVER ASKED ABOUT A NULL CHANNEL.
+// ###########################################################################
+test("an organization with a workspace and no channel yields no lane and no ledger read", async () => {
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+
+  // THE HALF-CONNECTED ORG IS FULLY FURNISHED IN EVERY OTHER RESPECT — a
+  // project, a persisted finding, an ACTIVE connection with a real sealed token.
+  // The ONLY thing wrong with it is that nobody has chosen a channel. Without
+  // that, a green here would be a statement about an org with nothing to send
+  // rather than about the guard.
+  const attached = await seedOrgWithFinding({ label: "attached", channelId: null });
+
+  const logger = createRecordingDeliveryLogger();
+  const watch = watchLedgerReads(db);
+  const lanes = createDeliveryLaneSource({ db: watch.db, logger });
+
+  expect(await lanes.listDueLanes(NOW)).toEqual([]);
+
+  // ZERO READS OF THE LEDGER. This is AD-4 row 7 stated as the thing that must
+  // not happen: `deliveries.findFor(finding.id, channelId)` keys on
+  // `(finding, channel)`, and a null channel does not error there — it matches
+  // no row, `isSpokenFor` answers false, and the tick concludes a finding it
+  // already delivered was never sent. A dedup key forked by a null, with
+  // nothing in a log, which the customer experiences as their whole backlog
+  // arriving again every week.
+  //
+  // The compiler carries the real guarantee — `findFor` still takes a `string`
+  // and `laneFor` takes a `DeliveryTarget<…>`, both kept narrow on purpose — so
+  // this row is belt to that braces. It is here because the invariant deserves
+  // a test that names it, and because a later refactor that widened either type
+  // "to handle the null properly" would compile.
+  expect(watch.reads()).toBe(0);
+
+  // SAID OUT LOUD, AND AS `info` RATHER THAN `error`. A founder between consent
+  // and channel choice is mid-setup, not broken; a tick that logged this as a
+  // fault would teach an operator to ignore the line that also reports a real
+  // one. The line exists so "this customer received nothing" is answerable from
+  // the log instead of inferred from silence.
+  expect(logger.infos.some((line) => line.includes(attached.workspace.organizationId))).toBe(true);
+  expect(logger.errors).toEqual([]);
+
+  // THE CONTROL, THROUGH THE SAME LANE SOURCE AND THE SAME WATCHER. Without it
+  // both assertions above pass against a broken population read, a watcher that
+  // counts nothing, or a guard that refuses every organization on the
+  // installation — which is the shape that silently stops every customer's
+  // findings.
+  const connected = await seedOrgWithFinding({ label: "chosen", channelId: CHANNEL_A });
+  const produced = await lanes.listDueLanes(NOW);
+
+  expect(produced.map((lane) => lane.organizationId)).toEqual([connected.workspace.organizationId]);
+  expect(produced[0]?.channelId).toBe(CHANNEL_A);
+  expect(watch.reads()).toBeGreaterThan(0);
 });
 
 // ###########################################################################

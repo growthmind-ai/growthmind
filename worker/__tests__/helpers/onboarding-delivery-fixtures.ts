@@ -193,11 +193,20 @@ export function slackEnvelopeFor(organizationId: string): { ciphertext: string; 
 
 export interface SeedSlackConnectionParams {
   organizationId: string;
-  /** FR-O13: the ONE delivery address, read off this row and never off a
-   *  payload. Distinct per org in every multi-org fixture, so "org A's finding
-   *  reached org B's channel" is a detectable event rather than an invisible
-   *  one. */
-  channelId: string;
+  /**
+   * FR-O13: the ONE delivery address, read off this row and never off a
+   * payload. Distinct per org in every multi-org fixture, so "org A's finding
+   * reached org B's channel" is a detectable event rather than an invisible
+   * one.
+   *
+   * `null` IS A STATE, NOT AN OMITTED VALUE (AD-4). Since migration 0010 the
+   * OAuth callback stores a real bot token before anybody has chosen a channel,
+   * so a row can be ACTIVE with no address — a workspace attached and nothing
+   * deliverable. The delivery lane has to refuse that row rather than post the
+   * four characters `null` to Slack, and a fixture that could not express it
+   * could not state the invariant.
+   */
+  channelId: string | null;
   isActive?: boolean;
   connectedAt?: Date;
 }
@@ -212,7 +221,7 @@ export async function seedSlackConnection(
   db: TestDb,
   params: SeedSlackConnectionParams,
   ownedBy: string,
-): Promise<{ id: string; channelId: string }> {
+): Promise<{ id: string; channelId: string | null }> {
   const envelope = slackEnvelopeFor(params.organizationId);
   const id = randomUUID();
 
