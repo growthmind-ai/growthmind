@@ -168,14 +168,25 @@ export function FirstRunClient(props: FirstRunClientProps) {
   // same guarantee the arming stamp already buys: a second tab, a reload and a
   // return tomorrow all land on the sentence the database describes.
   //
-  // `workspaceAttached` and `deliveryResolved` are read off the SAME facts
-  // today because attaching a workspace and choosing a channel are one act on
-  // the pasted-token path. The chain distinguishes them so the OAuth path,
-  // where they are genuinely two acts with a window between them, has a
-  // sentence for that window rather than nothing.
+  // `workspaceAttached` COMES OFF THE PAYLOAD AND IS NOT RE-DERIVED HERE (AD-4
+  // row 4, D11). It reports the EXISTENCE of a connection row — `slack !== null`
+  // in `buildFirstRunStatus` — and the address is a different question.
+  //
+  // Re-deriving it from `channelId` was right only while attaching a workspace
+  // and choosing a channel were ONE act, which is what the pasted-token path
+  // does. OAuth splits them, with a real window between the consent screen and
+  // the channel picker, and in that window an org HAS given us a token and has
+  // nowhere to post. Derived from the address, this flag was false exactly then
+  // — so it could never be true while delivery was unresolved, the chain's
+  // `channel` link was unreachable, and its sentence had never once rendered.
+  // A founder returning from Slack now reads the one thing left to do.
+  //
+  // The line below is deliberately untouched: an attached workspace is not
+  // somewhere to deliver, and folding the flag into it would open the arm gate
+  // over a setup that cannot finish (AD-4 row 5).
   const setupFacts: SetupFacts = {
     analyticsAttached: attached,
-    workspaceAttached: current.channelId !== null,
+    workspaceAttached: current.slackWorkspaceAttached,
     deliveryResolved: current.channelId !== null || current.slackSkippedAt !== null,
     armedAt: facts.armedAt,
   };
