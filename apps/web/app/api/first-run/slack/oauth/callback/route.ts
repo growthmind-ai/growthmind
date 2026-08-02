@@ -44,6 +44,7 @@ import {
   slackCredentialAad,
 } from "@growthmind/db";
 import {
+  describeError,
   encryptSecret,
   firstRunSlackOAuthCallbackInputSchema,
   keyIdOf,
@@ -220,7 +221,33 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     if (error instanceof SlackConnectionWriteError && isSecondActiveConnection(error)) {
       return land("already-connected");
     }
-    throw error;
+
+    // ANY OTHER WRITE FAILURE LANDS TOO, AND IT IS NOT A GENERIC CATCH-ALL —
+    // it is what makes this file's header claim true. A re-throw exited the
+    // handler WITHOUT `land()`, so the state cookie survived a settled round
+    // trip on precisely the exits nobody planned for, and "cleared on ALL of
+    // them" was conditional on the error class. The invariant has to be
+    // structural: every path out of here goes through `land`.
+    //
+    // It is also the only route on this surface a BROWSER LANDS ON. A throw
+    // becomes a Next.js 500 html page, shown AFTER the authorization code has
+    // been burned — the founder is outside the product, on a page with no way
+    // back, holding a code that can never be redeemed again. A redirect to the
+    // onboarding surface with an outcome word is a path back; the page turns it
+    // into a sentence (`@/lib/first-run/slack-oauth-outcome`).
+    //
+    // The diagnosis moves to the server log, which is where it belongs. The
+    // founder is told the round trip failed and to start again — the honest
+    // instruction either way — and never a constraint name, a driver code or a
+    // stack. `describeError` because a `catch` binds `unknown` and a `pg` error
+    // carries `.query` and `.parameters`; the message is what a person can act
+    // on, the rest is the credential's own neighbourhood.
+    console.error("first-run slack oauth callback: the connection row could not be written", {
+      organizationId: ctx.organizationId,
+      reason: describeError(error),
+    });
+
+    return land("failed");
   }
 
   // NOT "done". The workspace is attached; nothing arrives anywhere until a

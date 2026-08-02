@@ -1048,8 +1048,14 @@ describe("GET /api/first-run/slack/oauth/callback (AD-5, AD-4)", () => {
     // this table and nothing else — `ensureProject` runs before the try
     // block and has to keep working, or the row would be proving the
     // wrong thing.
+    //
+    // `NOT VALID` because earlier rows in this file have already written
+    // connections into this shared bed: without it, Postgres validates the
+    // existing rows and the ALTER itself fails. `NOT VALID` skips the
+    // back-check and still enforces on every INSERT, which is the only
+    // half this row needs.
     await bed.db.execute(
-      `alter table slack_connections add constraint tmp_write_failure_probe check (false)`,
+      `alter table slack_connections add constraint tmp_write_failure_probe check (false) not valid`,
     );
 
     let response: Response;
@@ -1058,9 +1064,7 @@ describe("GET /api/first-run/slack/oauth/callback (AD-5, AD-4)", () => {
     } finally {
       // Dropped even on a throw, or every later row in this file inherits
       // a table that cannot be written to.
-      await bed.db.execute(
-        `alter table slack_connections drop constraint tmp_write_failure_probe`,
-      );
+      await bed.db.execute(`alter table slack_connections drop constraint tmp_write_failure_probe`);
     }
 
     // The exchange really happened, so this is the WRITE failing rather
