@@ -5,7 +5,8 @@
 // and Flow D).
 //
 // ###########################################################################
-// # THREE CARDS, ONE COMPONENT, AND THE BRANCH IS A SERVER-COMPUTED BOOLEAN.
+// # FOUR CARD STATES, ONE COMPONENT, AND THE BRANCH IS A SERVER-COMPUTED
+// # BOOLEAN.
 // #
 // # `slackOAuthAvailable` says whether THIS INSTALLATION has a Slack app of its
 // # own. It is computed in `lib/first-run/status.ts` and arrives as a prop, and
@@ -20,6 +21,10 @@
 // #                                  and unfolded. SELF-HOST IS FIRST-CLASS and
 // #                                  is never the degraded path.
 // #   a workspace, and no channel -> the picker, on either path.
+// #   a workspace AND a channel   -> no card body at all. See the invariant on
+// #                                  `card()`: THE PASTED-TOKEN FORM MAY NEVER
+// #                                  RENDER ON AN ORGANIZATION THAT ALREADY HAS
+// #                                  A WORKSPACE ATTACHED.
 // #
 // # THE PICKER REPLACES THE CHANNEL-ID FIELD RATHER THAN JOINING IT. No id is
 // # typed on the one-click path; the list is fetched live at pick time (AD-7)
@@ -147,6 +152,64 @@ const OAUTH_NOTICES: Record<SlackOAuthOutcome, OutcomeNotice> = {
  */
 export function noChannelsVisible(channels: readonly SlackChannelChoice[] | null): boolean {
   return channels !== null && channels.length === 0;
+}
+
+/**
+ * What one round trip to a first-run verb settled, from this card's side.
+ *
+ * THREE FIELDS BECAUSE THERE ARE THREE FACTS, AND THEY USED TO BE ONE BOOLEAN.
+ * The old `sendTo` answered `true` for "the route got as far as posting", and
+ * the channel call read that one boolean as BOTH "the address is stamped" and
+ * "the message arrived". They are not the same fact, and collapsing them is
+ * what produced this card's two dead ends: a stamped address read as an unsent
+ * message left the picker mounted, and an unsent message read as an unstamped
+ * address sent the founder back to the pasted-token form.
+ */
+export interface SendAnswer {
+  /** A test-post answer came back, so the route reached the post itself. */
+  readonly posted: boolean;
+  /**
+   * The refusal's machine code, and NEVER RENDERED — the sentence beside it is
+   * what a person reads (`readRefusal` keeps the two apart for this reason). It
+   * is here so this card can tell one refusal from another.
+   */
+  readonly code: string | null;
+  /** The route's own opinion that this settles the step. Never re-derived. */
+  readonly marksStepDone: boolean;
+}
+
+/** The channel route's code for "this organization already chose" — see
+ *  `channelAlreadyChosen` in `lib/first-run/refusals.ts`. */
+const CHANNEL_ALREADY_CHOSEN = "channel_already_chosen";
+
+/**
+ * WHETHER THE DELIVERY ADDRESS IS NOW STAMPED, WHICH IS NOT WHETHER THE TEST
+ * POST WORKED.
+ *
+ * Two answers mean it is. A test-post answer means the attach committed and the
+ * route went on to post — and the address stands even when that post then
+ * failed, because a failed test message never rolls back a correct pick (D8,
+ * which the channel route states in its own header). And `channel_already_chosen`
+ * is the once-only guard reporting that the address was there before this press:
+ * a page opened twice, a teammate who finished the same step first, or this
+ * card's own earlier press whose answer never made it back. In both cases the
+ * server knows the address and the client must stop arguing with it.
+ *
+ * EVERY OTHER REFUSAL LEAVES THE ADDRESS UNSTAMPED — a listing that failed, a
+ * channel no longer on the live list, no workspace at all — and the founder
+ * stays in the picker with the pick still to make. That is the way back to
+ * picking, and it is kept by this predicate being narrow rather than by a
+ * control: `attachChannel` fills an empty address and never moves a chosen one
+ * (D12, `slack-connections.repo.ts`), so a "pick a different channel" button
+ * offered after the address landed would post into the 409 every time. This card
+ * does not build buttons that cannot work.
+ *
+ * EXPORTED FOR ITS OWN TEST, for the reason `noChannelsVisible` gives one door
+ * up: the answer is only reachable through a press, and the server renderer the
+ * first-run suites use dispatches no events.
+ */
+export function channelAddressLanded(answer: SendAnswer): boolean {
+  return answer.posted || answer.code === CHANNEL_ALREADY_CHOSEN;
 }
 
 interface ChannelPickerProps {
@@ -341,34 +404,50 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
 
   /**
    * POST, then render whatever came back — a refusal, or the post's own
-   * outcome. `true` means the route got as far as posting, which on the channel
-   * path also means the attach stands (D8: a failed test post does not roll it
-   * back).
+   * outcome — and REPORT WHAT IT WAS rather than whether it went well.
+   *
+   * IT ASKS FOR NO REFRESH OF ITS OWN. The two callers refresh on different
+   * facts: the test post on the step being settled, the channel call on the
+   * address having landed. A refresh decided in here would have to be one of
+   * those two, and the other caller would then either miss it or fire a second.
    */
-  async function sendTo(path: string, body: unknown): Promise<boolean> {
+  async function sendTo(path: string, body: unknown): Promise<SendAnswer> {
     const answer = await postJson(path, body);
 
     if (answer === null) {
       setFailure(ONBOARDING_MESSAGES.networkFailure);
-      return false;
+      return {
+        posted: false,
+        code: null,
+        marksStepDone: false,
+      };
     }
 
     const read = readTestPostAnswer(answer.body);
     if (read === null) {
-      setFailure(readRefusal(answer.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
-      return false;
+      const refusal = readRefusal(answer.body);
+      setFailure(refusal?.message ?? ONBOARDING_MESSAGES.networkFailure);
+      return {
+        posted: false,
+        code: refusal?.code ?? null,
+        marksStepDone: false,
+      };
     }
 
     setOutcome(read);
-    if (read.marksStepDone) {
-      router.refresh();
-    }
-    return true;
+    return {
+      posted: true,
+      code: null,
+      marksStepDone: read.marksStepDone,
+    };
   }
 
   /** The post itself, which is the only half a retry repeats. */
   async function post(): Promise<void> {
-    await sendTo(FIRST_RUN_API.slackTest, {});
+    const answer = await sendTo(FIRST_RUN_API.slackTest, {});
+    if (answer.marksStepDone) {
+      router.refresh();
+    }
   }
 
   async function send(): Promise<void> {
@@ -385,9 +464,20 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
 
     // A workspace and no address. One call attaches the chosen channel and
     // posts through it, so the click budget pays for one press either way.
+    //
+    // THE ADDRESS LANDING IS WHAT MOVES THIS CARD ON, NOT THE POST SUCCEEDING.
+    // `channelAddressLanded` says which, and the refresh is unconditional on it
+    // because the server has already resolved the step: `slackConnected` — and
+    // therefore step 3 being done — derives from the stored channel existing,
+    // not from a message having arrived (`lib/first-run/status.ts`). Without the
+    // refresh the client sits on its own stale `channelId: null` and every later
+    // press meets the once-only guard's 409 instead.
     if (workspaceAttached) {
-      if (await sendTo(FIRST_RUN_API.slackChannel, { channelId: choice ?? "" })) {
+      const answer = await sendTo(FIRST_RUN_API.slackChannel, { channelId: choice ?? "" });
+
+      if (channelAddressLanded(answer)) {
         setChannelNow(true);
+        router.refresh();
       }
       setPending(false);
       return;
@@ -465,7 +555,43 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
     return <Stack gap="sm">{step.fields.map((field) => renderField(field))}</Stack>;
   }
 
-  /** Which of the three cards this founder is looking at. */
+  /**
+   * Which card this founder is looking at.
+   *
+   * ###########################################################################
+   * # THE INVARIANT: THE PASTED-TOKEN FORM MAY NEVER RENDER ON AN ORGANIZATION
+   * # THAT ALREADY HAS A WORKSPACE ATTACHED. The branch below is how that is
+   * # kept, and anybody adding a fifth state has to keep it too.
+   * #
+   * # It is written as `workspaceAttached` rather than as the state it was
+   * # found in, so the form is unreachable from an attached organization by
+   * # SHAPE rather than by a condition somebody has to get right. A founder
+   * # here has already consented, or already pasted a token; asking for a bot
+   * # token they never had is asking for the one thing that cannot help, and a
+   * # second connect lands on the partial unique index rather than on anything
+   * # useful.
+   * #
+   * # THE STATE IT WAS FOUND IN: consent completed, a channel picked, the
+   * # attach committed, and the test post failed. `marksStepDone` is false on
+   * # every failure, so nothing refreshed, and the card fell through the picker
+   * # (a channel is attached) and past the "Add to Slack" fallback (a workspace
+   * # is attached) to the pasted-token form. It is not exotic — picking a public
+   * # channel the bot has not joined fails on the test post with
+   * # `not_in_channel` (`lib/slack/channels.ts`), which is not retryable, so
+   * # there was no Retry, no picker, and two inputs asking for a token they
+   * # never had.
+   * #
+   * # THERE IS NO CARD BODY IN THIS STATE, AND NO RE-PICK CONTROL. The address
+   * # is stamped and `attachChannel` never moves a chosen one (D12), so a "pick
+   * # a different channel" button would post into the 409 forever — the button
+   * # that can never work, which is what the header refuses on the post
+   * # failures. What the founder has is what the action row already gives every
+   * # state: the send button, which now re-posts through the stored channel and
+   * # succeeds the moment the bot is invited to it, and the skip. Both live
+   * # OUTSIDE this function precisely so a card changing shape cannot take them
+   * # with it.
+   * ###########################################################################
+   */
   function card(): ReactNode {
     if (settled) {
       return null;
@@ -475,6 +601,10 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
       return (
         <ChannelPicker channels={channels} value={choice} onChange={setChoice} disabled={locked} />
       );
+    }
+
+    if (workspaceAttached) {
+      return null;
     }
 
     // The fallback, and it is folded rather than absent. A self-hoster whose
