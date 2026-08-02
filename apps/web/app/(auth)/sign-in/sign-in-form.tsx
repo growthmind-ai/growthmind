@@ -8,6 +8,8 @@ import { useState, type FormEvent } from "react";
 import { signIn } from "@/lib/auth-client";
 import {
   clearField,
+  CURRENT_PASSWORD_PLACEHOLDER,
+  EMAIL_PLACEHOLDER,
   NO_SIGN_IN_ERRORS,
   signInSubmitErrors,
   validateSignIn,
@@ -61,6 +63,7 @@ export function SignInForm() {
           label="Email"
           type="email"
           size="md"
+          placeholder={EMAIL_PLACEHOLDER}
           value={email}
           onChange={(event) => {
             setEmail(event.currentTarget.value);
@@ -74,6 +77,7 @@ export function SignInForm() {
         <PasswordInput
           label="Password"
           size="md"
+          placeholder={CURRENT_PASSWORD_PLACEHOLDER}
           value={password}
           onChange={(event) => {
             setPassword(event.currentTarget.value);

@@ -178,6 +178,7 @@ describe("the channel list that arrives empty — the sweep's dead end", () => {
     expect(rendered.text).toContain(ONBOARDING_MESSAGES.slackChannelPickPrompt);
     expect(rendered.text).not.toContain(ONBOARDING_MESSAGES.slackNoChannelsVisible);
     expect(PICKER_CONTROL.test(pickerMarkup(CHANNELS))).toBe(true);
+    expect(pickerMarkup(CHANNELS)).toContain(ONBOARDING_MESSAGES.channelPlaceholder);
   });
 
   test("the delivery card hands the picker its real list and keeps the skip in the row", () => {

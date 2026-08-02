@@ -11,6 +11,7 @@ import {
   FIELD_CHANNEL_ID_PLACEHOLDER,
   FIELD_PERSONAL_KEY_HELPER,
   FIELD_PERSONAL_KEY_LABEL,
+  FIELD_PERSONAL_KEY_PLACEHOLDER,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
   FIELD_SELF_HOST_DISCLOSURE,
@@ -113,7 +114,7 @@ const PERSONAL_KEY_FIELD: FieldDescriptor = {
   disclosure: null,
   secret: true,
   folded: false,
-  placeholder: null,
+  placeholder: FIELD_PERSONAL_KEY_PLACEHOLDER,
   prefill: null,
   refusalCodes: ["invalid_credentials"],
 };
