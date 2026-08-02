@@ -1,5 +1,5 @@
 import type { OnboardingFinding, StagePersistedFacts, TenantContext } from "@growthmind/shared";
-import { onboardingFindingSchema } from "@growthmind/shared";
+import { logger, onboardingFindingSchema } from "@growthmind/shared";
 import { and, asc, eq, gt, gte } from "drizzle-orm";
 
 import { createFindingsRepo } from "../repositories/findings.repo";
@@ -30,7 +30,7 @@ async function readNewestFinding(
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
   } catch (error) {
-    console.error("first-run status: could not read the newest finding for the project", {
+    logger.error("first-run status: could not read the newest finding for the project", {
       organizationId: ctx.organizationId,
       projectId,
       error,
@@ -60,7 +60,7 @@ async function readNewestFinding(
   });
 
   if (!parsed.success) {
-    console.error("first-run status: the newest finding did not satisfy the rendered shape", {
+    logger.error("first-run status: the newest finding did not satisfy the rendered shape", {
       organizationId: ctx.organizationId,
       projectId,
       findingId: record.id,

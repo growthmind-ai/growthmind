@@ -1,6 +1,6 @@
 import { run } from "graphile-worker";
 
-import { parseServerEnv } from "@growthmind/shared";
+import { logger, parseServerEnv } from "@growthmind/shared";
 
 import { crontab, taskList } from "./index";
 
@@ -18,6 +18,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("worker crashed", error);
+  logger.error("worker crashed", { error });
   process.exit(1);
 });

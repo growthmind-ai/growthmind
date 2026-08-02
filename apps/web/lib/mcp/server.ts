@@ -15,6 +15,7 @@ import {
 import { renderMcpWire } from "./wire";
 import { MCP_HEADER } from "./wire-constants";
 
+import { logger } from "@growthmind/shared";
 export interface McpServerDeps {
   readonly credentials: McpCredentialSource;
   readonly reads: McpReadPort;
@@ -61,7 +62,7 @@ export async function handleMcpRequest(request: Request, deps: McpServerDeps): P
       credential,
     });
   } catch (error) {
-    console.error("mcp: the wire could not answer a request", error);
+    logger.error("mcp: the wire could not answer a request", { error });
     return refusalResponse(UNAVAILABLE);
   }
 }
@@ -78,7 +79,7 @@ async function authenticate(
   try {
     return await credentials.resolve(presented);
   } catch (error) {
-    console.error("mcp: the presented key could not be checked, so it was refused", error);
+    logger.error("mcp: the presented key could not be checked, so it was refused", { error });
     return null;
   }
 }

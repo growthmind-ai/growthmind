@@ -7,7 +7,12 @@ import type {
   ServerEnv,
   TenantContext,
 } from "@growthmind/shared";
-import { deriveIdentityHmacKey, parseServerEnv, resolveCredentialKey } from "@growthmind/shared";
+import {
+  deriveIdentityHmacKey,
+  logger,
+  parseServerEnv,
+  resolveCredentialKey,
+} from "@growthmind/shared";
 import { createPostHogSessionSource, createSlackDeliveryPoster } from "@growthmind/adapters";
 
 import { getDb } from "@/lib/db";
@@ -51,7 +56,7 @@ function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
   const resolution = resolveCredentialKey(env);
 
   if (!resolution.ok) {
-    console.error(
+    logger.error(
       `onboarding composition: the credential key could not be resolved (${resolution.reason}), ` +
         `so no delivery channel can be opened on this installation until it is configured`,
     );
@@ -68,7 +73,7 @@ function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
     }
 
     if (!opened.ok) {
-      console.error(
+      logger.error(
         `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
           `installation cannot open (${opened.reason}) — it must be reconnected`,
       );

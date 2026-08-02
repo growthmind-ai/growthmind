@@ -5,7 +5,7 @@ import {
   schema,
   type ScopedDb,
 } from "@growthmind/db";
-import { parseServerEnv, resolveActiveOrganization } from "@growthmind/shared";
+import { logger, parseServerEnv, resolveActiveOrganization } from "@growthmind/shared";
 import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -58,13 +58,13 @@ export function buildAuth(options: BuildAuthOptions = {}) {
                 });
                 await posthog.flush();
               })().catch((error: unknown) => {
-                console.error("auth.databaseHooks.user.create.after: PostHog capture failed", {
+                logger.error("auth.databaseHooks.user.create.after: PostHog capture failed", {
                   userId: user.id,
                   error,
                 });
               }),
               ensureOrganization(db, { id: user.id, name: user.name }).catch((error: unknown) => {
-                console.error("auth.databaseHooks.user.create.after: ensureOrganization failed", {
+                logger.error("auth.databaseHooks.user.create.after: ensureOrganization failed", {
                   userId: user.id,
                   error,
                 });
@@ -89,7 +89,7 @@ export function buildAuth(options: BuildAuthOptions = {}) {
 
               activeOrganizationId = resolveActiveOrganization(memberships, null);
             } catch (error) {
-              console.error(
+              logger.error(
                 "auth.databaseHooks.session.create.before: failed to resolve activeOrganizationId",
                 { userId: session.userId, error },
               );
@@ -108,7 +108,7 @@ export function buildAuth(options: BuildAuthOptions = {}) {
               });
               await posthog.flush();
             } catch (error) {
-              console.error("auth.databaseHooks.session.create.after: PostHog capture failed", {
+              logger.error("auth.databaseHooks.session.create.after: PostHog capture failed", {
                 userId: session.userId,
                 error,
               });

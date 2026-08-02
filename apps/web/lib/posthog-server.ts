@@ -2,6 +2,7 @@ import { PostHog } from "posthog-node";
 
 import { resolvePostHogHosts } from "./posthog-hosts";
 
+import { logger } from "@growthmind/shared";
 let posthogClient: PostHog | null = null;
 
 export function getPostHogClient(): PostHog | null {
@@ -9,7 +10,7 @@ export function getPostHogClient(): PostHog | null {
 
   if (!token) {
     if (process.env.NODE_ENV !== "production") {
-      console.error(
+      logger.error(
         "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured",
       );
     }

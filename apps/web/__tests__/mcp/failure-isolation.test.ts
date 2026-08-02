@@ -1,5 +1,5 @@
 import { MCP_TOOL } from "@growthmind/shared";
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { UNAVAILABLE } from "../../lib/mcp/refusals";
 import { handleMcpRequest, type McpServerDeps } from "../../lib/mcp/server";
@@ -16,6 +16,7 @@ import {
   watchForUnhandledRejections,
 } from "./helpers/wire-probes";
 
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 const CREDENTIALS = fakeCredentials({ [KEY_A]: ORG_A });
 
 function brokenReadDeps(): McpServerDeps {
@@ -24,7 +25,10 @@ function brokenReadDeps(): McpServerDeps {
 
 describe("WIRE-B1 — a read that throws becomes a detail-free answer with the fault logged", () => {
   test("answers with the unavailable sentence, carries no stack frame or file path, and logs once", async () => {
-    const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
 
     try {
       const response = await handleMcpRequest(
@@ -39,9 +43,10 @@ describe("WIRE-B1 — a read that throws becomes a detail-free answer with the f
       expect(carriesFilePath(body)).toBe(false);
       expect(body).not.toContain("mcp fixture");
 
-      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]?.level).toBe("error");
     } finally {
-      errorSpy.mockRestore();
+      restore();
     }
   });
 

@@ -6,6 +6,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { ScopedDb } from "../repositories/types";
 import { projects } from "../schema/projects";
 
+import { logger } from "@growthmind/shared";
 interface EnsureProjectResult {
   projectId: string;
 }
@@ -61,14 +62,14 @@ export async function ensureProject(
     return { projectId };
   } catch (error) {
     if (!isUniqueViolation(error)) {
-      console.error("ensureProject: failed to provision project for organization", {
+      logger.error("ensureProject: failed to provision project for organization", {
         organizationId: ctx.organizationId,
         error,
       });
       throw error;
     }
 
-    console.error(
+    logger.error(
       "ensureProject: concurrent duplicate provisioning detected for organization — re-reading winner's project",
       { organizationId: ctx.organizationId, provisioningKey },
     );
@@ -91,7 +92,7 @@ export async function ensureProject(
     const notFoundError = new Error(
       `ensureProject: unique-key conflict for organization "${ctx.organizationId}" but no project owning the provisioning key was found`,
     );
-    console.error("ensureProject: conflict re-read found no project for the provisioning key", {
+    logger.error("ensureProject: conflict re-read found no project for the provisioning key", {
       organizationId: ctx.organizationId,
       provisioningKey,
       error: notFoundError,

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { deriveWorkspaceName } from "@growthmind/shared";
+import { deriveWorkspaceName, logger } from "@growthmind/shared";
 
 import { member, organization } from "../schema/auth";
 import type { ScopedDb } from "../repositories/types";
@@ -24,7 +24,7 @@ export async function ensureOrganization(
     return { organizationId: existing.organizationId };
   }
 
-  console.error("ensureOrganization: no membership found for user — creating organization", {
+  logger.error("ensureOrganization: no membership found for user — creating organization", {
     userId: user.id,
   });
 
@@ -48,14 +48,14 @@ export async function ensureOrganization(
     return { organizationId };
   } catch (error) {
     if (!isUniqueViolation(error)) {
-      console.error("ensureOrganization: failed to create organization", {
+      logger.error("ensureOrganization: failed to create organization", {
         userId: user.id,
         error,
       });
       throw error;
     }
 
-    console.error(
+    logger.error(
       "ensureOrganization: concurrent duplicate creation detected for user — re-reading winner's organization",
       { userId: user.id, slug },
     );
@@ -67,7 +67,7 @@ export async function ensureOrganization(
 
     const orphaned = await findOrganizationBySlug(db, slug);
     if (orphaned) {
-      console.error(
+      logger.error(
         "ensureOrganization: org exists for slug but membership is missing — restoring membership",
         {
           userId: user.id,
@@ -90,14 +90,11 @@ export async function ensureOrganization(
     const notFoundError = new Error(
       `ensureOrganization: unique-slug conflict for user "${user.id}" but neither membership nor slug-owning organization found`,
     );
-    console.error(
-      "ensureOrganization: conflict re-read found neither membership nor organization",
-      {
-        userId: user.id,
-        slug,
-        error: notFoundError,
-      },
-    );
+    logger.error("ensureOrganization: conflict re-read found neither membership nor organization", {
+      userId: user.id,
+      slug,
+      error: notFoundError,
+    });
     throw notFoundError;
   }
 }
