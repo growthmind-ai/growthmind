@@ -1,6 +1,7 @@
-// THE TEN FIRST-RUN ROUTE INPUT SCHEMAS (O-008, AD-16, AD-16a).
+// THE THIRTEEN FIRST-RUN ROUTE INPUT SCHEMAS (O-008, AD-16, AD-16a).
 //
-// Eight of them shipped with O-008. The other two — `analytics/discover` and
+// Eight of them shipped with O-008. The other five — `analytics/discover`,
+// `slack/oauth/start`, `slack/oauth/callback`, `slack/channels` and
 // `slack/channel` — arrived with the sprint that deleted the hunting from
 // first run, and they are here under exactly the same terms: strict, no
 // tenancy key, `.min(1)` on every field. A new route's schema going anywhere
@@ -28,7 +29,7 @@
 //
 // ── AD-16: NO SCHEMA HERE DECLARES A TENANCY KEY, AND NONE EVER MAY ─────────
 //
-// There is no `projectId` and no `organizationId` below, on any of the ten.
+// There is no `projectId` and no `organizationId` below, on any of the thirteen.
 // Tenancy comes from the session: `getTenantContext()` → `ensureProject(db,
 // ctx)` → `createXRepo(db, ctx)`. FR-O24 asked that a client-supplied project
 // id be resolved against the caller's org before it reaches a query; the
@@ -45,8 +46,8 @@
 //     Object.keys(shape) — IDENTICAL for both: [ "stepId" ]
 //
 // A plain `z.object()` ACCEPTS a client-supplied tenancy id, SILENTLY STRIPS
-// it, and answers 200 — while every key-enumeration test stays green. Six of
-// the ten schemas below declare no field at all, and those are the sharp
+// it, and answers 200 — while every key-enumeration test stays green. Nine of
+// the thirteen schemas below declare no field at all, and those are the sharp
 // end: `z.object({})` accepts ANYTHING AT ALL, `z.strictObject({})` refuses it
 // by name. Every schema in this file is `z.strictObject`. **A plain
 // `z.object()` on a first-run route is a defect regardless of its declared
@@ -137,6 +138,41 @@ export const firstRunSlackConnectInputSchema = z.strictObject({
 export type FirstRunSlackConnectInput = z.infer<typeof firstRunSlackConnectInputSchema>;
 
 /**
+ * `GET /api/first-run/slack/oauth/start` — no input, and the redirect is built
+ * from configuration alone.
+ *
+ * EMPTY AND STRICT for the same reason `firstRunStatusInputSchema` is. Nothing
+ * a caller sends may influence where this route sends them: the client id and
+ * the scopes are ours, and the `redirect_uri` derives from `BETTER_AUTH_URL`
+ * rather than from any request header, because a callback address a caller can
+ * choose is an open redirect that hands Slack's authorization code to whoever
+ * chose it (`apps/web/lib/slack/oauth.ts`).
+ */
+export const firstRunSlackOAuthStartInputSchema = z.strictObject({});
+
+/**
+ * `GET /api/first-run/slack/oauth/callback` — no input schema beyond the empty
+ * one, and the two values it does read are NOT declared here on purpose.
+ *
+ * Slack sends `code` and `state` as QUERY PARAMETERS on a browser redirect, and
+ * neither is a field this surface accepts on trust. `state` is checked against
+ * the httpOnly cookie by `verifyOAuthState` before anything else happens, and
+ * `code` is meaningless until that check passes. Declaring them here would
+ * describe them as ordinary input and invite a reader to treat a parse as the
+ * validation — the parse is not the check.
+ */
+export const firstRunSlackOAuthCallbackInputSchema = z.strictObject({});
+
+/**
+ * `GET /api/first-run/slack/channels` — no input (AD-7).
+ *
+ * The workspace comes from the session's organization and the list comes live
+ * from Slack. There is nothing for a caller to name: a body naming a workspace
+ * would be a body naming somebody else's.
+ */
+export const firstRunSlackChannelsInputSchema = z.strictObject({});
+
+/**
  * `POST /api/first-run/slack/channel` — the one moment a channel is chosen.
  *
  * This looks like the payload `firstRunSlackTestInputSchema` below refuses, and
@@ -152,7 +188,23 @@ export type FirstRunSlackConnectInput = z.infer<typeof firstRunSlackConnectInput
  * organization's announcement by naming a channel at post time.
  */
 export const firstRunSlackChannelInputSchema = z.strictObject({
-  channelId: z.string().min(1),
+  /**
+   * `.trim().min(1)`, and the trim is load-bearing rather than tidy.
+   *
+   * A bare `.min(1)` ACCEPTS `"   "`, and `isDeliveryTarget`
+   * (`packages/db/src/services/…`) refuses a whitespace address forever — so a
+   * blank pick would stamp a row the delivery guard declines for the rest of
+   * the organization's life, while the founder's screen says they chose. The
+   * failure is silent at every layer: the schema passes, the write succeeds,
+   * and nothing arrives. The repository stays dumb — no repository here
+   * validates — so the tightening belongs on this schema, at the wire.
+   *
+   * NOT a Slack channel-id pattern. Slack's id format is the vendor's to
+   * change, and a regex that guessed it wrong would refuse a real channel a
+   * founder picked from our own list. The route proves membership of that list
+   * instead, which is a stronger check than any shape.
+   */
+  channelId: z.string().trim().min(1),
 });
 export type FirstRunSlackChannelInput = z.infer<typeof firstRunSlackChannelInputSchema>;
 

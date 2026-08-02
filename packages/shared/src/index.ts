@@ -477,7 +477,7 @@ export {
   type TestPostInput,
   type TestPostOutcome,
 } from "./onboarding/slack-test";
-// The ten route input schemas (AD-16, AD-16a). They live in this package
+// The thirteen route input schemas (AD-16, AD-16a). They live in this package
 // rather than beside their routes because `apps/web` declares no `zod` and
 // WIRE-Z1 pins that absence — see `./onboarding/route-schemas.ts`'s header.
 // EVERY ONE IS A `z.strictObject`, and none declares a tenancy key.
@@ -488,7 +488,10 @@ export {
   firstRunArmInputSchema,
   firstRunDismissInputSchema,
   firstRunSlackChannelInputSchema,
+  firstRunSlackChannelsInputSchema,
   firstRunSlackConnectInputSchema,
+  firstRunSlackOAuthCallbackInputSchema,
+  firstRunSlackOAuthStartInputSchema,
   firstRunSlackSkipInputSchema,
   firstRunSlackTestInputSchema,
   firstRunStatusInputSchema,
