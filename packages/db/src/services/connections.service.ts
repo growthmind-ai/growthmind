@@ -19,6 +19,7 @@ import {
   encryptSecret,
   inferInternalDomain,
   keyIdOf,
+  logger,
   secondSourceRefusalMessage,
 } from "@growthmind/shared";
 
@@ -132,9 +133,9 @@ export function createConnectionsService(
     try {
       return await runFirstPull(connection, source);
     } catch (error) {
-      console.error(
+      logger.error(
         `connections.connect: first pull failed after the attachment was stored (connection ${connection.id})`,
-        error,
+        { error },
       );
 
       return { connection, eventsSeen: 0 };

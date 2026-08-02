@@ -1,5 +1,5 @@
 import { ensureOrganization, findMembershipsByUserId } from "@growthmind/db";
-import { deriveTenantContext, type TenantContext } from "@growthmind/shared";
+import { deriveTenantContext, logger, type TenantContext } from "@growthmind/shared";
 import { headers } from "next/headers";
 
 import { getAuth } from "./auth";
@@ -28,14 +28,14 @@ export async function getTenantContext(): Promise<TenantContext | null> {
   let memberships = await findMembershipsByUserId(getDb(), userId);
 
   if (memberships.length === 0) {
-    console.error("getTenantContext: signed-in user has zero memberships — self-healing", {
+    logger.error("getTenantContext: signed-in user has zero memberships — self-healing", {
       userId,
     });
     try {
       await ensureOrganization(getDb(), { id: userId, name: session.user.name });
       memberships = await findMembershipsByUserId(getDb(), userId);
     } catch (error) {
-      console.error("getTenantContext: self-heal failed — degrading to signed-out", {
+      logger.error("getTenantContext: self-heal failed — degrading to signed-out", {
         userId,
         error,
       });

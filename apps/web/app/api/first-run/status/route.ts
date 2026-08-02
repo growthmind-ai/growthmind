@@ -1,6 +1,6 @@
 import { createFindingsRepo, createFirstRunStatusService, ensureProject } from "@growthmind/db";
 import type { ScopedDb } from "@growthmind/db";
-import { firstRunStatusInputSchema } from "@growthmind/shared";
+import { firstRunStatusInputSchema, logger } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
@@ -20,7 +20,7 @@ async function findingRowExists(
     const [row] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
     return row !== undefined;
   } catch (error) {
-    console.error("onboarding status: a finding row exists for this project but cannot be read", {
+    logger.error("onboarding status: a finding row exists for this project but cannot be read", {
       organizationId: ctx.organizationId,
       projectId,
       error,

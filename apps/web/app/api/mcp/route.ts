@@ -5,10 +5,11 @@ import { createAbsentReadPort } from "@/lib/mcp/read-port";
 import { handleMcpRequest, type McpServerDeps } from "@/lib/mcp/server";
 import { getDb } from "@/lib/db";
 
+import { logger } from "@growthmind/shared";
 export const dynamic = "force-dynamic";
 
 const absentReads = createAbsentReadPort((message) => {
-  console.warn(message);
+  logger.warn(message);
 });
 
 export function resolveMcpDeps(db: ScopedDb = getDb()): McpServerDeps {

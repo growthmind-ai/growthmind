@@ -1,5 +1,5 @@
 import { MCP_TOOL } from "@growthmind/shared";
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 import { BODY_TOO_LARGE, MALFORMED_BODY, UNAVAILABLE } from "../../lib/mcp/refusals";
 import { handleMcpRequest, type McpServerDeps } from "../../lib/mcp/server";
@@ -17,6 +17,7 @@ import {
 import { modernRequest } from "./helpers/modern-envelope";
 import { watchForUnhandledRejections } from "./helpers/wire-probes";
 
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 const CREDENTIALS = fakeCredentials({ [KEY_A]: ORG_A });
 
 function spyDeps(): { readonly spy: RecordingReadPort; readonly deps: McpServerDeps } {
@@ -267,13 +268,16 @@ describe("WIRE-L5 — reading the body to gate it does not change what the trans
 
 const TRANSPORT_CHANNEL_MARKER = "transport";
 
-function firstLoggedMessage(spy: ReturnType<typeof spyOn<Console, "error">>): string {
-  return String(spy.mock.calls[0]?.[0] ?? "");
+function firstLoggedMessage(records: readonly LogRecord[]): string {
+  return records[0]?.message ?? "";
 }
 
 describe("WIRE-L7 — a fault the SDK reports reaches a log line of ours", () => {
   test("a transport-level refusal logs exactly once, naming the transport", async () => {
-    const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
 
     try {
       const { deps } = spyDeps();
@@ -288,17 +292,20 @@ describe("WIRE-L7 — a fault the SDK reports reaches a log line of ours", () =>
       );
       expect(answer).not.toBe(NEVER_ANSWERED);
 
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      expect(firstLoggedMessage(errorSpy)).toContain(TRANSPORT_CHANNEL_MARKER);
+      expect(logged).toHaveLength(1);
+      expect(firstLoggedMessage(logged)).toContain(TRANSPORT_CHANNEL_MARKER);
     } finally {
-      errorSpy.mockRestore();
+      restore();
     }
   });
 });
 
 describe("WIRE-L8 — a broken read still belongs to the tool core's channel and not the transport's", () => {
   test("logs once, and the line is not the transport's", async () => {
-    const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
 
     try {
       const response = await handleMcpRequest(
@@ -308,10 +315,10 @@ describe("WIRE-L8 — a broken read still belongs to the tool core's channel and
 
       expect(await response.text()).toContain(UNAVAILABLE.message);
 
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      expect(firstLoggedMessage(errorSpy)).not.toContain(TRANSPORT_CHANNEL_MARKER);
+      expect(logged).toHaveLength(1);
+      expect(firstLoggedMessage(logged)).not.toContain(TRANSPORT_CHANNEL_MARKER);
     } finally {
-      errorSpy.mockRestore();
+      restore();
     }
   });
 });

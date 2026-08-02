@@ -8,6 +8,7 @@ import {
   getFixInputSchema,
   listOpenFixesInputSchema,
   listOpenFixesOutputSchema,
+  logger,
   resolveMcpTool,
   type ListOpenFixesInput,
   type McpToolDescriptor,
@@ -46,7 +47,7 @@ export async function callTool(
   try {
     return await runTool(resolution.tool.name, input, reads, credential);
   } catch (error) {
-    console.error("mcp: a tool call could not be completed", {
+    logger.error("mcp: a tool call could not be completed", {
       tool: resolution.tool.name,
       error,
     });

@@ -1,4 +1,5 @@
 import {
+  logger,
   normaliseUrlPath,
   type AncestryReason,
   type DismissalAction,
@@ -170,7 +171,7 @@ export function createSignatureLedgerService(
       return resolution.signature;
     }
 
-    console.error(
+    logger.error(
       "signature-ledger: ancestry walk unresolvable — operating on the unresolved input signature",
       { cause: resolution.cause },
     );
@@ -208,7 +209,7 @@ export function createSignatureLedgerService(
 
       if (isCandidate) {
         if (!EVIDENCE_SHAPE_SERIALISERS.has(input.evidenceShapeVersion)) {
-          console.error("signature-ledger: unknown evidence_shape version — suppressing on doubt", {
+          logger.error("signature-ledger: unknown evidence_shape version — suppressing on doubt", {
             evidenceShapeVersion: input.evidenceShapeVersion,
           });
           return suppressionDecision(
@@ -224,7 +225,7 @@ export function createSignatureLedgerService(
 
       const resolution = await ancestryRepo.resolve(signature);
       if (resolution.resolution === "unresolvable") {
-        console.error("signature-ledger: ancestry walk unresolvable — suppressing on doubt", {
+        logger.error("signature-ledger: ancestry walk unresolvable — suppressing on doubt", {
           cause: resolution.cause,
         });
         return suppressionDecision(
@@ -320,7 +321,7 @@ export function createSignatureLedgerService(
           .returning();
 
         if (stamped.length === 0) {
-          console.error(
+          logger.error(
             "signature-ledger: dismissal recorded before any ledger row exists for this signature — " +
               "suppression is held by the dismissals row, which consultSignature reads as a fallback",
             { findingId: input.findingId, action: input.action },

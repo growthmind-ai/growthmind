@@ -1,4 +1,4 @@
-import { MCP_TOOLS } from "@growthmind/shared";
+import { MCP_TOOLS, logger } from "@growthmind/shared";
 import {
   McpServer,
   createMcpHandler,
@@ -52,7 +52,7 @@ async function settled(response: Response): Promise<Response> {
 }
 
 function reportTransportFault(error: Error): void {
-  console.error("mcp: the transport reported a fault", error.message);
+  logger.error("mcp: the transport reported a fault", { message: error.message });
 }
 
 function buildServer(deps: McpWireDeps): McpServer {
