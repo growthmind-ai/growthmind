@@ -300,7 +300,14 @@ const outbound: OutboundCall[] = [];
 const slackApi = {
   botToken: BOT_TOKEN,
   teamId: "T0FIXTURE",
-  teamName: "Fixture workspace",
+  /**
+   * `string | undefined`, because that is what `exchangeCode` returns and the
+   * absent case is a ROW below rather than a hypothetical. Slack's `team.name`
+   * is a display label, and refusing an otherwise valid grant over a missing
+   * caption would trade the credential for the caption — so both shapes have to
+   * be drivable from here.
+   */
+  teamName: "Fixture workspace" as string | undefined,
   channels: [] as { readonly id: string; readonly name: string }[],
 };
 
@@ -846,6 +853,48 @@ describe("GET /api/first-run/slack/oauth/callback (AD-5, AD-4)", () => {
     expect(lifted.ok).toBe(false);
   });
 
+  test("the workspace name Slack returned is PERSISTED, not read and dropped", async () => {
+    // ###################################################################
+    // # STATE.md GAP 1, AND IT CANNOT BE CLOSED BY A SIGNATURE.
+    // #
+    // # `InsertActiveSlackConnectionInput.workspaceName` had to be OPTIONAL —
+    // # Wave 0's `nullable-channel-readers.test.ts:240` calls `insertActive`
+    // # without it, and requiring it would stop that suite COMPILING, which
+    // # is broken rather than red. So a callback that reads `team.name` and
+    // # drops it TYPE-CHECKS, and the only symptom is
+    // # "Connected to {workspace}." never rendering: no error, no failing
+    // # write, just a sentence that is silently never true. A textbook D11
+    // # severed wire, and the ADD says on the field itself that a test on
+    // # this route is what closes it.
+    // ###################################################################
+    const scope = await bed.member("workspace-name");
+
+    // A VALUE NOTHING ELSE IN THIS SUITE WRITES. A route that stored the
+    // organization's own name, a constant, or the team id would pass a row
+    // asserting "something is in the column"; it cannot pass this one.
+    slackApi.teamName = "Fixture workspace named only here";
+
+    await connectWorkspace(scope);
+
+    expect(textColumn(await activeRow(scope.organizationId), "workspace_name")).toBe(
+      "Fixture workspace named only here",
+    );
+  });
+
+  test("a grant with no workspace name still connects — the credential is not traded for the caption", async () => {
+    // The other half, and the reason `exchangeCode` types `teamName` as
+    // `string | undefined` in the first place. A callback that required the
+    // label would refuse a workspace over a caption nobody reads yet.
+    const scope = await bed.member("workspace-name-absent");
+    slackApi.teamName = undefined;
+
+    await connectWorkspace(scope);
+
+    const row = await activeRow(scope.organizationId);
+    expect(row.workspace_name).toBeNull();
+    expect(row.channel_id).toBeNull();
+  });
+
   test("the callback answers with no bot token in any encoding", async () => {
     const scope = await bed.member("no-token-out");
     const response = await connectWorkspace(scope);
@@ -1094,6 +1143,53 @@ describe("POST /api/first-run/slack/channel (D7, D8)", () => {
     expect(collectStrings(body)).toContain(POST_FAILURE_MESSAGES.channel_unavailable);
     expect(Object.keys(body)).toContain("retryable");
     expect(Object.keys(body)).toContain("marksStepDone");
+  });
+
+  test("a channel id that is not in the live list is refused, and nothing is stamped", async () => {
+    // ###################################################################
+    // # THE OBLIGATION TASK 1.1 WROTE INTO A DOC COMMENT AND NOTHING
+    // # ENFORCED.
+    // #
+    // # `firstRunSlackChannelInputSchema` deliberately does NOT guess Slack's
+    // # id format — a regex that guessed wrong would refuse a real channel a
+    // # founder picked from our own list — and its own comment says the route
+    // # "proves membership of that list instead, which is a stronger check
+    // # than any shape". Until this row existed, that sentence was a promise.
+    // #
+    // # AND IT IS NOT A TENANCY CHECK. `attachChannel` takes no connection id,
+    // # so cross-org attachment is already unwritable (the two D7 rows above
+    // # cover it). This one is about the FOUNDER: a picker left open while the
+    // # channel was archived, or the bot removed from it, would otherwise
+    // # stamp an address every post bounces off — and the screen would say
+    // # they chose. The failure surfaces much later, as silence.
+    // ###################################################################
+    const scope = await bed.member("unlisted");
+    await connectWorkspace(scope);
+
+    // The world moved between the picker rendering and the founder pressing:
+    // only one channel is on offer now, and it is not the one being submitted.
+    slackApi.channels = [{ id: CHOSEN_CHANNEL, name: "growth" }];
+
+    const poster = recordingPoster(OK_POST);
+    const response = await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: OTHER_CHANNEL } }),
+      depsFor(scope, { poster }),
+    );
+
+    expect(response.status).not.toBe(200);
+
+    // NOTHING WAS STAMPED. The row is still half-connected, which is the state
+    // the founder can act on — an address the guard refuses forever is not.
+    expect((await activeRow(scope.organizationId)).channel_id).toBeNull();
+
+    // AND NOTHING WAS ANNOUNCED into a channel we cannot post in.
+    expect(poster.sent.length).toBe(0);
+
+    // Named, and in a sentence rather than a code. The positive control is the
+    // first row of this group: a channel that IS in the list answers 200 and
+    // stamps, so this refusal cannot be a route that refuses everything.
+    expect(collectStrings(await bodyOf(response)).some((value) => value.length > 20)).toBe(true);
   });
 
   test("a signed-out caller cannot attach a channel", async () => {
