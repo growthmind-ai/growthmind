@@ -86,7 +86,10 @@ export function SetupStage(props: SetupStageProps) {
     return null;
   }
 
-  const seen = withCount(STRIP_SEEN_TEMPLATE, rowValue(props.counter, COUNTER_LABELS.totalReceived));
+  const seen = withCount(
+    STRIP_SEEN_TEMPLATE,
+    rowValue(props.counter, COUNTER_LABELS.totalReceived),
+  );
   const counted = withCount(STRIP_COUNTED_TEMPLATE, rowValue(props.counter, COUNTER_LABELS.kept));
 
   return (
