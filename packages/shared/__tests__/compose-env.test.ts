@@ -53,7 +53,8 @@ describe("the compose stack boots on the environment the schema demands", () => 
         // Compose's pass-through form (`KEY:` with nothing after it) parses to
         // null and leaves the variable unset — fine for an optional, fatal for
         // a required one.
-        if (required.has(key) && (value === null || value === "")) valueless.push(`${name}: ${key}`);
+        if (required.has(key) && (value === null || value === ""))
+          valueless.push(`${name}: ${key}`);
       }
     }
 
