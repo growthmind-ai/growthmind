@@ -59,6 +59,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { enumerateShapeKeys } from "../../../../../packages/shared/__tests__/onboarding/probes/strict-zod-fixtures";
 import { channelAlreadyChosen, NO_WORKSPACE_CONNECTED } from "@/lib/first-run/refusals";
 import { buildTestPostMessage } from "@/lib/first-run/slack-test-message";
+import { buildTestTenantContext, createTestOrganization } from "../../tenancy/helpers/auth-fixture";
 import {
   bodyOf,
   clockAt,
@@ -629,6 +630,52 @@ describe("the four new Slack routes accept no tenancy id (AD-16, AD-16a)", () =>
 
     expect(response.status).toBe(400);
   });
+
+  // #######################################################################
+  // # `.trim().min(1)`, AND THE TRIM IS LOAD-BEARING RATHER THAN TIDY.
+  // #
+  // # A bare `.min(1)` ACCEPTS `"   "`. `isDeliveryTarget` refuses a
+  // # whitespace address forever, so a blank pick would stamp a row the
+  // # delivery guard declines for the rest of the organization's life —
+  // # while the founder's screen says they chose. The failure is silent at
+  // # every layer: the schema passes, the write succeeds, and nothing
+  // # arrives. There is no error to find later, only an absence.
+  // #
+  // # The tightening was shipped with only the GUARD under test, which is
+  // # the wrong end: the guard refusing whitespace is what makes the blank
+  // # permanent, and the schema refusing it at the wire is what stops one
+  // # being stored. These two rows are the wire end.
+  // #######################################################################
+  test("slack/channel refuses a whitespace-only channelId at the wire", async () => {
+    const schemaUnderTest = await loadRouteInputSchema(CHANNEL);
+
+    for (const blank of ["", " ", "   ", "\t", "\n"]) {
+      // Labelled, so a failure names WHICH blank shape got through rather
+      // than reporting `expected false, received true` from whichever
+      // iteration slipped.
+      expect(
+        `${JSON.stringify(blank)}:${schemaUnderTest.safeParse({ channelId: blank }).success}`,
+      ).toBe(`${JSON.stringify(blank)}:false`);
+    }
+  });
+
+  test("slack/channel accepts a real channel id, and stores a padded one trimmed", async () => {
+    // THE CONTROL FOR THE ROW ABOVE, and the reason `.trim()` is a transform
+    // rather than a validation. Without this a schema that refused every
+    // channelId — which would break the pick entirely — would pass it.
+    const schemaUnderTest = await loadRouteInputSchema(CHANNEL);
+
+    const accepted = schemaUnderTest.safeParse({ channelId: CHOSEN_CHANNEL });
+    expect(accepted.success).toBe(true);
+    expect(accepted.success ? accepted.data : null).toEqual({ channelId: CHOSEN_CHANNEL });
+
+    // A padded id is one keystroke away from a paste, and it must reach the
+    // row as the address Slack knows — not as one the delivery guard would
+    // accept today and a stricter comparison would miss tomorrow.
+    const padded = schemaUnderTest.safeParse({ channelId: `  ${CHOSEN_CHANNEL}  ` });
+    expect(padded.success).toBe(true);
+    expect(padded.success ? padded.data : null).toEqual({ channelId: CHOSEN_CHANNEL });
+  });
 });
 
 // ===========================================================================
@@ -777,6 +824,91 @@ describe("GET /api/first-run/slack/oauth/callback (AD-5, AD-4)", () => {
     }
   });
 
+  test("a genuinely valid state signed in one organization is refused when the same founder redeems it in another, at zero outbound calls", async () => {
+    // #####################################################################
+    // # THE TENANT BOUNDARY, DRIVEN THROUGH THE ROUTE (D7).
+    // #
+    // # `slack-oauth-state.test.ts` proves the SIGNER refuses a state signed
+    // # for org A when verified against org B. That is a statement about
+    // # `verifyOAuthState`, and it holds whether or not the callback passes
+    // # it an organization at all: a route that built `expected` from the
+    // # user id alone — or that verified before reading the session — would
+    // # leave every signer row green and this hole wide open.
+    // #
+    // # ONE FOUNDER, TWO ORGANISATIONS, and that is what isolates the field
+    // # under test. Two different people in two organisations would also be
+    // # refused, but by the USER id, so the row would pass against a
+    // # callback that never looked at the organization. `oauth.ts` names
+    // # this case in its own words: "a founder who belongs to two
+    // # organisations have a state signed while acting in one and redeemed
+    // # while acting in the other — a same-person, wrong-tenant write".
+    // #
+    // # Zero outbound calls is the assertion that distinguishes "refused"
+    // # from "refused after the attacker's code was already redeemed", which
+    // # is the whole of AD-5 and is invisible in a status code.
+    // #####################################################################
+    const founder = await bed.member("replay");
+
+    // A SECOND ORGANISATION FOR THE SAME PERSON. `bed.member` mints one org
+    // per member, so the two-org founder has to be assembled from the shipped
+    // tenancy fixtures — `buildTestTenantContext` reads back the PERSISTED
+    // organization and membership rows, so the context the route scopes by
+    // carries real ids rather than a fixture's opinion of them.
+    const second = await createTestOrganization(bed.db, {
+      name: "web-fr-oauth-org-replay-second",
+      ownerUserId: founder.userId,
+    });
+    const inSecondOrg: SeededMemberScope = {
+      userId: founder.userId,
+      organizationId: second.id,
+      ctx: await buildTestTenantContext(bed.db, {
+        userId: founder.userId,
+        organizationId: second.id,
+      }),
+    };
+
+    // Signed while acting in the FIRST organisation, and never tampered with:
+    // the cookie and the parameter are the pair `oauth/start` produced.
+    const pair = await beginOAuth(founder);
+
+    outbound.length = 0;
+    const refused = await drive(OAUTH_CALLBACK, callbackRequest(pair), depsFor(inSecondOrg));
+
+    // NOTHING LEFT THIS PROCESS. The code was never redeemed, so no workspace
+    // could have been sealed into either organisation.
+    expect(outbound.map((call) => call.url)).toEqual([]);
+    expect(await rawSlackRows(second.id)).toEqual([]);
+    expect(await rawSlackRows(founder.organizationId)).toEqual([]);
+
+    // And the founder lands back inside the product rather than on a JSON
+    // body, which is this route's standing obligation on every exit.
+    expect(new URL(locationOf(refused), ORIGIN).pathname).toBe("/first-run");
+
+    // #####################################################################
+    // # THE CONTROL, AND IT IS WHAT MAKES THE ROW MEAN ANYTHING.
+    // #
+    // # THE VERY SAME PAIR, redeemed by THE VERY SAME FOUNDER acting in the
+    // # organisation it was signed for, completes. So the pair was genuinely
+    // # valid — correctly signed, unexpired, cookie and parameter matching —
+    // # and the refusal above was about the ORGANISATION and nothing else. A
+    // # row without this passes against a callback that refuses every
+    // # request, which is a feature that never works rather than one that
+    // # works insecurely.
+    // #####################################################################
+    const accepted = await drive(OAUTH_CALLBACK, callbackRequest(pair), depsFor(founder));
+
+    expect(outbound.length).toBeGreaterThan(0);
+    expect((await activeRow(founder.organizationId)).channel_id).toBeNull();
+    // AND THE SECOND ORGANISATION IS STILL UNTOUCHED. If a workspace landed
+    // here, the attach was keyed on something other than the session's org.
+    expect(await rawSlackRows(second.id)).toEqual([]);
+
+    // The two exits are told apart, so the page can say something rather than
+    // returning the founder to an unchanged screen. Silent degradation is a
+    // bug.
+    expect(locationOf(refused)).not.toBe(locationOf(accepted));
+  });
+
   test("a valid callback seals the bot token under this organization's AAD and inserts with channel_id NULL", async () => {
     const scope = await bed.member("seal");
     const other = await bed.member("seal-other");
@@ -890,6 +1022,62 @@ describe("GET /api/first-run/slack/oauth/callback (AD-5, AD-4)", () => {
     expect(carried.toLowerCase()).not.toContain("unique");
     expect(carried.toLowerCase()).not.toContain("duplicate key");
     expect(carried.toLowerCase()).not.toContain("constraint");
+  });
+
+  test("a write failure that is NOT the second workspace lands too, and clears the cookie", async () => {
+    // ###################################################################
+    // # THE HEADER OF THE ROUTE FILE CLAIMS THE STATE COOKIE IS "CLEARED
+    // # ON ALL OF THEM". IT USED TO BE CONDITIONAL ON THE ERROR CLASS.
+    // #
+    // # The catch re-threw anything that was not the second-connection
+    // # case, so the handler exited WITHOUT `land()` on every other write
+    // # failure: the cookie survived a settled round trip, still
+    // # redeemable in a shared machine's cookie jar for the rest of its
+    // # ten minutes. And the throw became a Next.js 500 html page on the
+    // # ONE route a browser lands on, shown AFTER the authorization code
+    // # had been burned — a founder outside the product, on a page with
+    // # no way back, holding a code that can never be redeemed again.
+    // #
+    // # An invariant conditional on the error class is not an invariant.
+    // # Every path out of the handler goes through `land`.
+    // ###################################################################
+    const scope = await bed.member("write-failure");
+
+    // ANY write failure that is not a unique violation on the active-org
+    // index. A check that can never hold is the cheapest one that touches
+    // this table and nothing else — `ensureProject` runs before the try
+    // block and has to keep working, or the row would be proving the
+    // wrong thing.
+    await bed.db.execute(
+      `alter table slack_connections add constraint tmp_write_failure_probe check (false)`,
+    );
+
+    let response: Response;
+    try {
+      response = await connectWorkspace(scope);
+    } finally {
+      // Dropped even on a throw, or every later row in this file inherits
+      // a table that cannot be written to.
+      await bed.db.execute(
+        `alter table slack_connections drop constraint tmp_write_failure_probe`,
+      );
+    }
+
+    // The exchange really happened, so this is the WRITE failing rather
+    // than an earlier refusal wearing the same outcome word.
+    expect(outbound.length).toBeGreaterThan(0);
+
+    expect(response.status).toBe(302);
+    expect(new URL(locationOf(response), ORIGIN).pathname).toBe("/first-run");
+    expect(new URL(locationOf(response), ORIGIN).searchParams.get("slack")).toBe("failed");
+    expect(response.headers.get("set-cookie") ?? "").toContain("Max-Age=0");
+
+    // Nothing attached, and nothing database-shaped reached the founder —
+    // the diagnosis goes to the server log, never to the address bar.
+    expect((await rawSlackRows(scope.organizationId)).length).toBe(0);
+    const carried = `${locationOf(response)} ${await response.clone().text()}`;
+    expect(carried.toLowerCase()).not.toContain("constraint");
+    expect(carried.toLowerCase()).not.toContain("check");
   });
 
   test("the second-workspace refusal is settled by the constraint, not by a prior read", async () => {
