@@ -278,6 +278,42 @@ export const CHANNEL_NOT_LISTED: FirstRunGateRefusal = Object.freeze({
 });
 
 /**
+ * A channel picked for an organization that already has one.
+ *
+ * `attachChannel` fills an empty address and never moves a chosen one
+ * (`packages/db/src/repositories/slack-connections.repo.ts`), because the
+ * delivery ledger's identity is `(organization_id, finding_id, channel_id)` and
+ * moving the channel forks every delivery already recorded — the customer's
+ * whole backlog re-posted, and the weekly budget bypassed while it happens
+ * (D12). So the write matches zero rows and this is what the founder is told.
+ *
+ * IT BLAMES NOBODY, because nobody did anything wrong: they pressed a control a
+ * screen offered them, most likely a page opened twice or left open while a
+ * teammate finished the same step. A sentence reading like a validation error
+ * would have them hunting a mistake they did not make.
+ *
+ * IT NAMES THE CHANNEL, so the answer is checkable rather than a claim. The
+ * stored id is what every other sentence about this address already renders —
+ * `SLACK_TEST_SUCCESS_TEMPLATE` and `STRIP_POSTING_TO_TEMPLATE` both interpolate
+ * it into `#{channel}` — so this reads the same as the screen the founder is
+ * looking at, and it does not need a live channel list to say anything.
+ *
+ * A FUNCTION RATHER THAN A CONSTANT for that one reason, and the returned object
+ * is frozen like every constant beside it. 409 rather than 400: the request was
+ * fine, the organization's state has moved past it — the same reading
+ * `SECOND_CHANNEL` and `CHANNEL_NOT_LISTED` take.
+ */
+export function channelAlreadyChosen(channelId: string): FirstRunGateRefusal {
+  return Object.freeze({
+    code: "channel_already_chosen",
+    message:
+      `This workspace already sends what we find to #${channelId}, so nothing was changed. A ` +
+      `channel is chosen once, and that one is set — your findings arrive there from now on.`,
+    status: 409,
+  });
+}
+
+/**
  * The sentence for a body carrying something we do not read.
  *
  * IT NAMES THE OFFENDING KEYS, which is only reachable through `issue.keys`

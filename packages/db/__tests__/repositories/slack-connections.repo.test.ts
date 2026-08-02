@@ -94,6 +94,11 @@ const CHANNEL_ID = "C01AB2CD3EF";
  *  pass against a repository that stamped nothing. */
 const PICKED_CHANNEL = "C07PICKED01";
 
+/** The address a SECOND attach tries to move the row to. Distinct from both of
+ *  the above, so "the stored channel did not change" is an assertion about this
+ *  value never landing rather than about two names that happen to match. */
+const MOVED_CHANNEL = "C08MOVED002";
+
 /** Slack's own name for the workspace, as the OAuth exchange reports it. */
 const WORKSPACE_NAME = "Fixture workspace";
 
@@ -651,6 +656,108 @@ describe("slack_connections — the org's credential, and the teammate who set n
     const serialised = JSON.stringify(attached);
     expect(serialised).not.toContain(envelope);
     expect(serialised).not.toContain(BOT_TOKEN);
+  });
+
+  // --- row 12 --------------------------------------------------------------
+  test("attachChannel fills an empty address once, and never moves a chosen one", async () => {
+    // ###################################################################
+    // # THE SECOND ATTACH IS THE WHOLE ROW (security audit M-3, D12).
+    // #
+    // # The delivery ledger's identity is `(organization_id, finding_id,
+    // # channel_id)` — `deliveries.repo.ts` conflicts `claimForPost` on
+    // # exactly that tuple. So a channel that MOVES forks every delivery this
+    // # organization ever recorded: `findFor` answers null for the whole
+    // # history, every finding already sent reads as never sent, and the
+    // # weekly budget restarts. Nothing raises; the customer just receives
+    // # their entire backlog again.
+    // #
+    // # `insertActive` is refused by the partial unique index. There is no
+    // # index that can refuse an UPDATE to a different value, so the predicate
+    // # in the statement is the only thing holding this line, and this row is
+    // # the only thing holding the predicate.
+    // ###################################################################
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "attach-once");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const inserted = await repo.insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    // THE FILL SUCCEEDS. Without this leg the refusal below would pass against
+    // a method that attached nothing, ever.
+    const first = await repo.attachChannel(PICKED_CHANNEL);
+    expect(first?.id).toBe(inserted.id);
+    expect(first?.channelId).toBe(PICKED_CHANNEL);
+
+    // THE SECOND ATTACH MATCHES ZERO ROWS. `null` is the same answer a caller
+    // already gets for "this organization has no active connection": the
+    // repository reports that it wrote nothing and stays out of deciding what
+    // that means for a person (the route reads the row and says which).
+    expect(await repo.attachChannel(MOVED_CHANNEL)).toBeNull();
+
+    // AND THE STORED VALUE DID NOT MOVE. This is the row that catches a partial
+    // fix — a statement that wrote the new channel and returned nothing (a
+    // dropped `.returning()`, a guard applied to the result rather than to the
+    // WHERE clause) passes the null assertion above and has already forked every
+    // delivery identity by the time anyone reads it.
+    expect(
+      await readRawScalar(
+        db,
+        sql`select channel_id from slack_connections where id = ${inserted.id}`,
+      ),
+    ).toBe(PICKED_CHANNEL);
+
+    // Read back through the repository too, by a DIFFERENT member: what the
+    // teammate's screen would show is the original channel, not the attempt.
+    expect((await createSlackConnectionsRepo(db, org.teammate).getActiveForOrg())?.channelId).toBe(
+      PICKED_CHANNEL,
+    );
+  });
+
+  // --- row 13 --------------------------------------------------------------
+  test("a reconnect after disconnecting is attachable again", async () => {
+    // THE GUARD IS ON THE ROW, NOT ON THE ORGANIZATION. Once-only means once
+    // per connection: an org that disconnects and connects again gets a fresh
+    // half-connected row and must be able to finish setup. A guard written as
+    // "this organization has ever chosen a channel" would leave the reconnect
+    // permanently unfinishable, with a picker that refuses everything.
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "attach-again");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const first = await repo.insertActive({
+      channelId: CHANNEL_ID,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    await repo.deactivate(first.id);
+
+    const second = await repo.insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    const attached = await repo.attachChannel(PICKED_CHANNEL);
+    expect(attached?.id).toBe(second.id);
+    expect(attached?.channelId).toBe(PICKED_CHANNEL);
+
+    // The disconnected row keeps the address it had. History stays history.
+    expect(
+      await readRawScalar(db, sql`select channel_id from slack_connections where id = ${first.id}`),
+    ).toBe(CHANNEL_ID);
   });
 });
 

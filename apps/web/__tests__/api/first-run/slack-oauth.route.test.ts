@@ -57,6 +57,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 import { enumerateShapeKeys } from "../../../../../packages/shared/__tests__/onboarding/probes/strict-zod-fixtures";
+import { channelAlreadyChosen, NO_WORKSPACE_CONNECTED } from "@/lib/first-run/refusals";
 import { buildTestPostMessage } from "@/lib/first-run/slack-test-message";
 import {
   bodyOf,
@@ -1150,6 +1151,100 @@ describe("POST /api/first-run/slack/channel (D7, D8)", () => {
     // first row of this group: a channel that IS in the list answers 200 and
     // stamps, so this refusal cannot be a route that refuses everything.
     expect(collectStrings(await bodyOf(response)).some((value) => value.length > 20)).toBe(true);
+  });
+
+  test("a second attach is refused by name, changes nothing, and sends no post", async () => {
+    // ###################################################################
+    // # THE RE-POINT THAT REPLAYS THE BACKLOG (security audit M-3, D12).
+    // #
+    // # The delivery ledger's identity is `(organization_id, finding_id,
+    // # channel_id)`. Move the channel and every delivery already recorded
+    // # forks: `findFor` answers null for the whole history, findings already
+    // # sent read as never sent, and the weekly budget restarts. What the
+    // # customer sees is their entire backlog arriving again, in a channel any
+    // # one member picked, with nothing logged as an error anywhere.
+    // #
+    // # So the second press is refused. It is not a fault the founder caused —
+    // # a page opened twice does this — which is why the answer names the
+    // # channel their organization already uses instead of reporting a bad
+    // # request.
+    // ###################################################################
+    const scope = await bed.member("attach-twice");
+    await connectWorkspace(scope);
+
+    const poster = recordingPoster(OK_POST);
+    const first = await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: CHOSEN_CHANNEL } }),
+      depsFor(scope, { poster }),
+    );
+
+    // The positive control, in this row rather than by reference: the refusal
+    // below means nothing against a route that refuses every attach.
+    expect(first.status).toBe(200);
+    expect((await activeRow(scope.organizationId)).channel_id).toBe(CHOSEN_CHANNEL);
+    expect(poster.sent.length).toBe(1);
+
+    const second = await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: OTHER_CHANNEL } }),
+      depsFor(scope, { poster }),
+    );
+
+    expect(second.status).not.toBe(200);
+
+    // THE STORED ADDRESS DID NOT MOVE. The row that catches a partial fix: a
+    // route that refused after the write, or a repository that wrote and
+    // returned nothing, has already forked every delivery identity by here.
+    expect((await activeRow(scope.organizationId)).channel_id).toBe(CHOSEN_CHANNEL);
+
+    // AND NOTHING WAS ANNOUNCED. A test post into the channel somebody tried to
+    // move to would tell that channel's readers their findings arrive there,
+    // which is false — and it is the same post EC-O1 makes load-bearing, so the
+    // lie would be the first thing a teammate sees.
+    expect(poster.sent.length).toBe(1);
+
+    // NAMED, AND IT NAMES THE CHANNEL. `channelAlreadyChosen` is checkable
+    // rather than a claim: a founder reading it can see which address is set
+    // without opening anything else. Asserted through the shipped producer, so
+    // this row pins the wire and not a copy of the sentence.
+    const body = await bodyOf(second);
+    expect(collectStrings(body)).toContain(channelAlreadyChosen(CHOSEN_CHANNEL).message);
+    expect(collectStrings(body).join(" ")).toContain(CHOSEN_CHANNEL);
+
+    // It is not read as the founder's mistake — the request was fine and the
+    // organization's state had moved past it, which is the reading
+    // `SECOND_CHANNEL` and `CHANNEL_NOT_LISTED` already take.
+    expect(second.status).toBe(409);
+  });
+
+  test("a teammate submitting the channel a moment later is told which one is set, not that nothing is connected", async () => {
+    // D1. TWO MEMBERS, ONE ORG-SCOPED RESOURCE. Both open the picker; the owner
+    // presses first. The teammate must not be told "no Slack workspace is
+    // connected" — the workspace is connected, by them, and that sentence would
+    // send them back through a consent screen their organization already
+    // completed. Distinguishing the two is why the route reads the row after a
+    // write that changed nothing rather than assuming the absence.
+    const owner = await bed.member("attach-race-owner");
+    const teammate = await bed.member("attach-race-mate", owner.organizationId);
+    await connectWorkspace(owner);
+
+    const poster = recordingPoster(OK_POST);
+    await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: CHOSEN_CHANNEL } }),
+      depsFor(owner, { poster }),
+    );
+
+    const second = await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: OTHER_CHANNEL } }),
+      depsFor(teammate, { poster }),
+    );
+
+    const said = collectStrings(await bodyOf(second)).join(" ");
+    expect(said).toContain(channelAlreadyChosen(CHOSEN_CHANNEL).message);
+    expect(said).not.toContain(NO_WORKSPACE_CONNECTED.message);
   });
 
   test("a signed-out caller cannot attach a channel", async () => {

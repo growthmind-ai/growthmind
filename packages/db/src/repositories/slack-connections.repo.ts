@@ -38,7 +38,7 @@
 // time, per customer, silently. This file never calls `credentialAad` itself.
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
 import { decryptSecret } from "@growthmind/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import type { ScopedDb } from "./types";
@@ -165,8 +165,17 @@ export interface SlackConnectionsRepo {
    * address; there is no "detach" and this method must never be the route
    * through which a null is laundered back onto a connected row.
    *
-   * `null` means the organization has no active connection — nothing was
-   * updated, and the caller learns that rather than being told it succeeded.
+   * ONCE-ONLY: the statement also filters on `channel_id IS NULL`, so it fills
+   * an empty address and never MOVES a chosen one. See the statement below for
+   * why re-pointing is a feature with a migration rather than a side effect of
+   * a picker.
+   *
+   * `null` means NOTHING WAS UPDATED, and there are now two ways that happens:
+   * the organization has no active connection, or its active connection already
+   * has a channel. The repository does not tell them apart — it reports that it
+   * wrote nothing, and the caller that has the organization's state in hand
+   * (`getActiveForOrg`) is the one that can say which, in a sentence a person
+   * reads.
    */
   attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
   /**
@@ -353,6 +362,34 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
       // delivery, exactly as pasting a token proves nothing about the token —
       // the test post is the separate, deliberate step that moves that column,
       // and a failed test post must not undo a correct pick (D8).
+      //
+      // `channel_id IS NULL` IS THE HALF THAT MAKES THIS A FILL RATHER THAN A
+      // RE-POINT, AND DELETING IT REPLAYS THE CUSTOMER'S WHOLE BACKLOG.
+      //
+      // The delivery ledger's identity is the tuple `(organization_id,
+      // finding_id, channel_id)` — `deliveries.repo.ts` conflicts `claimForPost`
+      // on exactly it, and `../schema/deliveries.ts` is where the unique index
+      // `deliveries_org_finding_channel_key` says so. THE CHANNEL IS AN INPUT TO
+      // THAT IDENTITY, so moving it forks every delivery this organization has
+      // ever recorded (D12): `findFor` answers `null` for the entire history,
+      // every finding already sent reads as never sent, and the weekly delivery
+      // budget starts from zero. Nothing errors. The customer simply receives
+      // their whole backlog again, in a channel one member chose, and the guard
+      // that limits how much we post is gone for that week.
+      //
+      // Without this predicate the write is unprotected in a way its neighbour
+      // is not: `insertActive` is refused by the partial unique index
+      // `slack_connections_active_org_uidx`, and there is no index that can
+      // refuse an UPDATE of a column to a different value. The database cannot
+      // hold this line; this clause is the only thing that does.
+      //
+      // SO RE-POINTING IS NOT SHIPPED, deliberately, and this is not the place
+      // to add it. It is a real thing a founder will eventually want, and it
+      // needs a story for the `deliveries` rows that already exist — migrate
+      // them onto the new address, or suppress them — which is a feature with a
+      // migration and a decision, not a side effect of a picker. Whoever comes
+      // to delete this line to "let people change the channel" is looking at the
+      // silent-replay bug from the inside.
       const [row] = await db
         .update(slackConnections)
         .set({ channelId })
@@ -360,6 +397,7 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
           and(
             eq(slackConnections.organizationId, ctx.organizationId),
             eq(slackConnections.isActive, true),
+            isNull(slackConnections.channelId),
           ),
         )
         .returning();

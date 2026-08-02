@@ -29,6 +29,16 @@
 // refuses every post for the life of the organization, while the screen says
 // they chose. The failure would surface much later, as silence.
 //
+// ── CHOOSING IS ONCE-ONLY, AND THE SECOND PRESS GETS A SENTENCE (D12) ───────
+//
+// `attachChannel` fills an empty address and never moves a chosen one, because
+// the delivery ledger's identity is `(organization_id, finding_id, channel_id)`
+// — moving the channel forks it and re-delivers everything already sent, past
+// the weekly budget, silently. So a second submit changes no row, and what this
+// route owes the person who sent it is a sentence naming the channel their
+// organization already uses, not a report of a fault they caused: the realistic
+// cause is a page opened twice, or a teammate who finished the same step first.
+//
 // ── A FAILED TEST POST DOES NOT ROLL BACK THE ATTACH (D8) ───────────────────
 //
 // The channel is chosen; delivery health is a separate fact with its own
@@ -53,6 +63,7 @@ import {
 } from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
 import {
+  channelAlreadyChosen,
   CHANNEL_NOT_LISTED,
   CHANNEL_UNAVAILABLE,
   CHANNELS_CALL_FAILED,
@@ -113,12 +124,31 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
 
   // ONE `UPDATE … RETURNING`, never a read-then-write (D6): two members
   // finishing the picker at the same moment settle it in Postgres rather than
-  // by racing a prior read.
-  const connection = await createSlackConnectionsRepo(deps.db, gate.ctx).attachChannel(
-    parsed.data.channelId,
-  );
+  // by racing a prior read. The statement fills an empty address and never moves
+  // a chosen one — see `slack-connections.repo.ts` for why moving it would
+  // re-deliver the organization's entire finding history.
+  const connections = createSlackConnectionsRepo(deps.db, gate.ctx);
+  const connection = await connections.attachChannel(parsed.data.channelId);
   if (connection === null) {
-    return refusalResponse(NO_WORKSPACE_CONNECTED);
+    // NOTHING WAS WRITTEN, AND THE REPOSITORY DOES NOT SAY WHICH REASON. It
+    // reports that it changed no row; the two reasons are "no active connection"
+    // and "this organization already chose", and they are different sentences
+    // with different next actions. So the state is read AFTER the write that
+    // lost — a read before it would be the read-then-write this route does not
+    // do, and it would still be stale by the time the update ran.
+    const existing = await connections.getActiveForOrg();
+    if (existing === null) {
+      return refusalResponse(NO_WORKSPACE_CONNECTED);
+    }
+
+    // An active row with no channel, whose attach still matched nothing, means
+    // the connection was replaced between the two statements — the same
+    // defensive shape as the `isDeliveryTarget` guard below, answered with the
+    // same sentence, because what the founder faces is exactly it: connected,
+    // nothing chosen, choose one.
+    return refusalResponse(
+      isDeliveryTarget(existing) ? channelAlreadyChosen(existing.channelId) : NO_CHANNEL_CHOSEN,
+    );
   }
 
   // THE SHIPPED PREDICATE RATHER THAN A `!`. The row was just stamped with a
