@@ -1,32 +1,5 @@
 "use client";
 
-// STEP 3 — SLACK, AND THE SKIP THAT IS A REAL ANSWER
-// (O-008, FR-O11, FR-O13, FR-O14, UX Checklist rows 12-16 and Flow D).
-//
-// ###########################################################################
-// # "SKIP FOR NOW" IS ALWAYS IN THE ROW, INCLUDING AFTER A FAILURE.
-// #
-// # Deviation 2: a skip a founder cannot find is not a skip. Whatever went
-// # wrong with the token, the channel or the network, setup is NOT broken and
-// # the sequence still reaches step 5 — so the secondary action never
-// # disappears and the step never renders as an error state.
-// #
-// # RETRY IS OFFERED ONLY WHERE IT CAN WORK. Two of the four post failures
-// # need a human to go and reconnect or repick before anything can change;
-// # offering "Try again" there is a button that can never succeed, and the
-// # founder presses it until they give up. The route already computes which
-// # ones are retryable from the delivery lane's own opinion, so this form
-// # renders that answer rather than forming a second one.
-// #
-// # ONE PRESS, TWO CALLS. "Send a test message" attaches the channel and then
-// # posts to it. That is the whole reason the click path fits inside ten: a
-// # separate "Connect" press would buy nothing, because a connection nobody
-// # has posted through has proved nothing.
-// #
-// # THE CHANNEL IS NEVER SENT TO THE TEST ROUTE (FR-O13). It is read from the
-// # stored row there. A caller that could name a channel could post this
-// # workspace's announcement into one it does not own.
-// ###########################################################################
 import { Button, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useState, type ChangeEvent, type ReactNode } from "react";
@@ -49,14 +22,13 @@ import {
 } from "./api";
 import { initialValues, type FieldValues } from "./form-fields";
 
-/** The two field ids, named once — see the note in step 2's form. */
 const BOT_TOKEN = "botToken";
 const CHANNEL_ID = "channelId";
 
 interface ConnectSlackFormProps {
   readonly step: WorkStep;
   readonly view: StepView;
-  /** FR-O13: read from the stored row. `null` until a channel is attached. */
+
   readonly channelId: string | null;
 }
 
@@ -68,9 +40,7 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<TestPostAnswer | null>(null);
-  // The channel attached DURING this visit. A second connect attempt on an org
-  // that already has one is refused by a database constraint, so once the
-  // channel is on, the retry path posts and does not re-attach.
+
   const [attachedNow, setAttachedNow] = useState(channelId !== null);
 
   const settled = view.state === "done" || view.state === "skipped";
@@ -100,7 +70,6 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
     );
   }
 
-  /** The post itself, which is the only half a retry repeats. */
   async function post(): Promise<void> {
     const answer = await postJson(FIRST_RUN_API.slackTest, {});
 

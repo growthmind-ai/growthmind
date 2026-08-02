@@ -1,27 +1,5 @@
 #!/usr/bin/env bun
-/**
- * Prints one floor summary so a human can read what this product will actually say.
- *
- * The candidate below is hand-built for illustration. It is not detector output, it did
- * not come from a real project, and none of its numbers were measured. They are chosen
- * to be legible. What is real is everything after it: the sentences are produced by the
- * same `renderFloorSummary` the product calls, from the same fixed templates, with no
- * model involved.
- *
- * Why this script exists. Every other check on this vocabulary is mechanical. A
- * scanner, a denylist, a compile pin. None of them can tell you whether the result
- * reads like something a person would write. That judgement is a human's and it needs
- * the text in front of them, which is what this prints.
- *
- * NO DB, no network, no env var, no model. This reads nothing and calls nothing outside
- * `@growthmind/core`.
- *
- * Usage: bun scripts/render-floor-summary.ts
- */
-// Imported by relative path, not by package specifier: the repo root does not depend on
-// `@growthmind/core`, and adding a root dependency to print a sentence would be a real
-// change to the dependency graph for a dry-run tool. This resolves the same barrel the
-// package's own consumers import.
+
 import {
   candidateFindingSchema,
   EVIDENCE_SHAPE_VERSION,
@@ -30,15 +8,11 @@ import {
   traceEntry,
 } from "../packages/core/src/index";
 
-/** A fixed window, stated as dates. Nothing here reads a clock, the same invocation
- * prints the same text forever. */
 const WINDOW = {
   start: new Date("2026-06-01T00:00:00.000Z"),
   end: new Date("2026-06-08T00:00:00.000Z"),
 };
 
-/** 260 sessions arrived, 20 were set aside as internal traffic, so every count below is
- * out of the 240 that were kept. */
 const BASIS = {
   totalInWindow: 260,
   kept: 240,
@@ -61,8 +35,6 @@ const leftWithoutContinuing = measuredCount({
   basis: BASIS,
 });
 
-// Parsed through the real contract, so this illustration cannot drift into a shape the
-// renderer would never be handed.
 const candidate = candidateFindingSchema.parse({
   detector: "funnel_dropoff",
   claimedClass: "confusing",

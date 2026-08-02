@@ -1,23 +1,3 @@
-// deliveries repository, the persistence behind two clauses of the outcome's definition
-// of done: "duplicate delivery is idempotent" and "a Slack delivery failure never
-// breaks the pipeline's persisted state".
-//
-// Every test below runs real SQL against the real generated migrations via
-// `createTestDb`'s PGlite instance. That is the point: the idempotency guarantee is a
-// unique index and an `ON CONFLICT … WHERE` predicate, and neither of those can be
-// proven by a fake.
-//
-// Reading order, by the taxonomy dimension each block pins:
-// duplicate delivery is idempotent, one row, one post-ownership claim
-// two concurrent claims, exactly one wins
-// one finding, two channels, two independent posts, not one
-// cross-tenant, org B reads and mutates nothing of org A's; a
-//  non-owner teammate of org A can read
-// failure isolation, a failed delivery leaves the finding deliverable,
-//  corrupts nothing else, and every pending row can reach a terminal
-//  state
-// stamp/filter symmetry, every column a read filters on is stamped by
-//  the write
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import {
@@ -34,10 +14,6 @@ import {
   seedUser,
 } from "../helpers/fixtures";
 
-// This suite is about the repository's atomicity and scoping, not the `SignatureHex`
-// brand's validation contract (`hex.test.ts` owns that), so a well-formed hex literal
-// is cast directly rather than routed through the constructor, the same shortcut
-// `finding-signatures.repo.test.ts` takes.
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;
 }
@@ -72,8 +48,6 @@ describe("deliveries repository", () => {
     await close();
   });
 
-  // --: duplicate delivery is idempotent
-
   it("creates one row and grants post ownership exactly once when the same finding is delivered to the same channel twice", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: "acme-claim-twice",
@@ -88,17 +62,14 @@ describe("deliveries repository", () => {
     const input = makeClaimInput(project.id);
 
     const first = await repo.claimForPost(input);
-    // The retry, a re-queued Graphile Worker job, an overlapping scheduler tick, a
-    // duplicate webhook. It must not come back owning the post.
+
     const second = await repo.claimForPost(input);
 
     expect(first.claimed).toBe(true);
     expect(second.claimed).toBe(false);
 
-    // One row, settled by the unique index, never by a prior read.
     expect(second.delivery?.id).toBe(first.delivery?.id);
-    // And the blocked claim did not touch the row it lost to: `attempts` counts real
-    // post attempts, not times asked.
+
     expect(second.delivery?.attempts).toBe(1);
     expect(second.delivery?.status).toBe("pending");
 
@@ -128,8 +99,7 @@ describe("deliveries repository", () => {
       postedAt: firstPostedAt,
       messageRef: "1785481299.000100",
     });
-    // A replayed confirmation, with a later instant and a different reference. The
-    // `coalesce` exists to guard against exactly this.
+
     const second = await repo.markPosted({
       findingId: "finding-1",
       channelId: CHANNEL,
@@ -139,13 +109,10 @@ describe("deliveries repository", () => {
 
     expect(first?.postedAt?.getTime()).toBe(firstPostedAt.getTime());
     expect(second?.postedAt?.getTime()).toBe(firstPostedAt.getTime());
-    // The reference of the message that actually shipped is the one that stands.
-    // Overwriting it would point a later thread reply at nothing.
+
     expect(second?.messageRef).toBe("1785481299.000100");
     expect(second?.status).toBe("posted");
   });
-
-  // --: two concurrent claims, exactly one wins
 
   it("never grants post ownership to two concurrent claims for the same finding", async () => {
     const org = await seedOrgWithOwner(db, {
@@ -160,21 +127,15 @@ describe("deliveries repository", () => {
     const repo = createDeliveriesRepo(db, org.ctx);
     const input = makeClaimInput(project.id, { findingId: "finding-concurrent" });
 
-    // Two overlapping scheduler ticks racing the same claim. If ownership were decided
-    // by a read-then-write ("does a delivery exist yet?"), both would conclude "no" and
-    // the customer would get the finding twice.
     const [first, second] = await Promise.all([repo.claimForPost(input), repo.claimForPost(input)]);
 
     const owners = [first, second].filter((result) => result.claimed);
     expect(owners).toHaveLength(1);
 
-    // And exactly one row exists to show for it.
     const pending = await repo.listPendingForProject(project.id);
     expect(pending).toHaveLength(1);
     expect(pending[0]?.attempts).toBe(1);
   });
-
-  // --: one finding, two channels
 
   it("treats the same finding delivered to two different channels as two independent posts", async () => {
     const org = await seedOrgWithOwner(db, {
@@ -193,8 +154,6 @@ describe("deliveries repository", () => {
       makeClaimInput(project.id, { channelId: OTHER_CHANNEL }),
     );
 
-    // `channel_id` is inside the unique tuple, so a second channel is a second
-    // legitimate post, not a duplicate to be suppressed.
     expect(toFindings.claimed).toBe(true);
     expect(toEngineering.claimed).toBe(true);
     expect(toEngineering.delivery?.id).not.toBe(toFindings.delivery?.id);
@@ -204,8 +163,6 @@ describe("deliveries repository", () => {
       [CHANNEL, OTHER_CHANNEL].toSorted(),
     );
   });
-
-  // --: cross-tenant
 
   it("returns null when another org reads a delivery it does not own", async () => {
     const orgA = await seedOrgWithOwner(db, {
@@ -231,13 +188,10 @@ describe("deliveries repository", () => {
     );
     expect(claimed.claimed).toBe(true);
 
-    // Org B naming org A's finding, channel, project, and signature. Every read answers
-    // null / empty, never org A's row.
     expect(await repoB.findFor("finding-xt-read", CHANNEL)).toBeNull();
     expect(await repoB.findLatestForSignature(projectA.id, signature)).toBeNull();
     expect(await repoB.listPendingForProject(projectA.id)).toEqual([]);
 
-    // Org A still sees its own.
     expect((await repoA.findFor("finding-xt-read", CHANNEL))?.id).toBe(claimed.delivery?.id);
   });
 
@@ -261,9 +215,6 @@ describe("deliveries repository", () => {
 
     await repoA.claimForPost(makeClaimInput(projectA.id, { findingId: "finding-xt-write" }));
 
-    // `null`, not a silent success. The mutation is keyed on the full
-    // `(organization_id, finding_id, channel_id)` tuple, so org B's context matches no
-    // row at all.
     expect(
       await repoB.markPosted({
         findingId: "finding-xt-write",
@@ -281,7 +232,6 @@ describe("deliveries repository", () => {
       }),
     ).toBeNull();
 
-    // Org A's row is byte-for-byte where it was left.
     const untouched = await repoA.findFor("finding-xt-write", CHANNEL);
     expect(untouched?.status).toBe("pending");
     expect(untouched?.postedAt).toBeNull();
@@ -324,8 +274,6 @@ describe("deliveries repository", () => {
       makeClaimInput(project.id, { findingId: "finding-teammate", signature }),
     );
 
-    // /: a delivery is org-scoped, not owner-scoped. Every org member sees it, or the
-    // teammate watching the channel cannot tell why a post did or did not happen.
     expect((await teammateRepo.findFor("finding-teammate", CHANNEL))?.id).toBe(
       claimed.delivery?.id,
     );
@@ -361,16 +309,12 @@ describe("deliveries repository", () => {
     const a = await repoA.claimForPost(makeClaimInput(projectA.id, sharedInput));
     const b = await repoB.claimForPost(makeClaimInput(projectB.id, sharedInput));
 
-    // `organization_id` leads the unique tuple, so org B's claim is its own post, never
-    // a duplicate suppressed by org A's row.
     expect(a.claimed).toBe(true);
     expect(b.claimed).toBe(true);
     expect(a.delivery?.id).not.toBe(b.delivery?.id);
     expect(a.delivery?.organizationId).toBe(orgA.organizationId);
     expect(b.delivery?.organizationId).toBe(orgB.organizationId);
   });
-
-  // --: failure isolation
 
   it("leaves the finding deliverable after a failed post, and the retry re-claims the same row", async () => {
     const org = await seedOrgWithOwner(db, {
@@ -384,8 +328,6 @@ describe("deliveries repository", () => {
     });
     const repo = createDeliveriesRepo(db, org.ctx);
 
-    // A second, unrelated delivery in the same project. The "corrupts no other
-    // persisted state" half of the clause.
     const bystander = await repo.claimForPost(
       makeClaimInput(project.id, {
         findingId: "finding-bystander",
@@ -412,13 +354,9 @@ describe("deliveries repository", () => {
     expect(failed?.failedAt?.getTime()).toBe(failedAt.getTime());
     expect(failed?.failureReason).toBe("Slack did not accept the message.");
 
-    // The failure is terminal. The row is no longer pending, so the scheduler does not
-    // read it as "one already open" forever.
     const pendingAfterFailure = await repo.listPendingForProject(project.id);
     expect(pendingAfterFailure.map((row) => row.id)).toEqual([bystander.delivery.id]);
 
-    // ...and the finding is still deliverable: the retry re-claims the same row rather
-    // than minting a second one that could post twice.
     const retry = await repo.claimForPost(
       makeClaimInput(project.id, {
         findingId: "finding-failed-retry",
@@ -429,11 +367,10 @@ describe("deliveries repository", () => {
     expect(retry.delivery?.id).toBe(claimed.delivery?.id);
     expect(retry.delivery?.attempts).toBe(2);
     expect(retry.delivery?.status).toBe("pending");
-    // The stale failure is cleared. The row describes the current attempt.
+
     expect(retry.delivery?.failedAt).toBeNull();
     expect(retry.delivery?.failureReason).toBeNull();
 
-    // Nothing about the failure, or the retry, touched the other delivery.
     const untouched = await repo.findFor("finding-bystander", OTHER_CHANNEL);
     expect(untouched?.id).toBe(bystander.delivery.id);
     expect(untouched?.status).toBe("pending");
@@ -462,9 +399,6 @@ describe("deliveries repository", () => {
       messageRef: "1785481299.222222",
     });
 
-    // A timeout unwinding after the post already succeeded. If this were allowed to
-    // land, the row would become `failed`, `claimForPost` would re-claim it, and the
-    // customer would see the finding a second time.
     const late = await repo.markFailed({
       findingId: "finding-late-failure",
       channelId: CHANNEL,
@@ -478,7 +412,6 @@ describe("deliveries repository", () => {
     expect(persisted?.postedAt?.getTime()).toBe(postedAt.getTime());
     expect(persisted?.failureReason).toBeNull();
 
-    // And a re-claim is still refused, because the row never left `posted`.
     const reclaim = await repo.claimForPost(
       makeClaimInput(project.id, { findingId: "finding-late-failure" }),
     );
@@ -507,8 +440,6 @@ describe("deliveries repository", () => {
     );
     expect(await repo.listPendingForProject(project.id)).toHaveLength(2);
 
-    // The two exit paths a delivery attempt actually has. Both are writable from
-    // `pending`; neither is a dead end.
     const posted = await repo.markPosted({
       findingId: "finding-happy-exit",
       channelId: CHANNEL,
@@ -524,13 +455,9 @@ describe("deliveries repository", () => {
 
     expect(posted?.status).toBe("posted");
     expect(failed?.status).toBe("failed");
-    // Nothing stuck. A row still pending here is the jam described in
-    // `packages/shared/src/delivery/types.ts`. Silence to the customer, "one already
-    // open" to the scheduler, forever.
+
     expect(await repo.listPendingForProject(project.id)).toEqual([]);
   });
-
-  // --: stamp/filter symmetry
 
   it("stamps every column its read paths filter on", async () => {
     const org = await seedOrgWithOwner(db, {
@@ -548,17 +475,11 @@ describe("deliveries repository", () => {
     const claimed = await repo.claimForPost(
       makeClaimInput(project.id, { findingId: "finding-stamp-filter", signature }),
     );
-    // Narrowed rather than optional-chained: this test is about columns being present,
-    // and `?.` on an unclaimed result would let every assertion below pass vacuously
-    // against `undefined`.
+
     if (!claimed.claimed) {
       throw new Error("claimForPost did not grant ownership of the first claim");
     }
 
-    // The five columns the reads narrow by, all written by the one write path. A filter
-    // on a column the write never stamps matches zero rows. A guaranteed-empty read
-    // that looks like "no deliveries yet", not an error (and the incident that rule was
-    // written from).
     expect(claimed.delivery.organizationId).toBe(org.organizationId);
     expect(claimed.delivery.projectId).toBe(project.id);
     expect(claimed.delivery.findingId).toBe("finding-stamp-filter");
@@ -566,7 +487,6 @@ describe("deliveries repository", () => {
     expect(claimed.delivery.signature).toBe(signature);
     expect(claimed.delivery.status).toBe("pending");
 
-    // And each read that filters on them actually finds the row.
     expect((await repo.findFor("finding-stamp-filter", CHANNEL))?.id).toBe(claimed.delivery.id);
     expect((await repo.findLatestForSignature(project.id, signature))?.id).toBe(
       claimed.delivery.id,

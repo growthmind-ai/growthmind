@@ -1,5 +1,3 @@
-// Repository for the `events` table: org-scoped at construction, no organization id
-// parameter.
 import type { TenantContext } from "@growthmind/shared";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
@@ -13,27 +11,20 @@ export interface EventInsertRow {
   projectId: string;
   connectionId: string;
   sessionId: string;
-  /** The vendor's server-assigned event id. The dedup key. */
+
   sourceEventId: string;
   name: string;
   occurredAt: Date;
   urlPath: string | null;
-  /** Which normalisation rules produced `urlPath`. Nullable, never coerced: `null`
-   * means "redaction status unknown", which is not the same claim as version 0. */
+
   urlPathNormalisationVersion: number | null;
 }
 
 export interface EventsRepo {
-  /**
-   * `ON CONFLICT (project_id, source_event_id) DO NOTHING`, returning the number of
-   * rows actually inserted. Never a check-then-insert: the overlap window deliberately
-   * re-requests events we already hold, and the unique index (not a prior read) is what
-   * makes re-applying a pull produce exactly one row per event.
-   */
   insertManyIgnoringDuplicates(rows: readonly EventInsertRow[]): Promise<number>;
-  /** Org-filtered list for one project, newest first by `occurred_at`. */
+
   listForProject(projectId: string, options: { limit: number }): Promise<EventRecord[]>;
-  /** Org-filtered list for one session. */
+
   listForSession(sessionId: string, options: { limit: number }): Promise<EventRecord[]>;
 }
 
@@ -44,18 +35,6 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
         return 0;
       }
 
-      // The lower-severity sibling of the `sessions` vector, closed by the same
-      // mechanism.
-      //
-      // `DO NOTHING` means a foreign org can never write over another org's event. It
-      // could, however, suppress one: pre-claiming `(project_id, source_event_id)` on
-      // someone else's project would make the real event's later insert a silent no-op.
-      // The row would simply never appear, reading as "quiet product" rather than as an
-      // error.
-      //
-      // The same ownership filter the sessions upsert uses closes it for free, so it is
-      // applied rather than merely noted. Rows naming a project this context does not
-      // own are dropped before the write.
       const requestedProjectIds = [...new Set(rows.map((row) => row.projectId))];
       const ownedProjects = await db
         .select({ id: projects.id })

@@ -1,16 +1,3 @@
-// `@growthmind/core`, the product's own judgement and maths.
-//
-// `@growthmind/shared` means "shapes both sides of a wire agree on", which is why its
-// zod-only rule reads as a rule rather than an accident. This package means "the
-// product's own judgement": the T1 detectors, the evidence gate, measured counts, the
-// threshold rule sets, and `evidence_shape`.
-//
-// Two dependencies, ever: `@growthmind/shared` and `zod`. No node builtin is imported
-// anywhere in this package. That is what makes the "no clock, no randomness" auditable
-// by construction, and a test asserts it. The dependency arrow is `db -> core`, never
-// `core -> db`.
-
-// -- counts
 export {
   measuredCount,
   rateOf,
@@ -26,14 +13,12 @@ export {
   type Rate,
 } from "./counts/measured-count";
 
-// -- canonical serialisation
 export {
   canonicalJson,
   type CanonicalValue,
   type CanonicalObject,
 } from "./serialise/canonical-json";
 
-// -- rules
 export {
   findingClassSchema,
   detectorProposedClassSchema,
@@ -49,7 +34,6 @@ export {
   CURRENT_THRESHOLD_RULE_SET,
 } from "./rules/thresholds";
 
-// -- detect
 export {
   DETECTOR_CORPUS_MAX_SESSIONS,
   analysisWindowSchema,
@@ -63,17 +47,12 @@ export {
   type DetectorResult,
 } from "./detect/types";
 export { orderTimeline } from "./detect/order";
-// + in one call, and the one implementation of. It is exported because a module that
-// decides the denominator both detectors report on must be visible to the coverage
-// gate. An unexported one is structurally exempt from the test that proves every pure
-// function is covered, which is exactly how the two detectors diverged here in the
-// first place.
+
 export { analysedSessions, type AnalysedSessions } from "./detect/analysed";
 export { detectFunnelDropoff } from "./detect/funnel-dropoff";
 export { detectErrorEvent } from "./detect/error-event";
 export { NOT_BUILT_DETECTORS, type NotBuiltDetector } from "./detect/not-built";
 
-// -- evidence
 export {
   evidenceSignalSchema,
   evidenceSignalKindSchema,
@@ -114,7 +93,6 @@ export {
   type DowngradeTrace,
 } from "./evidence/trace";
 
-// -- findings
 export {
   candidateFindingSchema,
   rankingInputsSchema,
@@ -130,9 +108,7 @@ export {
   type EvidenceShapeInput,
   type EvidenceShapeSerialiser,
 } from "./findings/evidence-shape";
-// The candidate assembler, the join between the detectors, the gate, and the candidate
-// contract. `confidenceBasisForPass` is exported beside it because the assembler's
-// derivation must be testable against the predicate maths it lives next to.
+
 export {
   assembleCandidates,
   type AssembledCandidates,
@@ -140,7 +116,6 @@ export {
 } from "./findings/assemble";
 export { confidenceBasisForPass } from "./evidence/predicates";
 
-// --
 export {
   signatureTuple,
   SIGNATURE_TUPLE_VERSION,
@@ -158,24 +133,6 @@ export {
   type SuppressionPolicy,
 } from "./findings/suppression-policy";
 
-// --: the deterministic floor renderer
-//
-// Exactly four values and four types, and the shortness of this list is the decision
-// rather than an oversight. `coverage.test.ts:164` makes every barrel-exported function
-// owe a mirroring `__tests__/<specifier>.test.ts` and a call by name, so
-// `renderFloorSummary` and `resolveCounts` are exported precisely because
-// `__tests__/summary/floor.test.ts` and `__tests__/summary/count-roles.test.ts` exist
-// and call them.
-//
-// Deliberately not exported: `substitute`, `placeholdersIn`, and all four scanners.
-// Each would owe its own mirror file and would become a production surface with no
-// production caller. The dead wire this sprint exists not to add to. `substitute` has
-// one caller inside the package and is asserted through the renderer's own suite; the
-// scanners are test-local by design.
-//
-// Nothing here is called in production yet. No worker task, no service and no route
-// invokes `renderFloorSummary`; exporting it is what lets the sprint that wires the
-// lane import it without reopening this file.
 export {
   COUNT_ROLES,
   resolveCounts,
@@ -189,13 +146,6 @@ export {
   type FloorSummarySource,
 } from "./summary/types";
 
-// --: the model lane's output shape, sentence join, and sac guard
-//
-// The three functions are exported because the model lane's callers live outside this
-// package: `worker` renders through the port and must judge what comes back before
-// persisting it. Each has its mirroring `__tests__/summary/output-schema.test.ts` and
-// is called there by name, which is what `coverage.test.ts` requires of every
-// barrel-exported function.
 export {
   modelSummaryOutputSchema,
   splitSentences,
@@ -208,7 +158,6 @@ export {
   type SacOffence,
 } from "./summary/output-schema";
 
-// --
 export {
   scanResidualPii,
   isCleanForDelivery,
@@ -249,7 +198,6 @@ export {
   type SlackMessage,
 } from "./delivery/slack-message";
 
-// --: the minimal fix spec
 export {
   renderFixSpec,
   isCodeShaped,

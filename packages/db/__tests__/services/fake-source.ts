@@ -1,17 +1,3 @@
-// Test doubles for the SessionSource port, used by the `packages/db` service suites
-// (Wave 0b, lane 4).
-//
-// Why a fake and not a network call. `createConnectionsService` takes `createSource` as
-// an injected dependency precisely so `packages/db` never depends on
-// `packages/adapters` (the layering rule). This file is the other half of that
-// decision: every connection-service test below runs against a real database and a fake
-// source, with no fetch, no host, and no credential that could ever authenticate
-// anywhere.
-//
-// Nothing here is a mock in the assert-on-calls-only sense. It is a real implementation
-// of `AttachableSource` with test-visible state, so the tests assert on outcomes (what
-// was persisted, what the service returned) and use the recorded calls only to prove
-// bounds (exactly one pull, one page).
 import type {
   SessionSourcePullRequest,
   SessionSourcePullResult,
@@ -27,17 +13,8 @@ import type {
   SourceConnectionConfig,
 } from "../../src/services/connections.service";
 
-/**
- * An obviously-fake personal key. This repository is public: this value is not a
- * credential, cannot authenticate anywhere, and exists only so the no-key-material
- * assertions have something concrete to look for. It carries the `ph<letter>_` prefix
- * on purpose, so a pattern-based scrubber has a real target, and it contains `+` and
- * `/` so its URL-encoded form differs from its raw form. An exact-whole-string scrub
- * would miss the encoded one.
- */
 export const FAKE_PERSONAL_KEY = "phx_FAKE+not/a/real/key/0123456789_placeholder";
 
-/** The same fake key in every shape a leaky boundary could echo it back in. */
 export const FAKE_PERSONAL_KEY_FORMS: readonly string[] = [
   FAKE_PERSONAL_KEY,
   encodeURIComponent(FAKE_PERSONAL_KEY),
@@ -45,7 +22,6 @@ export const FAKE_PERSONAL_KEY_FORMS: readonly string[] = [
   FAKE_PERSONAL_KEY.slice(0, 24),
 ];
 
-/** Any `ph<letter>_…` shaped token, however it was re-encoded around the edges. */
 export const KEY_MATERIAL_PATTERN = /\bph[a-z]_[A-Za-z0-9_+/%-]{16,}/i;
 
 export const FAKE_HOST = "https://eu.analytics.example.invalid";
@@ -98,13 +74,6 @@ export function successfulPull(input: {
   };
 }
 
-/**
- * A page-capped, non-contiguous result. The shape a walk returns when it hit its page
- * cap rather than reaching a literal `null` cursor or the previous watermark.
- * `newestObservedAt` is `null` because pass 2 (the forward pass) never ran: a resumed
- * walk that is still capped reports no fresh `newestObservedAt`, exactly like the real
- * adapter's pass 1 short-circuit.
- */
 export function pageCappedPull(input: {
   sessions: readonly SourceSession[];
   events: readonly SourceEvent[];
@@ -143,11 +112,6 @@ export function failedPull(input: {
   };
 }
 
-/**
- * Builds one assembled session as it crosses the port. Defaults describe an ordinary
- * kept session: an outside email domain, a resolved identity, and an everyday headed
- * browser. Each test overrides only the fact it is about.
- */
 export function sourceSession(input: {
   sessionKey: string;
   identityKey?: string | null;
@@ -192,22 +156,15 @@ export function sourceEvent(input: {
 }
 
 export interface FakeSourceHarness {
-  /** Injected as `deps.createSource`. */
   createSource: CreateSourceFn;
-  /** Every config the service handed the factory, in call order. */
+
   readonly configs: SourceConnectionConfig[];
-  /** Every `pull` request, in call order. The bound proof for the one inline first pull
-   * of one page. */
+
   readonly pullRequests: SessionSourcePullRequest[];
-  /** How many times `validate` was called. */
+
   readonly validateCalls: { count: number };
 }
 
-/**
- * Builds a fake source factory. `pulls` is consumed in order; once exhausted, the last
- * entry repeats, so a test that only cares about the first pull does not have to script
- * every subsequent one.
- */
 export function makeFakeSource(script?: {
   validation?:
     SessionSourceValidation | ((config: SourceConnectionConfig) => SessionSourceValidation);

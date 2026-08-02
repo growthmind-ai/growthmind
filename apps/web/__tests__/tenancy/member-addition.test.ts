@@ -1,16 +1,3 @@
-// / (add tasks/tenancy-app-shell/add.md, decision): the teammate fixture is built
-// through Better Auth's real server-side organization API (`auth.api.addMember`,
-// wrapped verbatim by the shared fixture's `addTestMember`) (never a raw `member`-row
-// seed) and adding the same member twice must yield exactly one membership row
-// (idempotency).
-//
-// Both tests wire `onUserCreate` to the real (still-unimplemented) `ensureOrganization`
-// (apps/web/lib/ensure-organization.ts) to create the owner's organization, rather
-// than the fixture's `createTestOrganization` bypass, so the "existing organization" a
-// teammate is added to is the same one the real signup path produces, matching the own
-// words ("the real product path"). At Wave 0, `ensureOrganization` throws "not
-// implemented", so both tests fail during owner signup (not on a fixture or compile
-// error) and both flip green once it is implemented, with no change to this file.
 import { randomUUID } from "node:crypto";
 
 import { ensureOrganization } from "@growthmind/db";
@@ -62,7 +49,6 @@ describe("a second user added through Better Auth machinery becomes a member of 
       password: PASSWORD,
     });
 
-    // The real product path, never a raw `member`-row insert.
     const addedMember = await addTestMember(auth, {
       organizationId,
       userId: teammate.id,
@@ -118,26 +104,13 @@ describe("adding the same member twice yields exactly one membership", () => {
 
     await addTestMember(auth, { organizationId, userId: teammate.id, role: "member" });
 
-    // Better Auth itself enforces by throwing on a duplicate add
-    // (`USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION`, pinned by
-    // auth-hooks.spike.test.ts) rather than silently no-opping. the own text names the
-    // fallback: "if Better Auth does not enforce this itself, ensure-style idempotency
-    // wraps the call at our service edge". It does enforce it, via a throw, so the
-    // future service edge must catch exactly this error and re-read the existing
-    // membership rather than propagate it. This test pins the end-state contract
-    // (exactly one membership survives two attempts); it deliberately catches the
-    // duplicate throw itself rather than asserting on whether the call throws, since
-    // that mechanics is Better Auth's own proven behavior, not ours to re-decide.
     let duplicateError: unknown;
     try {
       await addTestMember(auth, { organizationId, userId: teammate.id, role: "member" });
     } catch (error) {
       duplicateError = error;
     }
-    // Better Auth surfaces the machine-readable reason on `error.body.code`; its
-    // `message`/`toString` carry only the prose form ("User is already a member of
-    // this organization"), so assert the code where it actually lives rather than on
-    // the rendered string.
+
     expect((duplicateError as { body?: { code?: string } })?.body?.code).toContain(
       "ALREADY_A_MEMBER",
     );

@@ -1,60 +1,16 @@
-// The analysis lane's vocabulary. Every shape the lane's four modules share, and no
-// behaviour at all.
-//
-// This file exists so that `plan.ts`, `gates.ts`, `tally.ts` and the tick's own run
-// loop can name the same types without importing each other. It is the bottom of the
-// lane's dependency graph: it imports from `@growthmind/*` and from nothing under
-// `worker/`.
-//
-// The lane's design rationale. The ladder's order, why each rung is where it is, what
-// may never collapse into what. Lives in `../tasks/analysis-tick.ts`, the composition
-// root that runs it. This file documents shapes; that one documents the sequence.
 import type { SessionSummariser } from "@growthmind/adapters";
 import type { CandidateFinding } from "@growthmind/core";
 import type { AnalysisRunsRepo, FindingsRepo, SignatureLedgerService } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { SummarySource, SummaryUsage, TenantContext } from "@growthmind/shared";
 
-/** The logger surface this lane needs. The subset Graphile Worker's `helpers.logger`
- * already satisfies, so the thin closure in ../index.ts passes it straight through and a
- * test passes a recording fake. */
 export interface AnalysisLogger {
   info(message: string): void;
   error(message: string): void;
 }
 
-/**
- * This lane's scheduled actor.
- *
- * The value and the `TenantContext` built from it live in `@growthmind/db/system`, one
- * home for every background writer's identity, behind the boundary that keeps `apps/`
- * from minting a system scope at all.
- */
 export const ANALYSIS_ACTOR_ID = SYSTEM_ACTOR.ANALYSIS_TICK;
 
-/**
- * One project's analysis lane, as the source read it.
- *
- * The lane carries candidates and nothing else. There is no wrapper and no hand-passed
- * key: the walker derives the identity it consumes, from the candidate's own content,
- * through the one producer (`identityFor` in `./gates.ts`). the rule, "when surface A
- * computes a value for surface B, the single most reliable wiring is B derives it
- * itself". Applied literally: with the producer of this port still unbuilt, a field it
- * was supposed to fill would be a wire nobody could prove was connected.
- *
- * `candidates` is in the source's deterministic order and is processed in that order,
- * one at a time. Cap exhaustion is only reproducible because it is: a lane that spent
- * its budget on whichever candidates a `Promise.all` happened to resolve first would
- * give a different answer on every run for the same input (pinned by W7). Order decides
- * which candidates get the budget; it decides nothing about their identity, which is
- * content-derived and therefore survives a reordering unchanged.
- *
- * `sessionsConsidered` exists so a zero is never guessed at. An empty `candidates` with
- * sessions considered means "we looked and nothing was solid enough"
- * (`no_candidates_passed_gate`); with none, it means "we have not looked yet"
- * (`no_sessions_to_analyse`). The task must not infer which. Only the source knows, and
- * collapsing the two is the same defect as collapsing the two cap answers.
- */
 export type AnalysisLane = {
   readonly organizationId: string;
   readonly organizationName: string;
@@ -63,232 +19,84 @@ export type AnalysisLane = {
   readonly sessionsConsidered: number;
 };
 
-/**
- * Where lanes come from. A port, not a repository call, because the producing side does
- * not exist yet: `packages/core` ships detectors, the evidence gate and the candidate
- * contract, but NO orchestrator that turns sessions and events into a `DetectorCorpus`,
- * runs every detector and assembles gate-passed candidates. That assembler is a sprint
- * of its own.
- *
- * Naming the read as a port rather than inlining a query keeps that gap visible and
- * one-line-fillable. Byte for byte the shape `DeliveryLaneSource`
- * (`../tasks/delivery-tick.ts`) set one sprint earlier for exactly this situation.
- *
- * The gap is closed. `../analysis-lane-source.ts` implements this port against real
- * persisted events and `resolveAnalysisComposition` in `../index.ts` returns it, so on
- * a real installation this tick reads a real corpus. The paragraph above records why
- * the port exists; it is no longer a description of an unwired installation.
- */
 export interface AnalysisLaneSource {
-  /** Every project due an analysis decision on this tick. An empty list is an ordinary
-   * answer. An installation with no project connected is a supported deployment, not a
-   * fault. */
   listDueLanes(now: Date): Promise<readonly AnalysisLane[]>;
-  /**
-   * The same lane `listDueLanes` would build for this ONE project, or `null` if
-   * the project is not analysable (O-008 AD-10).
-   *
-   * Same corpus read, same window, same detectors, same assembly — ONE private
-   * builder, two callers. A second copy of that assembly would drift within a
-   * sprint and would make the onboarding surface show a DIFFERENT finding than
-   * Slack does; the parts it would fork are exactly the parts that decide what a
-   * finding even is.
-   *
-   * The project id is the whole input. The organisation scope is re-derived from
-   * the project's own row by the implementation, never carried alongside it —
-   * a caller-supplied org id is a door for analysing one customer's project
-   * under another customer's context (D7).
-   */
+
   laneForProject(projectId: string, now: Date): Promise<AnalysisLane | null>;
 }
 
-/**
- * The two repositories and the ledger, org-scoped at construction and injected as
- * factories over the shipped interfaces rather than as a `ScopedDb`. That is what lets
- * this handler be tested against the contracts with fakes carrying real state, while
- * the fakes stay compile-checked against the same interfaces production uses, so they
- * cannot drift into agreeing with a repository that no longer exists. The one call to
- * each `create*` lives in ../index.ts, beside the pool it needs.
- */
 export type FindingsRepoFor = (ctx: TenantContext) => FindingsRepo;
 export type AnalysisRunsRepoFor = (ctx: TenantContext) => AnalysisRunsRepo;
 export type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
 
-/**
- * The written-explanation capability, as the composition root configured it: the port,
- * and the id of the model it addresses.
- *
- * One value, not two fields that must agree. The id is not decoration. It is what keeps
- * `resolved_model_id`'s documented rule true on every path. The port is contracted
- * never to throw and carries `resolvedModelId` on both arms of its result, but a port
- * somebody breaks anyway lands in the lane's defensive catch, and until this pairing
- * existed that path wrote `attempted: true` with a null id. Collapsing three states (no
- * call, a failed call whose model we know, a failed call whose model we lost) into one
- * stored NULL, on both `findings.resolved_model_id` and, through the run tally, on
- * `analysis_runs.resolved_model_id`.
- *
- * Pairing them structurally rather than passing a second nullable field is the answer:
- * there is no arrangement of these dependencies in which a port exists and the id it
- * addresses does not, so no wire can be left unconnected. `worker/src/index.ts` already
- * resolves the id (`GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL`) to build
- * the provider. It hands over the same value it gave the SDK, so the id a row names is
- * the id the call addressed.
- */
 export type ConfiguredSummariser = {
   readonly port: SessionSummariser;
   readonly resolvedModelId: string;
 };
 
-/**
- * EVERYTHING ONE LANE'S RUN NEEDS, AND NOTHING THAT COULD WIDEN IT (O-008 AD-9).
- *
- * `lanes` is the one member deliberately absent, and its absence is the
- * guarantee rather than a tidiness preference. `runAnalysisLane` is reached by
- * two callers now — the hourly tick, and the onboarding trigger that fires
- * seconds after a founder breaks their own product — and the trigger contributes
- * A PROJECT ID AND NOTHING ELSE. A lane runner that could still reach the lane
- * SOURCE would be able to widen its own work from one project to the whole
- * installation, which is precisely the "second pipeline" AD-9 exists to make
- * impossible. FR-O17 is financial: the fast path respects the single-writer
- * index AND the cap ledger, or it does not ship, and the strongest available
- * form of that is a runner with no way to ask for more work.
- */
 export interface AnalysisLaneDeps {
-  /** `null` ⇒ no written-explanation capability is configured on this installation. The
-   * branch, selected at the composition root (AD-15). The lane reads no environment
-   * variable by any route, and a null here is a decision rather than a caught failure. */
   summariser: ConfiguredSummariser | null;
   findingsFor: FindingsRepoFor;
   runsFor: AnalysisRunsRepoFor;
   ledgerFor: SignatureLedgerFor;
-  /** The per-project first-check limit on written explanations
-   * (`COLDSTART_MODEL_CALL_CAP`). Passed in from `../analysis-cap.ts` by the
-   * composition root; policy never leaks into `packages/db`, whose claim takes both
-   * ceilings as parameters. */
+
   projectCap: number;
-  /**
-   * The organisation-wide limit on written explanations, summed across every project
-   * the organisation has (`ORG_MODEL_CALL_CAP`).
-   *
-   * A second ceiling, not a second rung. It is handed to the same `claimModelCall` as
-   * `projectCap` and refused by the same `cap_exhausted` answer, so the ladder has no
-   * branch for it and the customer reads the same `floor_cap_exhausted` sentence either
-   * way. Without it the per-project cap bounds nothing in aggregate: no limit exists on
-   * how many projects an organisation creates.
-   */
+
   organizationCap: number;
-  /** The only way this handler reads time. A fake clock in a test is therefore total:
-   * nothing in the lane calls `Date.now` or `new Date` by any other route, so the
-   * same lane renders and records identically forever. */
+
   now: () => Date;
   logger: AnalysisLogger;
 }
 
-/**
- * The scheduled tick's dependencies: everything ONE lane needs, plus the source
- * that decides WHICH lanes there are.
- *
- * Declared as an extension rather than as a second flat list so the two can
- * never drift: a member added for the lane's benefit is available to the tick by
- * construction, and the only difference between them stays the one that matters.
- */
 export interface AnalysisTickDeps extends AnalysisLaneDeps {
   lanes: AnalysisLaneSource;
 }
 
 export interface AnalysisTickSummary {
-  /** Lanes the source returned. */
   lanesConsidered: number;
-  /** Lanes this tick actually opened a run for. */
+
   lanesRun: number;
-  /** Lanes another run already owned. Not a failure, the single-writer guarantee
-   * working. */
+
   lanesAlreadyRunning: number;
-  /** Lanes that ended `failed`. */
+
   lanesFailed: number;
-  /** Lanes that threw somewhere this handler could not attribute. Isolated: a non-zero
-   * value here does not mean the tick failed. */
+
   lanesErrored: number;
-  /** Findings written or already standing after this tick. */
+
   findingsPersisted: number;
-  /** Candidates the floor itself refused to render, so nothing was written for them.
-   * Counted separately because it is neither a finding nor a fault of the model lane.
-   * See `floorTextFor`. Also persisted per run on
-   * `analysis_runs.candidates_unrenderable`: this number is the tick's own report, and
-   * a number that lives only here dies with the process. */
+
   candidatesUnrenderable: number;
-  /** Candidates refused before the ladder because their surface was not in its
-   * normalised form (security audit). Counted apart from every other number here:
-   * nothing was claimed, nothing was sent and nothing was written for them, and folding
-   * them into `candidatesUnrenderable` would read as "the floor could not phrase it"
-   * when the truth is "we would not transmit it". Persisted per run on
-   * `analysis_runs.candidates_refused`, kept apart there for the same reason. */
+
   candidatesRefused: number;
-  /** Model calls this tick actually made. */
+
   modelCallsAttempted: number;
 }
 
-/** What one lane's turn produced. A value, never an exception. An isolated failure that
- * travels as a throw is a failure that can abort a sibling. */
 export type LaneOutcome = "completed" | "failed" | "already_running";
 
-/**
- * A model call's attribution, carried whether the call succeeded or not.
- *
- * A failed call still addressed a model and still consumed the cap, so
- * `resolvedModelId` travels on both arms and `usage` may be reported on either.
- *
- * A discriminated union, so `attempted ⇒ a model id` is a compile rule rather than a
- * comment. `findings.resolved_model_id` and `analysis_runs.resolved_model_id` both
- * document "null iff no call was attempted", and this type is what makes that
- * documentation true: there is no value of this type carrying `attempted: true` and a
- * null id, so no branch, including the defensive catch around a port contracted never
- * to throw. Can write the ambiguous NULL by forgetting to. The alternative fix,
- * weakening the two columns' headers to "null is ambiguous", would have made a stored
- * fact unreadable forever to save one field on a dependency.
- */
 export type CallAttribution =
   | { readonly attempted: false; readonly resolvedModelId: null; readonly usage: SummaryUsage }
   | { readonly attempted: true; readonly resolvedModelId: string; readonly usage: SummaryUsage };
 
-/** No call was made at all: the no-key rung, and the cap-refused rung. */
 export const NO_CALL: CallAttribution = { attempted: false, resolvedModelId: null, usage: {} };
 
-/**
- * One candidate's identity, derived once per candidate and used by all three sites that
- * key on it. The cap claim, the reuse read, and the persist.
- *
- * Carried as a value from the derivation site rather than recomputed at each site:
- * three calls could not disagree today, but a value computed once and passed is the
- * shape in which they can never disagree tomorrow. Nothing here hashes anything. See
- * `identityFor` in `./gates.ts`.
- */
 export type CandidateIdentity = {
   readonly signature: string;
   readonly signatureVersion: number;
 };
 
-/** Everything one candidate contributes to its finding row and to the run. */
 export type RenderedSummary = {
   readonly summarySource: SummarySource;
   readonly headline: string;
-  /** One sentence per element, for both lanes. Never a blob a consumer would have to
-   * re-split. The step that stops being reliable the moment a model writes it. */
+
   readonly context: readonly string[];
   readonly attribution: CallAttribution;
 };
 
-/**
- * What to do with one candidate. `reuse` is not a degenerate `persist`: a prior run
- * already claimed this candidate's budget and wrote its finding, so there is nothing to
- * call, nothing to write, and nothing to record, and saying so as a distinct member is
- * what keeps a replay from looking like a fresh success.
- */
 export type CandidateAction =
   | {
       readonly kind: "persist";
-      /** The identity this row is written under, the same value the claim above it was
-       * taken on, carried rather than re-derived. */
+
       readonly identity: CandidateIdentity;
       readonly summary: RenderedSummary;
     }
@@ -300,28 +108,11 @@ export type CandidateAction =
    * would hide a transmission refusal inside a rendering complaint. */
   | { readonly kind: "refused" };
 
-/**
- * One candidate's turn, and whether the cap refused it.
- *
- * `capExhausted` sits beside the action rather than inside the persisted summary, and
- * that placement is the point: it is a fact about the claim, so it must survive every
- * downstream outcome, including the one where the floor then refuses to render the
- * candidate at all. Reading it off a persisted row would make a spent cap silently read
- * as a run that finished its list the moment anything after the claim went wrong
- * (SAC-10).
- */
 export type CandidatePlan = {
   readonly capExhausted: boolean;
   readonly action: CandidateAction;
 };
 
-/**
- * Builds the `TenantContext` a lane's writes run as, from the lane row itself, never
- * from a payload, never from a caller-supplied id.
- *
- * The parse and the actor both live in `@growthmind/db/system`; this names which actor
- * and nothing else.
- */
 export function tenantContextFor(lane: AnalysisLane): TenantContext {
   return systemContextFor(SYSTEM_ACTOR.ANALYSIS_TICK, lane);
 }

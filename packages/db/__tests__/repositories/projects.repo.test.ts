@@ -1,12 +1,3 @@
-// Repository tests for `createProjectsRepo` (add tasks/tenancy-app-shell/add.md). The
-// factory takes a `TenantContext` at construction and accepts no organization id
-// anywhere in its method signatures. Every read is filtered and every mutation is keyed
-// on `(ctx.organizationId, id)`. These tests run against real SQL via PGlite
-// (`createTestDb`), never a fake, because a fake repository proves nothing about
-// SQL-level tenant scoping.
-//
-// Wave 0: `createProjectsRepo`'s method bodies are typed stubs that throw "not
-// implemented". Every test below must fail for that reason, never a compile error.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createProjectsRepo } from "../../src/repositories/projects.repo";
@@ -98,8 +89,6 @@ describe("createProjectsRepo", () => {
 
     expect(result).toBeNull();
 
-    // No silent success: re-read the row through org A's own repo and prove the name is
-    // genuinely untouched, not just that the caller got null.
     const reread = await repoA.findById(projectA.id);
     expect(reread?.name).toBe("Original name");
   });

@@ -1,66 +1,16 @@
 #!/usr/bin/env bun
-/**
- * PostHog API shape probe. The Wave 0 ordering gate.
- *
- * Prd Addendum A marks six PostHog API shapes assumed, and no dependent implementation
- * may start until each is pinned against the live API. This script pins them by
- * observation, never by documentation:
- *
- * Row 1 Pagination / cursor, `next` contract, limit, offset, ordering, page ceiling
- * Row 2 Time-window filter, `after` / `before` names, formats, boundary inclusivity
- * Row 3 Event `id`. Presence, stability across retrievals, uniqueness
- * Row 4 Event `timestamp`. Format, timezone, event-time vs ingestion-time
- * Row 5 `Retry-After` on 429. Presence and format (delta-seconds vs HTTP-date)
- * Row 6 Email-bearing person property reachability from the events list API
- * Sec-a User-agent property availability and name
- * Sec-b URL / path property used as the thin surface
- * Sec-c PostHog's own session identifier
- * Sec-d 401/403 body shape with a deliberately wrong key
- *
- * Method: the probe captures its own cohort of synthetic events into the configured
- * project (a deliberately backdated one, an identified one carrying `$set`, a
- * timestamp-ordered burst, and a bulk block for the page ceiling), waits for PostHog's
- * ingestion lag, then reads them back. It plants its own data because the answer to
- * several rows (most sharply row 4) is only observable when the event time and the
- * ingestion time are known to differ.
- *
- * Usage: bun scripts/spikes/posthog-shape-probe.ts [flags]
- *
- * Flags:
- * -bulk <n> bulk events captured for the page-ceiling probe (default 150)
- * -wait <ms> ingestion wait before reading back (default 60000)
- * -skip-429 skip the deliberate rate-limit burst (row 5)
- * -only-429 run only the rate-limit burst (no capture, no cohort)
- * -skip-capture read-only run against a previous cohort (needs --run-id)
- * -run-id <id> reuse a previous run's cohort id with --skip-capture
- *
- * Required env (repo-root `.env`; point them at a test project. This script writes
- * synthetic events): POSTHOG_HOST, POSTHOG_PROJECT_API_KEY, POSTHOG_PERSONAL_API_KEY,
- * POSTHOG_PROJECT_ID.
- *
- * Public repo: no real project id, key material, or account-identifying value may
- * appear in this file or in its output. Every printed byte goes through
- * `lib/redact.ts`; event samples additionally drop geo/internal noise keys.
- *
- * Exit codes: 0 = probe completed (individual rows report pinned or failed-to-pin on
- * their own line); 1 = credential gate failed or the cohort never became retrievable,
- * so nothing could be pinned.
- */
 
 import { formatCredentialError, validateCredentials, type Credentials } from "./lib/env";
 import { redactSecrets, stripNoiseProperties, type RedactionSecrets } from "./lib/redact";
 
-// Constants, every cross-boundary string, no raw literals at call sites
-
-/** Property every event this probe writes carries, so a run can find its own cohort. */
 const RUN_PROP = "gm_probe_run";
-/** Monotonic index within the ordering burst. */
+
 const SEQ_PROP = "gm_probe_seq";
-/** Discriminates the special-purpose events inside a cohort. */
+
 const KIND_PROP = "gm_probe_kind";
-/** Event-time the backdated event declared, echoed as a plain property. */
+
 const DECLARED_TS_PROP = "gm_probe_declared_ts";
-/** Wall-clock moment the backdated event was actually sent (the ingestion moment). */
+
 const INGEST_WALL_CLOCK_PROP = "gm_probe_ingest_wall_clock";
 
 const EVENT_NAMES = {
@@ -70,40 +20,31 @@ const EVENT_NAMES = {
   bulk: "gm_shape_probe_bulk",
 } as const;
 
-/** Synthetic person properties. `.invalid` is the reserved never-resolvable tld. */
 const PROBE_EMAIL_DOMAIN = "gm-probe.invalid";
-/** Synthetic surface host, likewise reserved. */
+
 const PROBE_HOST = "probe.example.invalid";
-/** A realistic desktop UA string. Planted, so sec-a pins reachability, not derivation. */
+
 const PROBE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 
-/** Ordering-burst size: enough to force three pages at the probe's page size. */
 const BURST_EVENTS = 12;
-/** Page size used to force multi-page pagination on a small cohort. */
+
 const PROBE_PAGE_SIZE = 5;
-/** How far back the backdated event's declared event-time sits. */
+
 const BACKDATE_MS = 3 * 60 * 60 * 1000;
 
 const DEFAULT_BULK_EVENTS = 150;
-/** Decision 0001 measured p90 ≈ 24 s to retrievable; wait comfortably past it. */
+
 const DEFAULT_INGESTION_WAIT_MS = 60_000;
-/** Politeness floor between read requests (decision 0001: 1000 ms drew 2,162 429s). */
+
 const POLITE_INTERVAL_MS = 1_200;
-/** Bound on the retrievability wait before the probe gives up entirely. */
+
 const RETRIEVABILITY_TIMEOUT_MS = 240_000;
 const RETRIEVABILITY_POLL_MS = 10_000;
 
-/**
- * Row 5 burst bounds. The one place politeness is deliberately suspended. A hard cap
- * per target, not a duration: the probe stops the instant it sees a 429, and can never
- * run away even if PostHog never throttles it.
- */
 const BURST_MAX_REQUESTS = 600;
 const BURST_CONCURRENCY = 30;
-
-// Flags
 
 interface Flags {
   readonly bulkEvents: number;
@@ -135,9 +76,6 @@ function parseFlags(argv: readonly string[]): Flags {
   };
 }
 
-// HTTP plumbing, URL builders re-implemented here (Addendum A: do not re-export the
-// harness's module-private helpers)
-
 function trimHost(host: string): string {
   return host.replace(/\/+$/, "");
 }
@@ -157,10 +95,6 @@ function readHeaders(personalApiKey: string): Record<string, string> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-// Typed views of the shapes under test. Deliberately permissive: the whole point is
-// that the real shape is unknown, so every field is `unknown` until a guard proves
-// otherwise.
 
 interface EventItem {
   readonly id?: unknown;
@@ -192,8 +126,6 @@ function propsOf(item: EventItem): Record<string, unknown> {
   return isRecord(item.properties) ? item.properties : {};
 }
 
-// Reporting, one pin line per row, plus indented evidence
-
 type PinStatus = "PINNED" | "FAILED-TO-PIN";
 
 const pins: { row: string; status: PinStatus; note: string }[] = [];
@@ -206,8 +138,6 @@ function pin(row: string, status: PinStatus, note: string): void {
   pins.push({ row, status, note });
   console.log(`\n>>> ${row}: ${status} — ${note}`);
 }
-
-// Probe context
 
 interface Probe {
   readonly creds: Credentials;
@@ -223,7 +153,6 @@ function log(probe: Probe, ...parts: unknown[]): void {
   console.log(parts.map((part) => clean(probe, str(part))).join(" "));
 }
 
-/** Prints an event sample as shape evidence: redacted, and geo/internal noise dropped. */
 function logSample(probe: Probe, label: string, item: EventItem, maxChars = 1600): void {
   const sample = {
     ...item,
@@ -240,7 +169,6 @@ interface ReadResult {
   readonly raw: string;
 }
 
-/** One polite read: fixed inter-request delay, never concurrent. */
 async function politeGet(probe: Probe, url: string): Promise<ReadResult> {
   const response = await fetch(url, { headers: readHeaders(probe.creds.personalApiKey) });
   const raw = await response.text();
@@ -259,7 +187,6 @@ async function politeGet(probe: Probe, url: string): Promise<ReadResult> {
   };
 }
 
-/** `?properties=` filter matching this run's cohort, plus any extra clauses. */
 function cohortQuery(probe: Probe, extra: readonly Record<string, unknown>[] = []): string {
   const clauses = [
     { key: RUN_PROP, value: probe.runId, operator: "exact", type: "event" },
@@ -267,8 +194,6 @@ function cohortQuery(probe: Probe, extra: readonly Record<string, unknown>[] = [
   ];
   return `properties=${encodeURIComponent(JSON.stringify(clauses))}`;
 }
-
-// Capture, the probe plants its own cohort
 
 interface CaptureEvent {
   readonly event: string;
@@ -291,8 +216,6 @@ function buildCohort(probe: Probe, nowMs: number, bulkEvents: number): CaptureEv
 
   const cohort: CaptureEvent[] = [];
 
-  // Ordering burst, one event per second of event time, so page boundaries and the
-  // ordering direction are unambiguous.
   for (let index = 0; index < BURST_EVENTS; index++) {
     cohort.push({
       event: EVENT_NAMES.burst,
@@ -307,8 +230,6 @@ function buildCohort(probe: Probe, nowMs: number, bulkEvents: number): CaptureEv
     });
   }
 
-  // Identified event, carries an email-bearing person property via `$set`, which is row
-  // 6's entire question.
   cohort.push({
     event: EVENT_NAMES.identified,
     distinct_id: `${runId}-person`,
@@ -324,8 +245,6 @@ function buildCohort(probe: Probe, nowMs: number, bulkEvents: number): CaptureEv
     timestamp: new Date(nowMs).toISOString(),
   });
 
-  // $identify, the shape posthog-js emits on login. Produces an identified person,
-  // which is the strongest case for a person join to populate.
   cohort.push({
     event: "$identify",
     distinct_id: `probe-${runId}@${PROBE_EMAIL_DOMAIN}`,
@@ -339,8 +258,6 @@ function buildCohort(probe: Probe, nowMs: number, bulkEvents: number): CaptureEv
     timestamp: new Date(nowMs).toISOString(),
   });
 
-  // Row 4's decisive event: declared event-time is hours before the wall-clock moment
-  // it is sent, so `timestamp` cannot be both.
   cohort.push({
     event: EVENT_NAMES.backdated,
     distinct_id: `${runId}-backdated`,
@@ -354,8 +271,6 @@ function buildCohort(probe: Probe, nowMs: number, bulkEvents: number): CaptureEv
     timestamp: new Date(nowMs - BACKDATE_MS).toISOString(),
   });
 
-  // Bulk block, only exists so the page-size ceiling is testable against a project with
-  // more events than any single page could hold.
   for (let index = 0; index < bulkEvents; index++) {
     cohort.push({
       event: EVENT_NAMES.bulk,
@@ -379,7 +294,6 @@ async function captureCohort(probe: Probe, cohort: readonly CaptureEvent[]): Pro
   return response.ok;
 }
 
-/** Polls until this run's cohort is retrievable, or the bound is reached. */
 async function waitForCohort(probe: Probe): Promise<boolean> {
   const deadline = Date.now() + RETRIEVABILITY_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -394,8 +308,6 @@ async function waitForCohort(probe: Probe): Promise<boolean> {
   }
   return false;
 }
-
-// Row 1, pagination, cursor, ordering, ceiling
 
 interface WalkResult {
   readonly items: readonly EventItem[];
@@ -441,9 +353,6 @@ async function walkPages(probe: Probe, firstUrl: string, maxPages: number): Prom
 async function probePagination(probe: Probe): Promise<readonly EventItem[]> {
   section("ROW 1 — Pagination / cursor / ordering / page-size ceiling");
 
-  // Walk the ordering burst only: BURST_EVENTS events at PROBE_PAGE_SIZE per page is a
-  // known, small number of pages, so "next is null on the last page" is an observation
-  // rather than a bound we stopped at.
   const burstOnly = cohortQuery(probe, [
     { key: KIND_PROP, value: "burst", operator: "exact", type: "event" },
   ]);
@@ -472,7 +381,6 @@ async function probePagination(probe: Probe): Promise<readonly EventItem[]> {
   log(probe, `  cursor param sets: ${JSON.stringify(cursorParams)}`);
   log(probe, `  final page's next was literal null: ${walk.lastNextWasNull}`);
 
-  // offset, the documented alternative to the cursor
   const offset0 = await politeGet(probe, `${eventsUrl(probe.creds)}?limit=3&offset=0&${burstOnly}`);
   const offset2 = await politeGet(probe, `${eventsUrl(probe.creds)}?limit=3&offset=2&${burstOnly}`);
   const t0 = itemsOf(offset0.envelope).map((item) => str(item.timestamp));
@@ -482,7 +390,6 @@ async function probePagination(probe: Probe): Promise<readonly EventItem[]> {
   log(probe, `  offset=2 → ${JSON.stringify(t2.map((t) => t.slice(11, 26)))}`);
   log(probe, `  offset skips N rows in the same ordering: ${offsetSkips}`);
 
-  // page-size ceiling
   const ceilings: string[] = [];
   for (const limit of [100, 200, 1000, 10_000]) {
     const result = await politeGet(probe, `${eventsUrl(probe.creds)}?limit=${limit}`);
@@ -509,7 +416,6 @@ async function probePagination(probe: Probe): Promise<readonly EventItem[]> {
   return walk.items;
 }
 
-/** One wide read of the whole cohort. The sample row 3 and row 6 reason over. */
 async function fetchCohortSample(probe: Probe): Promise<readonly EventItem[]> {
   const result = await politeGet(
     probe,
@@ -519,8 +425,6 @@ async function fetchCohortSample(probe: Probe): Promise<readonly EventItem[]> {
   log(probe, `\n  cohort sample: status ${result.status}, ${items.length} item(s)`);
   return items;
 }
-
-// Row 2, time-window filter params
 
 async function probeTimeWindow(probe: Probe, cohort: readonly EventItem[]): Promise<void> {
   section("ROW 2 — Time-window filter params (`after` / `before`)");
@@ -554,7 +458,6 @@ async function probeTimeWindow(probe: Probe, cohort: readonly EventItem[]): Prom
   log(probe, `  after= is ${afterInclusive ? "INCLUSIVE" : "EXCLUSIVE"} of the boundary instant`);
   log(probe, `  before= is ${beforeInclusive ? "INCLUSIVE" : "EXCLUSIVE"} of the boundary instant`);
 
-  // Accepted value formats
   const zForm = new Date(boundaryTs).toISOString();
   const afterZ = await window("after", zForm);
   const naive = boundaryTs.slice(0, 19);
@@ -562,7 +465,6 @@ async function probeTimeWindow(probe: Probe, cohort: readonly EventItem[]): Prom
   const offsetForm = zForm.replace("Z", "+00:00");
   const afterOffset = await window("after", offsetForm);
 
-  // Fail direction of a malformed value, the question
   const malformed = await politeGet(
     probe,
     `${eventsUrl(probe.creds)}?limit=5&${cohortQuery(probe)}&after=not-a-date`,
@@ -585,8 +487,6 @@ async function probeTimeWindow(probe: Probe, cohort: readonly EventItem[]): Prom
   );
 }
 
-// Row 3, event id
-
 async function probeEventId(probe: Probe, cohort: readonly EventItem[]): Promise<void> {
   section("ROW 3 — Event `id` (FR-6 idempotency key)");
 
@@ -605,7 +505,6 @@ async function probeEventId(probe: Probe, cohort: readonly EventItem[]): Promise
     /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id),
   );
 
-  // Addressability: the same id round-trips through the single-event endpoint.
   const sampleId = allIds[0];
   let addressable = false;
   if (sampleId !== undefined) {
@@ -633,9 +532,6 @@ async function probeEventId(probe: Probe, cohort: readonly EventItem[]): Promise
   }
 }
 
-// Row 4, event timestamp: event-time or ingestion-time?
-
-/** Milliseconds encoded in a UUIDv7's leading 48 bits, or undefined if not v7. */
 function uuidV7Millis(id: string): number | undefined {
   const hex = id.replace(/-/g, "");
   if (hex.length !== 32 || hex[12] !== "7") return undefined;
@@ -706,8 +602,6 @@ async function probeTimestamp(probe: Probe): Promise<void> {
   );
 }
 
-// Row 6, email-bearing person property reachability
-
 async function probePersonEmail(probe: Probe, cohort: readonly EventItem[]): Promise<void> {
   section("ROW 6 — Email-bearing person property reachability (HIGHEST CONSEQUENCE)");
 
@@ -755,11 +649,9 @@ async function probePersonEmail(probe: Probe, cohort: readonly EventItem[]): Pro
   log(probe, `  on the $identify event:      ${JSON.stringify(emailOn(identifyItem))}`);
   if (identifiedItem !== undefined) logSample(probe, "$set-bearing event", identifiedItem, 1200);
 
-  // Is an ordinary event (one that never carried $set) email-bearing?
   const ordinary = cohort.find((item) => str(item.event) === EVENT_NAMES.burst);
   log(probe, `  on an ORDINARY event:        ${JSON.stringify(emailOn(ordinary))}`);
 
-  // Fallback path 1: the persons list API, keyed on distinct_id.
   const personUrl =
     `${trimHost(probe.creds.host)}/api/projects/${probe.creds.projectId}/persons` +
     `?distinct_id=${encodeURIComponent(`${probe.runId}-person`)}`;
@@ -776,8 +668,6 @@ async function probePersonEmail(probe: Probe, cohort: readonly EventItem[]): Pro
     `  → person property keys: ${JSON.stringify(Object.keys(stripNoiseProperties(personProps) as object))}`,
   );
 
-  // Fallback path 2: HogQL, which can join persons (off the hot path per decision
-  // 0001).
   const hogql = await fetch(
     `${trimHost(probe.creds.host)}/api/projects/${probe.creds.projectId}/query`,
     {
@@ -820,8 +710,6 @@ async function probePersonEmail(probe: Probe, cohort: readonly EventItem[]): Pro
     );
   }
 }
-
-// Secondaries, UA, URL/path, session id
 
 async function probeSecondaryProperties(probe: Probe, cohort: readonly EventItem[]): Promise<void> {
   section("SECONDARY — user agent, URL/path, session id");
@@ -875,14 +763,10 @@ async function probeSecondaryProperties(probe: Probe, cohort: readonly EventItem
   );
 }
 
-// Sec-d, 401 / 403 with a deliberately wrong key
-
 async function probeAuthFailure(probe: Probe): Promise<void> {
   section("SECONDARY — 401 / 403 body shape (deliberately wrong key)");
 
   const cases: { label: string; token: string }[] = [
-    // Built rather than written literally: a key-shaped literal in a public repo trips
-    // secret scanners and trains people to expect one here.
     { label: "well-formed but invalid personal key", token: `phx_${"0".repeat(43)}` },
     { label: "no Bearer token at all", token: "" },
   ];
@@ -900,22 +784,11 @@ async function probeAuthFailure(probe: Probe): Promise<void> {
   pin("SEC-D Auth failure", "PINNED", "see the statuses and JSON bodies logged above");
 }
 
-// Row 5, Retry-After on 429. The one impolite probe. Isolated and bounded.
-
-/** A burst target: PostHog rate-limits its read endpoints in separate buckets. */
 interface BurstTarget {
   readonly label: string;
   readonly send: (probe: Probe) => Promise<Response>;
 }
 
-/**
- * Ordered by how cheaply each is expected to throttle. Decision 0001's 2,162 429s came
- * from a run that hammered both the events list API and the HogQL query API every tick;
- * PostHog buckets `/query` far more tightly than the analytics endpoints, so the query
- * endpoint is the reliable way to observe a 429's headers even though the adapter's hot
- * path is the events API. A 429 is emitted by one shared middleware, so its header
- * shape is the same either way.
- */
 const BURST_TARGETS: readonly BurstTarget[] = [
   {
     label: "events list API",
@@ -958,7 +831,7 @@ async function burstUntil429(probe: Probe, target: BurstTarget): Promise<Respons
       probe,
       `  ${target.label}: ${sent} requests sent, statuses seen this wave ${JSON.stringify(distinct)}`,
     );
-    // Drain the bodies we are not keeping, so sockets close.
+
     for (const response of responses) {
       if (response !== hit) await response.text();
     }
@@ -1008,8 +881,6 @@ async function probeRateLimit(probe: Probe): Promise<void> {
   );
   log(probe, `  rate-limit-ish headers present: ${JSON.stringify(rateLimitHeaders)}`);
 
-  // Is the throttle bucket shared across endpoints, or per-endpoint? The answer decides
-  // whether a 429 anywhere must pause the whole adapter.
   const collateral = await politeGet(probe, `${eventsUrl(probe.creds)}?limit=1`);
   log(
     probe,
@@ -1039,8 +910,6 @@ async function probeRateLimit(probe: Probe): Promise<void> {
   );
 }
 
-// Entrypoint
-
 async function main(): Promise<number> {
   const flags = parseFlags(Bun.argv.slice(2));
 
@@ -1065,8 +934,6 @@ async function main(): Promise<number> {
   log(probe, `  host region: ${new URL(creds.host).hostname.split(".")[0] ?? "unknown"}`);
   log(probe, `  WARNING: this writes synthetic events — point it at a TEST project only`);
 
-  // Row 5 in isolation: it neither reads nor needs a cohort, and re-running it alone
-  // avoids writing another 165 synthetic events to re-pin one row.
   if (flags.only429) {
     await probeRateLimit(probe);
     section("SUMMARY");

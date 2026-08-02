@@ -1,9 +1,3 @@
-// Fixture seeding for the `packages/db` service suites (Wave 0b, lane 4).
-//
-// Every name and email produced here carries the `db-svc-` prefix and a fresh UUID. The
-// previous sprint lost time to four suites failing on `user_email_unique` from reused
-// fixture emails (a red state that looked correct but was not) so a collision here is
-// treated as a defect in this file, never as a legitimate failure.
 import { randomUUID } from "node:crypto";
 
 import type { TenantContext } from "@growthmind/shared";
@@ -19,14 +13,8 @@ import {
   type SeededProject,
 } from "../helpers/fixtures";
 
-/** The lane's fixture seed prefix. Lane 3 owns `db-`; this lane owns `db-svc-`. */
 export const SEED_PREFIX = "db-svc-";
 
-/**
- * The org owner's email domain in these fixtures. An obviously-fake `.test` domain
- * (this repository is public) and deliberately not a free-mail domain, so
- * internal-domain inference has something to infer.
- */
 export const OWNER_EMAIL_DOMAIN = "acme-example.test";
 
 export function seedNames(label: string): {
@@ -51,7 +39,6 @@ export interface SeededWorkspace {
   project: SeededProject;
 }
 
-/** An org with an owner whose email domain is `OWNER_EMAIL_DOMAIN`, plus one project. */
 export async function seedWorkspace(db: TestDb, label: string): Promise<SeededWorkspace> {
   const names = seedNames(label);
   const org = await seedOrgWithOwner(db, {
@@ -72,11 +59,6 @@ export async function seedWorkspace(db: TestDb, label: string): Promise<SeededWo
   };
 }
 
-/**
- * An org whose only member is a plain `member`. There is NO owner row, so
- * `creatorEmail` has nothing to resolve. The F-2 fixture: a missing creator email
- * must make the service infer nothing rather than guess.
- */
 export async function seedWorkspaceWithoutOwner(
   db: TestDb,
   label: string,

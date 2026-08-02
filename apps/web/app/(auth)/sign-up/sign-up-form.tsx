@@ -16,10 +16,6 @@ import {
 } from "@/lib/auth-forms";
 import { ROUTES } from "@/lib/routes";
 
-// EVERY SENTENCE THIS FORM CAN SHOW LIVES IN `lib/auth-forms.ts`, WITH ITS TESTS.
-// This file renders what those functions return and decides nothing — no Zod
-// issue is read here, no Better Auth code is read here, and neither is ever
-// rendered. Copy is normative (UX spec, First-Run Checklist rows 3-5).
 const PENDING_LABEL = "Creating your workspace…";
 
 export function SignUpForm() {
@@ -33,8 +29,6 @@ export function SignUpForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isPending) {
-      // Belt: the button + fields are also disabled while pending, so this guards only
-      // a synthetic/programmatic re-submit (note, UX).
       return;
     }
 
@@ -47,8 +41,6 @@ export function SignUpForm() {
     setErrors(NO_SIGN_UP_ERRORS);
     setIsPending(true);
     try {
-      // The validator's own output — `name` arrives trimmed, and nothing here
-      // re-normalises it a second, slightly different way.
       const { error } = await signUp.email(validation.values);
 
       if (!error) {
@@ -58,8 +50,6 @@ export function SignUpForm() {
 
       setErrors(signUpSubmitErrors(error));
     } catch (error) {
-      // A rejected fetch has no code, so this lands on the same network sentence
-      // an unrecognised failure does — one mapping, one place, either way in.
       setErrors(signUpSubmitErrors(error));
     } finally {
       setIsPending(false);
@@ -87,7 +77,7 @@ export function SignUpForm() {
           value={name}
           onChange={(event) => {
             setName(event.currentTarget.value);
-            // The error describes a submission the user is now editing away from.
+
             setErrors((current) => clearField(current, "name"));
           }}
           error={errors.name}

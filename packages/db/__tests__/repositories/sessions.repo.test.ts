@@ -1,14 +1,3 @@
-// Wave 0b (red), lane L3, fixture seed prefix `db-`. Add
-// tasks/session-source-posthog-adapter/add.md items 73–74.
-//
-// The session upsert is the one place a retried worker task can corrupt data, so its
-// conflict resolution is the contract: `started_at` takes the earliest, `last_event_at`
-// the latest, the email domain is never erased once known, and `identity_resolution`
-// upgrades monotonically along `unresolved → absent → resolved`. "We could not
-// check this time" must never overwrite "we checked and found an email last time".
-//
-// `createSessionsRepo` is a typed-stub throw today, so every test fails on "not
-// implemented".
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import type { IdentityResolution, TenantContext } from "@growthmind/shared";
@@ -48,8 +37,6 @@ function makeUpsertRow(
   };
 }
 
-/** Seeds an org + project + connection and returns everything a session row needs to be
- * well-formed. */
 async function setUp(
   db: TestDb,
   label: string,
@@ -83,7 +70,6 @@ describe("sessions repository", () => {
     await close();
   });
 
-  // -- item 73
   it("keeps one row and widens the window when the same session is upserted repeatedly", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "idempotent");
     const repo = createSessionsRepo(db, ctx);
@@ -103,7 +89,6 @@ describe("sessions repository", () => {
     expect(listed.filter((session) => session.sessionKey === sessionKey)).toHaveLength(1);
   });
 
-  // -- item 73 (return shape)
   it("returns the persisted rows from an upsert so the caller can key events to them", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "returning");
     const repo = createSessionsRepo(db, ctx);
@@ -123,8 +108,6 @@ describe("sessions repository", () => {
       expect(row.projectId).toBe(projectId);
     }
 
-    // Re-applying the same batch must return the same row ids, or a retried worker task
-    // would orphan the events it keyed to the first run.
     const replayed = await repo.upsertMany([
       makeUpsertRow({ projectId, connectionId, sessionKey: "ph:db-se-returning-one" }),
       makeUpsertRow({ projectId, connectionId, sessionKey: "ph:db-se-returning-two" }),
@@ -134,7 +117,6 @@ describe("sessions repository", () => {
     );
   });
 
-  // -- item 74
   it("upgrades identity resolution along unresolved to absent to resolved", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "upgrade");
     const repo = createSessionsRepo(db, ctx);
@@ -155,7 +137,6 @@ describe("sessions repository", () => {
     expect(resolved?.identityEmailDomain).toBe("acme.example");
   });
 
-  // -- item 74 (no regression)
   it("never regresses identity resolution from resolved back to absent or unresolved", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "no-regress");
     const repo = createSessionsRepo(db, ctx);
@@ -166,9 +147,6 @@ describe("sessions repository", () => {
       makeUpsertRow(base, { identityResolution: "resolved", identityEmailDomain: "acme.example" }),
     ]);
 
-    // A later run whose identity budget was exhausted reports "unresolved". That is "we
-    // could not check", not "there is nothing". It must not erase what an earlier run
-    // established.
     for (const downgrade of ["unresolved", "absent"] satisfies IdentityResolution[]) {
       await repo.upsertMany([
         makeUpsertRow(base, { identityResolution: downgrade, identityEmailDomain: null }),
@@ -179,7 +157,6 @@ describe("sessions repository", () => {
     }
   });
 
-  // -- item 74 (absent is not overwritten by unresolved)
   it("keeps a completed absent lookup rather than downgrading it to unresolved", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "absent");
     const repo = createSessionsRepo(db, ctx);
@@ -189,12 +166,9 @@ describe("sessions repository", () => {
     await repo.upsertMany([makeUpsertRow(base, { identityResolution: "absent" })]);
     await repo.upsertMany([makeUpsertRow(base, { identityResolution: "unresolved" })]);
 
-    // `absent` is a fact (a completed lookup proving no email); `unresolved` is an
-    // admission of ignorance. The fact wins.
     expect((await repo.findByKey(projectId, sessionKey))?.identityResolution).toBe("absent");
   });
 
-  // -- item 74 (scoped read boundary)
   it("returns null from findByKey for a session key that belongs to another project", async () => {
     const { ctx, projectId, connectionId } = await setUp(db, "other-project");
     const otherProject = await seedProject(db, {

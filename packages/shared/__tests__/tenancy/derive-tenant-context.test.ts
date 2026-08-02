@@ -37,8 +37,6 @@ describe("deriveTenantContext", () => {
   });
 
   it("resolution input schema has no field that could carry a client-supplied organization id", () => {
-    // An attacker-controlled request body naming an org override at the top level. The
-    // exact shape the tenancy design says must be structurally impossible.
     const maliciousInput = {
       session: { userId: "user-1", activeOrganizationId: "org-1" },
       memberships: [
@@ -55,14 +53,10 @@ describe("deriveTenantContext", () => {
 
     const parsed = tenantResolutionInputSchema.parse(maliciousInput);
 
-    // The injected top-level fields must be stripped by the schema. Zod's default
-    // object behaviour, no `.passthrough` anywhere in the chain.
     expect(parsed).not.toHaveProperty("organizationId");
     expect(parsed).not.toHaveProperty("activeOrganizationId");
     expect(Object.keys(parsed).toSorted()).toEqual(["memberships", "session"]);
 
-    // Even fed the parsed (stripped) input, the resolved context must name the real
-    // membership's org, never the injected value.
     const context = deriveTenantContext(parsed);
     expect(context?.organizationId).toBe("org-1");
     expect(context?.organizationId).not.toBe("attacker-org");

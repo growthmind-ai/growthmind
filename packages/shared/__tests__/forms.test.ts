@@ -8,7 +8,6 @@ describe("workspaceNameSchema", () => {
     expect(workspaceNameSchema.safeParse("   ").success).toBe(false);
     expect(workspaceNameSchema.safeParse("\t \n").success).toBe(false);
 
-    // control: a real name survives trimming and parses
     expect(workspaceNameSchema.safeParse("  Ada's workspace  ").success).toBe(true);
   });
 });
@@ -17,16 +16,16 @@ describe("signUpSchema and signInSchema", () => {
   test("sign-up and sign-in schemas reject missing email, malformed email, and short passwords", () => {
     const validSignUp = { name: "Ada", email: "ada@example.com", password: "longenough" };
 
-    expect(signUpSchema.safeParse({ name: "Ada", password: "longenough" }).success).toBe(false); // missing email
-    expect(signUpSchema.safeParse({ ...validSignUp, email: "not-an-email" }).success).toBe(false); // malformed email
-    expect(signUpSchema.safeParse({ ...validSignUp, password: "short1" }).success).toBe(false); // short password (<8)
-    expect(signUpSchema.safeParse(validSignUp).success).toBe(true); // control: valid input parses
+    expect(signUpSchema.safeParse({ name: "Ada", password: "longenough" }).success).toBe(false);
+    expect(signUpSchema.safeParse({ ...validSignUp, email: "not-an-email" }).success).toBe(false);
+    expect(signUpSchema.safeParse({ ...validSignUp, password: "short1" }).success).toBe(false);
+    expect(signUpSchema.safeParse(validSignUp).success).toBe(true);
 
     const validSignIn = { email: "ada@example.com", password: "x" };
 
-    expect(signInSchema.safeParse({ password: "x" }).success).toBe(false); // missing email
-    expect(signInSchema.safeParse({ ...validSignIn, email: "not-an-email" }).success).toBe(false); // malformed email
-    expect(signInSchema.safeParse({ email: "ada@example.com", password: "" }).success).toBe(false); // short (<1) password
-    expect(signInSchema.safeParse(validSignIn).success).toBe(true); // control: valid input parses
+    expect(signInSchema.safeParse({ password: "x" }).success).toBe(false);
+    expect(signInSchema.safeParse({ ...validSignIn, email: "not-an-email" }).success).toBe(false);
+    expect(signInSchema.safeParse({ email: "ada@example.com", password: "" }).success).toBe(false);
+    expect(signInSchema.safeParse(validSignIn).success).toBe(true);
   });
 });

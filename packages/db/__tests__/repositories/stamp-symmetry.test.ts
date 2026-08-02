@@ -1,20 +1,3 @@
-// Wave 0b (red), lane L3, fixture seed prefix `db-`. Add
-// tasks/session-source-posthog-adapter/add.md items 75–78 —.
-//
-// The stamp/filter symmetry proof, and it must run through the worker's write path, not
-// a request path. The failure this exists to prevent is the quiet one: a scoped read
-// narrowed by a column the write path never stamps matches zero rows, so the screen
-// says "No sessions yet" instead of raising an error, and nothing anywhere reports a
-// problem.
-//
-// So each test below writes exactly as the scheduler will. ClaimDuePollableConnections
-// → systemTenantContextFor → the repositories / persistPullResult under that system
-// context, and then reads back through the same scoped read that will serve the
-// customer's screen, under a request context belonging to an org member. If the two
-// disagree on a stamp, the read comes back empty and the test fails.
-//
-// Every function on that path is a typed-stub throw today, so all four tests fail on
-// "not implemented".
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
@@ -34,9 +17,6 @@ import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../helpers/db-lane-fixtures";
 import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
 
-// --: the signature ledger's stamp/filter round trips New imports for the appended
-// describe block at the end of this file. Kept separate from the group above to
-// minimise the merge-collision surface on this file's existing import lines.
 import { createHash } from "node:crypto";
 
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
@@ -52,21 +32,14 @@ const DUE_AT = new Date("2026-07-30T11:59:00.000Z");
 const EVENT_AT = new Date("2026-07-30T11:58:00.000Z");
 
 interface WorkerScope {
-  /** The context a customer's request would run as. An ordinary org member. */
   requestCtx: TenantContext;
-  /** The context the scheduler derives from the claimed row itself. */
+
   systemCtx: TenantContext;
   connection: PollableConnection;
   projectId: string;
   connectionId: string;
 }
 
-/**
- * Seeds a due connection and runs the scheduler's first two steps for real: the atomic
- * claim, then the system context derived from the claimed row. No shortcut here, a
- * hand-built system context would let the write path pass a symmetry test the real
- * worker would fail.
- */
 async function claimAsWorker(db: TestDb, label: string): Promise<WorkerScope> {
   const org = await seedOrgWithOwner(db, {
     orgName: NAMES.orgName(label),
@@ -98,28 +71,10 @@ async function claimAsWorker(db: TestDb, label: string): Promise<WorkerScope> {
   };
 }
 
-/** The second event in every pull result below. The one with no `urlPath`. */
 function noPathSourceEventId(sourceEventId: string): string {
   return `${sourceEventId}-nopath`;
 }
 
-/**
- * edit, in the only form the port type permits.
- *
- * The add asked for `urlPathNormalisationVersion` on this event literal. It cannot go
- * here and it must not: `SourceEvent` (`packages/shared/src/ session-source/types.ts`)
- * carries no such field, because the version is stamped by `intake.service.ts` (the
- * write path) not carried across the adapter port. Putting it in the fixture would also
- * make the round-trip assertion below tautological: it would prove pass-through, not
- * the stamp.
- *
- * What the fixture does carry, and what makes the stamp assertion mean something, is a
- * second event with `urlPath: null`. The stamp is applied unconditionally, so that row
- * must come back carrying the version too. Otherwise `NULL` in the column would mean
- * two different things ("written before versions were recorded" and "had no path"), and
- * the remediation query `WHERE url_path_normalisation_version IS NULL` could no longer
- * tell a pre-versioning row from a post-versioning one.
- */
 function makePullResult(sessionKey: string, sourceEventId: string): SessionSourcePullResult {
   return {
     ok: true,
@@ -143,8 +98,7 @@ function makePullResult(sessionKey: string, sourceEventId: string): SessionSourc
         occurredAt: EVENT_AT,
         urlPath: "/pricing",
       },
-      // The unconditional-stamp case. A real pull carries plenty of these, `$identify`,
-      // `$exception` and anything else PostHog emits without a `$current_url`.
+
       {
         sourceEventId: noPathSourceEventId(sourceEventId),
         sessionKey,
@@ -175,7 +129,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     await close();
   });
 
-  // -- item 77
   it("returns a connection the worker updated from the request-scoped connection read", async () => {
     const scope = await claimAsWorker(db, "connection");
 
@@ -192,7 +145,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
       checkedAt: NOW,
     });
 
-    // The read a customer's screen performs, under their own context.
     const served = await createProjectConnectionsRepo(db, scope.requestCtx).getActiveForProject(
       scope.projectId,
     );
@@ -202,7 +154,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(served?.organizationId).toBe(scope.requestCtx.organizationId);
   });
 
-  // -- item 75
   it("returns a session the worker persisted from the request-scoped session read", async () => {
     const scope = await claimAsWorker(db, "session");
     const sessionKey = "ph:db-sym-session";
@@ -222,14 +173,12 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
 
     const byKey = await sessionsRepo.findByKey(scope.projectId, sessionKey);
     expect(byKey).not.toBeNull();
-    // The org stamp the worker wrote must be the one the request read filters on. This
-    // is the assertion the whole file exists for.
+
     expect(byKey?.organizationId).toBe(scope.requestCtx.organizationId);
     expect(byKey?.projectId).toBe(scope.projectId);
     expect(byKey?.connectionId).toBe(scope.connectionId);
   });
 
-  // -- item 76
   it("returns an event the worker persisted from the request-scoped event read", async () => {
     const scope = await claimAsWorker(db, "event");
     const sessionKey = "ph:db-sym-event";
@@ -252,17 +201,9 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(served?.organizationId).toBe(scope.requestCtx.organizationId);
     expect(served?.projectId).toBe(scope.projectId);
 
-    // edit This suite does not enumerate columns, so no gate would have caught the
-    // column going unstamped. The row would simply carry `NULL`, and `NULL` is a
-    // legitimate value meaning "written before versions were recorded". A silently
-    // unstamped write is therefore indistinguishable from a legacy row, which is
-    // exactly the unclassifiable-rows problem the column exists to prevent. Nothing but
-    // this line asserts it.
     expect(served?.urlPath).toBe("/pricing");
     expect(served?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
 
-    // And unconditionally, a row with no path still carries the version, so `NULL` in
-    // this column keeps meaning exactly one thing (PL ruling).
     const noPath = listed.find(
       (event) => event.sourceEventId === noPathSourceEventId(sourceEventId),
     );
@@ -270,7 +211,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(noPath?.urlPath).toBeNull();
     expect(noPath?.urlPathNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
 
-    // And through the per-session read the evidence view will use.
     const sessionRow = await createSessionsRepo(db, scope.requestCtx).findByKey(
       scope.projectId,
       sessionKey,
@@ -282,7 +222,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(forSession.map((event) => event.sourceEventId)).toContain(sourceEventId);
   });
 
-  // -- item 78
   it("returns a poll run the worker finished from the request-scoped poll-run read", async () => {
     const scope = await claimAsWorker(db, "poll-run");
 
@@ -321,30 +260,6 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
   });
 });
 
-// · stamp/filter symmetry, the signature ledger tables (`finding_signatures`,
-// `dismissals`, `signature_ancestry`).
-//
-// Add tasks/signature-ledger/add.md "Stamp/filter symmetry",. Three
-// new hand-written round trips (the fifth, sixth, and seventh in this file) appended
-// per the file's own header note that nothing here is automatic: each writes through
-// the write path under one context, then reads back through the same scoped read a real
-// consumer uses, under a request context belonging to an org member.
-//
-// Unlike the blocks above, there is no worker/system context split here. The writes are
-// member-triggered directly (a candidate is recorded, a dismissal is clicked), so one
-// org-member `TenantContext` plays both roles. The symmetry question is unchanged: did
-// the write path stamp every column the scoped read filters by?
-//
-// Every repository/service method body under test is a Wave 0B typed stub that throws
-// "not implemented". Every test below must fail for that reason today, never a compile
-// error.
-
-/**
- * Builds a syntactically valid `SignatureHex` for fixture purposes only. See the
- * identical helper's comment in `cross-tenant.test.ts`. `hex.ts`'s own constructors are
- * themselves Wave 0B stubs, so nothing here can mint a real digest yet; this file does
- * not test `sha256Hex` itself.
- */
 function fakeSignature(label: string): SignatureHex {
   return createHash("sha256").update(label).digest("hex") as unknown as SignatureHex;
 }
@@ -361,7 +276,6 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
     await close();
   });
 
-  // -- T-SS-1 (block 5)
   it("returns a ledger row the record path wrote from the request-scoped consult read", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("sig-ledger"),
@@ -374,7 +288,6 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
     });
     const signature = fakeSignature("sig-ledger-symmetry");
 
-    // The write path (the atomic upsert).
     await createFindingSignaturesRepo(db, org.ctx).upsertSeen({
       projectId: project.id,
       signature,
@@ -386,23 +299,18 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
       seenAt: new Date("2026-07-30T12:00:00.000Z"),
     });
 
-    // The same scoped read `consultSignature` uses, under a request context belonging
-    // to an org member, never a direct row read.
     const served = await createFindingSignaturesRepo(db, org.ctx).findBySignature(
       project.id,
       signature,
     );
 
     expect(served).not.toBeNull();
-    // Every column the scoped read filters by (organization_id, project_id, signature.
-    // The row 1) must have been stamped by the write path, or this comes back null and
-    // reads as "no data" rather than an error.
+
     expect(served?.organizationId).toBe(org.organizationId);
     expect(served?.projectId).toBe(project.id);
     expect(served?.signature).toBe(signature);
   });
 
-  // -- T-SS-2 (block 6)
   it("returns a dismissal the write path stamped from the request-scoped suppression read", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("sig-dismissal"),
@@ -416,7 +324,6 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
     const signature = fakeSignature("sig-dismissal-symmetry");
     const findingId = "db-sym-sig-dismissal-finding-0001";
 
-    // The write path, `recordDismissal`'s transaction.
     await createSignatureLedgerService(db, org.ctx).recordDismissal({
       projectId: project.id,
       findingId,
@@ -425,14 +332,10 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
       dismissedByUserId: org.userId,
     });
 
-    // The same scoped read `consultSignature`'s suppression check uses.
     const served = await createDismissalsRepo(db, org.ctx).findFor(findingId, "not_useful");
 
     expect(served).not.toBeNull();
-    // the row 2: organization_id, finding_id, and action are filtered on; project_id
-    // and signature are stamped but declared exempt from the filter (kept for future
-    // per-project reads / the later FK). All five must still be stamped by the write
-    // path.
+
     expect(served?.organizationId).toBe(org.organizationId);
     expect(served?.projectId).toBe(project.id);
     expect(served?.findingId).toBe(findingId);
@@ -440,7 +343,6 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
     expect(served?.action).toBe("not_useful");
   });
 
-  // -- T-SS-3 / T-DB-8 (block 7. The declared exemption)
   it("resolves through an ancestry row the record path wrote, and asserts project_id was stamped despite never being filtered", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("sig-ancestry"),
@@ -454,7 +356,6 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
     const oldSignature = fakeSignature("sig-ancestry-old");
     const newSignature = fakeSignature("sig-ancestry-new");
 
-    // The write path, `recordAncestry`'s transaction.
     await createSignatureLedgerService(db, org.ctx).recordAncestry({
       projectId: project.id,
       oldSignature,
@@ -462,16 +363,10 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
       reason: "surface_rename",
     });
 
-    // The same scoped read the forward walk uses. Filtered by (organization_id,
-    // old_signature) only, never project_id (the declared exemption: project_id is
-    // already inside the hash, so one old_signature cannot legitimately span two
-    // projects).
     const edge = await createSignatureAncestryRepo(db, org.ctx).forwardEdge(oldSignature);
     expect(edge).not.toBeNull();
     expect(edge?.newSignature).toBe(newSignature);
 
-    // The exemption's regression test: project_id was stamped by the write path even
-    // though the read above never named it as a filter.
     expect(edge?.projectId).toBe(project.id);
 
     const resolved = await createSignatureAncestryRepo(db, org.ctx).resolve(oldSignature);

@@ -1,7 +1,3 @@
-// / (add tasks/tenancy-app-shell/add.md, decision): session creation must stamp
-// `activeOrganizationId` from persisted membership, never from transient session state,
-// and that derivation must survive a full sign-out/sign-in cycle so a returning user
-// lands in the identical workspace with zero re-setup (First-Run rows 8/10).
 import { randomUUID } from "node:crypto";
 
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
@@ -20,17 +16,6 @@ const PASSWORD = "correct-horse-battery";
 const TEST_SECRET = "test-only-secret-at-least-32-characters-long";
 const TEST_BASE_URL = "http://localhost:3000";
 
-/**
- * These tests drive the real production auth wiring (`apps/web/lib/auth.ts`) through
- * its `{ db, secret, baseURL }` test seam rather than a hand-rebuilt replica of its
- * hooks. That distinction is load bearing: an earlier revision of this file simulated
- * `session.create.before` locally and, because the replica lacked production's inline
- * self-heal, asserted against weaker behaviour than the app actually ships. Better Auth
- * defers `user.create.after` (its own `queueAfterTransactionHook`) until the whole
- * `signUpEmail` call (including that first session's creation) resolves, so only the
- * real hook's inline `ensureOrganization` gets the first session stamped. Testing the
- * seam means these assertions cover what production does.
- */
 function createAuthUnderTest(db: TestDbHandle["db"]) {
   return buildAuth({ db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
 }
@@ -58,10 +43,6 @@ describe("session creation stamps activeOrganizationId from persisted membership
     const memberships = await readMembershipsForUser(handle.db, user.id);
     expect(memberships).toHaveLength(1);
 
-    // The value must be the persisted membership's org id, and it must actually land on
-    // the session row read back from disk, not merely returned in-memory by the hook
-    // (auth-hooks.spike.test.ts already pins that the `{ data }` wrapping is required
-    // for this to persist at all).
     expect(sessions[0]?.activeOrganizationId).toBe(memberships[0]?.organizationId);
   });
 });
@@ -93,13 +74,6 @@ describe("sign-in after sign-out resolves the identical tenant context", () => {
       organizationId: organizationId as string,
     });
 
-    // A real sign-out over HTTP needs a signed session cookie this fixture deliberately
-    // does not construct (see `SignedUpTestUser`'s doc comment in auth-fixture.ts). The
-    // contract under test. "session state is a hint; persisted membership is the
-    // truth". Is equally proven by a fresh sign-in minting an independent second
-    // session and re-resolving the identical org from the same persisted membership,
-    // with no dependency on the first session still existing (which is exactly what
-    // "zero re-setup after sign-out" means at the data layer).
     await auth.api.signInEmail({ body: { email, password: PASSWORD } });
 
     const allSessions = await readSessionsForUser(handle.db, user.id);
@@ -116,8 +90,6 @@ describe("sign-in after sign-out resolves the identical tenant context", () => {
       organizationId: latestSession?.activeOrganizationId as string,
     });
 
-    // Identical workspace, identical resolved identity, not just "some" organization
-    // matching by id.
     expect(secondContext).toEqual(firstContext);
   });
 });

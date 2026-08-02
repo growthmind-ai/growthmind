@@ -1,30 +1,3 @@
-// The four mechanical scanners, each proven non-vacuous by a planted offender before it
-// is allowed to claim zero.
-//
-// Why every "zero offenders" claim is preceded by a planted one. A scanner that finds
-// nothing is indistinguishable from a scanner that cannot find anything. A typo in a
-// regex, a denylist read from the wrong table, a loop over an empty array all report
-// "clean" just as loudly as a genuinely clean render. So each scanner is first shown an
-// offender it must report, and only then asked about real output. This is the pattern
-// and it is not optional here: these guards are the only thing standing between the
-// vocabulary and a false claim in front of a founder.
-//
-// Scope, stated so the green is not over-read. These scanners run over the floor
-// renderer's output, which is composed entirely of fixed templates. They are written to
-// be reusable against model-authored text next sprint, and that is the point of
-// building them now, but nothing here has yet been run over a single sentence a model
-// wrote, because no model call exists in this repository.
-//
-// House rules honoured here:
-// Every scanner and helper is declared at module scope, never inside a
-//  `test` callback (`unicorn/consistent-function-scoping`). A green
-//  `bun test` is not a green build — this rule failed a build two sprints
-//  running.
-// No node builtin. Source is read with `Bun.file` and enumerated with
-//  `Bun.Glob`, so this suite does not become the offender it polices.
-// No scanner is barrel-exported: each would then owe a mirror file and
-//  would be a production surface with no production caller.
-// Lane prefix `t1gd`, shared with no other suite.
 import type { ConnectionState } from "@growthmind/shared";
 import {
   FLOOR_CONFIDENCE_TEMPLATES,
@@ -57,8 +30,6 @@ import { FLOOR_TOKENS, placeholdersIn } from "../../src/summary/substitute";
 import type { FloorSummary } from "../../src/summary/types";
 
 const SUMMARY_SRC_DIR = `${import.meta.dir}/../../src/summary`;
-
-// Fixtures, frozen time, `t1gd`-prefixed vocabulary, real detector output
 
 const FIXTURE_WINDOW: AnalysisWindow = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -257,8 +228,6 @@ function errorCandidate(ruleSet: ThresholdRuleSet): CandidateFinding {
   );
 }
 
-/** Every summary this sprint can actually produce, so a "no offenders" claim covers the
- * reachable output rather than one convenient case. */
 function everyRenderableSummary(): readonly {
   candidate: CandidateFinding;
   summary: FloorSummary;
@@ -274,16 +243,10 @@ function elementsOf(summary: FloorSummary): readonly string[] {
   return [summary.headline, ...summary.context];
 }
 
-// The four scanners. Pure, module scope, returning offenders, never booleans: a boolean
-// tells you something is wrong and not what, and a guard that cannot name its offender
-// is a guard nobody can act on.
-
-/** Every digit run in `text` that is not in `allowed`. */
 function bareDigitOffenders(text: string, allowed: ReadonlySet<string>): readonly string[] {
   return (text.match(/\d+/g) ?? []).filter((run) => !allowed.has(run));
 }
 
-/** Every sentence carrying a numerator without the denominator that scopes it. */
 function denominatorlessOffenders(
   sentences: readonly string[],
   counts: readonly { numerator: number; denominator: number }[],
@@ -300,22 +263,10 @@ function denominatorlessOffenders(
   return offenders;
 }
 
-/** Words that describe repeated visiting. The struggling cohort. */
 const STRUGGLE_TOKENS = ["coming back", "over and over", "repeatedly", "again", "revisit"] as const;
-/** Words that describe leaving. The dropped cohort. */
+
 const DROP_TOKENS = ["left", "dropped", "without going anywhere", "gave up"] as const;
 
-/**
- * Every sentence carrying both a struggle token and a drop token (SAC-11).
- *
- * Judged per sentence, which is why `FloorSummary` is pre-split. A summary may
- * legitimately contain a struggle sentence and a drop sentence. That is the permitted
- * composition stated at `messages.ts:45-52`. What it may never do is put both in one
- * sentence, where a reader parses them as one cohort.
- *
- * Deliberately stronger than the rule needs: it fires on any sentence carrying both
- * vocabularies, whatever its counts. Fails in the safe direction.
- */
 function cohortConflationOffenders(sentences: readonly string[]): readonly string[] {
   return sentences.filter((sentence) => {
     const lower = sentence.toLowerCase();
@@ -326,9 +277,6 @@ function cohortConflationOffenders(sentences: readonly string[]): readonly strin
   });
 }
 
-/** Every machine identifier that must never reach a reader (SAC-8). Built from the real
- * tables, never hand-listed. A fifth class or a renamed predicate joins the denylist
- * without anybody remembering to edit it. */
 const MACHINE_IDENTIFIERS: readonly string[] = [
   ...findingClassSchema.options,
   ...confidenceBasisSchema.options,
@@ -342,12 +290,11 @@ function machineIdentifierOffenders(text: string): readonly string[] {
   const found = MACHINE_IDENTIFIERS.filter((identifier) =>
     lower.includes(identifier.toLowerCase()),
   );
-  // A version-looking token is an identifier too, `v1`, `1.0`, `2.1.3`.
+
   const versions = text.match(/\bv\d+\b|\b\d+\.\d+(?:\.\d+)?\b/g) ?? [];
   return [...found, ...versions];
 }
 
-/** Connectives that assert one claim caused another (SAC-7). */
 const CAUSAL_CONNECTIVES = [
   "because",
   "caused",
@@ -364,33 +311,8 @@ function causalConnectiveOffenders(sentences: readonly string[]): readonly strin
   });
 }
 
-/** An ordinary English word. Letters, optionally hyphenated or apostrophed, optionally
- * closing a clause. Deliberately excludes anything carrying an underscore, a slash or a
- * digit: a reason code, a path and a version are not words, and treating them as words
- * is how this scan would flag every diagnostic in the package. */
 const ORDINARY_WORD = /^[A-Za-z][A-Za-z'-]*[.,;:!?]?$/;
 
-/**
- * A quoted literal that reads as a customer-facing sentence. I.e. prose somebody
- * authored here instead of in the audited vocabulary.
- *
- * Three things are removed before scanning, and each is a stated rule rather than a
- * convenience:
- *
- * Comments. Every module in this directory documents itself in prose, and
- *  prose in a comment is never rendered.
- * `throw new Error` spans. An error message is a diagnostic read by an
- *  engineer in a log, not a sentence read by a customer. `count-roles.ts`
- *  legitimately throws "its declared roles are not distinct" — five ordinary
- *  words that must not be confused with vocabulary.
- * Multi-line matches. A literal is matched only within one line. Without
- *  this the pattern runs from one template literal's closing backtick to the
- *  next literal's opening one and reports the intervening code as prose —
- *  which is exactly what the first run of this scan did.
- *
- * What survives is a single-line, non-interpolated literal of four or more ordinary
- * words. That is a sentence, and no module here may declare one.
- */
 function sentenceLiteralOffenders(source: string): readonly string[] {
   const stripped = source
     .replaceAll(/\/\*[\s\S]*?\*\//g, "")
@@ -407,7 +329,6 @@ function sentenceLiteralOffenders(source: string): readonly string[] {
   });
 }
 
-/** Symbols the renderer must not import. It renders judgements, it does not make them. */
 const FORBIDDEN_RENDERER_IMPORTS = ["gate", "predicates", "thresholds", "evidence-shape"] as const;
 
 function forbiddenImportOffenders(source: string): readonly string[] {
@@ -431,9 +352,6 @@ function readSummaryModule(relativePath: string): Promise<string> {
   return Bun.file(`${SUMMARY_SRC_DIR}/${relativePath}`).text();
 }
 
-/** Every fixed string the floor owns. Deliberately excludes `SUMMARY_SOURCE_MESSAGES`,
- * which shipped in a prior sprint and is not a floor template. Scoping the pronoun rule
- * to what this sprint authored. */
 const FLOOR_TEMPLATES: readonly string[] = [
   ...Object.values(FLOOR_OBSERVATION_TEMPLATES),
   ...Object.values(FLOOR_COUNT_TEMPLATES),
@@ -443,8 +361,6 @@ const FLOOR_TEMPLATES: readonly string[] = [
 ];
 
 describe("floor summary guards", () => {
-  // The numbers scanner
-
   test("the numbers scanner reports a planted bare digit", () => {
     const planted = "42 of 100 sessions reached /pricing, a 58% improvement.";
     const allowed = new Set(["42", "100"]);
@@ -457,15 +373,12 @@ describe("floor summary guards", () => {
     const counts = [{ numerator: 20, denominator: 30 }];
 
     expect(denominatorlessOffenders(planted, counts)).toEqual(planted);
-    // The control: the same count with its denominator is not an offender.
+
     expect(denominatorlessOffenders(["20 of 30 sessions dropped off."], counts)).toHaveLength(0);
   });
 
   test("no rendered output contains a number that did not arrive by substitution from a MeasuredCount", () => {
     for (const { candidate, summary } of everyRenderableSummary()) {
-      // The allow-list is derived from the candidate, never from the rendered string.
-      // Deriving it from the output would make any invented number allowed by
-      // construction.
       const allowed = new Set<string>();
       for (const count of candidate.counts) {
         allowed.add(String(count.numerator));
@@ -473,8 +386,6 @@ describe("floor summary guards", () => {
       }
       expect(allowed.size).toBeGreaterThan(0);
 
-      // Surface and window are masked first. Both carry digits the candidate supplied,
-      // and neither is an invented statistic.
       const masked = elementsOf(summary)
         .join(" ")
         .replaceAll(candidate.surface, "<surface>")
@@ -486,9 +397,6 @@ describe("floor summary guards", () => {
   });
 
   test("the numbers scanner still reports an offender when the masked window and surface are removed", () => {
-    // Proves the masking above is load-bearing rather than a blanket that swallows
-    // every digit: with nothing masked, the surface's own digit shows up as an
-    // offender.
     const { candidate, summary } = everyRenderableSummary()[0]!;
     const allowed = new Set<string>();
     for (const count of candidate.counts) {
@@ -499,8 +407,6 @@ describe("floor summary guards", () => {
     const unmasked = elementsOf(summary).join(" ");
     expect(bareDigitOffenders(unmasked, allowed).length).toBeGreaterThan(0);
   });
-
-  // The cohort-conflation scanner (SAC-11)
 
   test("the cohort-conflation scanner reports a planted sentence joining a struggle clause to a drop clause", () => {
     const planted = "People kept coming back to /pricing and then left without going anywhere.";
@@ -522,9 +428,6 @@ describe("floor summary guards", () => {
     const sampleSize = source.counts[0];
     if (!sampleSize) throw new Error("a detector candidate must carry at least one count");
 
-    // The structural leg: even when a struggle signal is handed to the schema, it does
-    // not survive onto the value the renderer receives. Conflation by substitution is
-    // impossible by construction, not by discipline.
     const parsed = candidateFindingSchema.parse({
       detector: source.detector,
       claimedClass: source.claimedClass,
@@ -554,16 +457,12 @@ describe("floor summary guards", () => {
   });
 
   test("no floor template contains a third-person plural pronoun", () => {
-    // A pronoun is how one sentence borrows the previous sentence's subject, which is
-    // exactly the SAC-11 conflation one step upstream.
     expect(FLOOR_TEMPLATES.length).toBeGreaterThan(0);
 
     for (const template of FLOOR_TEMPLATES) {
       expect(template.toLowerCase()).not.toMatch(/\b(?:they|them|their|theirs|themselves)\b/);
     }
   });
-
-  // The machine-identifier scanner (SAC-8)
 
   test("the machine-identifier scanner reports a planted class name", () => {
     const planted = "This finding was classified as changed_mind at threshold_met in v2.";
@@ -575,16 +474,12 @@ describe("floor summary guards", () => {
   });
 
   test("no rendered output contains a machine identifier", () => {
-    // Asserted non-empty first: a denylist built from an empty table would report zero
-    // offenders against anything.
     expect(MACHINE_IDENTIFIERS.length).toBeGreaterThan(0);
 
     for (const { summary } of everyRenderableSummary()) {
       expect(machineIdentifierOffenders(elementsOf(summary).join(" "))).toHaveLength(0);
     }
   });
-
-  // The causal-connective scanner (SAC-7)
 
   test("the causal-connective scanner reports a planted because clause", () => {
     const planted = "People left the page because the save did not work.";
@@ -600,11 +495,9 @@ describe("floor summary guards", () => {
     }
   });
 
-  // Source scans
-
   test("no module under summary declares a customer-facing sentence literal", async () => {
     const planted = 'const message = "People are coming back to this page over and over";';
-    // Non-vacuity first: the scan bites on a planted offender.
+
     expect(sentenceLiteralOffenders(planted).length).toBeGreaterThan(0);
 
     const modules = await listSummaryModules();
@@ -612,8 +505,7 @@ describe("floor summary guards", () => {
 
     for (const relativePath of modules) {
       const source = await readSummaryModule(relativePath);
-      // Reported as {file, offenders} rather than a bare length: a guard that cannot
-      // name its offender is a guard nobody can act on.
+
       expect({ file: relativePath, offenders: sentenceLiteralOffenders(source) }).toEqual({
         file: relativePath,
         offenders: [],
@@ -645,8 +537,6 @@ describe("floor summary guards", () => {
       expect(withoutComments).not.toContain(".replace(");
     }
   });
-
-  // Placeholder vocabulary
 
   test("every placeholder token in every floor template is a declared FloorToken", () => {
     const declared = new Set<string>(FLOOR_TOKENS);

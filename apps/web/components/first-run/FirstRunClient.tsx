@@ -1,41 +1,5 @@
 "use client";
 
-// THE GLUE MOMENT'S ISLAND (O-008, AD-5, AD-18, FR-O19, storyboard T6-T13).
-//
-// ###########################################################################
-// # THE FOLD IS DRIVEN BY A PERSISTED STAMP, NEVER BY A CLIENT FLAG.
-// #
-// # Phase B begins when `armedAt` exists on the row, full stop. There is no
-// # "I pressed the button" boolean anywhere in this file, and its absence is
-// # the guarantee: a reader who reloads mid-setup, opens a second tab, or comes
-// # back tomorrow lands on the state the database describes rather than on the
-// # state some client happened to remember. The same rule is what makes a
-// # finding that landed while the tab was closed render on first paint.
-// #
-// # ONE PRESS DOES TWO THINGS (T6 AND T8 TOGETHER). "Start watching" folds
-// # phase A away AND starts the clock, because a second press to begin the
-// # wait buys nothing and costs the click budget its last spare action.
-// ###########################################################################
-//
-// ── THE CLOCK, AND WHY IT LOOKS THE WAY IT DOES ─────────────────────────────
-//
-// Elapsed is `now − armedAt`, RECOMPUTED on every tick from the persisted
-// origin — never an incremented counter. A backgrounded tab, a dropped frame
-// and a hard reload therefore all come back with the right number, which is
-// exactly what a reader who left to go and break their own product needs.
-//
-// `Date.now()` appears only inside timer callbacks. A component body that
-// called it would return a different tree on renders nobody asked for, and
-// React 19.2 asks for plenty. The initial value is seeded from PERSISTED
-// stamps alone, so the server and the browser agree on the first paint and
-// nothing flashes a restarted wait at somebody who reloaded thirty seconds in.
-//
-// ── WHAT THIS FILE DOES NOT DO ──────────────────────────────────────────────
-//
-// It does not derive what the stage is showing: `reduceStage` owns that branch
-// order, and it is called here for one question only — has the wait finished,
-// so the interval can stop. It authors no sentence; every string comes from the
-// shipped tables. And it renders no list of anything.
 import { Box, Button, Collapse, Group, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -63,29 +27,10 @@ import { Stage } from "./Stage";
 import { StepRow } from "./StepRow";
 import { Strip } from "./Strip";
 
-/**
- * A stamp, whichever side of the wire it arrived from.
- *
- * The server component hands these down as real dates; every poll after that
- * hands them down as ISO strings, because JSON has no date. The reducer
- * measures from them, so one shape has to win at the boundary — and coercing
- * here is the difference between an elapsed readout and a crash on the payoff
- * screen (D5).
- */
 function toStamp(at: Date | null): Date | null {
   return at === null ? null : new Date(at);
 }
 
-/**
- * The clock's seed, read from persisted stamps and nothing else.
- *
- * It must be SSR-safe — a wall-clock reading in a state initialiser renders one
- * number on the server and a different one in the browser, which is a hydration
- * mismatch on the first paint of the screen this outcome exists for. The newest
- * moment we can PROVE had already passed is the honest floor: it never
- * overstates the wait, it is identical on both sides, and the first tick
- * replaces it a moment later.
- */
 function seedClock(status: FirstRunStatusPayload): number {
   const stamps = [status.armedAt, status.retrievedAt, status.readingAt, status.endedAt];
 
@@ -95,14 +40,6 @@ function seedClock(status: FirstRunStatusPayload): number {
   }, 0);
 }
 
-/**
- * The status a route answered with, or `null` if it answered something else.
- *
- * A COERCION AT THE BOUNDARY, NOT A SECOND PARSE. The finding inside is passed
- * through untouched: the status service already validated it against the
- * rendered shape and degraded a row it could not read, and a second opinion
- * here would be a second place for the two to disagree about the same row.
- */
 function readStatus(body: unknown): FirstRunStatusPayload | null {
   if (typeof body !== "object" || body === null) {
     return null;
@@ -114,7 +51,6 @@ function readStatus(body: unknown): FirstRunStatusPayload | null {
   return typeof counter === "object" && counter !== null ? (body as FirstRunStatusPayload) : null;
 }
 
-/** The poll. A dropped connection resolves to `null` and never throws. */
 async function pollStatus(): Promise<FirstRunStatusPayload | null> {
   try {
     const response = await fetch(FIRST_RUN_API.status);
@@ -125,9 +61,8 @@ async function pollStatus(): Promise<FirstRunStatusPayload | null> {
 }
 
 interface FirstRunClientProps {
-  /** The server's reconciled answer. The authority until a poll lands. */
   readonly status: FirstRunStatusPayload;
-  /** Phase A — the five rows, server-rendered and handed in whole. */
+
   readonly children: ReactNode;
 }
 
@@ -163,16 +98,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
     connectionState.status === "not_connected" ? null : connectionState.status,
   );
 
-  // THE CHAIN'S INPUT, AND EVERY MEMBER IS A PERSISTED ROW OR STAMP. There is
-  // no "which step am I on" state in this component, and its absence is the
-  // same guarantee the arming stamp already buys: a second tab, a reload and a
-  // return tomorrow all land on the sentence the database describes.
-  //
-  // `workspaceAttached` and `deliveryResolved` are read off the SAME facts
-  // today because attaching a workspace and choosing a channel are one act on
-  // the pasted-token path. The chain distinguishes them so the OAuth path,
-  // where they are genuinely two acts with a window between them, has a
-  // sentence for that window rather than nothing.
   const setupFacts: SetupFacts = {
     analyticsAttached: attached,
     workspaceAttached: current.channelId !== null,
@@ -185,17 +110,11 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const busy = useRef(false);
 
   useEffect(() => {
-    // The wait is over, or was never started. A ticking interval past a
-    // terminal state is not merely a leak — it keeps re-rendering the payoff
-    // underneath somebody who has stayed on the screen to read it.
     if (!armed || terminal) {
       clearInterval(handle.current);
       return undefined;
     }
 
-    // ONE interval carrying both jobs, so the readout and the facts beside it
-    // can never drift apart. The guard drops a tick rather than stacking a
-    // second request on a slow answer.
     handle.current = setInterval(() => {
       setNowMs(Date.now());
 
@@ -214,8 +133,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
       });
     }, 1000);
 
-    // The first tick is a whole second away. This closes the gap for somebody
-    // who reloaded mid-wait, without a wall-clock reading in the render path.
     const first = setTimeout(() => setNowMs(Date.now()), 0);
 
     return () => {
@@ -224,9 +141,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
     };
   }, [armed, terminal]);
 
-  // T6's overlap, and the whole reason it exists: a frame where neither the
-  // sequence nor the strip is on screen reads as a page load, and a page load
-  // here reads as the product crashing at its most important moment.
   useEffect(() => {
     if (!folding) {
       return undefined;
@@ -249,8 +163,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
       return;
     }
 
-    // The route stamped the origin before it answered, so the clock is already
-    // durable by the time the wait first paints.
     setFolding(!armed);
     setPolled(next);
   }
@@ -267,8 +179,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
       return;
     }
 
-    // The one action that retires the surface. After this the landing page
-    // renders no way back, and this route redirects away from itself.
     router.push(ROUTES.home);
   }
 
@@ -276,10 +186,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
     slackConnected: current.channelId !== null,
     slackSkipped: current.slackSkippedAt !== null,
-    // A failed test post is a client fact, and this island observed none.
+
     slackTestPostFailed: false,
     armedAt: facts.armedAt,
-    // UX row 25: every step at its resolved state, and no form re-opens.
+
     reopenedReadOnly: true,
   };
 
@@ -347,8 +257,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
                 return null;
               }
 
-              // Closed, every one of them. A re-opened sequence is a record
-              // of what was done, not an invitation to do it again.
               return (
                 <StepRow
                   key={descriptor.id}

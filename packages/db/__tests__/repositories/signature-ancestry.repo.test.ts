@@ -1,18 +1,3 @@
-// Wave 0C (red), signature-ledger, T-DB-9 through T-DB-15 (the boundary cases).
-//
-// The edge insert a caller would reach through `recordAncestry`
-// (`signature-ledger.service.ts`) is itself part of a transactional Wave 0B stub, so
-// every chain below is seeded with a direct insert against the real, already-applied
-// `signature_ancestry` migration. That is the "arrange" step, never the assertion (the
-// same discipline `db-lane-fixtures.ts` documents for its own lane's seeders). Every
-// assertion about resolution goes through `createSignatureAncestryRepo`'s public
-// `resolve`/`forwardEdge` methods, which are Wave 0B stubs that throw "not implemented"
-// unconditionally, so every resolution test below fails today for that reason, and
-// stays meaningful once Wave 4 fills the walk in.
-//
-// T-DB-9 (the empty-table case) is never cut: it is the mvp's actual production state
-// (Ruling 1. Nothing re-keys `surface_id` yet), and an untested empty mechanism will
-// not work the day a later outcome's surface-derivation swap needs it.
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -36,9 +21,6 @@ import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
 
-/** 64 lowercase hex chars, distinct per `n`. Not a real sha256 digest,
- * `resolve`'s contract under test here is about identity chains, not about
- * `sha256Hex`'s own provenance (see `hex.test.ts` for that). */
 function testSignature(n: number): SignatureHex {
   const byte = n.toString(16).padStart(2, "0");
   return byte.repeat(32) as unknown as SignatureHex;
@@ -66,9 +48,6 @@ async function seedScope(db: TestDb, label: string): Promise<Scope> {
   return { organizationId: org.organizationId, projectId: project.id, ctx: org.ctx };
 }
 
-/** Seeds a forward-edge chain `signatures[0] -> signatures[1] ->... ->
- * signatures[n-1]` directly against the real migration, `recordAncestry`'s own write
- * path is a transactional stub and cannot do this yet. */
 async function seedChain(
   db: TestDb,
   scope: Pick<Scope, "organizationId" | "projectId">,
@@ -87,9 +66,6 @@ async function seedChain(
   }
 }
 
-/** A complete `upsertSeen` input for the carry-forward fixtures below. The ledger half
- * of needs real ledger rows on both sides of an ancestry edge, and `upsertSeen` is
- * the only public way to make one. */
 function makeSeen(projectId: string, signature: SignatureHex, seenAt: Date): UpsertSeenInput {
   return {
     projectId,
@@ -103,8 +79,6 @@ function makeSeen(projectId: string, signature: SignatureHex, seenAt: Date): Ups
   };
 }
 
-/** Every ledger row in one org/project, so a carry-forward can be asserted to have
- * produced no extra rows and destroyed no existing one. */
 async function ledgerRowsFor(db: TestDb, scope: Scope) {
   return db
     .select()
@@ -129,7 +103,6 @@ describe("signature ancestry repository", () => {
     await close();
   });
 
-  // T-DB-9, never cut, the MVP-production state.
   it("resolves to the input signature against an EMPTY ancestry table", async () => {
     const scope = await seedScope(db, "empty");
     const repo = createSignatureAncestryRepo(db, scope.ctx);
@@ -162,7 +135,6 @@ describe("signature ancestry repository", () => {
     expect(resolution).toEqual({ resolution: "resolved", signature: chain[3], hops: 3 });
   });
 
-  // T-DB-11, the depth-cap boundary: exactly at the cap still resolves.
   it("resolves an 8-hop chain to the terminal signature (the depth-cap boundary)", async () => {
     const scope = await seedScope(db, "eight-hop");
     const chain = Array.from({ length: ANCESTRY_RESOLUTION_MAX_HOPS + 1 }, (_, i) =>
@@ -180,7 +152,6 @@ describe("signature ancestry repository", () => {
     });
   });
 
-  // T-DB-12, one hop past the cap must degrade cleanly, never hang.
   it("returns unresolvable with cause depth_cap for a 9-hop chain", async () => {
     const scope = await seedScope(db, "nine-hop");
     const chain = Array.from({ length: ANCESTRY_RESOLUTION_MAX_HOPS + 2 }, (_, i) =>
@@ -194,7 +165,6 @@ describe("signature ancestry repository", () => {
     expect(resolution).toEqual({ resolution: "unresolvable", cause: "depth_cap" });
   });
 
-  // T-DB-13, a self-edge is the smallest possible cycle.
   it("returns unresolvable with cause cycle for a self-edge", async () => {
     const scope = await seedScope(db, "self-edge");
     const signature = testSignature(70);
@@ -214,7 +184,6 @@ describe("signature ancestry repository", () => {
     expect(resolution).toEqual({ resolution: "unresolvable", cause: "cycle" });
   });
 
-  // T-DB-14, a longer loop must be detected too, not just the trivial case.
   it("returns unresolvable with cause cycle for a two-node loop", async () => {
     const scope = await seedScope(db, "two-node-cycle");
     const a = testSignature(60);
@@ -246,7 +215,6 @@ describe("signature ancestry repository", () => {
     expect(resolution).toEqual({ resolution: "unresolvable", cause: "cycle" });
   });
 
-  // T-DB-15, impossible by the index, not by convention.
   it("rejects a second forward edge for the same old_signature — enforced by the unique index, not by convention", async () => {
     const scope = await seedScope(db, "unique-index");
     const oldSignature = testSignature(80);
@@ -278,9 +246,6 @@ describe("signature ancestry repository", () => {
       caught = error;
     }
 
-    // Real SQL, not the stub: this insert never touches the repository under test at
-    // all. drizzle-orm wraps the driver's error as `.cause`; the outer message is only
-    // "Failed query:...", so the constraint name/reason lives on the cause.
     expect(caught).toBeDefined();
     const causeMessage =
       caught instanceof Error && caught.cause instanceof Error
@@ -290,28 +255,11 @@ describe("signature ancestry repository", () => {
       /signature_ancestry_org_old_signature_key|duplicate key|unique constraint/i,
     );
 
-    // The repository read-back is what makes this test red today: `forwardEdge` is
-    // itself a Wave 0B stub, so this call throws "not implemented" even though the
-    // constraint check above already ran against real SQL.
     const repo = createSignatureAncestryRepo(db, scope.ctx);
     const survivor = await repo.forwardEdge(oldSignature);
     expect(survivor?.newSignature).toBe(firstNew);
   });
 
-  // T-DB-16,'s carry-forward, asserted through `recordAncestry` (the shipped call
-  // site, on `tx`) against a target signature that already has its own ledger row. That
-  // case is the one `CARRY_FORWARD_SET` exists for: with an empty target the upsert is
-  // a plain insert and `least` / `+` / `coalesce` never combine anything, so an
-  // empty-target-only test proves none of the four columns' semantics. Here both sides
-  // are populated and each of the four is pinned in the direction that can actually be
-  // wrong:
-  // first_seen_at = least(new 07-10, old 07-01) -> the older, old's
-  // times_seen = 2 + 3 -> the sum
-  // delivered_at = coalesce(new 07-12, old …) -> the existing one
-  // dismissed_at = coalesce(null, old …) -> the old one, which is
-  //  the whole remedy: a
-  //  dismissal survives a
-  //  re-key.
   it("should carry first_seen_at, times_seen, delivered_at, and dismissed_at forward onto the new signature when ancestry is recorded", async () => {
     const scope = await seedScope(db, "carry-forward");
     const ledger = createFindingSignaturesRepo(db, scope.ctx);
@@ -326,7 +274,6 @@ describe("signature ancestry repository", () => {
     const newLastSeen = new Date("2026-07-15T09:00:00.000Z");
     const newDelivered = new Date("2026-07-12T09:00:00.000Z");
 
-    // Old identity: seen three times, delivered, then dismissed forever.
     await ledger.upsertSeen(makeSeen(scope.projectId, oldSignature, oldFirstSeen));
     await ledger.upsertSeen(
       makeSeen(scope.projectId, oldSignature, new Date("2026-07-05T09:00:00.000Z")),
@@ -341,17 +288,13 @@ describe("signature ancestry repository", () => {
       dismissedByUserId: null,
     });
 
-    // New identity: already recorded naturally twice and delivered, never dismissed.
-    // The common case (the pipeline saw the re-keyed finding before anything noticed
-    // the re-key).
     await ledger.upsertSeen(makeSeen(scope.projectId, newSignature, newFirstSeen));
     await ledger.upsertSeen(makeSeen(scope.projectId, newSignature, newLastSeen));
     await ledger.markDelivered(scope.projectId, newSignature, newDelivered);
 
     const oldBefore = await ledger.findBySignature(scope.projectId, oldSignature);
     expect(oldBefore?.timesSeen).toBe(3);
-    // Stamped as `now` inside `recordDismissal`'s transaction. Captured, not asserted
-    // against a literal; what matters is that it travels.
+
     const oldDismissedAt = oldBefore?.dismissedAt;
     expect(oldDismissedAt).toBeInstanceOf(Date);
 
@@ -369,9 +312,6 @@ describe("signature ancestry repository", () => {
     expect(carried?.dismissedAt?.getTime()).toBe(oldDismissedAt?.getTime());
     expect(carried?.lastSeenAt.getTime()).toBe(newLastSeen.getTime());
 
-    //  point 3: the old row is left in place, untouched, as the audit trail. A
-    // carry-forward that moved or cleared it would destroy the only record of what the
-    // identity used to be.
     const oldAfter = await ledger.findBySignature(scope.projectId, oldSignature);
     expect(oldAfter?.id).toBe(oldBefore!.id);
     expect(oldAfter?.timesSeen).toBe(3);
@@ -380,24 +320,10 @@ describe("signature ancestry repository", () => {
     expect(oldAfter?.deliveredAt?.getTime()).toBe(oldDelivered.getTime());
     expect(oldAfter?.dismissedAt?.getTime()).toBe(oldDismissedAt?.getTime());
 
-    // Exactly two rows, the carry-forward upserts onto the existing new row, it never
-    // mints a third identity.
     const rows = await ledgerRowsFor(db, scope);
     expect(rows).toHaveLength(2);
   });
 
-  // T-DB-17, the atomicity, which `signature-ledger.service.ts:663-669` asserts in a
-  // comment ("succeed together or not at all") and nothing executes. A committed edge
-  // with no carry-forward is the worst reachable state in this sprint: `resolve` would
-  // route every future consult to a new signature whose row does not carry the
-  // dismissal, silently un-suppressing a permanent customer decision with no error
-  // anywhere.
-  //
-  // The failure is forced with real SQL. A check constraint added to
-  // `finding_signatures` for the duration of this test that rejects the new signature's
-  // value, not by faking a repository or stubbing the driver. The edge insert runs
-  // first and succeeds; the carry-forward insert then violates the constraint, and
-  // Postgres' own rollback is what the assertions below inspect.
   it("should leave both the ancestry edge and the ledger unchanged when the carry-forward half of the transaction fails", async () => {
     const scope = await seedScope(db, "atomicity");
     const ledger = createFindingSignaturesRepo(db, scope.ctx);
@@ -413,9 +339,6 @@ describe("signature ancestry repository", () => {
     const oldBefore = await ledger.findBySignature(scope.projectId, oldSignature);
     expect(oldBefore).not.toBeNull();
 
-    // The forced failure. Scoped to one signature value, so no other row in this shared
-    // PGlite instance can violate it, and dropped in `finally` so no later test
-    // inherits it.
     await db.execute(
       sql.raw(
         `alter table finding_signatures add constraint t_db_17_block_carry_forward ` +
@@ -439,23 +362,17 @@ describe("signature ancestry repository", () => {
       );
     }
 
-    // The call fails loudly. A caller must never be told an ancestry mapping was
-    // recorded when it was not.
     expect(caught).toBeDefined();
 
-    // Neither half survived. The edge is gone...
     const repo = createSignatureAncestryRepo(db, scope.ctx);
     expect(await repo.forwardEdge(oldSignature)).toBeNull();
-    // ...so a stale pre-re-key signature still resolves to itself, exactly as it did
-    // before the failed attempt.
+
     expect(await repo.resolve(oldSignature)).toEqual({
       resolution: "resolved",
       signature: oldSignature,
       hops: 0,
     });
 
-    // ...and the ledger is untouched: no row was minted for the new signature, and the
-    // old row's state is bit-for-bit what it was.
     expect(await ledger.findBySignature(scope.projectId, newSignature)).toBeNull();
     const oldAfter = await ledger.findBySignature(scope.projectId, oldSignature);
     expect(oldAfter?.id).toBe(oldBefore!.id);

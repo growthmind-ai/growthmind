@@ -38,14 +38,10 @@ describe("resolveActiveOrganization", () => {
       },
     ];
 
-    // Stale: the session names an organization the user is no longer a member of.
     expect(resolveActiveOrganization(memberships, "org-stale-no-longer-a-member")).toBe("org-1");
 
-    // Absent: the session carries no active-organization hint at all.
     expect(resolveActiveOrganization(memberships, null)).toBe("org-1");
 
-    // Tie: two memberships share the same createdAt. Broken deterministically by
-    // organizationId ascending.
     const tied: Membership[] = [
       {
         organizationId: "org-b",
