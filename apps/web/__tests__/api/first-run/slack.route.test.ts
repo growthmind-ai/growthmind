@@ -1,5 +1,7 @@
 // POST /api/first-run/slack/{connect,test,skip} — step three's front door.
-// Wave 0f, task 0f.3. ADD §9, 9 rows (8 at taskgen + AD-16a's unknown-key row).
+// Wave 0f, task 0f.3. ADD §9, 10 rows (8 at taskgen, AD-16a's unknown-key row,
+// and AD-4's half-connected refusal — see row 10 on why a source scan could not
+// stand in for it).
 //
 // ###########################################################################
 // # THE TEST MESSAGE IS THE ANNOUNCEMENT, AND THAT IS A DECISION, NOT A GAP.
@@ -29,6 +31,7 @@ import { POST_FAILURE_MESSAGES } from "@growthmind/shared";
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -180,6 +183,34 @@ async function rawSlackRows(organizationId: string): Promise<Record<string, unkn
 }
 
 const bodyWithToken = { botToken: BOT_TOKEN, channelId: CHANNEL_ID };
+
+/** Envelope-SHAPED and deliberately not openable. This repository is public and no
+ *  fixture in it will ever carry usable key material. The row below is refused
+ *  before anything tries to open it, so a real envelope would prove nothing extra. */
+const HALF_CONNECTED_CIPHERTEXT = "v1.00000000.aaaa.bbbb.cccc";
+const HALF_CONNECTED_KEY_ID = "00000000";
+
+/**
+ * The mid-OAuth row: a workspace attached, ACTIVE, and no channel chosen (AD-4).
+ *
+ * WRITTEN AS RAW SQL RATHER THAN THROUGH THE ROUTE THAT PRODUCES IT. The real
+ * producer is `slack/oauth/callback`, which needs `SLACK_CLIENT_ID`,
+ * `SLACK_CLIENT_SECRET` and an injected fetch — none of which this suite has, and
+ * all of which are `slack-oauth.route.test.ts`'s subject rather than this one's.
+ * Reaching for them here would make a row about the TEST-MESSAGE route fail for
+ * reasons that live in a different route entirely. The column list matches what
+ * the callback writes, so the state under test is the state production creates.
+ */
+async function attachWorkspaceWithNoChannel(scope: SeededMemberScope): Promise<void> {
+  await bed.db.execute(
+    `insert into slack_connections
+       (id, organization_id, channel_id, credential_ciphertext, credential_key_id,
+        is_active, connected_by_user_id, connected_at)
+     values ('${randomUUID()}', '${scope.organizationId}', NULL,
+             '${HALF_CONNECTED_CIPHERTEXT}', '${HALF_CONNECTED_KEY_ID}',
+             true, '${scope.userId}', '2026-08-01T09:00:00.000Z')`,
+  );
+}
 
 // ===========================================================================
 
@@ -372,6 +403,72 @@ describe("POST /api/first-run/slack/test (FR-O11, EC-O1, D8)", () => {
 
     // Never the credential, in any encoding.
     expect(leaks(text, BOT_TOKEN)).toBeNull();
+  });
+
+  // ----------------------------------------------------------------- row 10
+  //
+  // #########################################################################
+  // # AD-4 ROW 8, AS BEHAVIOUR. THE ROW THE SOURCE SCAN COULD NOT WRITE.
+  // #
+  // # `nullable-channel-readers.test.ts` asks this route's SOURCE to name
+  // # `isDeliveryTarget`, which is the right shape for "every channel read
+  // # goes through one guard" and is worth exactly nothing as a statement
+  // # about behaviour: a file that imports the guard, ignores its answer, and
+  // # posts to the null anyway contains the string and passes that row.
+  // #
+  // # This is the reader AD-4 calls the one a founder actually hits. Since
+  // # the OAuth callback stores a bot token BEFORE a channel is chosen,
+  // # `getActiveForOrg` returns a real connection for the whole mid-OAuth
+  // # window — which is precisely when somebody presses "Send a test
+  // # message". The refusal above it fires only on NO connection, so without
+  // # the guard the address handed to the poster is a null that interpolates
+  // # into the four characters "null", Slack answers with an ordinary error,
+  // # and nothing anywhere throws.
+  // #
+  // # THE ZERO-POSTS ASSERTION IS THE LOAD-BEARING ONE and is made FIRST. A
+  // # route that posted and then refused would answer 409 exactly like a
+  // # correct one, so the status alone cannot tell the two apart — the only
+  // # observable difference is whether a message left through the port.
+  // #########################################################################
+  test("a workspace attached with no channel chosen is refused before anything is posted", async () => {
+    const scope = await bed.member("no-channel");
+    const poster = recordingPoster(OK_POST);
+
+    await attachWorkspaceWithNoChannel(scope);
+
+    const handle = await loadRouteHandler(TEST_POST);
+    const response = await handle(routeRequest(TEST_POST, {}), depsFor(scope, { poster }));
+
+    // (b) NOTHING LEFT THROUGH THE PORT.
+    expect(poster.sent).toEqual([]);
+
+    // (a) 409, and the refusal that names the ONE remaining act. Pinned as
+    // literals rather than read off the shipped constant: this is the wire
+    // contract a client branches on, and an assertion derived from the same
+    // source as the answer cannot notice the source changing.
+    expect(response.status).toBe(409);
+    const error = (await bodyOf(response)).error as Record<string, unknown> | undefined;
+    expect(error?.code).toBe("no_channel_chosen");
+    // AND NOT THE OTHER ONE. "Connect Slack first" sends a founder who just
+    // completed consent back through a screen they already finished, and
+    // leaves them exactly where they were.
+    expect(error?.code).not.toBe("no_channel_connected");
+    expect(String(error?.message ?? "").length).toBeGreaterThan(20);
+
+    // THE CONTROL, ON THE SAME POSTER INSTANCE. Without it a fake that
+    // recorded nothing — or a `depsFor` that never reached the route's poster
+    // at all — would satisfy the empty-array assertion above while measuring
+    // nothing. A properly connected org drives one post through this very
+    // object, so the emptiness is about the null channel and not about the
+    // fixture.
+    const connected = await bed.member("no-channel-control");
+    await (
+      await loadRouteHandler(CONNECT)
+    )(routeRequest(CONNECT, bodyWithToken), depsFor(connected, { poster }));
+    await handle(routeRequest(TEST_POST, {}), depsFor(connected, { poster }));
+
+    expect(poster.sent.length).toBe(1);
+    expect(poster.sent[0]?.channelId).toBe(CHANNEL_ID);
   });
 });
 
