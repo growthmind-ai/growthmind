@@ -174,4 +174,77 @@ describe("parseServerEnv", () => {
     expect(env.POSTHOG_PERSONAL_API_KEY).toBeUndefined();
     expect(env.POSTHOG_PROJECT_ID).toBeUndefined();
   });
+
+  // The Slack app's OAuth credentials, on exactly the terms `ANTHROPIC_API_KEY`
+  // and the four POSTHOG_* variables are already held to.
+  //
+  // OPTIONAL IS THE DECISION, NOT A DEFAULT NOBODY GOT ROUND TO TIGHTENING —
+  // and the whole point of these two rows is that the decision now fails a
+  // NAMED test if somebody later "hardens" it to required. Self-host is
+  // first-class (AGENTS.md, Conventions): a clean clone with neither variable
+  // set must sign up, boot and pass the full gate identically to one that has
+  // both. Absent, the Add-to-Slack control does not render and the pasted-token
+  // form is the primary path. Never a boot failure.
+  //
+  // Fixture-shaped and obviously invalid — this repository is public and no
+  // fixture in it will ever carry usable credential material.
+  const SLACK_ID = "1234567890.0987654321";
+  const SLACK_SECRET = "fixture-client-secret-never-real";
+
+  test("production boots with both, one, or neither Slack credential", () => {
+    // The baseline carries neither, so "both absent" below is a statement about
+    // the schema rather than about this fixture happening to omit them.
+    expect(PROD_COMPLETE).not.toHaveProperty("SLACK_CLIENT_ID");
+    expect(PROD_COMPLETE).not.toHaveProperty("SLACK_CLIENT_SECRET");
+
+    // ALL FOUR COMBINATIONS BOOT. "One alone" is the interesting pair: an id
+    // with no secret reaches Slack's consent screen and dies at the exchange,
+    // which is the worst of the three states — but it is `apps/web/lib/slack/
+    // oauth.ts` that reads the pair together and declines to offer the path,
+    // NOT this schema refusing to start the process. A deployment that cannot
+    // boot because half a Slack app is configured is a deployment whose
+    // findings stop for a reason that has nothing to do with findings.
+    for (const [label, patch] of [
+      ["neither", {}],
+      ["only the id", { SLACK_CLIENT_ID: SLACK_ID }],
+      ["only the secret", { SLACK_CLIENT_SECRET: SLACK_SECRET }],
+      ["both", { SLACK_CLIENT_ID: SLACK_ID, SLACK_CLIENT_SECRET: SLACK_SECRET }],
+    ] as const) {
+      const env = parseServerEnv({ ...PROD_COMPLETE, ...patch });
+
+      // Labelled, so a failure names WHICH combination refused to boot rather
+      // than reporting a bare `expected "production", received undefined` from
+      // whichever iteration threw.
+      expect(`${label}:${env.NODE_ENV}`).toBe(`${label}:production`);
+      expect(`${label}:${env.SLACK_CLIENT_ID ?? "absent"}`).toBe(
+        `${label}:${"SLACK_CLIENT_ID" in patch ? SLACK_ID : "absent"}`,
+      );
+      expect(`${label}:${env.SLACK_CLIENT_SECRET ?? "absent"}`).toBe(
+        `${label}:${"SLACK_CLIENT_SECRET" in patch ? SLACK_SECRET : "absent"}`,
+      );
+    }
+  });
+
+  // The half-filled.env shape, and the reason each variable is
+  // `z.string().min(1).optional()` rather than a bare `.optional()`.
+  //
+  // `SLACK_CLIENT_ID=` on its own line is what a partially-filled.env actually
+  // looks like, and it arrives as the EMPTY STRING, not as absent. A bare
+  // `.optional()` would accept it, `resolveSlackOAuthCredentials` would read
+  // "both present", and the founder would be redirected into a consent screen
+  // built with no client id — a dead end wearing a working feature's clothes,
+  // outside the product, on Slack's error page for an app that does not exist.
+  // Refusing at boot puts the fault in front of the operator who can fix it.
+  test("an empty-string Slack credential is refused, never treated as configured", () => {
+    for (const key of ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"] as const) {
+      expect(() => parseServerEnv({ ...PROD_COMPLETE, [key]: "" })).toThrow(new RegExp(key));
+
+      // THE CONTROL: the same key carrying a real value boots. Without it the
+      // assertion above would pass against a schema that had made the variable
+      // REQUIRED — the opposite defect, and the one the row before this exists
+      // to rule out — or against a `PROD_COMPLETE` that had stopped parsing for
+      // some reason of its own.
+      expect(() => parseServerEnv({ ...PROD_COMPLETE, [key]: SLACK_ID })).not.toThrow();
+    }
+  });
 });
