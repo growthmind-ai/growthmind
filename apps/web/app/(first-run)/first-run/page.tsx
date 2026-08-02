@@ -37,7 +37,29 @@ function workBody(input: WorkBodyInput): ReactNode {
   const { step, view, status } = input;
 
   if (step.id !== "analytics") {
-    return <ConnectSlackForm step={step} view={view} channelId={status.channelId} />;
+    // THREE SLACK FACTS, AND THEY ARE NOT ONE FACT (AD-4 row 4, AD-6). The card
+    // needs to tell "no workspace at all" from "a workspace with nowhere to
+    // post", and it needs to know whether this installation has a Slack app
+    // before it can offer the one-click path — neither is derivable from the
+    // address, and neither may be read from the environment by a client.
+    //
+    // `slackWorkspaceName` is the third, and this line is the whole of its wire
+    // (D11). The payload has carried it since AD-4; until it was passed here it
+    // was a value the server computed for nobody, with a persistence test green
+    // at one end and no sentence on any screen at the other. A producer test
+    // plus a consumer test does not prove a wire — `workspace-name-wire.test.ts`
+    // drives it through the real card, and this attribute is what that test is
+    // about.
+    return (
+      <ConnectSlackForm
+        step={step}
+        view={view}
+        channelId={status.channelId}
+        slackWorkspaceAttached={status.slackWorkspaceAttached}
+        slackWorkspaceName={status.slackWorkspaceName}
+        slackOAuthAvailable={status.slackOAuthAvailable}
+      />
+    );
   }
 
   const state = status.counter.state;

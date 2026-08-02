@@ -11,6 +11,8 @@ export const SLACK_ERRORS_NOT_AUTHORISED: readonly string[] = [
   "no_permission",
 ];
 
+// Kept apart from `not_authorised`: the repair differs — get the bot back into the channel,
+// not reconnect the workspace — and each surface composes that repair clause itself.
 export const SLACK_ERRORS_CHANNEL_UNAVAILABLE: readonly string[] = [
   "channel_not_found",
   "is_archived",
@@ -58,6 +60,8 @@ export function mapSlackError(slackError: string | undefined): PostFailureCode {
   return UNCLASSIFIED_SLACK_ERROR_CODE;
 }
 
+// Fixed sentences only: Slack's own error text never reaches a returned failure, and
+// neither does the bot token.
 export function postFailure(code: PostFailureCode): Extract<PostResult, { ok: false }> {
   return { ok: false, code, message: POST_FAILURE_MESSAGES[code] };
 }

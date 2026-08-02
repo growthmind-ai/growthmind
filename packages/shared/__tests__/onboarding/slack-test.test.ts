@@ -41,16 +41,39 @@ describe("describeTestPostOutcome — FR-O11, UX Flow D", () => {
     );
   });
 
-  test("a channel_unavailable failure says a human must act and is not retryable", async () => {
+  // The clause this row pins was replaced. "Pick another channel — trying again will not help"
+  // named an act the product does not serve: `attachChannel` fills an empty address and never
+  // moves a chosen one. The bot has simply not been invited, so inviting it is the fix.
+  test("a channel_unavailable failure names inviting the bot and sending again", async () => {
     const outcome = await describeFailure("channel_unavailable");
     const notAuthorised = await describeFailure("not_authorised");
 
-    expect(outcome.retryable).toBe(false);
     expect(outcome.marksStepDone).toBe(false);
     expect(outcome.sentence).toContain(POST_FAILURE_MESSAGES.channel_unavailable);
 
+    // The working next action, both halves: the thing to do in Slack, and the press after it.
+    expect(outcome.sentence).toContain(
+      "The bot has to be invited to that channel before it can post there. Invite it in Slack, then send the test message again.",
+    );
+
+    // The old advice is gone from the WHOLE rendered paragraph, not merely the clause this
+    // module owns — the shared table states what happened and stops, so no half can contradict
+    // the other. The last row asserts that shared string, which this module may never edit.
+    expect(outcome.sentence).not.toContain("pick another");
+    expect(outcome.sentence).not.toContain("trying again will not help");
+    expect(POST_FAILURE_MESSAGES.channel_unavailable).not.toContain("pick another");
+
+    // Distinct from the row above in DIRECTION as well as wording: one withholds a press that
+    // can never work, the other asks for it.
     expect(outcome.sentence).not.toBe(notAuthorised.sentence);
 
+    // `retryable` answers "does pressing again, unchanged, fix it?" — no, a person invites the
+    // bot first. It gates the SECOND button; the send button renders anyway, so `true` would
+    // sit a "Try again" beside it firing the same post (D3).
+    expect(outcome.retryable).toBe(false);
+    expect(outcome.retryable).toBe(isRetryablePostFailure("channel_unavailable"));
+
+    // UX Flow D: the rendered sentence is strictly more than what the delivery lane says.
     expect(outcome.sentence.length).toBeGreaterThan(
       POST_FAILURE_MESSAGES.channel_unavailable.length,
     );

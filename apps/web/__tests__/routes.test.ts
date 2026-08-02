@@ -12,9 +12,23 @@ const FIRST_RUN_PATH = "/first-run";
 const LITERAL_EXEMPT_PREFIXES: readonly string[] = [
   "lib/routes.ts", // the one home for the string
   "app/(first-run)/", // the surface itself
-  "app/api/first-run/", // its eight routes
+  "app/api/first-run/", // its routes
   "components/first-run/", // its components
   "__tests__/", // this scan, and the suites that name the path
+  // THE ONE FILE THAT CONTAINS THE LITERAL WITHOUT RETYPING THE ROUTE.
+  //
+  // `SLACK_OAUTH_CALLBACK_PATH` is `/api/first-run/slack/oauth/callback` — an
+  // API address that merely CONTAINS `/first-run` as a substring, not the page
+  // path this guard is about, and not something `ROUTES.firstRun` could
+  // produce. It lives there because the authorize request and the token
+  // exchange must send a byte-identical `redirect_uri` or Slack refuses the
+  // exchange, so the string has exactly one home (`lib/slack/oauth.ts:111-114`).
+  //
+  // The alternative was teaching the scan to ignore `/api/first-run/...`, which
+  // is a better guard and a bigger change than the one this red is worth; a
+  // named single-file exemption keeps the substring scan simple and keeps the
+  // exception visible in a diff. That file has no reason to hold a page link.
+  "lib/slack/oauth.ts",
 ];
 
 interface RoutableFile {
@@ -145,6 +159,7 @@ describe("the first-run path has exactly one home (AD-17, D9)", () => {
       "app/api/first-run/status/route.ts",
       "components/first-run/Stage.tsx",
       "__tests__/routes.test.ts",
+      "lib/slack/oauth.ts",
     ]) {
       expect(`${exempt}: ${isExempt(exempt)}`).toBe(`${exempt}: true`);
     }

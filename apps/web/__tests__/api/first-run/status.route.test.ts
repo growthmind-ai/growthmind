@@ -46,11 +46,39 @@ let bed: FirstRunTestBed;
 let orgA: SeededMemberScope;
 let orgB: SeededMemberScope;
 
+/**
+ * Longer than bun's 5s default, and it is not a slow test being tolerated.
+ *
+ * The comment inside the hook below already names the cost of a `beforeAll`
+ * that fails: one shared hook failure standing in for every row's own named
+ * diagnostic, the three CONTROLS included. It reasons about the hook THROWING.
+ * A TIMEOUT is the second way that hook fails, and it is the worse one — a
+ * throw at least carries the message the fixture wrote, whereas the timeout is
+ * an UNNAMED `a beforeEach/afterEach hook timed out` naming no route, no
+ * contract and no owner. Same lost diagnostic, no replacement text at all.
+ *
+ * THE BUDGET IS FOR THE BOOT, NOT FOR THE ASSERTIONS. This hook boots a real
+ * PGlite, runs the migrations, and signs two members up through Better Auth
+ * (whose password hashing is deliberately slow). Measured warm on this machine
+ * it costs ~1.5s — comfortable-looking, and misleading: a COLD boot, where the
+ * wasm image is decompressed rather than reused, was measured at ~5.4s and blew
+ * straight through bun's 5s default. Two agents reproduced that independently
+ * with their own files excluded.
+ *
+ * It also only bites when a single file is run — the batch run shares the warm
+ * image and hides it — so it is invisible until the one moment it is expensive.
+ *
+ * Same figure and same reasoning as `discover.route.test.ts`,
+ * `analytics.route.test.ts` and `lifecycle.route.test.ts`; keep them in
+ * agreement.
+ */
+const COLD_BOOT_BUDGET_MS = 60_000;
+
 beforeAll(async () => {
   bed = await createFirstRunTestBed("status");
   orgA = await bed.member("a");
   orgB = await bed.member("b");
-});
+}, COLD_BOOT_BUDGET_MS);
 
 afterAll(async () => {
   await bed?.close();

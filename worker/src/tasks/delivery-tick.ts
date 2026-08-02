@@ -7,6 +7,7 @@ import {
   DELIVERY_STATUS_MESSAGES,
   DELIVERY_VOCABULARY,
   RESIDUAL_PII_KIND_MESSAGES,
+  deliveryFailureSentence,
   describeError,
 } from "@growthmind/shared";
 
@@ -273,14 +274,16 @@ async function runLane(
   }
 
   if (!result.ok) {
-     
+    // The customer-facing reason is composed from `result.code`, never echoed from
+    // `result.message`: a closed union is provably free of any Slack response body,
+    // and it lets this lane append a next action the first-run screen must not carry.
     deps.logger.error(
       `delivery tick: finding ${chosen.findingId} was not accepted by the channel — ${result.code}`,
     );
     await recordFailed(deps, deliveries, {
       findingId: chosen.findingId,
       channelId: lane.channelId,
-      reason: result.message,
+      reason: deliveryFailureSentence(result.code),
     });
     return "failed";
   }

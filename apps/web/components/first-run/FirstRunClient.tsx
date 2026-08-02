@@ -31,6 +31,8 @@ function toStamp(at: Date | null): Date | null {
   return at === null ? null : new Date(at);
 }
 
+// Seeded from persisted stamps only, so the first render is SSR-safe —
+// `Date.now()` appears in the timer callbacks and nowhere else.
 function seedClock(status: FirstRunStatusPayload): number {
   const stamps = [status.armedAt, status.retrievedAt, status.readingAt, status.endedAt];
 
@@ -98,9 +100,17 @@ export function FirstRunClient(props: FirstRunClientProps) {
     connectionState.status === "not_connected" ? null : connectionState.status,
   );
 
+  // Every member is a persisted row or stamp, so a second tab, a reload and a
+  // return tomorrow all land on the sentence the database describes.
+  //
+  // `workspaceAttached` comes off the payload and is never re-derived from
+  // `channelId` (AD-4): OAuth splits attaching a workspace from choosing a
+  // channel, and derived from the address this flag was false in exactly that
+  // window. `deliveryResolved` keeps both its halves and does NOT take the
+  // workspace flag — an attached workspace is not somewhere to deliver.
   const setupFacts: SetupFacts = {
     analyticsAttached: attached,
-    workspaceAttached: current.channelId !== null,
+    workspaceAttached: current.slackWorkspaceAttached,
     deliveryResolved: current.channelId !== null || current.slackSkippedAt !== null,
     armedAt: facts.armedAt,
   };
@@ -197,19 +207,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   return (
     <Stack gap="md">
-      {/* ################################################################
-          THE PAYOFF IS FIRST, IN BOTH PHASES, AND THAT IS THE WHOLE REDESIGN.
-
-          Before there is anything to watch, this is the blocker panel naming
-          the one next thing; after arming it is the shipped stage. Either way
-          the thing the founder came for is the top of the screen rather than
-          an untitled empty card underneath two forms and two rows about work
-          that does not exist yet.
-
-          EC-O5 rides the poll, not a client flag: the route is the authority
-          on it and re-answers every tick, so a row that becomes readable
-          clears the sentence on its own.
-          ################################################################ */}
+      {/* The payoff is first in both phases: the blocker panel naming the one
+          next thing before there is anything to watch, the stage after arming.
+          `findingUnavailable` rides the poll rather than a client flag, so a
+          row that becomes readable clears the sentence on its own. */}
       {armed ? (
         <Stage
           facts={facts}
@@ -242,15 +243,8 @@ export function FirstRunClient(props: FirstRunClientProps) {
       {armed ? (
         <Collapse expanded={reopened}>
           <Stack gap="md">
-            {/* THE RE-OPENED RECORD SHOWS WHAT WAS DONE, so it lists the same
-                steps the sequence listed and numbers them the same way. The
-                stubs are absent for the reason they left the sequence: nothing
-                was done to them, and a record of work should not list work
-                that does not exist.
-
-                `displayOrdinal`, NOT `descriptor.ordinal` — the record showing
-                2, 3, 5 beside steps the founder counted as 1, 2, 3 would be a
-                second numbering of one sequence. */}
+            {/* `displayOrdinal`, not `descriptor.ordinal`: the record numbers
+                the steps the way the founder counted them. */}
             {LIVE_STEP_DESCRIPTORS.map((descriptor) => {
               const view = resolved.get(descriptor.id);
               if (view === undefined) {

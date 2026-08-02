@@ -1,8 +1,13 @@
+// POST /api/first-run/slack/{connect,test,skip} — step three's front door.
+// This sprint ships no in-app notification (AD-24), so the test message IS how
+// the org learns who connected Slack. The degraded notice derives from the
+// absence of an active connection, never from a flag. Lane `web-fr-slack`.
 import { eq, schema } from "@growthmind/db";
 import { POST_FAILURE_MESSAGES } from "@growthmind/shared";
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -39,12 +44,17 @@ let bed: FirstRunTestBed;
 let owner: SeededMemberScope;
 let teammate: SeededMemberScope;
 
+/** For the boot, not the assertions: a cold PGlite plus two Better Auth signups
+ *  measured ~5.4s, past bun's 5s default, and times out naming no route or
+ *  owner. Same figure as the sibling first-run route suites. */
+const COLD_BOOT_BUDGET_MS = 60_000;
+
 beforeAll(async () => {
   bed = await createFirstRunTestBed("slack");
   owner = await bed.member("owner");
 
   teammate = await bed.member("mate", owner.organizationId);
-});
+}, COLD_BOOT_BUDGET_MS);
 
 afterAll(async () => {
   await bed?.close();
@@ -109,6 +119,25 @@ async function rawSlackRows(organizationId: string): Promise<Record<string, unkn
 }
 
 const bodyWithToken = { botToken: BOT_TOKEN, channelId: CHANNEL_ID };
+
+/** Envelope-shaped and deliberately not openable — this repo is public, and the
+ *  row below is refused before anything tries to open it. */
+const HALF_CONNECTED_CIPHERTEXT = "v1.00000000.aaaa.bbbb.cccc";
+const HALF_CONNECTED_KEY_ID = "00000000";
+
+/** The mid-OAuth row: workspace attached, active, no channel chosen (AD-4).
+ *  Raw SQL because the real producer is `slack/oauth/callback`, whose config and
+ *  fetch seam belong to another suite; the column list matches what it writes. */
+async function attachWorkspaceWithNoChannel(scope: SeededMemberScope): Promise<void> {
+  await bed.db.execute(
+    `insert into slack_connections
+       (id, organization_id, channel_id, credential_ciphertext, credential_key_id,
+        is_active, connected_by_user_id, connected_at)
+     values ('${randomUUID()}', '${scope.organizationId}', NULL,
+             '${HALF_CONNECTED_CIPHERTEXT}', '${HALF_CONNECTED_KEY_ID}',
+             true, '${scope.userId}', '2026-08-01T09:00:00.000Z')`,
+  );
+}
 
 describe("POST /api/first-run/slack/connect (FR-O10, AD-20)", () => {
   test("connecting stores an encrypted envelope and returns no credential", async () => {
@@ -253,6 +282,47 @@ describe("POST /api/first-run/slack/test (FR-O11, EC-O1, D8)", () => {
     expect(request.channelId).toBe(CHANNEL_ID);
 
     expect(leaks(text, BOT_TOKEN)).toBeNull();
+  });
+
+  // AD-4 as behaviour, which the source scan for `isDeliveryTarget` cannot be:
+  // a route that imports the guard, ignores it and posts to the null still
+  // contains the string. The zero-posts assertion is the load-bearing one and
+  // is made first — a route that posted and then refused answers 409 too.
+  test("a workspace attached with no channel chosen is refused before anything is posted", async () => {
+    const scope = await bed.member("no-channel");
+    const poster = recordingPoster(OK_POST);
+
+    await attachWorkspaceWithNoChannel(scope);
+
+    const handle = await loadRouteHandler(TEST_POST);
+    const response = await handle(routeRequest(TEST_POST, {}), depsFor(scope, { poster }));
+
+    // Nothing left through the port.
+    expect(poster.sent).toEqual([]);
+
+    // Literals, not the shipped constant: an assertion derived from the same
+    // source as the answer cannot notice the source changing.
+    expect(response.status).toBe(409);
+    const error = (await bodyOf(response)).error as Record<string, unknown> | undefined;
+    expect(error?.code).toBe("no_channel_chosen");
+    // Not the other one, which would send a founder back through consent.
+    expect(error?.code).not.toBe("no_channel_connected");
+    // Typed before measured: a non-string would coerce and clear the length.
+    const message = error?.message;
+    expect(typeof message).toBe("string");
+    expect((message as string).length).toBeGreaterThan(20);
+
+    // The control, on the SAME poster instance: a fake that recorded nothing,
+    // or deps that never reached the route's poster, would satisfy the empty
+    // array above while measuring nothing.
+    const connected = await bed.member("no-channel-control");
+    await (
+      await loadRouteHandler(CONNECT)
+    )(routeRequest(CONNECT, bodyWithToken), depsFor(connected, { poster }));
+    await handle(routeRequest(TEST_POST, {}), depsFor(connected, { poster }));
+
+    expect(poster.sent.length).toBe(1);
+    expect(poster.sent[0]?.channelId).toBe(CHANNEL_ID);
   });
 });
 

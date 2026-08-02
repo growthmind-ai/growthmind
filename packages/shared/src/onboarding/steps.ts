@@ -11,11 +11,9 @@ import {
   FIELD_CHANNEL_ID_PLACEHOLDER,
   FIELD_PERSONAL_KEY_HELPER,
   FIELD_PERSONAL_KEY_LABEL,
-  FIELD_PROJECT_NUMBER_LABEL,
-  FIELD_PROJECT_NUMBER_PLACEHOLDER,
-  FIELD_REGION_DISCLOSURE,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
+  FIELD_SELF_HOST_DISCLOSURE,
   SEND_TEST_MESSAGE_LABEL,
   SKIP_FOR_NOW_LABEL,
   STEP_AGENT_FILLER,
@@ -53,9 +51,11 @@ export type FieldDescriptor = {
 
   readonly folded: boolean;
   readonly placeholder: string | null;
-
+  // A starting VALUE, which the next submit sends. No field carries one today.
   readonly prefill: string | null;
-
+  // The refusal codes this field is the subject of — the wire that lets a refusal
+  // focus or expand the field it names. A code that is the subject of no field
+  // (`project_not_found`) renders as the card's own sentence instead.
   readonly refusalCodes: readonly ConnectRefusalCode[];
 };
 
@@ -100,17 +100,11 @@ export type WorkStep = Extract<StepDescriptor, { kind: "work" }>;
 
 export type StageStep = Extract<StepDescriptor, { kind: "stage" }>;
 
-const PROJECT_NUMBER_FIELD: FieldDescriptor = {
-  id: "projectNumber",
-  label: FIELD_PROJECT_NUMBER_LABEL,
-  helper: null,
-  disclosure: null,
-  secret: false,
-  folded: false,
-  placeholder: FIELD_PROJECT_NUMBER_PLACEHOLDER,
-  prefill: null,
-  refusalCodes: ["project_not_found"],
-};
+// There is deliberately no project-number field: the personal key alone tells us
+// which projects it can read (AD-1). It must not come back even as an optional
+// descriptor — this array is both what the form renders and what refusals map
+// onto, so a declared-but-unrendered field would attach `project_not_found` to an
+// input nobody can see.
 
 const PERSONAL_KEY_FIELD: FieldDescriptor = {
   id: "personalKey",
@@ -124,15 +118,19 @@ const PERSONAL_KEY_FIELD: FieldDescriptor = {
   refusalCodes: ["invalid_credentials"],
 };
 
-const REGION_FIELD: FieldDescriptor = {
+// Earned: folded, and not offered until both hosted regions have refused (AD-2).
+// Deliberately NOT prefilled — a value sitting here is a value the next press
+// sends, taking the single-request self-host branch and skipping the region walk.
+// Empty means "walk the regions again"; `FIELD_REGION_PREFILL` is the placeholder.
+const SELF_HOST_FIELD: FieldDescriptor = {
   id: "regionAddress",
   label: FIELD_REGION_LABEL,
   helper: null,
-  disclosure: FIELD_REGION_DISCLOSURE,
+  disclosure: FIELD_SELF_HOST_DISCLOSURE,
   secret: false,
   folded: true,
-  placeholder: null,
-  prefill: FIELD_REGION_PREFILL,
+  placeholder: FIELD_REGION_PREFILL,
+  prefill: null,
   refusalCodes: ["unreachable"],
 };
 
@@ -199,7 +197,7 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     ordinal: 2,
     title: STEP_ANALYTICS_TITLE,
     helper: STEP_ANALYTICS_HELPER,
-    fields: [PROJECT_NUMBER_FIELD, PERSONAL_KEY_FIELD, REGION_FIELD],
+    fields: [PERSONAL_KEY_FIELD, SELF_HOST_FIELD],
     actions: [CONNECT_ACTION, DISCONNECT_ACTION],
 
     confirmations: ["counter", "receipt"],

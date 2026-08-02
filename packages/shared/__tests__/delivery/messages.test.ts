@@ -4,13 +4,17 @@ import * as messagesModule from "../../src/delivery/messages";
 import {
   ALL_DELIVERY_MESSAGES,
   DELIVERY_DECISION_MESSAGES,
+  DELIVERY_LANE_FAILURE_CLAUSE,
   DELIVERY_STATUS_MESSAGES,
   DELIVERY_VOCABULARY,
   NOTHING_TODAY_LEAD,
   NOTHING_TODAY_REASON_MESSAGES,
   NO_RATE_SENTENCE,
+  POST_FAILURE_MESSAGES,
   RESIDUAL_PII_KIND_MESSAGES,
+  deliveryFailureSentence,
 } from "../../src/delivery/messages";
+import { postFailureCodeSchema } from "../../src/delivery/poster";
 import {
   deliveryDecisionSchema,
   deliveryStatusSchema,
@@ -235,6 +239,90 @@ describe("a sentence keyed by a lane state asserts only what that state establis
 
       expect(message).not.toMatch(/%s|\{\}|\$\{/);
     }
+  });
+
+  // THE FACT / INSTRUCTION SPLIT. `POST_FAILURE_MESSAGES` is read by TWO surfaces — this
+  // lane and the first-run screen — each appending its own clause, so a next action in the
+  // shared table is written for one of them and wrong on the other. It shipped that way
+  // once, and a founder read two contradictory next actions in one paragraph.
+
+  test("no failure sentence in the shared table names an act for somebody to go and do", () => {
+    // VERBS OF REPAIR aimed at the reader only — not "we will try again", which is a fact
+    // about the lane's own behaviour and true on every surface.
+    const REPAIR_INSTRUCTION = /\bpick another\b|\bchoose another\b|\binvite\b|\bunarchive\b/i;
+
+    // POSITIVE CONTROL — the exact sentence this rule was written against.
+    expect(REPAIR_INSTRUCTION.test("Someone will need to pick another one.")).toBe(true);
+    // NEGATIVE CONTROL — a pure statement of what happened does not trip it.
+    expect(REPAIR_INSTRUCTION.test("It may have been archived or deleted.")).toBe(false);
+
+    const offenders = Object.entries(POST_FAILURE_MESSAGES)
+      .filter(([, message]) => REPAIR_INSTRUCTION.test(message))
+      .map(([code, message]) => `${code}: ${message}`);
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("the shared table still says the finding is untouched, which is a fact and not an instruction", () => {
+    // The half that must survive the split: a customer not told the finding is intact
+    // assumes it is gone.
+    for (const message of Object.values(POST_FAILURE_MESSAGES)) {
+      expect(message.toLowerCase()).toContain("nothing about what we found has changed");
+    }
+  });
+
+  test("the lane's clause map is total over the failure codes", () => {
+    const codes = postFailureCodeSchema.options;
+    expect(Object.keys(DELIVERY_LANE_FAILURE_CLAUSE).toSorted()).toEqual([...codes].toSorted());
+
+    // Three are silent, and explicitly `null` rather than "".
+    expect(DELIVERY_LANE_FAILURE_CLAUSE.call_failed).toBeNull();
+    expect(DELIVERY_LANE_FAILURE_CLAUSE.rejected).toBeNull();
+    expect(DELIVERY_LANE_FAILURE_CLAUSE.not_authorised).toBeNull();
+  });
+
+  test("the lane's one clause names a repair this product actually serves", () => {
+    const clause = DELIVERY_LANE_FAILURE_CLAUSE.channel_unavailable;
+    expect(typeof clause).toBe("string");
+    const lower = String(clause).toLowerCase();
+
+    // MAY: the two mechanisms that ARE undoable, plus "keep trying" — a `failed` row is
+    // re-claimable by a later tick, so that promise is one the lane keeps.
+    expect(lower).toContain("unarchive");
+    expect(lower).toContain("invite the bot");
+    expect(lower).toContain("keep trying");
+
+    // MAY NOT: send anybody after the chosen channel. `attachChannel` never moves a chosen
+    // address, so re-pointing is not an act this product serves on ANY surface.
+    expect(lower).not.toContain("pick another");
+    expect(lower).not.toContain("choose another");
+  });
+
+  test("the lane's composed sentence is the fact then the lane's own next action", () => {
+    for (const code of postFailureCodeSchema.options) {
+      const composed = deliveryFailureSentence(code);
+
+      // The shipped fact, verbatim and entire, and FIRST. Never a rewrite.
+      expect(composed.startsWith(POST_FAILURE_MESSAGES[code])).toBe(true);
+
+      const clause = DELIVERY_LANE_FAILURE_CLAUSE[code];
+      if (clause === null) {
+        expect(composed).toBe(POST_FAILURE_MESSAGES[code]);
+      } else {
+        expect(composed).toBe(`${POST_FAILURE_MESSAGES[code]} ${clause}`);
+      }
+    }
+  });
+
+  test("the lane's composed sentence never carries the first-run screen's next action", () => {
+    // THE WIRE, ASSERTED FROM THIS END (D11): the failure that matters is one surface's
+    // instruction reaching the other, so read the sentence that actually gets written.
+    const composed = deliveryFailureSentence("channel_unavailable");
+
+    // The first-run clause names a send button there is no equivalent of behind a
+    // scheduled delivery — and exactly one next action, not two.
+    expect(composed).not.toContain("send the test message again");
+    expect(composed).not.toContain("pick another");
   });
 
   test("the no-rate sentence states no percentage at all", () => {

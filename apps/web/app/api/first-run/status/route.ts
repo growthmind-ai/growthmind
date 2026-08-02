@@ -1,6 +1,6 @@
 import { createFindingsRepo, createFirstRunStatusService, ensureProject } from "@growthmind/db";
 import type { ScopedDb } from "@growthmind/db";
-import { firstRunStatusInputSchema, logger } from "@growthmind/shared";
+import { describeError, firstRunStatusInputSchema, logger } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
@@ -20,10 +20,12 @@ async function findingRowExists(
     const [row] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
     return row !== undefined;
   } catch (error) {
+    // `describeError`, never the caught value: a `pg` error carries `.query` and
+    // `.parameters`, so logging it whole writes bound tenancy ids into the log.
     logger.error("onboarding status: a finding row exists for this project but cannot be read", {
       organizationId: ctx.organizationId,
       projectId,
-      error,
+      reason: describeError(error),
     });
     return true;
   }

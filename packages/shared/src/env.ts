@@ -6,8 +6,10 @@ export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(16),
-  BETTER_AUTH_URL: z.url().default("http://localhost:3000"),
-
+  // NO `.default()`: a schema default survives the production branch below, so an
+  // omitted value booted production on localhost. Dev value in `DEV_DEFAULTS`.
+  BETTER_AUTH_URL: z.url(),
+  // Optional: absent, the dashboard plugin is not registered (apps/web/lib/auth.ts).
   BETTER_AUTH_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
 
@@ -19,13 +21,20 @@ export const serverEnvSchema = z.object({
   POSTHOG_PROJECT_API_KEY: z.string().min(1).optional(),
   POSTHOG_PERSONAL_API_KEY: z.string().min(1).optional(),
   POSTHOG_PROJECT_ID: z.string().min(1).optional(),
+  // Optional because self-host is first-class; both-or-neither is enforced by the
+  // composition root (apps/web/lib/slack/oauth.ts). No NEXT_PUBLIC_ twin exists.
+  SLACK_CLIENT_ID: z.string().min(1).optional(),
+  SLACK_CLIENT_SECRET: z.string().min(1).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
+// The ONLY place a fallback belongs: production withholds this object and the
+// literal-rejection loop walks it, and a schema `.default()` joins neither.
 const DEV_DEFAULTS = {
   DATABASE_URL: "postgres://growthmind:growthmind@localhost:5432/growthmind",
   BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars!",
+  BETTER_AUTH_URL: "http://localhost:3000",
   GROWTHMIND_ENCRYPTION_KEY: DEV_ENCRYPTION_KEY,
 } as const;
 
@@ -40,7 +49,8 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
       if (source[key] === devValue) {
         throw new Error(
           `Invalid environment: ${key} is still set to the public example value from .env.example. ` +
-            `Generate a real one (BETTER_AUTH_SECRET and GROWTHMIND_ENCRYPTION_KEY: openssl rand -base64 32) before running in production. ` +
+            `Set a real one before running in production (BETTER_AUTH_SECRET and GROWTHMIND_ENCRYPTION_KEY: openssl rand -base64 32; ` +
+            `DATABASE_URL and BETTER_AUTH_URL: the addresses this deployment actually uses). ` +
             `The quickstart docker-compose stack sets GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 to bypass this for local demos only.`,
         );
       }

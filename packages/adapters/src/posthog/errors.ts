@@ -26,7 +26,13 @@ const SOURCE_FAILURE_MESSAGES: Record<SourceFailureCode, string> = {
   rate_limited: CONNECT_REFUSAL_MESSAGES.rate_limited,
 };
 
-function failure(code: SourceFailureCode, secrets: readonly string[]): SourceFailure {
+// Exported because `discovery.ts` refuses a blocked host and an empty project list itself,
+// and both owe the customer the same sentence and the same scrub pass. `secrets` is the
+// credential in play (`client.ts` passes `config.personalApiKey`), so the guard is live.
+// These sentences never interpolate response content: the vendor's own `detail` is parsed
+// then DROPPED rather than scrubbed, because a leaky upstream can echo a key back
+// URL-encoded or JSON-escaped — forms an exact-string scrub misses.
+export function sourceFailure(code: SourceFailureCode, secrets: readonly string[]): SourceFailure {
   return { code, message: scrubSecrets(SOURCE_FAILURE_MESSAGES[code], secrets) };
 }
 
@@ -41,21 +47,21 @@ export function mapFailure(
   switch (code) {
     case POSTHOG_ERROR_CODE.AUTHENTICATION_FAILED:
     case POSTHOG_ERROR_CODE.NOT_AUTHENTICATED:
-      return failure("invalid_credentials", secrets);
+      return sourceFailure("invalid_credentials", secrets);
     case POSTHOG_ERROR_CODE.THROTTLED:
-      return failure("rate_limited", secrets);
+      return sourceFailure("rate_limited", secrets);
     default:
       break;
   }
 
   if (status === 401) {
-    return failure("invalid_credentials", secrets);
+    return sourceFailure("invalid_credentials", secrets);
   }
   if (status === 404) {
-    return failure("project_not_found", secrets);
+    return sourceFailure("project_not_found", secrets);
   }
   if (status === 429) {
-    return failure("rate_limited", secrets);
+    return sourceFailure("rate_limited", secrets);
   }
-  return failure("unreachable", secrets);
+  return sourceFailure("unreachable", secrets);
 }

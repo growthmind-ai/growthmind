@@ -51,6 +51,9 @@ export const RESIDUAL_PII_KIND_MESSAGES: Record<ResidualPiiKind, string> = {
 export const NO_RATE_SENTENCE =
   "Every session we looked at was set aside, so there is no share to report.";
 
+// What HAPPENED on one failed post attempt — facts only, never next actions. Each
+// surface has a different repair: `channel_unavailable` once ended "pick another
+// one", and the first-run card appended a clause contradicting it.
 export const POST_FAILURE_MESSAGES: Record<PostFailureCode, string> = {
   call_failed:
     "We could not get this into Slack just now. Nothing about what we found has changed, and we will try again.",
@@ -62,9 +65,31 @@ export const POST_FAILURE_MESSAGES: Record<PostFailureCode, string> = {
     "Slack is no longer letting us post on your behalf, so someone will need to reconnect it before anything can arrive. Nothing about what we found has changed.",
 
   channel_unavailable:
-    "We could not post to the channel that was chosen — it may have been archived or deleted, or we may no longer be in it. Someone will need to pick another one. Nothing about what we found has changed.",
+    "We could not post to the channel that was chosen — it may have been archived or deleted, or we may no longer be in it. Nothing about what we found has changed.",
 };
 
+// The lane's own next action, per code. Total over the union on purpose, so a
+// fifth code forces a decision here. Not "pick another one" — `attachChannel`
+// never moves a chosen address, so re-pointing is an act no surface serves.
+export const DELIVERY_LANE_FAILURE_CLAUSE: Record<PostFailureCode, string | null> = {
+  call_failed: null,
+  rejected: null,
+  not_authorised: null,
+  channel_unavailable:
+    "Someone has to make that channel reachable again in Slack — unarchive it, or invite the bot back in. We will keep trying.",
+};
+
+// Composed here so no sentence exists outside `ALL_DELIVERY_MESSAGES` (D11), and
+// from the code, never `PostResult.message` — the closed union is the redaction
+// argument: a Slack response body has no parameter to travel through.
+export function deliveryFailureSentence(code: PostFailureCode): string {
+  const fact = POST_FAILURE_MESSAGES[code];
+  const clause = DELIVERY_LANE_FAILURE_CLAUSE[code];
+
+  return clause === null ? fact : `${fact} ${clause}`;
+}
+
+// Matched structurally by `DeliveryVocabulary` in `packages/core` (arrow is one-way).
 export const DELIVERY_VOCABULARY = {
   nothingTodayLead: NOTHING_TODAY_LEAD,
   nothingToday: NOTHING_TODAY_REASON_MESSAGES,
@@ -81,6 +106,8 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       ...Object.values(DELIVERY_STATUS_MESSAGES),
       ...Object.values(RESIDUAL_PII_KIND_MESSAGES),
       ...Object.values(POST_FAILURE_MESSAGES),
+      // Scanned as themselves: a composed sentence is not a fixed constant.
+      ...Object.values(DELIVERY_LANE_FAILURE_CLAUSE),
     ].filter((message): message is string => message !== null),
   ),
 ];

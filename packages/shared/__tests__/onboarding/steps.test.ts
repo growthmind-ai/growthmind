@@ -211,32 +211,36 @@ describe("the step sequence — AD-19, FR-O3, FR-O15, FR-O23", () => {
 });
 
 describe("orphan checklist rows — assertions taken from the UX Expected-UI column", () => {
-  test("step two declares exactly two visible fields and a folded region disclosure", async () => {
+  test("step two declares exactly one visible field and one earned, folded address", async () => {
     const descriptors = await loadStepDescriptors();
     const analytics = descriptorFor(descriptors, "analytics");
     if (analytics.kind !== "work") throw new Error("step 2 must be a work step");
 
+    // ONE visible field: the project number is discovered from the key (AD-1/AD-3) and the
+    // region is probed rather than asked (AD-2), so neither is a field — both were the hunt.
     const visible = analytics.fields.filter((field) => !field.folded);
     const folded = analytics.fields.filter((field) => field.folded);
 
-    expect(visible).toHaveLength(2);
+    expect(visible).toHaveLength(1);
     expect(folded).toHaveLength(1);
-    expect(analytics.fields).toHaveLength(3);
+    expect(analytics.fields).toHaveLength(2);
 
-    expect(visible.map((field) => field.label)).toEqual([
-      "Project number",
-      "Your personal API key",
-    ]);
+    // The one visible label, verbatim, and it is masked.
+    expect(visible.map((field) => field.label)).toEqual(["Your personal API key"]);
+    expect(visible[0]?.secret).toBe(true);
 
-    const [projectNumber, personalKey] = visible;
-    expect(projectNumber?.secret).toBe(false);
-    expect(personalKey?.secret).toBe(true);
-    expect(projectNumber?.placeholder).toBe("12345");
-
-    expect(folded[0]?.prefill).toBe("https://us.i.posthog.com");
+    // The address is NOT prefilled — it shows the shipped default as a placeholder instead. A
+    // prefilled value is a value the next submit SENDS, taking the single-request self-host
+    // branch at the address that just refused and skipping the region walk the founder needs.
+    expect(folded[0]?.prefill).toBeNull();
+    expect(folded[0]?.placeholder).toBe("https://us.i.posthog.com");
     expect(folded[0]?.secret).toBe(false);
+    // The disclosure sentence is audited in `messages.test.ts`: reaching it here would mean
+    // widening this file's Wave 0 mirror of `FieldDescriptor` until it stopped being a mirror.
 
-    for (const field of visible) {
+    // NO field is prefilled now. A field the product can fill in for you is a field it should
+    // not have asked for.
+    for (const field of analytics.fields) {
       expect(field.prefill).toBeNull();
     }
 
@@ -244,25 +248,38 @@ describe("orphan checklist rows — assertions taken from the UX Expected-UI col
       field.id,
       field.label,
       field.helper ?? "",
+      field.placeholder ?? "",
     ]);
+
+    // THE PROJECT NUMBER CANNOT RE-ENTER AS A FIELD. This array is what the form renders and
+    // what a refusal maps onto, so a re-added descriptor is the hunt coming back — it would
+    // pull `project_not_found` off the card onto an input.
+    for (const value of everyDeclaredString) {
+      expect(value).not.toMatch(/project ?number/i);
+    }
+
+    // Nor the Growthmind project id: FR-O1 provisions it and AD-16 keeps it off every route's
+    // input schema. Asserted over ids, labels and helper text so it cannot return as optional.
     for (const value of everyDeclaredString) {
       expect(value).not.toMatch(/growthmind/i);
       expect(value).not.toMatch(/workspace id|organisation id|organization id/i);
     }
   });
 
-  test("an unreachable refusal marks the region field as the offending one", async () => {
+  test("an unreachable refusal marks the address field as the offending one", async () => {
     const descriptors = await loadStepDescriptors();
     const analytics = descriptorFor(descriptors, "analytics");
     if (analytics.kind !== "work") throw new Error("step 2 must be a work step");
 
+    // The disclosure auto-expands, because it is the field `CONNECT_REFUSAL_MESSAGES.unreachable`
+    // is about — and it is the same code that EARNS the disclosure, so both must name one field.
     const owningUnreachable = analytics.fields.filter((field) =>
       field.refusalCodes.includes("unreachable"),
     );
 
     expect(owningUnreachable).toHaveLength(1);
     expect(owningUnreachable[0]?.folded).toBe(true);
-    expect(owningUnreachable[0]?.prefill).toBe("https://us.i.posthog.com");
+    expect(owningUnreachable[0]?.placeholder).toBe("https://us.i.posthog.com");
 
     const owningInvalidCredentials = analytics.fields.filter((field) =>
       field.refusalCodes.includes("invalid_credentials"),
@@ -270,6 +287,13 @@ describe("orphan checklist rows — assertions taken from the UX Expected-UI col
     expect(owningInvalidCredentials).toHaveLength(1);
     expect(owningInvalidCredentials[0]?.secret).toBe(true);
     expect(owningInvalidCredentials[0]?.id).not.toBe(owningUnreachable[0]?.id);
+
+    // `project_not_found` is the subject of NO field, by design: nobody types a project number
+    // now, so it renders as the card's own sentence rather than on an input nobody can fix.
+    const owningProjectNotFound = analytics.fields.filter((field) =>
+      field.refusalCodes.includes("project_not_found"),
+    );
+    expect(owningProjectNotFound).toHaveLength(0);
   });
 
   test("a successful connect marks step two done, keeps it open, and opens step three", async () => {

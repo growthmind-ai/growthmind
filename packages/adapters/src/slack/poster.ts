@@ -1,8 +1,10 @@
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 import { z } from "zod";
 
-import { MAX_RESPONSE_BYTES, REQUEST_TIMEOUT_MS, SLACK_POST_MESSAGE_URL } from "./constants";
+import { REQUEST_TIMEOUT_MS, SLACK_POST_MESSAGE_URL } from "./constants";
 import type { SlackPosterConfig, SlackPosterDeps } from "./deps";
+// Shared with the OAuth token exchange and the channel list; one implementation, three callers.
+import { readSlackJsonBody } from "./envelopes";
 import { mapSlackError, postFailure } from "./errors";
 
 const slackPostMessageResponseSchema = z.object({
@@ -11,25 +13,9 @@ const slackPostMessageResponseSchema = z.object({
   error: z.string().optional(),
 });
 
-async function readJsonBody(response: Response): Promise<unknown> {
-  try {
-    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
-      return null;
-    }
-
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_BYTES) {
-      return null;
-    }
-
-    const decoded: unknown = JSON.parse(text);
-    return decoded;
-  } catch {
-    return null;
-  }
-}
-
+// Config and deps stay separate arguments: the credential belongs to the customer's row,
+// the effects belong to the process. The bot token never reaches a returned failure —
+// every exit here goes through `postFailure`'s fixed sentences.
 export function createSlackDeliveryPoster(
   config: SlackPosterConfig,
   deps: SlackPosterDeps,
@@ -70,7 +56,7 @@ export function createSlackDeliveryPoster(
           return postFailure("call_failed");
         }
 
-        const parsed = slackPostMessageResponseSchema.safeParse(await readJsonBody(response));
+        const parsed = slackPostMessageResponseSchema.safeParse(await readSlackJsonBody(response));
         if (!parsed.success) {
           return postFailure("call_failed");
         }

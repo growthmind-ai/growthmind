@@ -65,6 +65,32 @@ describe("parseServerEnv", () => {
     expect(() => parseServerEnv(incomplete)).toThrow(/DATABASE_URL/);
   });
 
+  // Stops somebody restoring `z.url().default("http://localhost:3000")`: a schema-level
+  // default survives the production branch, and a deploy that omitted the variable booted
+  // clean with sign-in links and the Slack redirect_uri both pointing at localhost.
+  test("production has no fallbacks — a missing BETTER_AUTH_URL throws", () => {
+    const { BETTER_AUTH_URL: _omitted, ...incomplete } = PROD_COMPLETE;
+    expect(() => parseServerEnv(incomplete)).toThrow(/BETTER_AUTH_URL/);
+  });
+
+  // The other half: `cp .env.example .env` leaves the variable SET, so an absence-based
+  // guard passes it through. `DEV_DEFAULTS` membership rejects it by value instead.
+  test("production rejects the.env.example BETTER_AUTH_URL literal", () => {
+    expect(() =>
+      parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_URL: "http://localhost:3000" }),
+    ).toThrow(/still set to the public example value/);
+  });
+
+  // The quickstart compose stack sets both, so `docker compose up` still reaches an app.
+  test("GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 permits the localhost BETTER_AUTH_URL in production", () => {
+    const env = parseServerEnv({
+      ...PROD_COMPLETE,
+      BETTER_AUTH_URL: "http://localhost:3000",
+      GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1",
+    });
+    expect(env.BETTER_AUTH_URL).toBe("http://localhost:3000");
+  });
+
   test("production rejects a short BETTER_AUTH_SECRET", () => {
     expect(() => parseServerEnv({ ...PROD_COMPLETE, BETTER_AUTH_SECRET: "short" })).toThrow(
       /BETTER_AUTH_SECRET/,
@@ -110,5 +136,50 @@ describe("parseServerEnv", () => {
     expect(env.POSTHOG_PROJECT_API_KEY).toBeUndefined();
     expect(env.POSTHOG_PERSONAL_API_KEY).toBeUndefined();
     expect(env.POSTHOG_PROJECT_ID).toBeUndefined();
+  });
+
+  // OPTIONAL IS THE DECISION, not a default nobody got round to tightening: these two rows
+  // exist so a later "hardening" to required fails a NAMED test. Self-host is first-class,
+  // so a clean clone with neither variable set must boot identically to one with both.
+  const SLACK_ID = "1234567890.0987654321";
+  const SLACK_SECRET = "fixture-client-secret-never-real";
+
+  test("production boots with both, one, or neither Slack credential", () => {
+    expect(PROD_COMPLETE).not.toHaveProperty("SLACK_CLIENT_ID");
+    expect(PROD_COMPLETE).not.toHaveProperty("SLACK_CLIENT_SECRET");
+
+    // ALL FOUR COMBINATIONS BOOT. Half a Slack app is `apps/web/lib/slack/oauth.ts`'s
+    // problem — it declines to offer the path — never a reason to refuse to start.
+    for (const [label, patch] of [
+      ["neither", {}],
+      ["only the id", { SLACK_CLIENT_ID: SLACK_ID }],
+      ["only the secret", { SLACK_CLIENT_SECRET: SLACK_SECRET }],
+      ["both", { SLACK_CLIENT_ID: SLACK_ID, SLACK_CLIENT_SECRET: SLACK_SECRET }],
+    ] as const) {
+      const env = parseServerEnv({ ...PROD_COMPLETE, ...patch });
+
+      expect(`${label}:${env.NODE_ENV}`).toBe(`${label}:production`);
+      expect(`${label}:${env.SLACK_CLIENT_ID ?? "absent"}`).toBe(
+        `${label}:${"SLACK_CLIENT_ID" in patch ? SLACK_ID : "absent"}`,
+      );
+      expect(`${label}:${env.SLACK_CLIENT_SECRET ?? "absent"}`).toBe(
+        `${label}:${"SLACK_CLIENT_SECRET" in patch ? SLACK_SECRET : "absent"}`,
+      );
+    }
+  });
+
+  // Why each variable is `z.string().min(1).optional()` and not a bare `.optional()`:
+  // `SLACK_CLIENT_ID=` on its own line arrives as the EMPTY STRING, not as absent, and a
+  // bare `.optional()` would read "configured" and redirect a founder into a consent
+  // screen built with no client id. AN EMPTY CREDENTIAL MUST BE REJECTED, at boot, in
+  // front of the operator who can fix it.
+  test("an empty-string Slack credential is refused, never treated as configured", () => {
+    for (const key of ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"] as const) {
+      expect(() => parseServerEnv({ ...PROD_COMPLETE, [key]: "" })).toThrow(new RegExp(key));
+
+      // THE CONTROL: a real value still boots, so the row above cannot pass by being
+      // REQUIRED instead.
+      expect(() => parseServerEnv({ ...PROD_COMPLETE, [key]: SLACK_ID })).not.toThrow();
+    }
   });
 });

@@ -1,3 +1,5 @@
+// Produces the lanes `runDeliveryTick` consumes. The channel is read off
+// `slack_connections`, never supplied by a caller, so a cross-org post is impossible.
 import {
   COUNT_ROLES,
   confidenceBasisSchema,
@@ -18,9 +20,11 @@ import {
   createDeliveriesRepo,
   createFindingsRepo,
   createProjectsRepo,
+  isDeliveryTarget,
   isSignatureHex,
   signatureHex,
 } from "@growthmind/db";
+import type { DeliveryTarget } from "@growthmind/db";
 import type { SlackDeliveryOrganization } from "@growthmind/db/system";
 import {
   SYSTEM_ACTOR,
@@ -196,8 +200,12 @@ export interface DeliveryLaneSourceDeps {
 }
 
 export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): DeliveryLaneSource {
+  // `null` means this project's turn failed (D8), never "nothing to send" — that is
+  // a lane with empty `candidates`. The parameter type IS the AD-4 guard: only an
+  // organization `isDeliveryTarget` has already narrowed can reach this function, so
+  // both channel reads below are plain string reads.
   async function laneFor(
-    organization: SlackDeliveryOrganization,
+    organization: DeliveryTarget<SlackDeliveryOrganization>,
     ctx: TenantContext,
     projectId: string,
     at: Date,
@@ -216,6 +224,10 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       let deliveredThisWeek = 0;
 
       for (const finding of recent) {
+        // Keyed on the same `(finding, channel)` tuple the claim conflicts on. This is
+        // why `findFor` still takes a `string` (AD-4 row 7): a null channel would not
+        // error, it would match zero rows, so `isSpokenFor` answers false and the tick
+        // re-sends a delivered finding every week with nothing in a log.
         const delivery = await deliveries.findFor(finding.id, organization.channelId);
 
         if (wasPostedInWindow(delivery, windowStart, at)) {
@@ -256,6 +268,21 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       const lanes: DeliveryLane[] = [];
 
       for (const organization of organizations) {
+        // The only place this tick answers the null channel (AD-4): an active
+        // installation can be mid-OAuth, a real token with no address yet. Narrowing
+        // here, before a lane exists, keeps `DeliveryLane.channelId` a `string`.
+        // `info`, never `error` — a founder mid-setup is not a fault, but "this
+        // customer received nothing" must be answerable from the log.
+        if (!isDeliveryTarget(organization)) {
+          deps.logger.info(
+            `delivery lane source: organization ${organization.organizationId} has a Slack ` +
+              `workspace attached and no channel chosen, so there is nowhere to deliver`,
+          );
+          continue;
+        }
+
+        // `systemContextFor` can refuse a bad row, so the context build stays inside
+        // this try: one unreadable organization must not cost the rest their delivery.
         let ctx: TenantContext;
         let projectIds: readonly string[];
         try {

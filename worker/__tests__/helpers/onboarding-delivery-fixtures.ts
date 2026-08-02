@@ -88,8 +88,8 @@ export function slackEnvelopeFor(organizationId: string): { ciphertext: string; 
 
 export interface SeedSlackConnectionParams {
   organizationId: string;
-
-  channelId: string;
+  /** `null` is a state, not an omission (AD-4): active workspace, no channel chosen. */
+  channelId: string | null;
   isActive?: boolean;
   connectedAt?: Date;
 }
@@ -98,7 +98,7 @@ export async function seedSlackConnection(
   db: TestDb,
   params: SeedSlackConnectionParams,
   ownedBy: string,
-): Promise<{ id: string; channelId: string }> {
+): Promise<{ id: string; channelId: string | null }> {
   const envelope = slackEnvelopeFor(params.organizationId);
   const id = randomUUID();
 

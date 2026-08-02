@@ -1,4 +1,13 @@
-import { createSlackConnectionsRepo, ensureProject, findUserNameById } from "@growthmind/db";
+// POST /api/first-run/slack/test — the test message, which is also how the org
+// learns Slack was connected. Declared input is NONE: the channel comes from the
+// stored row, never the caller (FR-O13). A failed post answers 200 with a failure
+// outcome, so it never breaks setup (D8).
+import {
+  createSlackConnectionsRepo,
+  ensureProject,
+  findUserNameById,
+  isDeliveryTarget,
+} from "@growthmind/db";
 import {
   describeTestPostOutcome,
   firstRunSlackTestInputSchema,
@@ -9,6 +18,7 @@ import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/dep
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
 import {
   CHANNEL_UNAVAILABLE,
+  NO_CHANNEL_CHOSEN,
   NO_CHANNEL_CONNECTED,
   refusalResponse,
 } from "@/lib/first-run/refusals";
@@ -30,6 +40,12 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   const connection = await createSlackConnectionsRepo(deps.db, gate.ctx).getActiveForOrg();
   if (connection === null) {
     return refusalResponse(NO_CHANNEL_CONNECTED);
+  }
+
+  // AD-4: the OAuth path stores a token before a channel is chosen, so a real
+  // connection can still have nowhere to post. Refused HERE, before the post.
+  if (!isDeliveryTarget(connection)) {
+    return refusalResponse(NO_CHANNEL_CHOSEN);
   }
 
   const poster = deps.poster ?? (await deps.posterFor?.(gate.ctx)) ?? null;

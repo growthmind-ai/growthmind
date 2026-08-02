@@ -37,6 +37,12 @@ export const STAGE = entry("apps/web/components/first-run/Stage.tsx", OWNER_7B);
 
 export const WAIT_LOG = entry("apps/web/components/first-run/WaitLog.tsx", OWNER_7B);
 
+/** Named because AD-6's wire test reads this one file by name. */
+export const CONNECT_SLACK_FORM = entry(
+  "apps/web/components/first-run/ConnectSlackForm.tsx",
+  OWNER_7A,
+);
+
 export const FINDING_CARD = entry("apps/web/components/first-run/FindingCard.tsx", OWNER_7B);
 
 export const FIRST_RUN_CSS = entry("apps/web/components/first-run/first-run.module.css", OWNER_7B);
@@ -51,7 +57,7 @@ export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
   entry("apps/web/components/first-run/ConnectAnalyticsForm.tsx", OWNER_7A),
   COUNTER_GRID,
   entry("apps/web/components/first-run/PrivacyReceipt.tsx", OWNER_7A),
-  entry("apps/web/components/first-run/ConnectSlackForm.tsx", OWNER_7A),
+  CONNECT_SLACK_FORM,
   entry("apps/web/components/first-run/FirstRunClient.tsx", OWNER_7B),
   entry("apps/web/components/first-run/Strip.tsx", OWNER_7B),
   STAGE,

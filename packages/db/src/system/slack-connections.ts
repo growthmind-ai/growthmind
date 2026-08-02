@@ -19,9 +19,16 @@ export interface SlackDeliveryOrganization {
 
   readonly organizationName: string;
   readonly connectionId: string;
-  readonly channelId: string;
+
+  // `null` since AD-4: an org mid-OAuth is active, has a token, and has no address. Widened
+  // here but NOT on `DeliveryLane.channelId`, so postability narrows once at `isDeliveryTarget`.
+  readonly channelId: string | null;
 }
 
+// Every organization with an ACTIVE Slack connection — the population the delivery tick
+// quantifies over; no installation returns `[]`. Deliberately NOT filtered on
+// `channel_id IS NOT NULL` (AD-4): "may we post?" belongs in the delivery guard, not in a SQL
+// predicate every future query would have to remember to copy.
 export async function listOrgsWithActiveSlackConnection(
   db: ScopedDb,
 ): Promise<SlackDeliveryOrganization[]> {

@@ -25,8 +25,9 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
     "This project is already attached to an analytics account. Detach that one first, then attach this one — we keep everything we already collected.",
   invalid_credentials:
     "That key did not work. Check you pasted your personal key rather than the project key, and that it is allowed to read events.",
+  // Never "check the project number" — discovered from the key now, not typed: no field to check.
   project_not_found:
-    "The key worked, but we could not find that project. Check the project number in your analytics settings.",
+    "The key works, but it reaches no project we can read — either it has access to none, or the one it reached before is gone. Check what this key is allowed to read in your analytics account, then try again.",
   unreachable:
     "We could not reach that address. Check the region address, confirm it is reachable from this machine, then try again.",
 

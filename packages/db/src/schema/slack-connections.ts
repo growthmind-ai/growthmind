@@ -27,10 +27,14 @@ const POST_FAILURE_CODES = [
 
 const SLACK_CREDENTIAL_AAD_SCOPE = "slack";
 
+// Keyed on the tenant, not a project: a ciphertext lifted from another org fails auth.
 export function slackCredentialAad(ctx: TenantContext): string {
   return credentialAad(ctx.organizationId, SLACK_CREDENTIAL_AAD_SCOPE);
 }
 
+// Org-scoped, not actor-scoped: `connected_by_user_id` is attribution, never a filter.
+// `slack_connections_active_org_uidx` — UNIQUE on `(organization_id)` WHERE `is_active` —
+// makes one active connection per org true; a channel-less row still fills that slot.
 export const slackConnections = pgTable(
   "slack_connections",
   {
@@ -40,9 +44,13 @@ export const slackConnections = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
+    // NULLABLE (AD-4): NULL means a workspace is attached and NOTHING CAN BE DELIVERED.
+    // Never the empty string; every reader must distinguish it from a connected row.
+    channelId: text("channel_id"),
 
-    channelId: text("channel_id").notNull(),
+    workspaceName: text("workspace_name"),
 
+    // `v1.<keyId>.<iv>.<tag>.<ciphertext>`; no repository method returns it.
     credentialCiphertext: text("credential_ciphertext").notNull(),
 
     credentialKeyId: text("credential_key_id").notNull(),

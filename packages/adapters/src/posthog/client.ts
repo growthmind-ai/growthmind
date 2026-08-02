@@ -1,18 +1,13 @@
 import type { SourceFailure } from "@growthmind/shared";
 
 import { computeBackoffDelayMs, parseRetryAfterSeconds } from "./backoff";
-import {
-  eventsUrl,
-  MAX_RATE_LIMIT_ATTEMPTS,
-  MAX_RESPONSE_BYTES,
-  MAX_RESPONSE_CHUNKS,
-  personsUrl,
-  REQUEST_TIMEOUT_MS,
-} from "./constants";
+import { eventsUrl, MAX_RATE_LIMIT_ATTEMPTS, personsUrl, REQUEST_TIMEOUT_MS } from "./constants";
 import { isSameOriginAsHost } from "./host-guard";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
 import { mapFailure } from "./errors";
 import { assertPostHogInstant } from "./instant";
+// Own module because `discovery.ts` needs the same three bounds; a second copy would drift.
+import { readJsonBody } from "./read-json-body";
 
 export type PostHogEndpoint = "events" | "persons";
 
@@ -34,51 +29,13 @@ export interface PostHogClient {
   rateLimitAttempts(endpoint: PostHogEndpoint): number;
 }
 
-async function readJsonBody(response: Response): Promise<unknown> {
-  try {
-    const declared = Number(response.headers.get("content-length") ?? Number.NaN);
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) return null;
-
-    const body = response.body;
-    if (!body) return (await response.json()) as unknown;
-
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-
-    let readsRemaining = MAX_RESPONSE_CHUNKS;
-    while (readsRemaining > 0) {
-      readsRemaining -= 1;
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_RESPONSE_BYTES) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(value);
-    }
-    if (readsRemaining === 0) {
-      await reader.cancel();
-      return null;
-    }
-
-    const joined = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      joined.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return JSON.parse(new TextDecoder().decode(joined)) as unknown;
-  } catch {
-    return null;
-  }
-}
-
 export function createPostHogClient(
   config: PostHogSourceConfig,
   deps: PostHogSourceDeps,
 ): PostHogClient {
+  // One 429 bucket per endpoint, deliberately: a throttled events walk must not spend the
+  // persons lookup's allowance. Every loop below is bounded — this package forbids
+  // unbounded loops and asserts it with a structural test.
   const attemptsSpent: Record<PostHogEndpoint, number> = { events: 0, persons: 0 };
 
   const authorization = `Bearer ${config.personalApiKey}`;

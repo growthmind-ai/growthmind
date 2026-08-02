@@ -1,9 +1,16 @@
+// The delivery wire end to end — real entry point, real database, real lane source,
+// real SQL — faked at exactly one seam: the poster, the only effect that leaves the
+// process. A fake anywhere else and this file proves nothing.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { createDeliveriesRepo, schema } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
-import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import {
+  deliveryFailureSentence,
+  tenantContextSchema,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import {
   assertUnderConstruction,
@@ -98,13 +105,14 @@ function contextFor(organizationId: string, organizationName: string): TenantCon
 interface SeededOrg {
   workspace: SeededWorkspace;
   ctx: TenantContext;
-  channelId: string;
+  /** `null` is the AD-4 half-connected row — see `SeedSlackConnectionParams`. */
+  channelId: string | null;
   findingId: string;
 }
 
 async function seedOrgWithFinding(input: {
   label: string;
-  channelId: string;
+  channelId: string | null;
   context?: readonly string[];
 }): Promise<SeededOrg> {
   const workspace = await seedPollableWorkspace(db, {
@@ -154,6 +162,58 @@ async function runTheTick(poster: RecordingPoster): Promise<{
 
 async function deliveryRows() {
   return db.select().from(schema.deliveries);
+}
+
+// A `TestDb` that delegates every call and counts reads of the `deliveries` table.
+// It wraps the db rather than faking a `DeliveriesRepo` because the lane source builds
+// its own repo from the handle it is given — the db is the only seam it has — and it
+// delegates rather than stubs so "zero lanes" stays a statement about real SQL. The
+// table is matched by reference: `worker` declares no `drizzle-orm` of its own.
+interface LedgerWatch {
+  readonly db: TestDb;
+  reads(): number;
+}
+
+// Module scope, not a closure — the lint rule exists for helpers recreated on every
+// property read. A `Proxy` `get` trap hands back an unbound function, and a method
+// that lost `this` would stop being a real database.
+function bindIfCallable(owner: object, value: unknown): unknown {
+  return typeof value === "function"
+    ? (value as (...args: unknown[]) => unknown).bind(owner)
+    : value;
+}
+
+function watchLedgerReads(real: TestDb): LedgerWatch {
+  let reads = 0;
+
+  const watched = new Proxy(real as object, {
+    get(target, property) {
+      const value = Reflect.get(target, property) as unknown;
+      if (property !== "select" || typeof value !== "function") {
+        return bindIfCallable(target, value);
+      }
+
+      return (...args: unknown[]): unknown => {
+        const builder = (value as (...a: unknown[]) => unknown).apply(target, args) as object;
+
+        return new Proxy(builder, {
+          get(builderTarget, builderProperty) {
+            const inner = Reflect.get(builderTarget, builderProperty) as unknown;
+            if (builderProperty !== "from" || typeof inner !== "function") {
+              return bindIfCallable(builderTarget, inner);
+            }
+
+            return (table: unknown): unknown => {
+              if (table === schema.deliveries) reads += 1;
+              return (inner as (t: unknown) => unknown).call(builderTarget, table);
+            };
+          },
+        });
+      };
+    },
+  }) as TestDb;
+
+  return { db: watched, reads: () => reads };
 }
 
 async function findingRows() {
@@ -212,7 +272,11 @@ test("a poster failure leaves the finding row intact and the delivery row termin
   const deliveries = await deliveryRows();
   expect(deliveries).toHaveLength(1);
   expect(deliveries[0]?.status).toBe("failed");
-  expect(deliveries[0]?.failureReason).toBe("The channel is gone.");
+
+  // The reason is the lane's own sentence, built from `result.code`, not the fake's
+  // message echoed back: the closed union is what keeps a vendor body out of the column.
+  expect(deliveries[0]?.failureReason).toBe(deliveryFailureSentence("channel_unavailable"));
+  expect(deliveries[0]?.failureReason).not.toBe("The channel is gone.");
 });
 
 test("the channel id comes from the stored connection row and no caller can supply one", async () => {
@@ -245,6 +309,41 @@ test("the channel id comes from the stored connection row and no caller can supp
 
   const [relanded] = await lanes.listDueLanes(NOW);
   expect(relanded?.channelId).toBe(CHANNEL_B);
+});
+
+test("an organization with a workspace and no channel yields no lane and no ledger read", async () => {
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+
+  // Fully furnished in every other respect — project, persisted finding, active
+  // connection with a real sealed token — so a green here is about the guard rather
+  // than about an org with nothing to send.
+  const attached = await seedOrgWithFinding({ label: "attached", channelId: null });
+
+  const logger = createRecordingDeliveryLogger();
+  const watch = watchLedgerReads(db);
+  const lanes = createDeliveryLaneSource({ db: watch.db, logger });
+
+  expect(await lanes.listDueLanes(NOW)).toEqual([]);
+
+  // AD-4 row 7 as the thing that must not happen: a null channel does not error in
+  // `findFor`, it matches no row, so `isSpokenFor` answers false and the tick re-sends
+  // the backlog. The compiler carries the real guarantee; this names the invariant so a
+  // later refactor that widened either type "to handle the null" still fails here.
+  expect(watch.reads()).toBe(0);
+
+  // `info`, not `error`: mid-setup is not a fault, but the silence must be answerable.
+  expect(logger.infos.some((line) => line.includes(attached.workspace.organizationId))).toBe(true);
+  expect(logger.errors).toEqual([]);
+
+  // The control, through the same lane source and watcher. Without it both assertions
+  // above pass against a broken population read, a watcher that counts nothing, or a
+  // guard that refuses every organization on the installation.
+  const connected = await seedOrgWithFinding({ label: "chosen", channelId: CHANNEL_A });
+  const produced = await lanes.listDueLanes(NOW);
+
+  expect(produced.map((lane) => lane.organizationId)).toEqual([connected.workspace.organizationId]);
+  expect(produced[0]?.channelId).toBe(CHANNEL_A);
+  expect(watch.reads()).toBeGreaterThan(0);
 });
 
 test("a finding in org A never reaches org B's channel", async () => {

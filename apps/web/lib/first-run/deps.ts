@@ -1,5 +1,6 @@
 import type { CreateSourceFn, ScopedDb } from "@growthmind/db";
 import { createSlackConnectionsRepo } from "@growthmind/db";
+import type { DiscoveryInput, DiscoveryResult } from "@growthmind/adapters";
 import type {
   CredentialKey,
   CredentialKeyResolution,
@@ -13,12 +14,32 @@ import {
   parseServerEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
-import { createPostHogSessionSource, createSlackDeliveryPoster } from "@growthmind/adapters";
+import {
+  createPostHogSessionSource,
+  createSlackDeliveryPoster,
+  discoverProjects,
+} from "@growthmind/adapters";
 
 import { getDb } from "@/lib/db";
+import { listChannels, type SlackChannelChoice } from "@/lib/slack/channels";
 import { getTenantContext } from "@/lib/tenant";
 
 export type FirstRunPosterFor = (ctx: TenantContext) => Promise<DeliveryPoster | null>;
+
+// `DiscoveryInput`'s `host: null` is load-bearing: it selects the walk over the
+// known regions rather than one request at an address a customer typed.
+export type FirstRunDiscoverProjects = (input: DiscoveryInput) => Promise<DiscoveryResult>;
+
+export type FirstRunChannelListingRefusal =
+  "no_connection" | "unreadable_credential" | "not_authorised" | "call_failed";
+
+export type FirstRunChannelListing =
+  | { readonly ok: true; readonly channels: readonly SlackChannelChoice[] }
+  | { readonly ok: false; readonly code: FirstRunChannelListingRefusal };
+
+// AD-20: a per-org port built in this composition root, exactly like
+// `posterFor`. The route never sees the bot token and cannot.
+export type FirstRunChannelsFor = (ctx: TenantContext) => Promise<FirstRunChannelListing>;
 
 export interface FirstRunRouteDeps {
   readonly db: ScopedDb;
@@ -29,11 +50,18 @@ export interface FirstRunRouteDeps {
 
   readonly createSource?: CreateSourceFn | undefined;
 
+  readonly discoverProjects?: FirstRunDiscoverProjects | undefined;
+
   readonly credentialKey?: CredentialKeyResolution | undefined;
 
   readonly poster?: DeliveryPoster | undefined;
 
   readonly posterFor?: FirstRunPosterFor | undefined;
+
+  readonly channelsFor?: FirstRunChannelsFor | undefined;
+
+  // AD-8's one seam: the routes have to be drivable with no network.
+  readonly fetch?: typeof globalThis.fetch | undefined;
 }
 
 const CONNECT_BACKOFF_CEILING_MS = 5_000;
@@ -52,6 +80,23 @@ function createSourceWith(key: CredentialKey): CreateSourceFn {
     });
 }
 
+// Built only when the key resolves: the identity hmac comes from it (M-1).
+function discoverProjectsWith(key: CredentialKey): FirstRunDiscoverProjects {
+  const identityHmacKey = deriveIdentityHmacKey(key);
+
+  return (input) =>
+    discoverProjects(input, {
+      fetch: globalThis.fetch,
+      sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      now: () => new Date(),
+      random: () => Math.random(),
+      identityHmacKey,
+    });
+}
+
+// A poster per organization, keyed by the context and nothing else (D7). This
+// file is the composition root: no route, page or service may open a credential
+// itself (AD-20). Fails closed, and never names the ciphertext.
 function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
   const resolution = resolveCredentialKey(env);
 
@@ -84,6 +129,62 @@ function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
   };
 }
 
+// The sibling of `makePosterFor`, one screen earlier: a channel lister per
+// organization, with the credential opened here and nowhere else (AD-20, D7).
+// Nothing is stored (AD-7) — the list is fetched at pick time, so a channel
+// created a minute ago is pickable.
+function makeChannelsFor(
+  db: ScopedDb,
+  resolution: CredentialKeyResolution,
+  fetchImpl: typeof globalThis.fetch,
+): FirstRunChannelsFor {
+  if (!resolution.ok) {
+    logger.error(
+      `onboarding composition: the credential key could not be resolved (${resolution.reason}), ` +
+        `so no workspace's channels can be read on this installation until it is configured`,
+    );
+    return () => Promise.resolve({ ok: false, code: "unreadable_credential" });
+  }
+
+  const key = resolution.key;
+
+  return async (ctx) => {
+    const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
+
+    if (opened === null) {
+      return { ok: false, code: "no_connection" };
+    }
+
+    if (!opened.ok) {
+      logger.error(
+        `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
+          `installation cannot open (${opened.reason}) — it must be reconnected`,
+      );
+      return { ok: false, code: "unreadable_credential" };
+    }
+
+    const listed = await listChannels(opened.value, { fetch: fetchImpl });
+
+    // The token went one call into the adapter; `{ id, name }` crosses back.
+    return listed.ok ? { ok: true, channels: listed.channels } : { ok: false, code: listed.code };
+  };
+}
+
+// Two ways in, one composition: both land on `makeChannelsFor`, so there is no
+// arrangement of deps under which a handler opens a credential itself.
+export function resolveChannelsFor(deps: FirstRunRouteDeps): FirstRunChannelsFor {
+  return (
+    deps.channelsFor ??
+    makeChannelsFor(
+      deps.db,
+      deps.credentialKey ?? resolveCredentialKey(parseServerEnv(process.env)),
+      deps.fetch ?? globalThis.fetch,
+    )
+  );
+}
+
+// The wire, in one function, so every route composes identically. The env is
+// read per request rather than at module load.
 export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
   const env = parseServerEnv(process.env);
   const credentialKey = resolveCredentialKey(env);
@@ -93,7 +194,10 @@ export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
     tenant: getTenantContext,
     now: () => new Date(),
     createSource: credentialKey.ok ? createSourceWith(credentialKey.key) : undefined,
+    discoverProjects: credentialKey.ok ? discoverProjectsWith(credentialKey.key) : undefined,
     credentialKey,
     posterFor: makePosterFor(db, env),
+    channelsFor: makeChannelsFor(db, credentialKey, globalThis.fetch),
+    fetch: globalThis.fetch,
   };
 }

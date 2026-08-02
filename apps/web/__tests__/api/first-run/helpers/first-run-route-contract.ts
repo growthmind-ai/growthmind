@@ -1,3 +1,10 @@
+// Every first-run route, declared once (AD-16, AD-16a). The prose here carries
+// no route count deliberately — where a count matters it is read off
+// `FIRST_RUN_ROUTES`. `Object.keys(shape)` is IDENTICAL for `z.object` and
+// `z.strictObject`, so strictness is asserted through the `unrecognized_keys`
+// verdict below, never by enumerating keys. `apps/web` declares no `zod`
+// dependency, so schemas are described structurally here and the real-zod
+// fixtures live in `packages/shared/__tests__/onboarding/probes/`.
 import { type ScopedDb } from "@growthmind/db";
 import { createTestDb, type TestDb, type TestDbHandle } from "@growthmind/db/testing";
 import type { CredentialKeyResolution, DeliveryPoster, TenantContext } from "@growthmind/shared";
@@ -37,6 +44,8 @@ export function webLaneNames(fileToken: string): {
   };
 }
 
+/** One first-run route. `declaredKeys` is its exact input-schema key set; `[]`
+ *  still means `z.strictObject({})`, never an absent or non-strict schema. */
 export interface FirstRunRouteDescriptor {
   readonly id: string;
 
@@ -54,8 +63,18 @@ export interface FirstRunRouteDescriptor {
   readonly ownedBy: string;
 }
 
-const WAVE_6B = "ADD Wave 6b (the eight routes under apps/web/app/api/first-run/)";
+/**
+ * Who wrote each route, quoted back by every loader when a module is missing.
+ *
+ * Three labels rather than one, because this surface was not built in one wave
+ * and a red that names the wrong owner sends somebody to the wrong place.
+ */
+const O_008_ROUTES = "ADD Wave 6b (the first-run routes O-008 shipped)";
+const DISCOVER_ROUTE = "ADD Wave 2 (apps/web/app/api/first-run/analytics/discover/route.ts)";
+const SLACK_OAUTH_ROUTES = "ADD Wave 5, tasks 5.2-5.5 (the Slack OAuth and channel routes)";
 
+/** Every route on this surface, ordered top-down. One added under
+ *  `app/api/first-run/` without an entry here fails the on-disk row. */
 export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freeze([
   {
     id: "status",
@@ -65,7 +84,29 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/status/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
+  },
+  {
+    id: "analytics-discover",
+    path: "/api/first-run/analytics/discover",
+    method: "POST",
+    modulePath: "apps/web/app/api/first-run/analytics/discover/route",
+    sourcePath: "apps/web/app/api/first-run/analytics/discover/route.ts",
+    // `firstRunAnalyticsDiscoverInputSchema`. NO project id of any kind: the
+    // vendor's number is what this route FETCHES, and the customer's project
+    // comes from the session. NO tenancy key, on the same terms as the rest.
+    declaredKeys: ["personalApiKey", "host"],
+    // `host` is absent, because the common path never sends it: the field is
+    // revealed only once every known region has refused (AD-2, "the disclosure
+    // is earned"). An optional key left out is still a body that PARSES, which
+    // is all the strictness prober needs of a `validBody`.
+    //
+    // THE KEY IS LONGER AND MORE DISTINCTIVE THAN ITS NEIGHBOURS ON PURPOSE.
+    // `discover.route.test.ts` reads it back off this descriptor and hands it to
+    // `leaks()`, whose 12-character truncation form has to be unmistakably this
+    // value rather than a coincidence of some other string in the payload.
+    validBody: { personalApiKey: "phx_discover_fixture_key_do_not_use_anywhere" },
+    ownedBy: DISCOVER_ROUTE,
   },
   {
     id: "analytics-connect",
@@ -81,7 +122,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
 
       personalApiKey: "phx_fixture_not_a_real_key",
     },
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
   {
     id: "analytics-disconnect",
@@ -91,7 +132,59 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/analytics/disconnect/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
+  },
+  {
+    id: "slack-oauth-start",
+    path: "/api/first-run/slack/oauth/start",
+    method: "GET",
+    modulePath: "apps/web/app/api/first-run/slack/oauth/start/route",
+    sourcePath: "apps/web/app/api/first-run/slack/oauth/start/route.ts",
+    // Nothing a caller sends may influence where this route sends them: the
+    // `redirect_uri` derives from configuration, never from a request header.
+    declaredKeys: [],
+    validBody: {},
+    ownedBy: SLACK_OAUTH_ROUTES,
+  },
+  {
+    id: "slack-oauth-callback",
+    path: "/api/first-run/slack/oauth/callback",
+    method: "GET",
+    modulePath: "apps/web/app/api/first-run/slack/oauth/callback/route",
+    sourcePath: "apps/web/app/api/first-run/slack/oauth/callback/route.ts",
+    // `code` and `state` arrive as QUERY PARAMETERS and are deliberately NOT
+    // declared: `state` is checked against the httpOnly cookie before anything
+    // else happens, and declaring either would invite a reader to mistake the
+    // parse for the check.
+    declaredKeys: [],
+    validBody: {},
+    ownedBy: SLACK_OAUTH_ROUTES,
+  },
+  {
+    id: "slack-channels",
+    path: "/api/first-run/slack/channels",
+    method: "GET",
+    modulePath: "apps/web/app/api/first-run/slack/channels/route",
+    sourcePath: "apps/web/app/api/first-run/slack/channels/route.ts",
+    // AD-7: the workspace comes from the session's organization and the list
+    // comes live from Slack. A body naming a workspace names somebody else's.
+    declaredKeys: [],
+    validBody: {},
+    ownedBy: SLACK_OAUTH_ROUTES,
+  },
+  {
+    id: "slack-channel",
+    path: "/api/first-run/slack/channel",
+    method: "POST",
+    modulePath: "apps/web/app/api/first-run/slack/channel/route",
+    sourcePath: "apps/web/app/api/first-run/slack/channel/route.ts",
+    // AD-7's contract block: `z.strictObject({ channelId })`. NO tenancy key —
+    // the organization comes from the session, and the row the channel attaches
+    // to comes from the organization. After this, nothing accepts a channel on
+    // the wire again (FR-O13).
+    declaredKeys: ["channelId"],
+    validBody: { channelId: "C01AB2CD3EF" },
+    ownedBy: SLACK_OAUTH_ROUTES,
   },
   {
     id: "slack-connect",
@@ -101,7 +194,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/slack/connect/route.ts",
     declaredKeys: ["botToken", "channelId"],
     validBody: { botToken: "xoxb-fixture-not-a-real-token", channelId: "C01AB2CD3EF" },
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
   {
     id: "slack-test",
@@ -111,7 +204,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/slack/test/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
   {
     id: "slack-skip",
@@ -121,7 +214,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/slack/skip/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
   {
     id: "arm",
@@ -131,7 +224,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/arm/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
   {
     id: "dismiss",
@@ -141,7 +234,7 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     sourcePath: "apps/web/app/api/first-run/dismiss/route.ts",
     declaredKeys: [],
     validBody: {},
-    ownedBy: WAVE_6B,
+    ownedBy: O_008_ROUTES,
   },
 ]);
 
@@ -150,6 +243,9 @@ export type TenancyKey = (typeof TENANCY_KEYS)[number];
 
 export const FIRST_RUN_API_DIR = "apps/web/app/api/first-run";
 
+/** The injectable half of AD-16's preamble. No `projectId` and no
+ *  `organizationId`, deliberately: a value that cannot arrive cannot be
+ *  mis-scoped. The optional ports are the shipped types, never new ones. */
 export interface FirstRunRouteDeps {
   readonly db: ScopedDb;
 
@@ -164,6 +260,8 @@ export interface FirstRunRouteDeps {
   readonly poster?: DeliveryPoster | undefined;
 }
 
+/** One uniform entry point per route is what lets the §9 rows loop
+ *  `FIRST_RUN_ROUTES` instead of hand-listing them. */
 export type FirstRunRouteHandler = (request: Request, deps: FirstRunRouteDeps) => Promise<Response>;
 
 export const ROUTE_SCHEMA_EXPORT = "inputSchema";
@@ -188,7 +286,7 @@ export async function loadRouteInputSchema(
     throw new Error(
       `NOT IMPLEMENTED YET: ${route.modulePath} exports no zod \`${ROUTE_SCHEMA_EXPORT}\`. ` +
         `AD-16a requires every first-run route input schema to be a z.strictObject() exported ` +
-        `under that name — including the six routes whose declared input is none, where ` +
+        `under that name — including the routes whose declared input is none, where ` +
         `z.strictObject({}) is what refuses a client-supplied projectId. ${route.ownedBy} owns it. ` +
         `Found: ${typeof namespace[ROUTE_SCHEMA_EXPORT]}.`,
     );
@@ -206,8 +304,9 @@ export async function loadRouteHandler(
   if (typeof handler !== "function") {
     throw new Error(
       `NOT IMPLEMENTED YET: ${route.modulePath} exports no callable \`${ROUTE_HANDLER_EXPORT}\`. ` +
-        `AD-16 requires one uniform, deps-taking entry point per route so the eight share one ` +
-        `preamble and the §9 rows can loop them. ${route.ownedBy} owns it. Found: ${typeof handler}.`,
+        `AD-16 requires one uniform, deps-taking entry point per route so every route on this ` +
+        `surface shares one preamble and the §9 rows can loop them. ${route.ownedBy} owns it. ` +
+        `Found: ${typeof handler}.`,
     );
   }
 

@@ -172,6 +172,15 @@ export {
   type InsertActiveSlackConnectionInput,
 } from "./repositories/slack-connections.repo";
 
+// AD-4's guard, exported from this barrel rather than "./system" because both the worker's
+// lane source and the web app's test-post route consult it, and "./system" is unreachable
+// from `apps/`.
+export {
+  isDeliveryTarget,
+  type ChannelBearingConnection,
+  type DeliveryTarget,
+} from "./services/delivery-channel-guard";
+
 export { slackCredentialAad } from "./schema/slack-connections";
 export {
   createFirstRunRepo,

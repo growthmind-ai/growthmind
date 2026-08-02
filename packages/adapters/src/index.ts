@@ -4,6 +4,11 @@ export { createPostHogSessionSource } from "./posthog/session-source";
 export { POSTHOG_SOURCE_KIND } from "./posthog/constants";
 export type { PostHogSourceConfig, PostHogSourceDeps, FetchLike } from "./posthog/deps";
 
+// The key travels in on `DiscoveryInput` and is never returned, logged, or folded into a
+// failure message.
+export { discoverProjects } from "./posthog/discovery";
+export type { DiscoveredProject, DiscoveryInput, DiscoveryResult } from "./posthog/discovery";
+
 export {
   scrubSecrets,
   truncateForReason,
@@ -13,7 +18,33 @@ export {
 } from "./posthog/scrub";
 
 export { createSlackDeliveryPoster } from "./slack/poster";
-export { SLACK_POST_MESSAGE_URL } from "./slack/constants";
+export {
+  SLACK_POST_MESSAGE_URL,
+  SLACK_OAUTH_ACCESS_URL,
+  SLACK_CONVERSATIONS_LIST_URL,
+  // Qualified: a bare `REQUEST_TIMEOUT_MS` here would collide in meaning with the
+  // PostHog adapter's, which is a different budget for a different caller.
+  REQUEST_TIMEOUT_MS as SLACK_REQUEST_TIMEOUT_MS,
+} from "./slack/constants";
+// `apps/web` declares no `zod` (WIRE-Z1), so the Slack response schemas live here and
+// cross as plain TypeScript.
+export {
+  readSlackJsonBody,
+  parseSlackOAuthAccess,
+  parseSlackConversationsPage,
+} from "./slack/envelopes";
+export type {
+  SlackEnvelope,
+  SlackWorkspaceGrant,
+  SlackConversation,
+  SlackConversationsPage,
+} from "./slack/envelopes";
+export { listSlackConversations } from "./slack/conversations";
+export type {
+  SlackConversationsConfig,
+  SlackConversationsDeps,
+  ListSlackConversationsResult,
+} from "./slack/conversations";
 export {
   mapSlackError,
   postFailure,

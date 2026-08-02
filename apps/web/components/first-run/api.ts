@@ -1,12 +1,20 @@
+// No body below carries a tenancy key: the project comes from the session.
+// `apps/web` declares no `zod`, so the narrowing here is hand-written.
+
 export const FIRST_RUN_API = {
   status: "/api/first-run/status",
   arm: "/api/first-run/arm",
   dismiss: "/api/first-run/dismiss",
+  analyticsDiscover: "/api/first-run/analytics/discover",
   analyticsConnect: "/api/first-run/analytics/connect",
   analyticsDisconnect: "/api/first-run/analytics/disconnect",
   slackConnect: "/api/first-run/slack/connect",
   slackTest: "/api/first-run/slack/test",
   slackSkip: "/api/first-run/slack/skip",
+  // A browser navigation, never a `fetch`: it answers a 302 into Slack.
+  slackOAuthStart: "/api/first-run/slack/oauth/start",
+  slackChannels: "/api/first-run/slack/channels",
+  slackChannel: "/api/first-run/slack/channel",
 } as const;
 
 export interface PostAnswer {
@@ -20,6 +28,25 @@ export interface ResponseRefusal {
   readonly message: string;
 }
 
+export interface DiscoveredProjectView {
+  readonly sourceProjectId: string;
+
+  readonly name: string;
+}
+
+// One object: the host the walk settled on can never be paired with another
+// walk's projects.
+export interface DiscoveryAnswer {
+  readonly host: string;
+  readonly projects: readonly DiscoveredProjectView[];
+}
+
+export interface SlackChannelChoice {
+  readonly id: string;
+  readonly name: string;
+}
+
+// A 200 even when the post itself failed (D8).
 export interface TestPostAnswer {
   readonly ok: boolean;
   readonly sentence: string;
@@ -45,6 +72,17 @@ export async function postJson(path: string, body: unknown): Promise<PostAnswer 
   }
 }
 
+export async function getJson(path: string): Promise<PostAnswer | null> {
+  try {
+    const response = await fetch(path);
+    return { ok: response.ok, body: (await response.json()) as unknown };
+  } catch {
+    return null;
+  }
+}
+
+// Both refusal shapes. `message` is what a person reads; `code` is there so a
+// caller can branch — move focus to the field the sentence is about.
 export function readRefusal(body: unknown): ResponseRefusal | null {
   const record = asRecord(body);
   if (record === null) return null;
@@ -58,6 +96,49 @@ export function readRefusal(body: unknown): ResponseRefusal | null {
   return { code: typeof nested.code === "string" ? nested.code : null, message };
 }
 
+// A nameless row is a choice nobody can make, so an entry missing either field
+// is dropped and an emptied list answers `null`. Discovery's order is preserved.
+export function readDiscovery(body: unknown): DiscoveryAnswer | null {
+  const record = asRecord(body);
+  if (record === null) return null;
+
+  const { host, projects } = record;
+  if (typeof host !== "string" || host === "" || !Array.isArray(projects)) return null;
+
+  const found: DiscoveredProjectView[] = [];
+  for (const entry of projects) {
+    const project = asRecord(entry);
+    const sourceProjectId = project?.sourceProjectId;
+    const name = project?.name;
+    if (typeof sourceProjectId !== "string" || typeof name !== "string") continue;
+    if (sourceProjectId === "" || name === "") continue;
+    found.push({ sourceProjectId, name });
+  }
+
+  return found.length === 0 ? null : { host, projects: found };
+}
+
+// `null` for anything that is not a successful listing; an empty ARRAY is a
+// real answer meaning Slack showed us nothing.
+export function readChannelList(body: unknown): readonly SlackChannelChoice[] | null {
+  const record = asRecord(body);
+  if (record === null || record.ok !== true || !Array.isArray(record.channels)) return null;
+
+  const found: SlackChannelChoice[] = [];
+  for (const entry of record.channels) {
+    const channel = asRecord(entry);
+    const id = channel?.id;
+    const name = channel?.name;
+    if (typeof id !== "string" || typeof name !== "string") continue;
+    if (id === "" || name === "") continue;
+    found.push({ id, name });
+  }
+
+  return found;
+}
+
+// `retryable` decides whether a retry is offered: two of the four failures can
+// never succeed on a second press.
 export function readTestPostAnswer(body: unknown): TestPostAnswer | null {
   const record = asRecord(body);
   if (record === null) return null;

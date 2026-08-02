@@ -1,3 +1,7 @@
+// Wave 0 mirror of O-008's persistence contract — the `packages/db` sibling of
+// `packages/shared/__tests__/onboarding/contract-shapes.ts`, which it imports for
+// `StagePersistedFacts` rather than re-declaring it (`shared` may not import `db`). The
+// loaders cast to these types, so Wave 2 signature drift fails at runtime, not here.
 import type { TenantContext } from "@growthmind/shared";
 import type { SQL } from "drizzle-orm";
 
@@ -19,7 +23,10 @@ export type SlackConnectionSummary = {
 
   readonly organizationId: string;
 
-  readonly channelId: string;
+  // `null` since AD-4: a workspace is attached and nothing can be delivered.
+  readonly channelId: string | null;
+  readonly workspaceName: string | null;
+
   readonly isActive: boolean;
 
   readonly connectedByUserId: string | null;
@@ -27,7 +34,9 @@ export type SlackConnectionSummary = {
 };
 
 export interface InsertActiveSlackConnectionInput {
-  readonly channelId: string;
+  // `null` on the OAuth path, which holds a token before it knows the channel (AD-4).
+  readonly channelId: string | null;
+  readonly workspaceName?: string | null;
 
   readonly credentialCiphertext: string;
 
@@ -40,6 +49,10 @@ export interface SlackConnectionsRepo {
   getActiveForOrg(): Promise<SlackConnectionSummary | null>;
 
   insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary>;
+
+  // Takes a channel and no connection id: the row is chosen by the repository's own filter,
+  // so a payload cannot name another org's connection (D7).
+  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
 
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
 }

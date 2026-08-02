@@ -1,3 +1,5 @@
+// The HTTP refusal sentences for first-run routes. Not the onboarding copy home.
+
 export interface ParseIssueLike {
   readonly code: string;
   readonly path: readonly PropertyKey[];
@@ -43,6 +45,16 @@ export const NO_CHANNEL_CONNECTED: FirstRunGateRefusal = Object.freeze({
   status: 409,
 });
 
+// Distinct from `NO_CHANNEL_CONNECTED` (AD-4): the workspace IS attached and
+// only the address is missing, so "connect Slack first" would be false.
+export const NO_CHANNEL_CHOSEN: FirstRunGateRefusal = Object.freeze({
+  code: "no_channel_chosen",
+  message:
+    "Slack is connected, but no channel has been chosen yet, so there was nowhere to send a " +
+    "message. Choose a channel, then try the test message.",
+  status: 409,
+});
+
 export const CHANNEL_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
   code: "channel_unavailable",
   message:
@@ -51,6 +63,76 @@ export const CHANNEL_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
   status: 503,
 });
 
+// Names the variables because an operator, not the founder, is the one who can
+// fix this — and never a 302 into a consent screen built with no client id.
+export const SLACK_APP_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
+  code: "slack_app_unavailable",
+  message:
+    "This installation has no Slack app of its own, so there is nothing to send you to yet. " +
+    "Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET, restart, then try again — or paste a bot " +
+    "token instead.",
+  status: 503,
+});
+
+// Never an empty list: `[]` reads as "your workspace has no channels", which
+// sends a founder off to create one they already have.
+export const NO_WORKSPACE_CONNECTED: FirstRunGateRefusal = Object.freeze({
+  code: "no_workspace_connected",
+  message:
+    "No Slack workspace is connected yet, so there are no channels to choose from. Connect " +
+    "Slack first, then pick a channel.",
+  status: 409,
+});
+
+export const CHANNELS_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
+  code: "channels_unavailable",
+  message:
+    "We could not open this workspace's connection to Slack, so we could not read its " +
+    "channels. Reconnect Slack and try again.",
+  status: 503,
+});
+
+// Separate from `CHANNELS_CALL_FAILED` because the next actions differ: here a
+// human has to reconnect, and pressing the button again achieves nothing.
+export const CHANNELS_NOT_AUTHORISED: FirstRunGateRefusal = Object.freeze({
+  code: "channels_not_authorised",
+  message:
+    "Slack would not let us read this workspace's channels. Someone has to reconnect Slack — " +
+    "trying again will not help.",
+  status: 502,
+});
+
+// Slack is up and did not serve this one call — pressing the button again is
+// the right move.
+export const CHANNELS_CALL_FAILED: FirstRunGateRefusal = Object.freeze({
+  code: "channels_call_failed",
+  message: "We could not reach Slack to read this workspace's channels. Try again.",
+  status: 502,
+});
+
+// The route proves membership of the live list; the schema declines to guess
+// Slack's id format. The cause is a stale picker, not an attacker.
+export const CHANNEL_NOT_LISTED: FirstRunGateRefusal = Object.freeze({
+  code: "channel_not_listed",
+  message:
+    "That channel is not one we can post in any more, so nothing was changed. Pick one from " +
+    "the list on this screen.",
+  status: 409,
+});
+
+// `attachChannel` fills an empty address and never moves a chosen one — moving
+// it forks every delivery already recorded (D12). It names the stored channel.
+export function channelAlreadyChosen(channelId: string): FirstRunGateRefusal {
+  return Object.freeze({
+    code: "channel_already_chosen",
+    message:
+      `This workspace already sends what we find to #${channelId}, so nothing was changed. A ` +
+      `channel is chosen once, and that one is set — your findings arrive there from now on.`,
+    status: 409,
+  });
+}
+
+// Names the offending keys via `issue.keys`: "something was wrong" is unfixable.
 function unrecognizedKeysMessage(names: readonly string[]): string {
   const listed = names.length > 0 ? names.join(", ") : "something we do not read";
   return (

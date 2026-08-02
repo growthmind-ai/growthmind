@@ -68,21 +68,127 @@ function relative(file: string): string {
   return path.relative(REPO_ROOT, file).split(path.sep).join("/");
 }
 
+// Item 83's detector as a pure function over (path, source) pairs, so the real tree and the
+// planted fixtures below go through exactly one code path.
+
+interface ScannedSource {
+  readonly path: string;
+  readonly source: string;
+}
+
+const fixture = (filePath: string, source: string): ScannedSource => ({ path: filePath, source });
+
+const TEST_DIRS = new Set(["__tests__"]);
+
+const TEST_FILE_SUFFIXES = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"];
+
+// Deliberately tighter than item 84's `rel.includes(".test.")`, which also swallows a real
+// production `my.test.helper.ts`. An exclusion on this gate may only ever get narrower.
+function isTestPath(rel: string): boolean {
+  const segments = rel.split("/");
+  const name = segments.pop() ?? "";
+  return (
+    segments.some((segment) => TEST_DIRS.has(segment)) ||
+    TEST_FILE_SUFFIXES.some((suffix) => name.endsWith(suffix))
+  );
+}
+
+const SYSTEM_IMPORT_PATTERNS = [
+  /["']@growthmind\/db\/system["']/,
+  /["'][^"']*packages\/db\/src\/system[^"']*["']/,
+];
+
+const importsSystemModule = (source: string): boolean =>
+  SYSTEM_IMPORT_PATTERNS.some((pattern) => pattern.test(source));
+
+// Every PRODUCTION file in `files` that reaches the system module, by path.
+const systemImportOffenders = (files: readonly ScannedSource[]): readonly string[] =>
+  files
+    .filter((file) => !isTestPath(file.path) && importsSystemModule(file.source))
+    .map((file) => file.path);
+
+// The realistic offending edit: a route reaching for the one function that already returns
+// the org list. It resolves, typechecks, lints and ships, and must be caught by its subpath.
+const PLANTED_PRODUCTION_IMPORT = fixture(
+  "apps/web/app/api/first-run/slack/status/route.ts",
+  `import { listOrgsWithActiveSlackConnection } from "@growthmind/db/system";
+
+export async function GET() {
+  return Response.json(await listOrgsWithActiveSlackConnection(db));
+}
+`,
+);
+
+// The same offence routed around the package boundary — the SECOND pattern in
+// `SYSTEM_IMPORT_PATTERNS`, which a control exercising only the first leaves free to rot.
+const PLANTED_PRODUCTION_RELATIVE_IMPORT = fixture(
+  "apps/web/lib/first-run/status.ts",
+  `import { systemContextFor } from "../../../../packages/db/src/system/system-actor";
+`,
+);
+
+// The real shape of the file that forced the narrowing: a suite under `__tests__/` importing
+// the system module for a fixture. Must NOT be caught — this is what makes the exclusion tested.
+const CLEAN_TEST_DIR_IMPORT = fixture(
+  "apps/web/__tests__/first-run/nullable-channel-readers.test.ts",
+  `import { listOrgsWithActiveSlackConnection } from "@growthmind/db/system";
+`,
+);
+
+// The same, colocated rather than under `__tests__/` — the suffix leg.
+const CLEAN_COLOCATED_TEST_IMPORT = fixture(
+  "apps/web/lib/first-run/status.spec.ts",
+  `import { systemContextFor } from "../../../../packages/db/src/system/system-actor";
+`,
+);
+
+// A production file importing the SCOPED barrel. Not caught — otherwise the detector matches
+// "db" rather than "the system subpath" and every row reports an ordinary import as a breach.
+const CLEAN_PRODUCTION_IMPORT = fixture(
+  "apps/web/lib/first-run/status.ts",
+  `import { createSlackConnectionsRepo } from "@growthmind/db";
+`,
+);
+
 describe("system subpath unreachability", () => {
-  it("has no file under apps/ importing the db system module", () => {
-    const files = listSourceFiles(path.join(REPO_ROOT, "apps"));
+  // Item 83. `packages/db/src/system/` mints a `TenantContext` for any organization with no
+  // user present, so a production import under `apps/` is a D7 bypass that typechecks, lints
+  // and ships. THE SCAN IS PRODUCTION-ONLY ON PURPOSE: a file under `__tests__/` or named
+  // `*.test.ts`/`*.spec.ts` is not bundled, is reachable from no route, and receives no
+  // request — a suite reaching for the system module exercises the boundary rather than
+  // crossing it. Those two exclusions are the floor, not a precedent. Both controls assert
+  // before any claim about the real tree; without them a broken regex reports green forever.
+  it("has no production file under apps/ importing the db system module", () => {
+    // Positive controls: the detector fires on a shipped file, by subpath and by deep path.
+    expect(systemImportOffenders([PLANTED_PRODUCTION_IMPORT])).toEqual([
+      "apps/web/app/api/first-run/slack/status/route.ts",
+    ]);
+    expect(systemImportOffenders([PLANTED_PRODUCTION_RELATIVE_IMPORT])).toEqual([
+      "apps/web/lib/first-run/status.ts",
+    ]);
 
-    expect(files.length).toBeGreaterThan(0);
+    // Clean controls: the same import under a test path is not an offence — by directory and
+    // by suffix — and the detector is about the SUBPATH, not about importing the db.
+    expect(systemImportOffenders([CLEAN_TEST_DIR_IMPORT])).toEqual([]);
+    expect(systemImportOffenders([CLEAN_COLOCATED_TEST_IMPORT])).toEqual([]);
+    expect(systemImportOffenders([CLEAN_PRODUCTION_IMPORT])).toEqual([]);
 
-    const offenders = files.filter((file) => {
-      const source = readFileSync(file, "utf8");
-      return (
-        /["']@growthmind\/db\/system["']/.test(source) ||
-        /["'][^"']*packages\/db\/src\/system[^"']*["']/.test(source)
-      );
-    });
+    const scanned: ScannedSource[] = listSourceFiles(path.join(REPO_ROOT, "apps")).map((file) => ({
+      path: relative(file),
+      source: readFileSync(file, "utf8"),
+    }));
 
-    expect(offenders.map(relative)).toEqual([]);
+    // The scan must see the web app, or the assertion is vacuous.
+    expect(scanned.length).toBeGreaterThan(0);
+
+    const production = scanned.filter((file) => !isTestPath(file.path));
+
+    // ...and must still see it after the exclusion, which must itself ENGAGE on the real tree:
+    // if `relative()` stopped normalising Windows separators the exclusion would be inert.
+    expect(production.length).toBeGreaterThan(0);
+    expect(production.length).toBeLessThan(scanned.length);
+
+    expect(systemImportOffenders(scanned)).toEqual([]);
   });
 
   const ACTOR_VOCABULARY = [/\bsystemContextFor\b/, /\bSYSTEM_ACTOR\b/, /\bSYSTEM_ACTOR_ROLE\b/];

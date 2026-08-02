@@ -12,6 +12,7 @@ import type {
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
+import { deliveryFailureSentence } from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../../src/task-names";
@@ -413,9 +414,14 @@ test("a poster that refuses records the delivery failed and leaves the finding d
 
   const row = scene.ledger.rowFor("finding-1");
   expect(row?.status).toBe("failed");
-  expect(row?.failureReason).toContain("Slack channel");
   expect(row?.postedAt).toBeNull();
 
+  // The shipped sentence for the code, not the fake's own text: the fake's message is
+  // a distinctive string that must never reach the customer-facing column.
+  expect(row?.failureReason).toBe(deliveryFailureSentence("channel_unavailable"));
+  expect(row?.failureReason).not.toContain("Pick another one");
+
+  // "Leaves the finding deliverable" is a claim about the next tick, so take one.
   const second = await scene.run();
   expect(second.posted + second.failed).toBe(1);
   expect(scene.ledger.rowFor("finding-1")?.attempts).toBe(2);

@@ -8,9 +8,13 @@ import {
 import type { FirstRunStatus, StagePersistedFacts, TenantContext } from "@growthmind/shared";
 import {
   CONNECTION_STATE_MESSAGES,
+  SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
+  parseServerEnv,
   toOnboardingCounterView,
 } from "@growthmind/shared";
+
+import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
 export type FirstRunStatusPayload = FirstRunStatus & {
   readonly findingUnavailable: boolean;
@@ -19,7 +23,18 @@ export type FirstRunStatusPayload = FirstRunStatus & {
 
   readonly slackSkippedAt: Date | null;
 
+  // FR-O14, derived from the absence of a deliverable address (AD-4).
   readonly slackNotice: string | null;
+
+  // `slack !== null`, never `channelId !== null`, and never an input to
+  // `deliveryResolved`: a workspace with no channel has nowhere to deliver.
+  readonly slackWorkspaceAttached: boolean;
+
+  readonly slackWorkspaceName: string | null;
+
+  // AD-6, server-computed: `SLACK_CLIENT_ID` reads `undefined` in the browser,
+  // so a client-side check would hide the button from deployments that have one.
+  readonly slackOAuthAvailable: boolean;
 };
 
 export interface BuildFirstRunStatusInput {
@@ -57,11 +72,25 @@ export async function buildFirstRunStatus(
     runOutcome: facts.runOutcome,
     counter: view,
     connectionMessage: CONNECTION_STATE_MESSAGES[view.state.status],
-
     channelId: slack?.channelId ?? null,
     slackSkippedAt: state?.slackSkippedAt ?? null,
-    slackNotice: slack === null ? SLACK_SKIPPED_NOTICE : null,
+    slackNotice: notice(slack),
+    slackWorkspaceAttached: slack !== null,
+    slackWorkspaceName: slack?.workspaceName ?? null,
+    // Read here so no caller threads it, and parsed per call so an env captured
+    // at import time cannot outlive a redeploy.
+    slackOAuthAvailable: slackOAuthConfigured(parseServerEnv(process.env)),
   };
+}
+
+// Three states, three next actions — a workspace with no channel delivers
+// nothing, so it must not collapse back into `slack === null`.
+function notice(slack: { readonly channelId: string | null } | null): string | null {
+  if (slack === null) return SLACK_SKIPPED_NOTICE;
+
+  if (slack.channelId === null) return SLACK_CHANNEL_PICK_PROMPT;
+
+  return null;
 }
 
 export async function echoFirstRunStatus(
