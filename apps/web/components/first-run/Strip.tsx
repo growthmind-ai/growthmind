@@ -1,30 +1,5 @@
 "use client";
 
-// THE PERSISTENT STRIP (O-008, FR-O13, FR-O14, UX Checklist row 17).
-//
-// ###########################################################################
-// # THE COUNTER KEEPS MOVING THROUGH THE WHOLE WAIT, AND THAT IS ITS JOB.
-// #
-// # It is the only honest motion source this surface has: a real measurement
-// # of a real number, not a proportion of a total nobody measured. Keeping it
-// # on screen is what makes the wait read as WATCHED rather than as spun —
-// # which is why the strip survives the fold instead of leaving with phase A.
-// #
-// # IT IS NOT A DASHBOARD AND MUST NEVER BECOME ONE. One line of dimmed text,
-// # no tiles, no chart, no history. Deviation 1 says this surface exists once,
-// # during install, and holds nothing to come back and check.
-// ###########################################################################
-//
-// ── THE DEGRADED NOTICE RIDES HERE FOREVER AFTER (FR-O14) ───────────────────
-//
-// It is handed down already derived from the persisted ABSENCE of an active
-// Slack connection — never from a session flag — so it survives a reload by
-// construction, and a workspace that connects later stops seeing it without
-// anybody clearing anything.
-//
-// The channel is read from the stored connection row upstream and never
-// accepted from a payload: a caller that could name a channel could put this
-// workspace's announcement in one it does not own.
 import { Box, Button, Stack, Text } from "@mantine/core";
 
 import {
@@ -41,7 +16,6 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 
 import styles from "./first-run.module.css";
 
-/** Between the parts. Not a word, so it needs no home in the copy tables. */
 const SEPARATOR = "·";
 
 const withCount = (template: string, count: number): string =>
@@ -50,20 +24,14 @@ const withCount = (template: string, count: number): string =>
 const withChannel = (template: string, channel: string): string =>
   template.replaceAll("{channel}", channel);
 
-/**
- * One counter row's number, found by its SHIPPED LABEL rather than by its
- * position — a positional index is a silent mis-read the first time a row is
- * added upstream, and this strip would then quietly report the wrong figure
- * beside the right word.
- */
 const rowValue = (counter: OnboardingCounterView, label: string): number =>
   counter.rows.find((row) => row.label === label)?.value ?? 0;
 
 interface StripProps {
   readonly counter: OnboardingCounterView;
-  /** `null` when nobody attached a channel. */
+
   readonly channelId: string | null;
-  /** FR-O14's degraded line, already derived. `null` when Slack is connected. */
+
   readonly notice: string | null;
   readonly reopened: boolean;
   readonly onToggle: () => void;

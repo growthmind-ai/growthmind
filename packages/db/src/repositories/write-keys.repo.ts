@@ -1,8 +1,3 @@
-// Repository for the `write_keys` table: the scoped factory takes a `TenantContext` at
-// construction; no method below accepts an organization id as a parameter. `write_keys`
-// is dual-stamped (`organizationId` and `projectId`) so every mutation keys on
-// `(ctx.organizationId, id)` with `.returning`. A foreign-org id affects zero rows
-// and returns `null`, never a silent success.
 import { randomBytes } from "node:crypto";
 
 import {
@@ -19,14 +14,8 @@ import { projects } from "../schema/projects";
 import { writeKeys } from "../schema/write-keys";
 import type { ScopedDb } from "./types";
 
-/** Raw persisted row shape. Includes `keyHash`, unlike `WriteKeyMetadata`. A later wave
- * maps this to the DTO at the repository boundary; never return this type directly from
- * a repository method. */
 export type WriteKeyRow = typeof writeKeys.$inferSelect;
 
-/** Maps a persisted row to the metadata DTO boundary. Built as an explicit
- * field-by-field pick, never a spread/cast, so `keyHash` (and any future sensitive
- * column) cannot leak through by accident. */
 function toMetadata(row: WriteKeyRow): WriteKeyMetadata {
   return {
     id: row.id,
@@ -39,43 +28,26 @@ function toMetadata(row: WriteKeyRow): WriteKeyMetadata {
   };
 }
 
-/** Generates raw write-key material in the shape: `WRITE_KEY_PREFIX` + 43 base64url
- * chars (256-bit random). */
 function generateRawKeyMaterial(): string {
   return `${WRITE_KEY_PREFIX}${randomBytes(32).toString("base64url")}`;
 }
 
 export interface MintedWriteKey {
-  /** Raw key material, returned exactly once, from `mint` only. Never persisted,
-   * logged, or included in any DTO. */
   raw: string;
   key: WriteKeyMetadata;
 }
 
 export interface WriteKeysRepo {
-  /**
-   * Mints a new write key for `projectId`. Must verify `projectId` belongs to
-   * `ctx.organizationId` before minting. A client-supplied project id must never widen
-   * access to a foreign org's project. Generates key material, persists only its hash +
-   * prefix (never the raw material), and returns the raw material exactly once
-   * alongside the metadata DTO.
-   */
   mint(input: { projectId: string; kind: WriteKeyKind }): Promise<MintedWriteKey>;
-  /** Metadata only (never hash, never raw material), org- and project-filtered. */
+
   listByProject(projectId: string): Promise<WriteKeyMetadata[]>;
-  /**
-   * Keyed on `(ctx.organizationId, id)` with `.returning`, `null` when 0 rows match,
-   * e.g. a foreign org's key id.
-   */
+
   revoke(id: string): Promise<WriteKeyMetadata | null>;
 }
 
 export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeysRepo {
   return {
     async mint(input: { projectId: string; kind: WriteKeyKind }): Promise<MintedWriteKey> {
-      // : verify the client-supplied projectId belongs to this organization before
-      // minting anything. A foreign-org project id must never widen access at the
-      // service edge.
       const [ownedProject] = await db
         .select({ id: projects.id })
         .from(projects)
@@ -134,29 +106,10 @@ export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeys
   };
 }
 
-/**
- * the one designed exception to "no method accepts an org id as a parameter", and it
- * does not, either: this function takes NO tenant context and NO organization id at
- * all. Write-key resolution for ingest is credential-scoped, not session-scoped. The
- * presented key material *is* the tenant proof for machine callers (architecture), so
- * there is no session to derive a `TenantContext` from in the first place.
- *
- * Contract:
- * Performs NO mutations. A read-only lookup by key hash.
- * Exported separately from the scoped repository factories above (never folded into
- *  `WriteKeysRepo`) so it can never be reached by constructing a
- *  `TenantContext`-scoped repo.
- * Unreachable from any user-triggered path this sprint. Nothing calls it except its own
- *  tests until wires it into the real ingest route.
- * Fail-closed: unknown, malformed, or revoked keys resolve to `null`. Never a default
- *  project, never a best-effort match.
- */
 export async function resolveWriteKeyForIngest(
   db: ScopedDb,
   presented: string,
 ): Promise<{ projectId: string; organizationId: string; kind: WriteKeyKind } | null> {
-  // fail-closed: reject malformed/empty input before ever touching the DB, never a
-  // best-effort lookup on a syntactically invalid key.
   if (!isWriteKeyFormat(presented)) {
     return null;
   }

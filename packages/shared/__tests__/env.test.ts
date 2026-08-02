@@ -7,9 +7,7 @@ const PROD_COMPLETE = {
   DATABASE_URL: "postgres://app:secret@db.internal:5432/growthmind",
   BETTER_AUTH_SECRET: "a-real-secret-of-adequate-length",
   BETTER_AUTH_URL: "https://app.example.com",
-  // GROWTHMIND_ENCRYPTION_KEY is required, so a "complete production environment"
-  // fixture now has to carry one. Deliberately not the published dev literal. That
-  // value has its own rejection tests.
+
   GROWTHMIND_ENCRYPTION_KEY: "cHJvZC1maXh0dXJlLWVuY3J5cHRpb24ta2V5LTMyYnk=",
 };
 
@@ -20,9 +18,6 @@ describe("parseServerEnv", () => {
     expect(env.NODE_ENV).toBe("production");
   });
 
-  // The `cp.env.example.env` path: the variable IS set, and is schema-valid (34
-  // chars), so absence-based guards pass it straight through, while the app signs every
-  // session cookie with a secret published in a public repo.
   test("production rejects the.env.example BETTER_AUTH_SECRET literal", () => {
     expect(() =>
       parseServerEnv({
@@ -41,9 +36,6 @@ describe("parseServerEnv", () => {
     ).toThrow(/still set to the public example value/);
   });
 
-  // The quickstart compose stack sets this so `docker compose up` from a clean clone
-  // still boots (CI enforces that promise). Deleting the line from a real deployment
-  // re-arms the guard above.
   test("GROWTHMIND_ALLOW_INSECURE_DEFAULTS=1 permits the example values in production", () => {
     const env = parseServerEnv({
       ...PROD_COMPLETE,
@@ -149,13 +141,6 @@ describe("parseServerEnv", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  // item 7, / OQ-4 graceful absence.
-  //
-  // The four POSTHOG_* variables are validated-if-present and read by nothing in the
-  // app: customer credentials come exclusively from project_connections, because a
-  // global env key would be a single-tenant design in a multi-tenant product. So a
-  // self-hoster who has no PostHog account at all must boot a production deployment
-  // cleanly, with none of them set.
   test("parses in production with all four POSTHOG_* absent", () => {
     for (const key of [
       "POSTHOG_HOST",

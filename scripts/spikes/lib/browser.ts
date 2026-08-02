@@ -1,22 +1,15 @@
-// Recording-leg browser automation (file 9). Impure shell: `existsSync` probes and
-// `Bun.spawn` live here and only here. The trial loop owns all decision logic (marker
-// matching, outcome classification). `process.env` is never read in this module; the
-// entrypoint passes env in.
-
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ENV_VARS } from "./constants";
 
-/** Chrome/Edge/Chromium relative install paths under each Windows base dir. */
 const WINDOWS_RELATIVE_PATHS = [
   join("Google", "Chrome", "Application", "chrome.exe"),
   join("Microsoft", "Edge", "Application", "msedge.exe"),
   join("Chromium", "Application", "chrome.exe"),
 ] as const;
 
-/** Default Windows base dirs, used when the env doesn't provide them. */
 const WINDOWS_DEFAULT_BASES = ["C:\\Program Files", "C:\\Program Files (x86)"] as const;
 
 const MACOS_PATHS = [
@@ -52,12 +45,6 @@ function windowsCandidates(env: Record<string, string | undefined>): string[] {
   return candidates;
 }
 
-/**
- * Locates a Chromium-family browser executable (add step 2). Order: `CHROME_PATH`
- * override (if set and the file exists), then well-known Windows / macOS / Linux
- * install paths. Returns the first existing path, or null. The caller (recording leg)
- * decides whether null means manual mode.
- */
 export function findBrowser(env: Record<string, string | undefined>): string | null {
   const override = env[ENV_VARS.CHROME_PATH];
   if (override !== undefined && override !== "" && existsSync(override)) {
@@ -78,13 +65,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Runs one headless-browser recording trial (add step 3): fresh temp user-data-dir
- * (fresh posthog-js session → one recording per trial), spawn, let the page run
- * `durationMs`, hard kill. Never throws, spawn failures come back as `{ ok: false,
- * reason }`; cleanup failures (Windows file locks) are swallowed. No classification
- * here, the trial loop owns outcomes.
- */
 export async function runRecordingTrial(
   browserPath: string,
   pageUrl: string,

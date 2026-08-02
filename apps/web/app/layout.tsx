@@ -15,8 +15,6 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Tints the browser chrome on mobile to the memo's paper stock, matching the
-  // marketing site.
   themeColor: palette.paper,
   colorScheme: "dark",
 };

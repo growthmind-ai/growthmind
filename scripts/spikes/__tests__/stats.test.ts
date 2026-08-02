@@ -1,8 +1,3 @@
-// Wave 1 (red) tests for computeStats (file 5, fail direction). Percentile contract:
-// sorted-index method, index = ceil − 1 over the retrieved subset's primary
-// elapsed ms; `n` counts attempted trials (timeouts and errors included in the
-// denominator, reported separately). The implementation must match these assertions.
-
 import { describe, expect, test } from "bun:test";
 
 import { computeStats } from "../lib/stats";
@@ -10,18 +5,13 @@ import type { StatsResult, TrialOutcome, TrialRecord } from "../lib/types";
 
 interface MakeRecordOverrides {
   readonly outcome?: TrialOutcome;
-  /** Primary elapsed ms (stamped on the "events" endpoint). Retrieved only. */
+
   readonly elapsedMs?: number;
   readonly trialIndex?: number;
 }
 
 const CAPTURE_EPOCH_MS = 1_700_000_000_000;
 
-/**
- * Builds a valid TrialRecord. Optional fields (firstRetrievableTimestamp,
- * satisfyingEndpoint) are spread conditionally. ExactOptionalPropertyTypes forbids
- * assigning an explicit undefined.
- */
 function makeRecord(overrides: MakeRecordOverrides = {}): TrialRecord {
   const { outcome = "retrieved", elapsedMs, trialIndex = 0 } = overrides;
   const base = {
@@ -47,14 +37,12 @@ function makeRecord(overrides: MakeRecordOverrides = {}): TrialRecord {
   return base;
 }
 
-/** Builds one retrieved record per elapsed value, with distinct trial indexes. */
 function retrievedRecords(elapsedValues: readonly number[]): TrialRecord[] {
   return elapsedValues.map((elapsedMs, trialIndex) =>
     makeRecord({ outcome: "retrieved", elapsedMs, trialIndex }),
   );
 }
 
-/** Narrows the union; fails the test loudly if the result is not stats. */
 function assertStats(result: StatsResult): Extract<StatsResult, { kind: "stats" }> {
   if (result.kind !== "stats") {
     throw new Error(`expected kind "stats", got "${result.kind}"`);
@@ -67,8 +55,7 @@ describe("computeStats", () => {
     const result = computeStats([]);
 
     expect(result.kind).toBe("no-data");
-    // The no-data variant carries NO numeric fields. NaN is impossible by construction.
-    // Verify nothing numeric (and nothing NaN) leaked through.
+
     for (const value of Object.values(result)) {
       expect(typeof value === "number" && Number.isNaN(value)).toBe(false);
       expect(value).not.toBe(0);
@@ -86,16 +73,12 @@ describe("computeStats", () => {
   });
 
   test("should compute correct percentiles for even and odd counts", () => {
-    // Odd count: [1000, 2000, 3000, 4000, 5000], n = 5. sorted-index: idx = ceil(p/100
-    // × n) − 1 → p50 idx 2 = 3000, p90 idx 4 = 5000.
     const odd = assertStats(computeStats(retrievedRecords([3000, 1000, 5000, 2000, 4000])));
     expect(odd.p50).toBe(3000);
     expect(odd.p90).toBe(5000);
     expect(odd.max).toBe(5000);
     expect(odd.n).toBe(5);
 
-    // Even count: [1000, 2000, 3000, 4000], n = 4. sorted-index: p50 idx ceil − 1 =
-    // 1 → 2000, p90 idx ceil − 1 = 3 → 4000.
     const even = assertStats(computeStats(retrievedRecords([4000, 1000, 3000, 2000])));
     expect(even.p50).toBe(2000);
     expect(even.p90).toBe(4000);
@@ -130,9 +113,6 @@ describe("computeStats", () => {
   });
 
   test("should compute stats over the retrieved subset while reporting attempted as denominator", () => {
-    // Retrieved elapsed values: 100.1800 step 100 (18 values). Timeouts must not enter
-    // percentile math. Only the denominator. sorted-index over 18: p50 idx ceil − 1
-    // = 8 → 900, p90 idx ceil − 1 = 16 → 1700.
     const retrieved = retrievedRecords(Array.from({ length: 18 }, (_, i) => (i + 1) * 100));
     const timedOut = [
       makeRecord({ outcome: "timed-out", trialIndex: 18 }),

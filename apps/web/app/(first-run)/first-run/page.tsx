@@ -1,39 +1,3 @@
-// THE FIRST-RUN SURFACE — PHASE A (O-008, AD-17, FR-O19, FR-O21).
-//
-// ###########################################################################
-// # THE PREAMBLE IS THE WHOLE TENANCY AND VISIBILITY STORY, IN FOUR LINES.
-// #
-// #   no session          -> ROUTES.signIn
-// #   this user dismissed -> ROUTES.home
-// #   otherwise           -> the reconciled state, server-rendered
-// #
-// # BOTH REDIRECTS ARE CONDITIONAL, AND THAT IS THE ONLY READING THAT
-// # SATISFIES BOTH RULES AT ONCE. An always-rendering page breaks FR-O21
-// # ("never linkable back to"); an unconditional redirect breaks FR-O19 ("a
-// # reload must show the finding"). A 404 would be worse than either: a
-// # founder pressing Back onto one reads it as the product breaking.
-// #
-// # DISMISSAL IS PER USER (AD-17, ESC-O2). A per-org read would lock a
-// # teammate out of the only surface this sprint gives them for reading
-// # connection state and disconnecting — on an act none of them performed.
-// ###########################################################################
-//
-// ── EVERY STATE ON THIS PAGE IS DERIVED FROM PERSISTED ROWS ─────────────────
-//
-// There is no per-step status column anywhere in this product. The sequence is
-// computed by `deriveStepStates` from connection rows, the skip stamp and the
-// arm stamp, so it cannot disagree with the rows it describes and a reload
-// cannot resurrect a state nothing recorded. This file stays a server
-// component; the two forms are client islands beside it, and each reconciles
-// by asking the server again rather than by guessing at what it just changed.
-//
-// ── THE SEAM WAVE 7b TAKES ──────────────────────────────────────────────────
-//
-// Phase B — the strip, the stage, the wait log and the finding — is a client
-// concern, because it polls and it holds a clock. It arrives by wrapping the
-// sequence below in that wave's client component, which folds phase A away
-// once `status.armedAt` is set and renders the stage in its place. Nothing
-// here needs to change shape for that: the sequence is already a subtree.
 import { Container, Stack } from "@mantine/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
@@ -69,14 +33,6 @@ interface WorkBodyInput {
   readonly status: FirstRunStatusPayload;
 }
 
-/**
- * A work step's body: its form, and — once the step has resolved — the
- * confirmations that prove it worked.
- *
- * BOTH OF STEP 2's CONFIRMATIONS RENDER IN PLACE, INSIDE THE ROW THAT CAUSED
- * THEM, and the row stays open while they do (UX row 8). A confirmation that
- * scrolls itself away has not confirmed anything.
- */
 function workBody(input: WorkBodyInput): ReactNode {
   const { step, view, status } = input;
 
@@ -144,13 +100,10 @@ export default async function FirstRunPage() {
 
   const connectionState = status.counter.state;
   const facts: StepSequenceFacts = {
-    // `null` means no connection row at all, which the sequence engine reads
-    // differently from a row that exists and is not attached.
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
     slackConnected: status.channelId !== null,
     slackSkipped: status.slackSkippedAt !== null,
-    // A failed test post is a CLIENT fact that has proved nothing; the engine
-    // deliberately does not consult it, and a server render has none to offer.
+
     slackTestPostFailed: false,
     armedAt: status.armedAt,
     reopenedReadOnly: false,

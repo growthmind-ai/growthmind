@@ -1,34 +1,24 @@
-// Pure parsers for the three read-API response shapes (file 6). Fail directions:
-// malformed / missing-field input → named `{ ok: false, reason }`; an empty results
-// array is a valid empty match, never a failure; nothing here ever throws on bad input.
-
 import { MARKER_PROP } from "./constants";
 import type { ParseResult } from "./types";
 
-/** An event candidate from the events list API or a HogQL query row. */
 export interface CandidateEvent {
-  /** Event name, e.g. "gm_spike_custom_event" or "$exception". */
   readonly event: string;
   readonly distinctId?: string;
-  /** Raw properties, marker matching reads MARKER_PROP from here. */
+
   readonly properties: Readonly<Record<string, unknown>>;
 }
 
-/** A recording candidate from the session_recordings list API. */
 export interface CandidateRecording {
   readonly id: string;
   readonly distinctId?: string;
 }
 
-/** Anything `matchesMarker` can test. An event or a recording. */
 export type MarkerCandidate = CandidateEvent | CandidateRecording;
 
-/** Narrowing guard: a plain object usable as a string-keyed record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Extracts `body.results` as an array, or names why it can't. */
 function resultsArray(body: unknown): ParseResult<readonly unknown[]> {
   if (!isRecord(body)) {
     return { ok: false, reason: "response body is not an object" };
@@ -46,7 +36,6 @@ function resultsArray(body: unknown): ParseResult<readonly unknown[]> {
   return { ok: true, value: results };
 }
 
-/** Parses `GET /api/projects/:id/events` response body (primary). */
 export function parseEventsResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
@@ -77,13 +66,11 @@ export function parseEventsResponse(body: unknown): ParseResult<readonly Candida
   return { ok: true, value: candidates };
 }
 
-/** Parses `POST /api/projects/:id/query` HogQL response body (secondary). */
 export function parseQueryResponse(body: unknown): ParseResult<readonly CandidateEvent[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
   if (results.value.length === 0) return { ok: true, value: [] };
 
-  // Column lookup only matters once there are rows to align against.
   const columns = isRecord(body) ? body.columns : undefined;
   if (!Array.isArray(columns)) {
     return { ok: false, reason: "query response `columns` is not an array" };
@@ -123,7 +110,6 @@ export function parseQueryResponse(body: unknown): ParseResult<readonly Candidat
   return { ok: true, value: candidates };
 }
 
-/** Parses `GET /api/projects/:id/session_recordings` response body. */
 export function parseRecordingsResponse(body: unknown): ParseResult<readonly CandidateRecording[]> {
   const results = resultsArray(body);
   if (!results.ok) return results;
@@ -150,12 +136,6 @@ export function parseRecordingsResponse(body: unknown): ParseResult<readonly Can
   return { ok: true, value: candidates };
 }
 
-/**
- * The D3-multiplicity guard: true only when the candidate carries this trial's marker.
- * Events match on the MARKER_PROP property, recordings on distinct_id. An event with
- * the right name but a prior trial's/run's marker must not match (the
- * false-near-zero-latency guard).
- */
 export function matchesMarker(candidate: MarkerCandidate, marker: string): boolean {
   if ("properties" in candidate) {
     return candidate.properties[MARKER_PROP] === marker;

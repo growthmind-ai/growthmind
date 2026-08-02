@@ -6,7 +6,6 @@ describe("deriveWorkspaceName", () => {
   it("derives \"Ada's workspace\" from the first word of the user's name", () => {
     expect(deriveWorkspaceName("Ada")).toBe("Ada's workspace");
 
-    // Multi-word names use only the first word.
     expect(deriveWorkspaceName("Ada Lovelace")).toBe("Ada's workspace");
     expect(deriveWorkspaceName("Grace Hopper Jones")).toBe("Grace's workspace");
   });

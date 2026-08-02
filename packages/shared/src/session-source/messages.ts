@@ -1,25 +1,3 @@
-// Every customer-facing string this sprint produces lives here.
-//
-// One home, for three reasons. The plain-English audit and the "live" grep become a
-// single-file review instead of a repo sweep. imports these rather than
-// re-authoring them, so there is no wire between a producer and a consumer to sever.
-// The honesty rule is enforceable: the word "live" appears in no
-// string this sprint produces, because no overlap window can make a poll on
-// client-declared event time complete, and we do not claim otherwise.
-//
-// House rules these strings obey, each asserted by a named test:
-// No "live" as a freshness claim;
-// No product jargon and no bare HTTP status number;
-// Every connection state and every connect refusal reads distinctly, so
-//  a screen can never show two situations the same way;
-// The vendor's name never appears. The pipeline behind the port does not
-//  learn it, and neither does the customer-facing copy.
-//
-// The evidence gate's eight reason sentences are defined in `../gate/messages` (they
-// are `core`'s data, and `core` imports them back) and re-exported through this module
-// on purpose. The completeness test below derives its scan from this module's exports,
-// so a re-export here is what puts them under the four audits above without a second
-// copy of either the strings or the audit.
 import { GATE_REASON_MESSAGES } from "../gate/messages";
 import type { ExclusionReason } from "../exclusions/types";
 import type { ConnectRefusalCode, ConnectionStateStatus } from "./types";
@@ -27,7 +5,6 @@ import type { ConnectRefusalCode, ConnectionStateStatus } from "./types";
 export { GATE_REASON_MESSAGES };
 export type { GateReasonKey } from "../gate/messages";
 
-/** The seven states renders. Pairwise distinct by construction. */
 export const CONNECTION_STATE_MESSAGES: Record<ConnectionStateStatus, string> = {
   not_connected:
     "No analytics account is attached to this project yet. Attach one to start seeing what people do in your product.",
@@ -43,7 +20,6 @@ export const CONNECTION_STATE_MESSAGES: Record<ConnectionStateStatus, string> = 
     "This project is no longer attached. Everything we already collected is still here.",
 };
 
-/** Why a connect attempt was refused. Each names the one thing to fix. */
 export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
   second_source:
     "This project is already attached to an analytics account. Detach that one first, then attach this one — we keep everything we already collected.",
@@ -68,21 +44,13 @@ export const CONNECT_REFUSAL_MESSAGES: Record<ConnectRefusalCode, string> = {
     "The key works, but it reaches no project we can read — either it has access to none, or the one it reached before is gone. Check what this key is allowed to read in your analytics account, then try again.",
   unreachable:
     "We could not reach that address. Check the region address, confirm it is reachable from this machine, then try again.",
-  // Validation is a real call to the customer's analytics account, so every way that
-  // call can fail has to be sayable to them. Throttling included. This is the one home
-  // for the sentence; `mapFailure` in the PostHog source imports it rather than keeping
-  // a second copy to drift.
+
   rate_limited:
     "Your analytics account asked us to slow down, so we stopped this check early. We will pick up where we left off on the next one — nothing already collected is lost.",
   misconfigured:
     "This installation cannot store an outside key safely yet. Set GROWTHMIND_ENCRYPTION_KEY to a real value (openssl rand -base64 32), restart, then try again.",
 };
 
-/**
- * The second-source refusal with the existing attachment named, so the customer knows
- * exactly which one to detach. The cutover path in one sentence rather than a support
- * ticket.
- */
 export function secondSourceRefusalMessage(existing: {
   host: string;
   sourceProjectId: string;
@@ -90,7 +58,6 @@ export function secondSourceRefusalMessage(existing: {
   return `This project is already attached to project ${existing.sourceProjectId} at ${existing.host}. Detach that one first, then attach this one — we keep everything we already collected.`;
 }
 
-/** Labels for the counter's set-aside breakdown, in the customer's terms. */
 export const EXCLUSION_REASON_LABELS: Record<ExclusionReason, string> = {
   none: "Kept and counted",
   internal_domain: "Your own team",
@@ -99,7 +66,6 @@ export const EXCLUSION_REASON_LABELS: Record<ExclusionReason, string> = {
   automation_coding_agent: "Coding agents",
 };
 
-/** Labels for the onboarding counter's own numbers. */
 export const COUNTER_LABELS = {
   totalReceived: "Everything we have seen",
   kept: "Counted as real people",
@@ -109,36 +75,18 @@ export const COUNTER_LABELS = {
   asOf: "As of",
 } as const;
 
-/**
- * The window statement. Named explicitly rather than implied. A count with an unstated
- * window is a count nobody can act on.
- */
 export const COUNTER_WINDOW_STATEMENT =
   "Counted since you attached this project. This is not a rolling window.";
 
-/**
- * The honesty statement. PostHog stores the time the customer's own browser declared,
- * and exposes no arrival time by any route, so an event that arrives late or from a
- * device with a slow clock can land behind everything we have already read. We say what
- * we have seen; we never claim to have seen everything.
- */
 export const COUNTER_COMPLETENESS_STATEMENT =
   "This is what we have seen so far. Events that arrive late, or from a device whose clock is behind, can take longer to show up.";
 
-/** Shown when a project has no attachment at all. Distinct from a zero count, which
- * means we looked and found nothing. */
 export const SOURCE_ABSENT_NOTICE =
   "Nothing is attached to this project, so there is nothing to count yet.";
 
-/** Shown when the last check failed but earlier numbers are still on screen, so a stale
- * number is never presented as a current one. */
 export const SOURCE_DEGRADED_NOTICE =
   "The last check did not finish, so these numbers may be behind what your product has recorded.";
 
-/**
- * Plain-English duration. Switches to minutes before the number gets big enough to read
- * like a code rather than a length of time.
- */
 function describeDurationEnglish(seconds: number): string {
   if (seconds < 90) {
     return `${Math.max(1, Math.round(seconds))} seconds`;
@@ -147,10 +95,6 @@ function describeDurationEnglish(seconds: number): string {
   return minutes === 1 ? "about a minute" : `about ${minutes} minutes`;
 }
 
-/**
- * The freshness sentence attached to the counter. States a measurement, never a
- * promise, and never the word this file exists to keep out.
- */
 export function expectedLagStatement(input: {
   typicalSeconds: number;
   worstCaseSeconds: number;
@@ -162,17 +106,12 @@ export function expectedLagStatement(input: {
   )}. That is what we have measured, not a promise.`;
 }
 
-/**
- * Every fixed customer-facing string in this module, in one array, so the plain-English
- * audit is total rather than best-effort: a new constant that is not added here is
- * caught by the audit's own completeness check instead of quietly escaping review.
- */
 export const ALL_CUSTOMER_FACING_MESSAGES: readonly string[] = [
   ...Object.values(CONNECTION_STATE_MESSAGES),
   ...Object.values(CONNECT_REFUSAL_MESSAGES),
   ...Object.values(EXCLUSION_REASON_LABELS),
   ...Object.values(COUNTER_LABELS),
-  // The gate's reason sentences audited alongside everything else.
+
   ...Object.values(GATE_REASON_MESSAGES),
   COUNTER_WINDOW_STATEMENT,
   COUNTER_COMPLETENESS_STATEMENT,

@@ -35,7 +35,6 @@ export {
   type WorkspaceName,
 } from "./forms";
 
-// --: credential encryption at rest
 export {
   credentialAad,
   keyIdOf,
@@ -55,7 +54,6 @@ export {
   type CredentialKeyResolution,
 } from "./crypto/credential-key";
 
-// --: the SessionSource port's shapes
 export {
   sessionSourceKindSchema,
   sourceFailureCodeSchema,
@@ -111,12 +109,8 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES,
 } from "./session-source/messages";
 
-// --: the evidence gate's plain-English reasons Defined here so
-// `ALL_CUSTOMER_FACING_MESSAGES` (and the plain-English audit that scans it) covers
-// them; `packages/core` imports them back for the trace.
 export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
 
-// --: exclusions
 export {
   exclusionReasonSchema,
   type ExclusionReason,
@@ -138,7 +132,6 @@ export {
   CURRENT_EXCLUSION_RULE_SET,
 } from "./exclusions/classify";
 
-// --: session assembly
 export {
   deriveSessionKey,
   SESSION_GROUPING_VERSION,
@@ -156,7 +149,6 @@ export {
   type IdentityHmacKey,
 } from "./sessions/identity-key";
 
-// --: the onboarding counter
 export {
   expectedLagSchema,
   setAsideBreakdownSchema,
@@ -171,7 +163,6 @@ export {
   POSTHOG_MAX_RETRIEVAL_SECONDS,
 } from "./counter/lag";
 
-// --: the cold-start lane's shapes
 export {
   analysisRunStatusSchema,
   analysisOutcomeSchema,
@@ -188,12 +179,7 @@ export {
   type SummaryUsage,
   type SummaryRenderResult,
 } from "./summary/types";
-// The three `FLOOR_*` tables are re-exported as data and their three key unions are
-// not. `packages/shared/src/summary/messages.ts` restates `FindingClass`,
-// `ConfidenceBasis` and `CountRole` locally because `shared` may not import `core`; a
-// consumer importing a restatement instead of the real union would defeat the compile
-// error that reconciles the two, so the restatements stay module-local and `core`
-// annotates its own import with its own union.
+
 export {
   ANALYSIS_RUN_STATUS_MESSAGES,
   ANALYSIS_OUTCOME_MESSAGES,
@@ -207,7 +193,6 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES as SUMMARY_ALL_CUSTOMER_FACING_MESSAGES,
 } from "./summary/messages";
 
-// --: the signature ledger's shapes
 export {
   suppressionReasonCodeSchema,
   ancestryReasonSchema,
@@ -225,7 +210,6 @@ export {
   FORBIDDEN_PRODUCT_JARGON,
 } from "./signatures/messages";
 
-// --: the delivery lane's shapes
 export {
   deliveryDecisionSchema,
   nothingTodayReasonSchema,
@@ -263,7 +247,6 @@ export {
   deliveryFailureSentence,
 } from "./delivery/messages";
 
-// --: the read-only MCP surface
 export {
   MCP_TOOL,
   MCP_TOOL_NAMES,
@@ -312,10 +295,6 @@ export {
   type GetFindingOutput,
 } from "./mcp/types";
 
-// --: the read credential that authenticates against that surface Its own family, not a
-// `WriteKeyKind` member: a stolen write key is junk telemetry in one project, a stolen
-// read credential is every finding in the organisation. `gmak_` differs from `gmwk_` at
-// index 2 so neither family's gate can ever fire on the other's material.
 export { apiKeyMetadataSchema, type ApiKeyMetadata } from "./api-keys/types";
 export {
   API_KEY_PREFIX,
@@ -324,15 +303,6 @@ export {
   hashApiKeyMaterial,
 } from "./api-keys/material";
 
-// --- O-008: the first-run surface -------------------------------------------
-// `packages/shared` has EXACTLY ONE export entry ("."), so anything the route,
-// the worker or a component needs must be re-exported here. Deep imports are
-// structurally impossible, and that is deliberate.
-//
-// `CounterRow` and `OnboardingCounterView` are exported ONCE, from `types.ts`.
-// `counter-view.ts` re-exports them beside `toOnboardingCounterView` for the
-// consumer that wants one import; listing them twice here would be a duplicate
-// export and the two would then be free to drift apart.
 export {
   onboardingCountSchema,
   onboardingFindingSchema,
@@ -486,10 +456,7 @@ export {
   type TestPostInput,
   type TestPostOutcome,
 } from "./onboarding/slack-test";
-// The thirteen route input schemas (AD-16, AD-16a). They live in this package
-// rather than beside their routes because `apps/web` declares no `zod` and
-// WIRE-Z1 pins that absence — see `./onboarding/route-schemas.ts`'s header.
-// EVERY ONE IS A `z.strictObject`, and none declares a tenancy key.
+
 export {
   firstRunAnalyticsConnectInputSchema,
   firstRunAnalyticsDisconnectInputSchema,

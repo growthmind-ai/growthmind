@@ -17,9 +17,6 @@ export function getPostHogClient(): PostHog | null {
   }
 
   if (!posthogClient) {
-    // Server-side, so no build-time inlining is involved — but the variables are the
-    // same ones the browser reads, deliberately: one PostHog deployment, one set of
-    // hosts, whether the event originates on the server or the client.
     const { apiHost } = resolvePostHogHosts({
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
       assetsHost: process.env.NEXT_PUBLIC_POSTHOG_ASSETS_HOST,

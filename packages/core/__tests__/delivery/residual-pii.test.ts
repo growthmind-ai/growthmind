@@ -1,9 +1,3 @@
-// Residual PII scanner. The last gate before generated text reaches Slack.
-//
-// This is a classifier, so the tests below are organised around its fail direction
-// rather than around its regexes: the question is never "will a pattern scanner miss
-// something" (it will. See the `names` test), but which way it fails when it does.
-// Every test here pins that direction.
 import { describe, expect, it } from "bun:test";
 
 import { isCleanForDelivery, scanResidualPii } from "../../src/delivery/residual-pii";
@@ -42,11 +36,6 @@ describe("scanResidualPii — detects the classes it claims to detect", () => {
 });
 
 describe("scanResidualPii — NEVER echoes the matched text", () => {
-  // The scanner's whole job is to stop personal data travelling. A report that quotes
-  // what it found copies that data into logs, error messages, and any alert built on
-  // it. Moving the leak rather than closing it. This is the same guard
-  // `computeFindingSignature`'s refusal path already applies to the offending surface
-  // value.
   it("reports kind and offset but no fragment of the personal data", () => {
     const email = "jane.doe@acme.example";
     const result = scanResidualPii(`Checkout failed for ${email} twice.`);
@@ -55,7 +44,7 @@ describe("scanResidualPii — NEVER echoes the matched text", () => {
     expect(serialised).not.toContain(email);
     expect(serialised).not.toContain("jane.doe");
     expect(serialised).not.toContain("acme.example");
-    // The offset is enough to find it in the source text without carrying it.
+
     expect(result.findings[0]?.at).toBeGreaterThan(0);
   });
 
@@ -67,20 +56,11 @@ describe("scanResidualPii — NEVER echoes the matched text", () => {
 });
 
 describe("scanResidualPii — fail direction is CLOSED (block on doubt)", () => {
-  // The asymmetry that decides this scanner's design: a false positive costs a withheld
-  // Slack post that a human can re-trigger. A false negative posts a customer's
-  // personal data into a shared channel, where it is retained, indexed, and
-  // unrecallable. So every ambiguous case blocks.
   it("blocks text it cannot make a clean judgement about rather than passing it", () => {
-    // A digit run that is not a valid card but is long enough to be an account number,
-    // an order id containing an email-ish fragment. Neither is provably safe, so
-    // neither passes.
     expect(isCleanForDelivery("account 9876543210987654 was charged")).toBe(false);
   });
 
   it("passes ordinary finding prose that contains no personal data", () => {
-    // The scanner must not be so broad that it blocks the product's own output. A gate
-    // that never opens is a gate nobody keeps.
     const prose =
       "3 of 28 sessions dropped off at the payment step. That is the biggest single drop in this funnel.";
 
@@ -94,12 +74,6 @@ describe("scanResidualPii — fail direction is CLOSED (block on doubt)", () => 
 });
 
 describe("scanResidualPii — the miss it cannot cover, stated out loud", () => {
-  // Not an aspiration, a pinned limitation. A pattern scanner cannot detect a person's
-  // name, and pretending otherwise would let someone treat this gate as a guarantee it
-  // is not. The real control is upstream: names never enter the corpus (product
-  // decisions -§4). This test exists so that if someone later claims "the scanner
-  // catches PII", the claim is bounded by a named test rather than by a comment nobody
-  // reads.
   it("does NOT detect a bare personal name — upstream masking is the real control", () => {
     expect(isCleanForDelivery("Jane Doe abandoned the checkout")).toBe(true);
   });

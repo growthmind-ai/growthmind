@@ -1,10 +1,3 @@
-// Repository tests for `createOrganizationsRepo` (add tasks/tenancy-app-shell/add.md).
-// Both methods key solely on `ctx.organizationId`. There is no id parameter to accept
-// at all, so a foreign org can never be named through this repository. Runs against
-// real SQL via PGlite (`createTestDb`), never a fake.
-//
-// Wave 0: `createOrganizationsRepo`'s method bodies are typed stubs that throw "not
-// implemented". The test below must fail for that reason, never a compile error.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createOrganizationsRepo } from "../../src/repositories/organizations.repo";
@@ -43,8 +36,6 @@ describe("createOrganizationsRepo", () => {
     expect(renamed.name).toBe("Org A Renamed");
     expect(renamed.id).toBe(orgA.organizationId);
 
-    // Sibling org's name must be unchanged. Rename must not have leaked scope to any
-    // other organization row.
     const orgBAfter = await repoB.get();
     expect(orgBAfter.name).toBe(orgB.organizationName);
     expect(orgBAfter.name).toBe("Org B");

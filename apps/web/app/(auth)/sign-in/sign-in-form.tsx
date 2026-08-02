@@ -15,10 +15,6 @@ import {
 } from "@/lib/auth-forms";
 import { ROUTES } from "@/lib/routes";
 
-// EVERY SENTENCE THIS FORM CAN SHOW LIVES IN `lib/auth-forms.ts`, WITH ITS TESTS
-// — including the one that keeps "which of the two was wrong" off the screen.
-// This file renders what those functions return and decides nothing. Copy is
-// normative (UX spec, First-Run Checklist row 8).
 const PENDING_LABEL = "Signing you in…";
 
 export function SignInForm() {
@@ -31,8 +27,6 @@ export function SignInForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isPending) {
-      // Belt: the button + fields are also disabled while pending, so this guards only
-      // a synthetic/programmatic re-submit.
       return;
     }
 
@@ -54,8 +48,6 @@ export function SignInForm() {
 
       setErrors(signInSubmitErrors(error));
     } catch (error) {
-      // A rejected fetch has no code, so this lands on the same network sentence
-      // an unrecognised failure does — one mapping, one place, either way in.
       setErrors(signInSubmitErrors(error));
     } finally {
       setIsPending(false);
@@ -72,9 +64,7 @@ export function SignInForm() {
           value={email}
           onChange={(event) => {
             setEmail(event.currentTarget.value);
-            // "That email and password don't match" is about a submission the
-            // user is now editing away from. Leaving it up reads as "still
-            // wrong" while they are mid-fix.
+
             setErrors((current) => clearField(current, "email"));
           }}
           error={errors.email}
