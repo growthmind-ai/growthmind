@@ -167,21 +167,32 @@ export const PROJECT_PICK_PROMPT =
 export const PROJECT_AUTO_SELECTED_TEMPLATE =
   "You have one project, {project}, so we connected it for you. Disconnect if that is the wrong one.";
 
-/**
- * The key is real but cannot read the project list.
- *
- * The shipped `invalid_credentials` sentence says "that key did not work", and
- * here that would be false and would send a founder off to make a second key
- * with the same fault. This says which permission is missing and where it is
- * turned on — the vendor's own menu path, which is what AD-4's allow-list
- * exists for.
- *
- * No status number, in any spelling. A three-digit code on this screen is a
- * developer's word that escaped, and it tells the person reading it nothing
- * about what to change.
- */
-export const PROJECT_PERMISSION_REFUSAL =
-  "That key works, but it is not allowed to read your projects. In PostHog: Settings → Personal API keys → edit the key, give it read access to projects, then try again.";
+// THERE IS NO SEPARATE "THE KEY CANNOT READ YOUR PROJECTS" SENTENCE, AND ITS
+// ABSENCE IS DELIBERATE.
+//
+// One lived here. It was registered, audited, and rendered by nothing — a
+// severed wire (D11) with a sentence at one end, which reads as coverage from
+// every direction except the screen. Deleted rather than wired, because nothing
+// can produce the state it described distinguishably:
+//
+//   1. `mapFailure` (packages/adapters/src/posthog/errors.ts) codes no 403
+//      branch. The spike observed 401 for every auth failure and never a 403
+//      (scripts/spikes/notes/posthog-projects-endpoint.md, finding 2), and that
+//      module's rule is that an unobserved status takes the generic path rather
+//      than a branch written on a guess. A scope-less key's refusal arrives as
+//      `unreachable` or `invalid_credentials`, not as a permission of its own.
+//   2. Even given a branch, `WALK_FALLTHROUGH_STATUSES` (discovery.ts) puts 403
+//      beside 401 as "ask the next origin" ON PURPOSE — refusing on one while
+//      walking past the other strands whichever founders a future vendor change
+//      points at the other status. A permission refusal would have to refuse
+//      where the walk deliberately continues, reversing a decision that has its
+//      reasoning and its tests written down.
+//
+// What a founder in that state actually sees is an empty project list, and that
+// already refuses as `project_not_found`, whose sentence
+// (`session-source/messages.ts`) now carries the followable half of what this
+// one said: check what the key is allowed to read. Nothing was lost by removing
+// it except a second sentence for a situation the first one covers.
 
 /**
  * THE EARNED DISCLOSURE, AND IT IS THE ONLY ONE THIS STEP HAS (AD-2).
@@ -801,7 +812,6 @@ export const ONBOARDING_MESSAGES = {
   personalKeyHelper: FIELD_PERSONAL_KEY_HELPER,
   projectPickPrompt: PROJECT_PICK_PROMPT,
   projectAutoSelectedTemplate: PROJECT_AUTO_SELECTED_TEMPLATE,
-  projectPermissionRefusal: PROJECT_PERMISSION_REFUSAL,
   selfHostDisclosure: FIELD_SELF_HOST_DISCLOSURE,
   regionLabel: FIELD_REGION_LABEL,
   regionPrefill: FIELD_REGION_PREFILL,
@@ -883,7 +893,6 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   FIELD_PERSONAL_KEY_HELPER,
   PROJECT_PICK_PROMPT,
   PROJECT_AUTO_SELECTED_TEMPLATE,
-  PROJECT_PERMISSION_REFUSAL,
   FIELD_SELF_HOST_DISCLOSURE,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
