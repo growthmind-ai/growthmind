@@ -113,10 +113,14 @@ export const STEP_ANALYTICS_TITLE = "Connect your analytics.";
 export const STEP_ANALYTICS_HELPER =
   "Growthmind reads sessions from the PostHog project you already run. It never writes to it.";
 
-export const FIELD_PROJECT_NUMBER_LABEL = "Project number";
-
-/** A number a founder can check against their own account, so it is not masked. */
-export const FIELD_PROJECT_NUMBER_PLACEHOLDER = "12345";
+// THERE IS NO PROJECT-NUMBER LABEL HERE, AND ITS ABSENCE IS THE FEATURE.
+//
+// This step used to open with a field asking for the vendor's own project
+// number, which a founder could only answer by leaving the product, finding the
+// vendor's settings page and copying a number back. The key alone tells us
+// which projects it can read (AD-1), so the number is now something we fetch
+// rather than something we ask for. A label for it would be the first thing
+// somebody rebuilding the field would reach for; there is nothing to reach for.
 
 export const FIELD_PERSONAL_KEY_LABEL = "Your personal API key";
 
@@ -179,31 +183,39 @@ export const PROJECT_AUTO_SELECTED_TEMPLATE =
 export const PROJECT_PERMISSION_REFUSAL =
   "That key works, but it is not allowed to read your projects. In PostHog: Settings → Personal API keys → edit the key, give it read access to projects, then try again.";
 
-/** The collapsed disclosure. Folded because it is prefilled and correct for most. */
-export const FIELD_REGION_DISCLOSURE = "Using the EU region, or self-hosting?";
-
 /**
- * THE EARNED DISCLOSURE, and it replaces the question above at the point where
- * the screen actually asks it (AD-2).
+ * THE EARNED DISCLOSURE, AND IT IS THE ONLY ONE THIS STEP HAS (AD-2).
  *
- * `FIELD_REGION_DISCLOSURE` asks every founder whether they are on the EU
- * region. We now try both regions ourselves before saying anything, so by the
- * time this appears that question is already answered and asking it again
- * would be telling somebody we had not looked. What is left is the one case
- * the two addresses we ship cannot cover: an account that lives somewhere
- * else.
+ * The question this replaced — "Using the EU region, or self-hosting?" — was
+ * put to every founder on first render, and it is retired rather than reworded.
+ * We now try both hosted regions ourselves before saying anything, so by the
+ * time anything about addresses is on screen that question has already been
+ * answered; asking it would be telling somebody we had not looked. What is left
+ * is the one case the two addresses we ship cannot cover: an account that lives
+ * somewhere else.
  *
- * It appears ONLY after both tries have come back refused, beneath the refusal,
- * so a founder who is on either hosted region never sees an address field at
- * all. Do not render it before then, and do not render both.
+ * So it appears ONLY after both tries have come back refused, beneath the
+ * refusal. A founder on either hosted region never sees an address field at
+ * all, and there is no second disclosure left for this one to be rendered
+ * beside.
  */
 export const FIELD_SELF_HOST_DISCLOSURE = "Running PostHog at an address of your own?";
 
 export const FIELD_REGION_LABEL = "Region address";
 
 /**
- * The shipped default, PREFILLED, so the common case needs no typing at all. A
- * field the product can fill in for you is a field it should not have asked for.
+ * The shipped default, and it is a PLACEHOLDER now rather than a prefill.
+ *
+ * As a prefill it made the common case need no typing. There is no common case
+ * left: the field is behind an earned disclosure that only a self-hoster ever
+ * sees, and a prefilled hosted address there is the one address we have just
+ * finished proving does not work for them. Worse, a value sitting in the field
+ * would be SENT on the next press, taking the single-request self-host branch
+ * and skipping the region walk the founder still needs.
+ *
+ * As a placeholder it shows the shape an address takes and submits nothing.
+ * It is also the correspondence `PROBE_ORIGINS` (packages/adapters) is written
+ * against — the same origin family, stated in both places on purpose.
  */
 export const FIELD_REGION_PREFILL = "https://us.i.posthog.com";
 
@@ -411,6 +423,111 @@ export const SLACK_MUST_PICK_ANOTHER_CHANNEL =
  */
 export const SLACK_SKIPPED_NOTICE =
   "You can still see the next part on this screen. But nothing will arrive anywhere after that until Slack is connected.";
+
+/**
+ * The picker's own label, and it is not the field it replaces.
+ *
+ * `FIELD_CHANNEL_ID_LABEL` names a value a founder has to go and look up in
+ * somebody else's product; this names the thing itself, because on this path
+ * the list is the field and no id is ever typed.
+ */
+export const FIELD_CHANNEL_LABEL = "Channel";
+
+// ---------------------------------------------------------------------------
+// What the trip out to Slack and back settled on (AD-5, AD-6, AD-7)
+// ---------------------------------------------------------------------------
+//
+// ###########################################################################
+// # SIX SENTENCES, ONE PER OUTCOME, BECAUSE EACH ONE HAS A DIFFERENT NEXT
+// # ACTION.
+// #
+// # `apps/web/lib/first-run/slack-oauth-outcome.ts` settled the VOCABULARY —
+// # the set of things that can have happened between pressing the button and
+// # landing back here — and deliberately wrote no words, because the words
+// # belong here where they are audited. Until they existed, a founder whose
+// # consent trip did not work out came back to this screen with a value in the
+// # address bar that nothing read: the round trip had an answer and the product
+// # had no way to say it.
+// #
+// # THREE OF THE SIX ARE NOT FAULTS. A workspace attached, a founder who chose
+// # not to grant access, and an organization that was already connected. A card
+// # that marked all six as something going wrong would be telling somebody off
+// # on the two paths where nothing went wrong at all.
+// #
+// # EACH NAMES WHAT HAPPENED AND THEN WHAT TO DO, IN THAT ORDER. The first half
+// # is the part a founder cannot see for themselves; the second is the one
+// # action that can change it, and it is never an action they cannot take.
+// # `unavailable` is an operator's job, so it points at the pasted token that is
+// # already on their screen rather than at the button again — an instruction to
+// # retry something that cannot succeed is the one people press until they give
+// # up.
+// ###########################################################################
+
+/**
+ * The workspace is attached, and this is deliberately not "done": there is
+ * still nowhere to post.
+ *
+ * It names the one thing outstanding without repeating the picker's own
+ * instruction word for word. `SLACK_CHANNEL_PICK_PROMPT` sits directly beneath
+ * this sentence on the same card, and two imperatives in a row read as two
+ * separate jobs.
+ */
+export const SLACK_OAUTH_CONNECTED_NOTICE =
+  "Your Slack workspace is connected. The channel below is the last thing we need.";
+
+/**
+ * The founder said no on Slack's own consent screen.
+ *
+ * NOTHING FAILED, SO NOTHING HERE MAY READ AS A FAILURE. They made a choice,
+ * and this hands the same choice straight back — including the skip, because
+ * somebody who has just declined may well not want to be asked a second time.
+ */
+export const SLACK_OAUTH_DECLINED_NOTICE =
+  "You chose not to give us access in Slack, so nothing here changed. Add us to Slack again whenever you want to, or skip this step for now.";
+
+/**
+ * The round trip outlived the signed state. The slow-founder case, and the one
+ * that must never be confused with a forgery.
+ *
+ * Pressing the button again simply works, and this says so with no length of
+ * time anywhere in it: how long the state lives is our business, not theirs.
+ */
+export const SLACK_OAUTH_EXPIRED_NOTICE =
+  "The trip out to Slack went stale before you came back, so nothing was connected. Add us to Slack again and it will go through.";
+
+/**
+ * This organization already had an active connection.
+ *
+ * The second sentence is what stops it reading as a failure: there is nothing
+ * to undo, nothing to retry, and nothing they got wrong. It says "everyone
+ * here" because the connection is shared — a teammate landing on this has not
+ * been beaten to a personal setting, they have arrived after their own
+ * workspace was already wired up.
+ */
+export const SLACK_OAUTH_ALREADY_CONNECTED_NOTICE =
+  "Slack is already connected for everyone here, so nothing needed to change. There is nothing for you to redo.";
+
+/**
+ * This installation has no Slack app of its own (AD-6).
+ *
+ * An operator's job and not the founder's, so the instruction points at the one
+ * path they can finish on their own — and on this branch the pasted-token form
+ * is the card in front of them rather than a folded fallback, which is why
+ * "below" is true when this renders.
+ */
+export const SLACK_OAUTH_UNAVAILABLE_NOTICE =
+  "This installation has no Slack app of its own, so there was nowhere to send you. Paste your own bot token below instead, or skip this step for now.";
+
+/**
+ * Everything else: a state that did not verify, a code Slack refused, a call
+ * that did not complete.
+ *
+ * The honest instruction is to walk the trip again, and the honest second option
+ * is the path that does not depend on it working. No code and no identifier:
+ * neither would tell the person reading it anything they could act on.
+ */
+export const SLACK_OAUTH_FAILED_NOTICE =
+  "The trip back from Slack did not finish, so nothing was connected. Add us to Slack again, or paste your own bot token instead.";
 
 // ---------------------------------------------------------------------------
 // The roadmap line — where the two stubs live now
@@ -680,14 +797,11 @@ export const ONBOARDING_MESSAGES = {
 
   stepAnalyticsTitle: STEP_ANALYTICS_TITLE,
   stepAnalyticsHelper: STEP_ANALYTICS_HELPER,
-  projectNumberLabel: FIELD_PROJECT_NUMBER_LABEL,
-  projectNumberPlaceholder: FIELD_PROJECT_NUMBER_PLACEHOLDER,
   personalKeyLabel: FIELD_PERSONAL_KEY_LABEL,
   personalKeyHelper: FIELD_PERSONAL_KEY_HELPER,
   projectPickPrompt: PROJECT_PICK_PROMPT,
   projectAutoSelectedTemplate: PROJECT_AUTO_SELECTED_TEMPLATE,
   projectPermissionRefusal: PROJECT_PERMISSION_REFUSAL,
-  regionDisclosure: FIELD_REGION_DISCLOSURE,
   selfHostDisclosure: FIELD_SELF_HOST_DISCLOSURE,
   regionLabel: FIELD_REGION_LABEL,
   regionPrefill: FIELD_REGION_PREFILL,
@@ -712,6 +826,13 @@ export const ONBOARDING_MESSAGES = {
   channelIdLabel: FIELD_CHANNEL_ID_LABEL,
   channelIdPlaceholder: FIELD_CHANNEL_ID_PLACEHOLDER,
   channelIdHelper: FIELD_CHANNEL_ID_HELPER,
+  channelLabel: FIELD_CHANNEL_LABEL,
+  slackOAuthConnected: SLACK_OAUTH_CONNECTED_NOTICE,
+  slackOAuthDeclined: SLACK_OAUTH_DECLINED_NOTICE,
+  slackOAuthExpired: SLACK_OAUTH_EXPIRED_NOTICE,
+  slackOAuthAlreadyConnected: SLACK_OAUTH_ALREADY_CONNECTED_NOTICE,
+  slackOAuthUnavailable: SLACK_OAUTH_UNAVAILABLE_NOTICE,
+  slackOAuthFailed: SLACK_OAUTH_FAILED_NOTICE,
   sendTestMessage: SEND_TEST_MESSAGE_LABEL,
   sendingTestMessage: SEND_TEST_MESSAGE_PENDING,
   skipForNow: SKIP_FOR_NOW_LABEL,
@@ -758,14 +879,11 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   STEP_ANALYTICS_TITLE,
   STEP_ANALYTICS_HELPER,
-  FIELD_PROJECT_NUMBER_LABEL,
-  FIELD_PROJECT_NUMBER_PLACEHOLDER,
   FIELD_PERSONAL_KEY_LABEL,
   FIELD_PERSONAL_KEY_HELPER,
   PROJECT_PICK_PROMPT,
   PROJECT_AUTO_SELECTED_TEMPLATE,
   PROJECT_PERMISSION_REFUSAL,
-  FIELD_REGION_DISCLOSURE,
   FIELD_SELF_HOST_DISCLOSURE,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
@@ -798,6 +916,13 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   FIELD_CHANNEL_ID_LABEL,
   FIELD_CHANNEL_ID_PLACEHOLDER,
   FIELD_CHANNEL_ID_HELPER,
+  FIELD_CHANNEL_LABEL,
+  SLACK_OAUTH_CONNECTED_NOTICE,
+  SLACK_OAUTH_DECLINED_NOTICE,
+  SLACK_OAUTH_EXPIRED_NOTICE,
+  SLACK_OAUTH_ALREADY_CONNECTED_NOTICE,
+  SLACK_OAUTH_UNAVAILABLE_NOTICE,
+  SLACK_OAUTH_FAILED_NOTICE,
   SEND_TEST_MESSAGE_LABEL,
   SEND_TEST_MESSAGE_PENDING,
   SKIP_FOR_NOW_LABEL,

@@ -51,11 +51,9 @@ import {
   FIELD_CHANNEL_ID_PLACEHOLDER,
   FIELD_PERSONAL_KEY_HELPER,
   FIELD_PERSONAL_KEY_LABEL,
-  FIELD_PROJECT_NUMBER_LABEL,
-  FIELD_PROJECT_NUMBER_PLACEHOLDER,
-  FIELD_REGION_DISCLOSURE,
   FIELD_REGION_LABEL,
   FIELD_REGION_PREFILL,
+  FIELD_SELF_HOST_DISCLOSURE,
   SEND_TEST_MESSAGE_LABEL,
   SKIP_FOR_NOW_LABEL,
   STEP_AGENT_FILLER,
@@ -117,13 +115,12 @@ export type ConfirmationId = z.infer<typeof confirmationIdSchema>;
  * One field on a work step.
  *
  * `disclosure` IS AN ADDITION BEYOND THE WAVE 0 MIRROR, AND IT IS DELIBERATE.
- * UX row 5 renders the region behind a collapsed disclosure whose own label is
- * a sentence ("Using the EU region, or self-hosting?"), which is NOT the
- * helper — a helper sits under a field, a disclosure is the thing you press to
- * reveal it. Folding that sentence into `helper` would leave the renderer to
- * infer "if folded, `helper` means something else", which is exactly the kind
- * of unwritten convention D11 says gets severed. It is its own field, `null`
- * on every visible one.
+ * A folded field sits behind a collapsed disclosure whose own label is a
+ * sentence, and that sentence is NOT the helper — a helper sits under a field,
+ * a disclosure is the thing you press to reveal it. Folding that sentence into
+ * `helper` would leave the renderer to infer "if folded, `helper` means
+ * something else", which is exactly the kind of unwritten convention D11 says
+ * gets severed. It is its own field, `null` on every visible one.
  */
 export type FieldDescriptor = {
   readonly id: string;
@@ -139,16 +136,21 @@ export type FieldDescriptor = {
   readonly folded: boolean;
   readonly placeholder: string | null;
   /**
-   * UX row 5: the region is prefilled with the shipped default. A VISIBLE field
-   * is NEVER prefilled — a field the product can fill in for you is a field it
-   * should not have asked for.
+   * A starting VALUE, which the next submit will send. No field carries one
+   * today: a field the product can fill in for you is a field it should not
+   * have asked for, and the one field that used to be prefilled now shows its
+   * shape as a `placeholder` instead, so an untouched field submits nothing.
    */
   readonly prefill: string | null;
   /**
    * The refusal codes this field is the subject of. UX row 6 puts focus on the
-   * key field for `invalid_credentials`; UX row 7 auto-expands the region for
+   * key field for `invalid_credentials`; UX row 7 auto-expands the address for
    * `unreachable`. ONE MECHANISM, TWO ROWS — a refusal that names a field the
    * founder cannot see is a dead end, and this is the wire that stops it.
+   *
+   * A code that is the subject of NO field is not a gap: `project_not_found`
+   * belongs to no input now that the project is discovered rather than typed,
+   * so it renders as the card's own sentence. That is the honest place for it.
    *
    * The renderer already holds the descriptor, so it derives the focus target
    * from what it has rather than from a second lookup somebody has to keep in
@@ -209,22 +211,21 @@ export type StageStep = Extract<StepDescriptor, { kind: "stage" }>;
 // Step 2's fields — UX Checklist rows 5, 6 and 7
 // ---------------------------------------------------------------------------
 
-/**
- * A number a founder can check against their own account, so it is NOT masked.
- * Pretending a non-secret is a secret makes it un-checkable by the person
- * pasting it.
- */
-const PROJECT_NUMBER_FIELD: FieldDescriptor = {
-  id: "projectNumber",
-  label: FIELD_PROJECT_NUMBER_LABEL,
-  helper: null,
-  disclosure: null,
-  secret: false,
-  folded: false,
-  placeholder: FIELD_PROJECT_NUMBER_PLACEHOLDER,
-  prefill: null,
-  refusalCodes: ["project_not_found"],
-};
+// ###########################################################################
+// # THERE IS NO PROJECT-NUMBER FIELD, AND ITS DELETION IS THE STEP'S POINT.
+// #
+// # It used to be the first thing on this step: a text input for the vendor's
+// # own project number, which a founder could only fill in by leaving the
+// # product, opening the vendor's settings page and copying a number back. The
+// # personal key alone tells us which projects it can read (AD-1), so the
+// # number is discovered and then either auto-selected or picked from a list.
+// #
+// # IT MUST NOT COME BACK AS A DESCRIPTOR, NOT EVEN AN OPTIONAL ONE. This array
+// # is what the form renders AND what a refusal is mapped onto; a field
+// # declared here that the form does not render would take `project_not_found`
+// # off the card and attach it to an input nobody can see, which is exactly the
+// # dead end the refusal-to-field wire exists to prevent.
+// ###########################################################################
 
 const PERSONAL_KEY_FIELD: FieldDescriptor = {
   id: "personalKey",
@@ -239,19 +240,31 @@ const PERSONAL_KEY_FIELD: FieldDescriptor = {
 };
 
 /**
- * The sprint's only folded field: prefilled, correct for most, and out of the
- * way — so step 2 shows EXACTLY TWO VISIBLE FIELDS and the common case needs no
- * typing at all.
+ * THE EARNED FIELD. Folded, and not even offered until both hosted regions have
+ * refused — so step 2 shows EXACTLY ONE VISIBLE FIELD and a founder on either
+ * hosted region never meets an address question at all (AD-2).
+ *
+ * `folded` still means "behind its disclosure"; whether the disclosure is on
+ * screen in the first place is the form's call, because only the form knows
+ * whether a region walk has already come back empty. That is one fact, held
+ * once, where it is observed.
+ *
+ * NOT PREFILLED, and the difference is behavioural rather than cosmetic. A
+ * value sitting in this field is a value the next press SENDS, which takes the
+ * single-request self-host branch at the very address that just refused and
+ * skips the region walk the founder still needs. Empty means "walk the regions
+ * again"; typed means "I have my own address". `FIELD_REGION_PREFILL` shows the
+ * shape as a placeholder instead.
  */
-const REGION_FIELD: FieldDescriptor = {
+const SELF_HOST_FIELD: FieldDescriptor = {
   id: "regionAddress",
   label: FIELD_REGION_LABEL,
   helper: null,
-  disclosure: FIELD_REGION_DISCLOSURE,
+  disclosure: FIELD_SELF_HOST_DISCLOSURE,
   secret: false,
   folded: true,
-  placeholder: null,
-  prefill: FIELD_REGION_PREFILL,
+  placeholder: FIELD_REGION_PREFILL,
+  prefill: null,
   refusalCodes: ["unreachable"],
 };
 
@@ -352,7 +365,7 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     ordinal: 2,
     title: STEP_ANALYTICS_TITLE,
     helper: STEP_ANALYTICS_HELPER,
-    fields: [PROJECT_NUMBER_FIELD, PERSONAL_KEY_FIELD, REGION_FIELD],
+    fields: [PERSONAL_KEY_FIELD, SELF_HOST_FIELD],
     actions: [CONNECT_ACTION, DISCONNECT_ACTION],
     // Two, in the order UX row 8 renders them: the counter, then the receipt.
     confirmations: ["counter", "receipt"],

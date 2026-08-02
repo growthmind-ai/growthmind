@@ -81,7 +81,20 @@ function workBody(input: WorkBodyInput): ReactNode {
   const { step, view, status } = input;
 
   if (step.id !== "analytics") {
-    return <ConnectSlackForm step={step} view={view} channelId={status.channelId} />;
+    // BOTH SLACK FACTS, AND THEY ARE NOT ONE FACT (AD-4 row 4, AD-6). The card
+    // needs to tell "no workspace at all" from "a workspace with nowhere to
+    // post", and it needs to know whether this installation has a Slack app
+    // before it can offer the one-click path — neither is derivable from the
+    // address, and neither may be read from the environment by a client.
+    return (
+      <ConnectSlackForm
+        step={step}
+        view={view}
+        channelId={status.channelId}
+        slackWorkspaceAttached={status.slackWorkspaceAttached}
+        slackOAuthAvailable={status.slackOAuthAvailable}
+      />
+    );
   }
 
   const state = status.counter.state;
