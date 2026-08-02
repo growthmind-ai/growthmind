@@ -82,73 +82,33 @@ const CLOCK = clockAt(new Date("2026-08-01T10:00:00.000Z"));
 const ORIGIN = "http://localhost:3000";
 
 /**
- * The four routes, declared HERE rather than appended to `FIRST_RUN_ROUTES`.
+ * The four routes, read off `FIRST_RUN_ROUTES` — the one table, as of Wave 5b.
  *
- * That constant is AD-16's own table of the EIGHT routes O-008 shipped, and
- * `status.route.test.ts` asserts it matches the route files on disk exactly.
- * Wave 0f owns both. Task 0.5 is writing a fifth descriptor for the discovery
- * route on this same branch, and two Wave 0 agents editing one frozen array is
- * a merge conflict with nothing gained: every loader in the helper takes a
- * DESCRIPTOR, so a locally declared one drives the real machinery unchanged.
+ * THEY WERE DECLARED LOCALLY HERE, AND THE REASON IS WORTH KEEPING because it
+ * is the reason they are not any more. When this file was written the four
+ * route files did not exist, `FIRST_RUN_ROUTES` named only the routes O-008
+ * shipped, and `status.route.test.ts` asserted that table matched the route
+ * files on disk exactly. Task 0.5 was writing a descriptor for the discovery
+ * route on the same branch, and two Wave 0 agents editing one frozen array is a
+ * merge conflict with nothing gained — so the copies were local, deliberately
+ * self-retiring, and every loader in the helper takes a DESCRIPTOR, which is
+ * what let them drive the real machinery unchanged.
  *
- * A CONSEQUENCE WORTH STATING RATHER THAN DISCOVERING IN WAVE 5: the moment
- * these route files land, `every route file on disk is declared in
- * FIRST_RUN_ROUTES` goes red, because five new `route.ts` files will exist that
- * the eight-row table does not name. That row is doing its job — it is AD-16's
- * "that test also catches the next route somebody adds" firing on exactly the
- * next routes somebody added. Wave 5 must extend `FIRST_RUN_ROUTES` with these
- * five descriptors, at which point the three strictness rows in
- * `status.route.test.ts` cover them automatically and the local copies below
- * become redundant rather than wrong.
+ * The route files then landed, `every route file on disk is declared in
+ * FIRST_RUN_ROUTES` went red naming all five, and Wave 5b added them to the
+ * table. Which is AD-16's "that test also catches the next route somebody adds"
+ * doing exactly its job, twice: once to force the descriptors into the shared
+ * table, and once more for whoever adds the fourteenth route. The local copies
+ * are gone because a second definition is the drift the shared table exists to
+ * prevent — and because being IN that table is what puts these four inside the
+ * strictness rows in `status.route.test.ts` that loop every route on the
+ * surface. The rows below still assert the same four things about the same four
+ * routes; they just no longer own the only description of them.
  */
-const WAVE_5 = "ADD Wave 5, tasks 5.2-5.5 (the four Slack routes)";
-
-const OAUTH_START: FirstRunRouteDescriptor = Object.freeze({
-  id: "slack-oauth-start",
-  path: "/api/first-run/slack/oauth/start",
-  method: "GET",
-  modulePath: "apps/web/app/api/first-run/slack/oauth/start/route",
-  sourcePath: "apps/web/app/api/first-run/slack/oauth/start/route.ts",
-  declaredKeys: [],
-  validBody: {},
-  ownedBy: WAVE_5,
-});
-
-const OAUTH_CALLBACK: FirstRunRouteDescriptor = Object.freeze({
-  id: "slack-oauth-callback",
-  path: "/api/first-run/slack/oauth/callback",
-  method: "GET",
-  modulePath: "apps/web/app/api/first-run/slack/oauth/callback/route",
-  sourcePath: "apps/web/app/api/first-run/slack/oauth/callback/route.ts",
-  declaredKeys: [],
-  validBody: {},
-  ownedBy: WAVE_5,
-});
-
-const CHANNELS: FirstRunRouteDescriptor = Object.freeze({
-  id: "slack-channels",
-  path: "/api/first-run/slack/channels",
-  method: "GET",
-  modulePath: "apps/web/app/api/first-run/slack/channels/route",
-  sourcePath: "apps/web/app/api/first-run/slack/channels/route.ts",
-  declaredKeys: [],
-  validBody: {},
-  ownedBy: WAVE_5,
-});
-
-const CHANNEL: FirstRunRouteDescriptor = Object.freeze({
-  id: "slack-channel",
-  path: "/api/first-run/slack/channel",
-  method: "POST",
-  modulePath: "apps/web/app/api/first-run/slack/channel/route",
-  sourcePath: "apps/web/app/api/first-run/slack/channel/route.ts",
-  // AD-7's contract block: `firstRunSlackChannelInputSchema` is
-  // `z.strictObject({ channelId })`. NO tenancy key — the organization comes
-  // from the session, and the row it attaches to comes from the organization.
-  declaredKeys: ["channelId"],
-  validBody: { channelId: "C01AB2CD3EF" },
-  ownedBy: WAVE_5,
-});
+const OAUTH_START = routeById("slack-oauth-start");
+const OAUTH_CALLBACK = routeById("slack-oauth-callback");
+const CHANNELS = routeById("slack-channels");
+const CHANNEL = routeById("slack-channel");
 
 const NEW_SLACK_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freeze([
   OAUTH_START,
@@ -593,7 +553,7 @@ function recordingPoster(result: PostResult): RecordingPoster {
 }
 
 // ===========================================================================
-// AD-16 / AD-16a — the four new schemas, on the same terms as the eight
+// AD-16 / AD-16a — the four new schemas, on the same terms as every other
 // ===========================================================================
 
 describe("the four new Slack routes accept no tenancy id (AD-16, AD-16a)", () => {

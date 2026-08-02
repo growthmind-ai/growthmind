@@ -24,22 +24,19 @@
 // #      that collapsed n=1 into a different shape would sever it.
 // ###########################################################################
 //
-// ── WHY THE ROUTE DESCRIPTOR IS LOCAL, AND WHAT THE IMPLEMENTING WAVE OWES ──
+// ── THE ROUTE DESCRIPTOR IS THE SHARED ONE, AND THAT IS THE END OF A STORY ──
 //
-// `helpers/first-run-route-contract.ts` freezes AD-16's EIGHT routes, and
-// `status.route.test.ts`'s `every route file on disk is declared in
-// FIRST_RUN_ROUTES` row is currently GREEN against exactly those eight files.
-// Declaring a ninth here would turn that row red for a route nobody has
-// written yet — a misleading red in a file this task does not own.
+// This file was written before `analytics/discover/route.ts` existed, and it
+// declared a LOCAL descriptor for it — because `status.route.test.ts`'s
+// `every route file on disk is declared in FIRST_RUN_ROUTES` row was green
+// against the routes that existed, and declaring a route nobody had written
+// would have turned it red in a file this task did not own. The local copy was
+// written self-retiring for exactly this moment.
 //
-// So the descriptor below is local AND self-retiring: it is used only until
-// `analytics-discover` appears in `FIRST_RUN_ROUTES`, after which this file
-// picks the shared one up automatically and no second copy can drift.
-//
-// THE WAVE THAT CREATES `analytics/discover/route.ts` MUST ADD ITS DESCRIPTOR
-// TO `FIRST_RUN_ROUTES`. The on-disk row above will force it — that row exists
-// to catch "the next route somebody adds" — and doing so is also what puts
-// this route inside the AD-16 tenancy block that loops all of them.
+// The route landed, that row went red naming it, and `FIRST_RUN_ROUTES` now
+// carries its descriptor. So this file reads the SHARED one: one table, no
+// second copy to drift, and this route is inside the AD-16 tenancy block that
+// loops every route on the surface rather than being asserted only here.
 //
 // ── THE ONE THING THE ADD DOES NOT NAME, DERIVED RATHER THAN GUESSED ────────
 //
@@ -74,7 +71,6 @@ import {
   strictObjectControl,
 } from "../../../../../packages/shared/__tests__/onboarding/probes/strict-zod-fixtures";
 import {
-  FIRST_RUN_ROUTES,
   TENANCY_KEYS,
   bodyOf,
   clockAt,
@@ -83,27 +79,55 @@ import {
   leaks,
   loadRouteHandler,
   loadRouteInputSchema,
+  routeById,
   routeRequest,
   tenantOf,
   verifyRefusesUnknownKey,
   type FirstRunRouteDeps,
-  type FirstRunRouteDescriptor,
   type FirstRunTestBed,
   type SeededMemberScope,
 } from "./helpers/first-run-route-contract";
 
 const CLOCK = clockAt(new Date("2026-08-01T10:00:00.000Z"));
 
-/** The task that creates the route. Lands in every red so it names its owner. */
-const WAVE_2 = "ADD Wave 2 (apps/web/app/api/first-run/analytics/discover/route.ts)";
+/** AD-16's table, from the one place it is declared. See the header. */
+const DISCOVER = routeById("analytics-discover");
 
 /**
  * Fixture-shaped, never real key material — this repository is public.
  *
+ * READ OFF THE SHARED DESCRIPTOR rather than declared beside it. Every row
+ * below posts `DISCOVER.validBody`, and this constant is the needle `leaks()`
+ * hunts for in what those rows produce. A second literal here would be one edit
+ * to the table away from a scan looking for a value nothing ever sent — green,
+ * and measuring nothing. So the body and the needle are the same string by
+ * construction, and the read below refuses rather than degrades if they stop
+ * being.
+ *
  * Long enough that `leaks()`'s 12-character truncation form is unmistakably
  * this value and not a coincidence of some other string in the payload.
  */
-const PERSONAL_API_KEY = "phx_discover_fixture_key_do_not_use_anywhere";
+const PERSONAL_API_KEY = fixtureString(DISCOVER.validBody, "personalApiKey");
+
+/**
+ * One string field off a descriptor's `validBody`, or a named failure.
+ *
+ * NOT `String(body[key])`: that turns a missing field into the literal
+ * `"undefined"` and hands `leaks()` a needle that is in no response — the
+ * vacuous-scan failure this whole suite is written to avoid.
+ */
+function fixtureString(body: Readonly<Record<string, unknown>>, key: string): string {
+  const value = body[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(
+      `first-run-route-contract: the analytics-discover descriptor's validBody carries no ` +
+        `non-empty string \`${key}\`. Every row in this file posts that body and scans the ` +
+        `response for its value, so a missing field is a suite that measures nothing. ` +
+        `Found: ${JSON.stringify(value)}.`,
+    );
+  }
+  return value;
+}
 
 /**
  * Text only the VENDOR would ever produce, planted on every fake failure.
@@ -164,29 +188,6 @@ type DiscoverProjectsFn = (input: {
 interface DiscoverRouteDeps extends FirstRunRouteDeps {
   readonly discoverProjects?: DiscoverProjectsFn | undefined;
 }
-
-// ---------------------------------------------------------------------------
-// The route under construction
-// ---------------------------------------------------------------------------
-
-/** AD-16's table, extended by one row. See the header for why it is local. */
-const LOCAL_DISCOVER: FirstRunRouteDescriptor = Object.freeze({
-  id: "analytics-discover",
-  path: "/api/first-run/analytics/discover",
-  method: "POST",
-  modulePath: "apps/web/app/api/first-run/analytics/discover/route",
-  sourcePath: "apps/web/app/api/first-run/analytics/discover/route.ts",
-  // The ADD's `firstRunAnalyticsDiscoverInputSchema`, verbatim. NO tenancy key.
-  declaredKeys: ["personalApiKey", "host"],
-  // `host` is absent, because the common path never sends it: it is revealed
-  // only after both probes refused (AD-2, "the disclosure is earned").
-  validBody: { personalApiKey: PERSONAL_API_KEY },
-  ownedBy: WAVE_2,
-});
-
-/** The shared descriptor the moment one exists, the local one until then. */
-const DISCOVER: FirstRunRouteDescriptor =
-  FIRST_RUN_ROUTES.find((route) => route.id === LOCAL_DISCOVER.id) ?? LOCAL_DISCOVER;
 
 // ---------------------------------------------------------------------------
 // The fake probe — the ONLY impure thing in this flow
