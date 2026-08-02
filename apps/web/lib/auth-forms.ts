@@ -8,6 +8,14 @@ import {
   type SignUpInput,
 } from "@growthmind/shared";
 
+export const NAME_PLACEHOLDER = "First and last name";
+
+export const EMAIL_PLACEHOLDER = "you@company.com";
+
+export const NEW_PASSWORD_PLACEHOLDER = `At least ${PASSWORD_MIN_LENGTH} characters`;
+
+export const CURRENT_PASSWORD_PLACEHOLDER = "The password you signed up with";
+
 export const NAME_REQUIRED_MESSAGE = "Enter your name";
 
 export const NAME_TOO_LONG_MESSAGE = "That name is too long";

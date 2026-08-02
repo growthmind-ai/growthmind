@@ -266,6 +266,19 @@ describe("orphan checklist rows — assertions taken from the UX Expected-UI col
     }
   });
 
+  test("every declared field shows an example of what to type", async () => {
+    const descriptors = await loadStepDescriptors();
+
+    const fields = descriptors.flatMap((descriptor) =>
+      descriptor.kind === "work" ? descriptor.fields : [],
+    );
+
+    expect(fields.length).toBeGreaterThan(0);
+
+    const unhinted = fields.filter((field) => (field.placeholder ?? "").trim() === "");
+    expect(unhinted.map((field) => field.id)).toEqual([]);
+  });
+
   test("an unreachable refusal marks the address field as the offending one", async () => {
     const descriptors = await loadStepDescriptors();
     const analytics = descriptorFor(descriptors, "analytics");

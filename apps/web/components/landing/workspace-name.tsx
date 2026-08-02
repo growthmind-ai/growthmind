@@ -10,6 +10,8 @@ type Mode = "display" | "editing" | "saving" | "error";
 
 const EMPTY_NAME_MESSAGE = "Give your workspace a name — anything works.";
 
+const NAME_PLACEHOLDER = "Your company or team name";
+
 interface WorkspaceNameProps {
   initialName: string;
 }
@@ -113,6 +115,7 @@ export function WorkspaceName({ initialName }: WorkspaceNameProps) {
       <TextInput
         ref={inputRef}
         aria-label="Workspace name"
+        placeholder={NAME_PLACEHOLDER}
         value={draft}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onKeyDown={handleKeyDown}

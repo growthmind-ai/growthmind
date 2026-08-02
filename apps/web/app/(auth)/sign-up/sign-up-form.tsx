@@ -9,6 +9,9 @@ import { signUp } from "@/lib/auth-client";
 import {
   clearField,
   DUPLICATE_EMAIL,
+  EMAIL_PLACEHOLDER,
+  NAME_PLACEHOLDER,
+  NEW_PASSWORD_PLACEHOLDER,
   NO_SIGN_UP_ERRORS,
   signUpSubmitErrors,
   validateSignUp,
@@ -74,6 +77,7 @@ export function SignUpForm() {
         <TextInput
           label="Your name"
           size="md"
+          placeholder={NAME_PLACEHOLDER}
           value={name}
           onChange={(event) => {
             setName(event.currentTarget.value);
@@ -88,6 +92,7 @@ export function SignUpForm() {
           label="Email"
           type="email"
           size="md"
+          placeholder={EMAIL_PLACEHOLDER}
           value={email}
           onChange={(event) => {
             setEmail(event.currentTarget.value);
@@ -100,6 +105,7 @@ export function SignUpForm() {
         <PasswordInput
           label="Password"
           size="md"
+          placeholder={NEW_PASSWORD_PLACEHOLDER}
           value={password}
           onChange={(event) => {
             setPassword(event.currentTarget.value);

@@ -106,6 +106,7 @@ export function ChannelPicker(props: ChannelPickerProps): ReactNode {
     <Select
       label={ONBOARDING_MESSAGES.channelLabel}
       description={ONBOARDING_MESSAGES.slackChannelPickPrompt}
+      placeholder={ONBOARDING_MESSAGES.channelPlaceholder}
       data={(props.channels ?? []).map((channel) => ({ value: channel.id, label: channel.name }))}
       value={props.value}
       onChange={props.onChange}

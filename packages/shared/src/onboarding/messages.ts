@@ -43,6 +43,8 @@ export const FIELD_PERSONAL_KEY_LABEL = "Your personal API key";
 export const FIELD_PERSONAL_KEY_HELPER =
   "In PostHog: Settings → Personal API keys. Your personal key, not the project key.";
 
+export const FIELD_PERSONAL_KEY_PLACEHOLDER = "phx_…";
+
 export const PROJECT_PICK_PROMPT =
   "That key works. Choose the project you want Growthmind to read.";
 
@@ -162,6 +164,8 @@ export const SLACK_SKIPPED_NOTICE =
 
 // Not the field it replaces: on this path the list IS the field, no id is typed.
 export const FIELD_CHANNEL_LABEL = "Channel";
+
+export const FIELD_CHANNEL_PLACEHOLDER = "Choose a channel";
 
 // Six OAuth outcomes, one sentence each, because each has a different next action
 // (AD-5, AD-6, AD-7). Three are not faults — attached, declined, already
@@ -284,6 +288,7 @@ export const ONBOARDING_MESSAGES = {
   stepAnalyticsHelper: STEP_ANALYTICS_HELPER,
   personalKeyLabel: FIELD_PERSONAL_KEY_LABEL,
   personalKeyHelper: FIELD_PERSONAL_KEY_HELPER,
+  personalKeyPlaceholder: FIELD_PERSONAL_KEY_PLACEHOLDER,
   projectPickPrompt: PROJECT_PICK_PROMPT,
   projectAutoSelectedTemplate: PROJECT_AUTO_SELECTED_TEMPLATE,
   selfHostDisclosure: FIELD_SELF_HOST_DISCLOSURE,
@@ -313,6 +318,7 @@ export const ONBOARDING_MESSAGES = {
   channelIdPlaceholder: FIELD_CHANNEL_ID_PLACEHOLDER,
   channelIdHelper: FIELD_CHANNEL_ID_HELPER,
   channelLabel: FIELD_CHANNEL_LABEL,
+  channelPlaceholder: FIELD_CHANNEL_PLACEHOLDER,
   slackOAuthConnected: SLACK_OAUTH_CONNECTED_NOTICE,
   slackOAuthDeclined: SLACK_OAUTH_DECLINED_NOTICE,
   slackOAuthExpired: SLACK_OAUTH_EXPIRED_NOTICE,
@@ -359,6 +365,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STEP_ANALYTICS_HELPER,
   FIELD_PERSONAL_KEY_LABEL,
   FIELD_PERSONAL_KEY_HELPER,
+  FIELD_PERSONAL_KEY_PLACEHOLDER,
   PROJECT_PICK_PROMPT,
   PROJECT_AUTO_SELECTED_TEMPLATE,
   FIELD_SELF_HOST_DISCLOSURE,
@@ -396,6 +403,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   FIELD_CHANNEL_ID_PLACEHOLDER,
   FIELD_CHANNEL_ID_HELPER,
   FIELD_CHANNEL_LABEL,
+  FIELD_CHANNEL_PLACEHOLDER,
   SLACK_OAUTH_CONNECTED_NOTICE,
   SLACK_OAUTH_DECLINED_NOTICE,
   SLACK_OAUTH_EXPIRED_NOTICE,
