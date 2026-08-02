@@ -3,6 +3,26 @@ export { serverEnvSchema, parseServerEnv, DEV_ENCRYPTION_KEY, type ServerEnv } f
 export { describeError } from "./errors";
 
 export {
+  createLogger,
+  loggerFromEnv,
+  logger,
+  jsonSink,
+  prettySink,
+  parseLogLevel,
+  levelFromEnv,
+  sinkFromEnv,
+  setLogSink,
+  serialiseFields,
+  LOG_LEVELS,
+  type Logger,
+  type LogFields,
+  type LogLevel,
+  type LogRecord,
+  type LogSink,
+  type LoggerOptions,
+} from "./logging";
+
+export {
   tenantContextSchema,
   tenantResolutionInputSchema,
   type TenantContext,

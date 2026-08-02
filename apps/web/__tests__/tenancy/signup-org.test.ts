@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ensureOrganization, schema } from "@growthmind/db";
 import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
   createTestAuth,
@@ -12,6 +12,7 @@ import {
   type SignedUpTestUser,
 } from "./helpers/auth-fixture";
 
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 const PASSWORD = "correct-horse-battery";
 
 interface BetterAuthApiError extends Error {
@@ -113,7 +114,10 @@ describe("a user with zero memberships is healed on tenant-context resolution", 
     const membershipsBefore = await readMembershipsForUser(handle.db, user.id);
     expect(membershipsBefore).toHaveLength(0);
 
-    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
     try {
       const healResult = await ensureOrganization(handle.db, user);
 
@@ -124,9 +128,9 @@ describe("a user with zero memberships is healed on tenant-context resolution", 
       const org = await readOrganizationById(handle.db, healResult.organizationId);
       expect(org).toBeDefined();
 
-      expect(errorSpy.mock.calls.length).toBeGreaterThan(0);
+      expect(logged.length).toBeGreaterThan(0);
     } finally {
-      errorSpy.mockRestore();
+      restore();
     }
   });
 });

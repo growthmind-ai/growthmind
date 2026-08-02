@@ -13,6 +13,7 @@ import {
   encryptSecret,
   firstRunSlackOAuthCallbackInputSchema,
   keyIdOf,
+  logger,
   parseServerEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
@@ -128,7 +129,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     }
 
     // Not a catch-all: a re-throw would exit without `land()`, after the code is burned.
-    console.error("first-run slack oauth callback: the connection row could not be written", {
+    logger.error("first-run slack oauth callback: the connection row could not be written", {
       organizationId: ctx.organizationId,
       reason: describeError(error),
     });

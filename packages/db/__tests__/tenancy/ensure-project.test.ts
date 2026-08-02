@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { sql } from "drizzle-orm";
 
@@ -18,6 +18,7 @@ import {
   type EnsureProject,
 } from "../helpers/onboarding-contract";
 
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 const NAMES = laneNames("ensure-project");
 
 const OWNER = "ADD Wave 2 (packages/db/src/tenancy/ensure-project.ts, AD-7)";
@@ -99,25 +100,28 @@ describe("ensureProject — FR-O1, the row nothing else works without", () => {
       email: NAMES.email("race"),
     });
 
-    const errors = spyOn(console, "error");
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
     let resultA: { projectId: string };
     let resultB: { projectId: string };
 
-    let loggedLines: string[] = [];
     try {
       [resultA, resultB] = await Promise.all([
         ensureProject(db, org.ctx),
         ensureProject(db, org.ctx),
       ]);
     } finally {
-      loggedLines = errors.mock.calls.map(([first]) => String(first));
-      errors.mockRestore();
+      restore();
     }
 
     expect(resultA.projectId).toBe(resultB.projectId);
 
-    const conflictLogs = loggedLines.filter(
-      (line) => /ensureProject/.test(line) && /concurrent|conflict|duplicate|winner/i.test(line),
+    const conflictLogs = logged.filter(
+      (record) =>
+        /ensureProject/.test(record.message) &&
+        /concurrent|conflict|duplicate|winner/i.test(record.message),
     );
     expect(conflictLogs).toHaveLength(1);
 

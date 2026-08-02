@@ -15,7 +15,7 @@
   },
   "rules": {
     "eqeqeq": ["error", "always", { "null": "ignore" }],
-    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-console": "error",
     "typescript/consistent-type-imports": ["error", { "prefer": "type-imports" }],
     "typescript/no-explicit-any": "error",
 
@@ -42,9 +42,16 @@
   },
   "overrides": [
     {
-      "files": ["scripts/**", "worker/**"],
+      "files": ["scripts/**"],
       "rules": {
         "no-console": "off",
+        "no-await-in-loop": "off",
+        "no-unmodified-loop-condition": "off"
+      }
+    },
+    {
+      "files": ["worker/**"],
+      "rules": {
         "no-await-in-loop": "off",
         "no-unmodified-loop-condition": "off"
       }

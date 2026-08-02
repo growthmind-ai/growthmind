@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import {
   candidateFindingSchema,
@@ -31,6 +31,7 @@ import {
   seedUser,
 } from "../helpers/fixtures";
 
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 const NAMES = laneNames("sl");
 
 const FIXTURE_NOW = new Date("2026-06-01T12:00:00.000Z");
@@ -324,20 +325,22 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
       evidenceShapeVersion: unregisteredVersion,
     });
 
-    const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
 
     try {
       const decision = await service.consultSignature(project.id, candidate);
 
       expect(decision).toEqual({ decision: "suppress", reason: "unknown_shape_version" });
 
-      for (const call of errorSpy.mock.calls) {
-        for (const arg of call) {
-          expect(String(arg)).not.toContain(secretSurface);
-        }
+      for (const record of logged) {
+        expect(record.message).not.toContain(secretSurface);
+        expect(JSON.stringify(record.fields)).not.toContain(secretSurface);
       }
     } finally {
-      errorSpy.mockRestore();
+      restore();
     }
   });
 

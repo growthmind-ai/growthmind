@@ -18,7 +18,7 @@ import {
 } from "@growthmind/db";
 import { existsAnyActiveSlackConnection } from "@growthmind/db/system";
 import type { ServerEnv } from "@growthmind/shared";
-import { parseServerEnv, resolveCredentialKey } from "@growthmind/shared";
+import { logger, parseServerEnv, resolveCredentialKey } from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
@@ -56,7 +56,7 @@ export function makePosterFor(db: ScopedDb, env: ServerEnv): DeliveryPosterFor {
   const resolution = resolveCredentialKey(env);
 
   if (!resolution.ok) {
-    console.error(
+    logger.error(
       `delivery composition: the credential key could not be resolved (${resolution.reason}), so ` +
         `no delivery channel can be opened on this installation until it is configured`,
     );
@@ -73,7 +73,7 @@ export function makePosterFor(db: ScopedDb, env: ServerEnv): DeliveryPosterFor {
     }
 
     if (!opened.ok) {
-      console.error(
+      logger.error(
         `delivery composition: org ${ctx.organizationId} has a stored delivery credential this ` +
           `installation cannot open (${opened.reason}) — it must be reconnected`,
       );
@@ -96,8 +96,8 @@ async function resolveDeliveryComposition(): Promise<DeliveryComposition | null>
       db,
 
       logger: {
-        info: (message) => console.info(message),
-        error: (message) => console.error(message),
+        info: (message) => logger.info(message),
+        error: (message) => logger.error(message),
       },
     }),
     posterFor: makePosterFor(db, env),
@@ -132,8 +132,8 @@ function resolveAnalysisLanes(): AnalysisLaneSource | null {
   return createAnalysisLaneSource({
     db,
     logger: {
-      info: (message) => console.info(message),
-      error: (message) => console.error(message),
+      info: (message) => logger.info(message),
+      error: (message) => logger.error(message),
     },
   });
 }
@@ -149,7 +149,10 @@ function resolveAnalysisComposition(): AnalysisComposition | null {
   return { summariser: resolveSummariser(env), lanes };
 }
 
-function analysisDepsFor(composed: AnalysisComposition, logger: AnalysisLogger): AnalysisTickDeps {
+function analysisDepsFor(
+  composed: AnalysisComposition,
+  analysisLogger: AnalysisLogger,
+): AnalysisTickDeps {
   const { db } = resolveResources();
 
   return {
@@ -164,7 +167,7 @@ function analysisDepsFor(composed: AnalysisComposition, logger: AnalysisLogger):
     projectCap: COLDSTART_MODEL_CALL_CAP,
     organizationCap: ORG_MODEL_CALL_CAP,
     now: () => new Date(),
-    logger,
+    logger: analysisLogger,
   };
 }
 
