@@ -56,6 +56,25 @@ services:
       GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
       BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
+      # The Slack app's credentials, passed through in the VALUELESS form on
+      # purpose.
+      #
+      # Compose forwards only what this block lists, so without these two lines
+      # a value set in `.env` reaches compose's own interpolation and never the
+      # app: `slackOAuthConfigured` reads false, the "Add to Slack" control
+      # never renders, and a founder is quietly handed the pasted-token path on
+      # an installation that HAS a Slack app. Nothing errors. That is a
+      # producer/consumer break one layer below the code, and the worker's
+      # `ANTHROPIC_API_KEY` block already carries the same warning.
+      #
+      # `SLACK_CLIENT_ID:` and NOT `"${SLACK_CLIENT_ID:-}"`. Both are
+      # `.min(1).optional()` in `packages/shared/src/env.ts`, so the fallback
+      # form hands the schema an EMPTY STRING — a validation failure — where
+      # absence is the legitimate, supported state. Valueless means "forward it
+      # if the host has it, otherwise leave it unset", which is exactly the
+      # self-host contract: no Slack app, no OAuth path, product still works.
+      SLACK_CLIENT_ID:
+      SLACK_CLIENT_SECRET:
     depends_on:
       postgres:
         condition: service_healthy
