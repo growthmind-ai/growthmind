@@ -62,9 +62,11 @@ describe("mapSlackError", () => {
       expect(isRetryablePostFailure(code)).toBe(false);
     }
 
-    // The two terminal codes must stay apart: "pick another channel" and "reconnect
-    // Slack" are different jobs, and sending a customer to the wrong one costs them a
-    // support round-trip.
+    // The two terminal codes must stay apart. They describe different things that
+    // happened — a channel we cannot post into, versus credentials that are refused —
+    // and each surface composes a different repair onto them ("invite the bot back in"
+    // versus "reconnect Slack"). A customer sent to the wrong one does work that
+    // changes nothing and then opens a support ticket.
     expect(mapSlackError("channel_not_found")).not.toBe(mapSlackError("invalid_auth"));
     expect(POST_FAILURE_MESSAGES.channel_unavailable).not.toBe(
       POST_FAILURE_MESSAGES.not_authorised,

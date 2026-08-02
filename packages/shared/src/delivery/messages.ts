@@ -163,12 +163,37 @@ export const NO_RATE_SENTENCE =
   "Every session we looked at was set aside, so there is no share to report.";
 
 /**
- * What to tell a customer when one POST attempt failed, keyed by mechanism.
+ * What HAPPENED when one POST attempt failed, keyed by mechanism.
+ *
+ * ###########################################################################
+ * # THIS TABLE STATES FACTS. IT DOES NOT NAME NEXT ACTIONS.
+ * #
+ * # It is read by more than one surface, and the same mechanism has different
+ * # repairs on each of them. A next action written here is written for
+ * # whichever surface the author happened to have in mind, and is then wrong
+ * # everywhere else — silently, because nothing about a sentence says which
+ * # screen it was aimed at.
+ * #
+ * # WHAT IT COST BEFORE THE SPLIT. `channel_unavailable` used to end "Someone
+ * # will need to pick another one." The first-run screen appends its own
+ * # clause to whatever it finds here, so a founder read two next actions in
+ * # one paragraph and they contradicted each other: pick another channel, and
+ * # invite the bot to the one already chosen. Picking another is not an act
+ * # this product serves at all — `attachChannel` fills an empty address and
+ * # never moves a chosen one, because the delivery row's identity carries the
+ * # channel and re-pointing would replay an organization's whole backlog.
+ * #
+ * # SO THE INSTRUCTION MOVED OUT, ONCE PER SURFACE:
+ * #   delivery lane -> `DELIVERY_LANE_FAILURE_CLAUSE` below
+ * #   first-run     -> `ONBOARDING_CLAUSE` in `../onboarding/slack-test.ts`
+ * # Each is composed onto the fact by the surface that owns it, and neither
+ * # can reach the other.
+ * ###########################################################################
  *
  * Distinct from `DELIVERY_STATUS_MESSAGES`, which speaks at row level ("we could not
  * get this into Slack"). These speak at attempt level, which of four different things
- * someone has to do about it, which is the whole reason `postFailureCodeSchema` splits
- * four ways instead of one.
+ * actually happened, which is the whole reason `postFailureCodeSchema` splits four ways
+ * instead of one.
  *
  * They live here, not beside the Slack adapter that authored them, because this module
  * is the delivery lane's one home and `ALL_DELIVERY_MESSAGES` below is the
@@ -180,23 +205,97 @@ export const NO_RATE_SENTENCE =
  * House rules each obeys, beyond the module header's:
  * Every one says the finding itself is untouched. A delivery failure is a
  *  fact about Slack, never a fact about what we found — and none of them
- *  claims the product is fine or that the finding has gone away.
- * Each names a different next step. Two identical sentences would throw
- *  away the distinction the port paid four codes for.
+ *  claims the product is fine or that the finding has gone away. That clause
+ *  stays: it is a FACT about what did not change, not an instruction.
+ * Each states a different thing that happened. Two identical sentences would
+ *  throw away the distinction the port paid four codes for.
  */
 export const POST_FAILURE_MESSAGES: Record<PostFailureCode, string> = {
+  // "We will try again" is a fact about the lane's own behaviour, not an instruction to
+  // anybody, and it is true on both surfaces: a `failed` delivery row is re-claimable by
+  // a later tick, and the first-run card keeps its send button. Left alone.
   call_failed:
     "We could not get this into Slack just now. Nothing about what we found has changed, and we will try again.",
 
+  // "Sending the same thing again would not help" is a fact about the mechanism — the
+  // same bytes get the same answer — and it is true wherever this renders. Left alone.
   rejected:
     "Slack would not accept this message as we built it, so it has not arrived. Sending the same thing again would not help. Nothing about what we found has changed.",
 
+  // This one DOES carry an act, and it stays, because it is the SAME act on every
+  // surface: the first-run clause (`SLACK_MUST_RECONNECT`) names reconnecting too, and
+  // adds only the part a founder cannot work out — that pressing again cannot help. An
+  // instruction that is identical everywhere is not the surface-specific kind this split
+  // exists to separate, and moving it would leave the lane silent for no gain.
   not_authorised:
     "Slack is no longer letting us post on your behalf, so someone will need to reconnect it before anything can arrive. Nothing about what we found has changed.",
 
+  // WHAT HAPPENED, AND THEN IT STOPS. Three possible mechanisms, none of which this
+  // table can distinguish between and none of which it may prescribe a repair for.
   channel_unavailable:
-    "We could not post to the channel that was chosen — it may have been archived or deleted, or we may no longer be in it. Someone will need to pick another one. Nothing about what we found has changed.",
+    "We could not post to the channel that was chosen — it may have been archived or deleted, or we may no longer be in it. Nothing about what we found has changed.",
 };
+
+/**
+ * The DELIVERY LANE's next action, per code — the half `POST_FAILURE_MESSAGES` above
+ * deliberately no longer carries.
+ *
+ * Total over the union on purpose, exactly as `ONBOARDING_CLAUSE` is: a fifth failure
+ * code cannot be added without somebody deciding, in this file, what the lane tells a
+ * customer to do about it. A partial map would let it default to silence.
+ *
+ * THREE OF THE FOUR ARE SILENT, AND EACH FOR ITS OWN REASON. `call_failed` already says
+ * we will try again, `rejected` already says a repeat would not help, and
+ * `not_authorised` already names reconnecting. A clause repeating any of those would be
+ * this table authoring a second answer to a question the fact already answers — the
+ * failure mode that produced the two-next-actions paragraph in the first place.
+ *
+ * WHY `channel_unavailable`'S CLAUSE IS NOT "PICK ANOTHER ONE", WHICH IS WHAT THE FACT
+ * TABLE USED TO SAY. Re-pointing a stamped address is not something this product does on
+ * ANY surface: `attachChannel` fills an empty address and never moves a chosen one
+ * (`packages/db/src/repositories/slack-connections.repo.ts`), and nothing outside tests
+ * calls `deactivate` on a Slack connection, so there is no shipped route back to the
+ * picker either. Carrying that sentence into the lane would have moved the defect one
+ * surface across rather than fixed it: a customer sent looking for a control that does
+ * not exist, while the repair that does work goes unnamed.
+ *
+ * WHAT DOES WORK, for two of the three mechanisms the fact names: the channel is
+ * archived, or the bot is out of it, and both are undone over in Slack. The third —
+ * deleted — has no repair anywhere, and the fact sentence has already named it as a
+ * possibility rather than this clause pretending otherwise.
+ *
+ * AND THE LANE'S OWN PROMISE IS TRUE. A `failed` delivery row is re-claimable
+ * (`DeliveriesRepo.claimForPost`), so a later tick posts the same finding to the same
+ * channel with no press from anybody. "We will keep trying" is the lane describing
+ * itself, which is the one thing it can always honestly do.
+ */
+export const DELIVERY_LANE_FAILURE_CLAUSE: Record<PostFailureCode, string | null> = {
+  call_failed: null,
+  rejected: null,
+  not_authorised: null,
+  channel_unavailable:
+    "Someone has to make that channel reachable again in Slack — unarchive it, or invite the bot back in. We will keep trying.",
+};
+
+/**
+ * The delivery lane's failure sentence: the fact, then the lane's own next action.
+ *
+ * Composed HERE rather than at the worker's call site, for the reason the module header
+ * gives about the renderer: a customer-facing sentence assembled outside this package is
+ * a sentence outside `ALL_DELIVERY_MESSAGES`, and a second lane consumer would have to
+ * remember to do the same join. One home, one join, nothing to sever (D11).
+ *
+ * BUILT FROM THE CODE, NEVER FROM `PostResult.message`. The closed union is the whole
+ * redaction argument — there is no parameter here through which a Slack response body
+ * could travel — and it is the same belt-and-braces the first-run routes already apply
+ * when they read the table rather than echoing the poster's own text.
+ */
+export function deliveryFailureSentence(code: PostFailureCode): string {
+  const fact = POST_FAILURE_MESSAGES[code];
+  const clause = DELIVERY_LANE_FAILURE_CLAUSE[code];
+
+  return clause === null ? fact : `${fact} ${clause}`;
+}
 
 /**
  * Everything `packages/core`'s Slack renderer needs from this module, bundled so the
@@ -232,6 +331,10 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       ...Object.values(DELIVERY_STATUS_MESSAGES),
       ...Object.values(RESIDUAL_PII_KIND_MESSAGES),
       ...Object.values(POST_FAILURE_MESSAGES),
+      // The lane's clauses are customer-facing sentences like any other, and they are
+      // scanned as themselves rather than only as half of a composed one — a composed
+      // sentence is not a fixed constant and the audit is a scan over fixed constants.
+      ...Object.values(DELIVERY_LANE_FAILURE_CLAUSE),
     ].filter((message): message is string => message !== null),
   ),
 ];

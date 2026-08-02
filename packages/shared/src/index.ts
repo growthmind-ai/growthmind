@@ -257,7 +257,11 @@ export {
   type PostRequest,
   type DeliveryPoster,
 } from "./delivery/poster";
-export { POST_FAILURE_MESSAGES } from "./delivery/messages";
+export {
+  POST_FAILURE_MESSAGES,
+  DELIVERY_LANE_FAILURE_CLAUSE,
+  deliveryFailureSentence,
+} from "./delivery/messages";
 
 // --: the read-only MCP surface
 export {

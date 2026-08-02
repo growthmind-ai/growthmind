@@ -15,6 +15,7 @@ import {
   DELIVERY_STATUS_MESSAGES,
   DELIVERY_VOCABULARY,
   RESIDUAL_PII_KIND_MESSAGES,
+  deliveryFailureSentence,
   describeError,
 } from "@growthmind/shared";
 
@@ -501,18 +502,30 @@ async function runLane(
   }
 
   if (!result.ok) {
-    // The port's `message` is contracted plain English with no vendor text in it
-    // (`packages/shared/src/delivery/poster.ts`. An obligation the adapter owns and
-    // pins with its own test), so it is recorded as the customer-facing reason: "the
-    // channel is gone" is far more actionable than a generic sentence, and this is the
-    // one place that distinction survives.
+    // THIS LANE'S OWN SENTENCE, COMPOSED FROM THE CODE. `failure_reason` is
+    // customer-facing, and which of the four mechanisms fired is exactly the distinction
+    // worth keeping — "the channel is gone" is far more actionable than a generic
+    // sentence, and this is the one place it survives.
+    //
+    // Two deliberate choices in one call:
+    //
+    // THE CODE, NOT `result.message`. The port contracts `message` to be plain English
+    // with no vendor text in it (`packages/shared/src/delivery/poster.ts`), an obligation
+    // the adapter owns and pins with its own test — but reading the closed union instead
+    // of trusting it is free, and it is the same belt-and-braces the first-run routes
+    // apply at their own boundary. A Slack response body has no route into this column.
+    //
+    // AND IT CARRIES THE LANE'S NEXT ACTION. `POST_FAILURE_MESSAGES` states what
+    // happened and stops, because it is read by first-run too and a next action written
+    // for one surface is wrong on the other. `deliveryFailureSentence` appends THIS
+    // lane's — the one that is true when nobody is looking at a setup screen.
     deps.logger.error(
       `delivery tick: finding ${chosen.findingId} was not accepted by the channel — ${result.code}`,
     );
     await recordFailed(deps, deliveries, {
       findingId: chosen.findingId,
       channelId: lane.channelId,
-      reason: result.message,
+      reason: deliveryFailureSentence(result.code),
     });
     return "failed";
   }

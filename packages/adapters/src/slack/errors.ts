@@ -60,10 +60,15 @@ export const SLACK_ERRORS_NOT_AUTHORISED: readonly string[] = [
 ];
 
 /**
- * Not retryable. The destination is gone, archived, or was never joined. Kept apart
- * from `not_authorised` because the fix is a different one. Pick another channel, not
- * reconnect the workspace, and telling a customer to do the wrong one of those two
- * costs them a support round-trip.
+ * Not retryable. The destination is gone, archived, or was never joined. Kept apart from
+ * `not_authorised` because the repair is a different one — get us back into that
+ * channel, not reconnect the workspace — and telling a customer to do the wrong one of
+ * those two costs them a support round-trip.
+ *
+ * The repair itself is NOT written into `POST_FAILURE_MESSAGES`, only the fact.
+ * `chat.postMessage` failing this way means the same thing everywhere, but what somebody
+ * should do about it does not: a scheduled delivery and a first-run test post have
+ * different controls in front of them. Each surface composes its own clause.
  */
 export const SLACK_ERRORS_CHANNEL_UNAVAILABLE: readonly string[] = [
   "channel_not_found",

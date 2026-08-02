@@ -28,6 +28,7 @@ import type {
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
+import { deliveryFailureSentence } from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../../src/task-names";
@@ -467,8 +468,20 @@ test("a poster that refuses records the delivery failed and leaves the finding d
 
   const row = scene.ledger.rowFor("finding-1");
   expect(row?.status).toBe("failed");
-  expect(row?.failureReason).toContain("Slack channel");
   expect(row?.postedAt).toBeNull();
+
+  // THE SHIPPED SENTENCE FOR THE CODE, NOT THE POSTER'S OWN TEXT.
+  //
+  // This row used to assert `toContain("Slack channel")`, which is a fragment of
+  // the FAKE's message above — so it passed while proving only that the tick
+  // echoed whatever the port handed it. The tick now composes the reason from
+  // `result.code` through `deliveryFailureSentence`, which is both the stronger
+  // redaction guarantee (a closed union has no room for a Slack response body)
+  // and the reason this lane can carry a next action the first-run screen must
+  // not. The fake's message is deliberately left as a distinctive string that
+  // must NOT appear.
+  expect(row?.failureReason).toBe(deliveryFailureSentence("channel_unavailable"));
+  expect(row?.failureReason).not.toContain("Pick another one");
 
   // "Leaves the finding deliverable" is a claim about the next tick, so it is asserted
   // by taking one: a failed row is re-claimable.

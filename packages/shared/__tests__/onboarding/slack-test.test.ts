@@ -121,16 +121,34 @@ describe("describeTestPostOutcome — FR-O11, UX Flow D", () => {
       "The bot has to be invited to that channel before it can post there. Invite it in Slack, then send the test message again.",
     );
 
-    // AND THE OLD ADVICE IS GONE FROM THE ONBOARDING CLAUSE. Asserted as the
-    // clause rather than over the whole rendered sentence deliberately: the
-    // shipped `POST_FAILURE_MESSAGES.channel_unavailable` still carries
-    // "Someone will need to pick another one", B3 forbids this module from
-    // re-wording it, and that half is the delivery lane's own decision to make.
-    // Flagged, not smuggled — a scan over the whole sentence here would either
-    // fail on the delivery lane's copy or quietly license changing it.
-    const clause = outcome.sentence.slice(POST_FAILURE_MESSAGES.channel_unavailable.length);
-    expect(clause).not.toContain("pick another");
-    expect(clause).not.toContain("trying again will not help");
+    // AND THE OLD ADVICE IS GONE FROM THE WHOLE PARAGRAPH, not merely from the
+    // clause this module owns.
+    //
+    // ###########################################################################
+    // # THE SCOPE OF THIS ASSERTION IS THE POINT, AND IT WIDENED FOR A REASON.
+    // #
+    // # It used to scan only the clause — sliced off the end — because the
+    // # shipped `POST_FAILURE_MESSAGES.channel_unavailable` still ended
+    // # "Someone will need to pick another one." B3 forbids this module from
+    // # re-wording the shipped sentence, so the contradiction was FLAGGED here
+    // # and left in place: the founder read "pick another one" and then "invite
+    // # the bot and send again", two next actions in one paragraph, pointing
+    // # opposite ways.
+    // #
+    // # The delivery lane made its own decision, which is what that flag was
+    // # waiting for: the shared table now states WHAT HAPPENED and stops, and
+    // # each surface composes the next action its own screen can serve. So the
+    // # scan is over the whole rendered sentence, which is what a founder
+    // # actually reads, and there is no half of it left that may contradict the
+    // # other.
+    // ###########################################################################
+    expect(outcome.sentence).not.toContain("pick another");
+    expect(outcome.sentence).not.toContain("trying again will not help");
+
+    // AND THE FACT HALF NAMES NO ACT AT ALL. Asserted against the shared table
+    // directly, because that is the string this module has no right to edit and
+    // every right to depend on.
+    expect(POST_FAILURE_MESSAGES.channel_unavailable).not.toContain("pick another");
 
     // DISTINCT FROM THE ROW ABOVE, and now distinct in DIRECTION as well as in
     // wording: one withholds a press that can never work, the other asks for

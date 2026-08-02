@@ -26,11 +26,21 @@
 //
 // Every sentence here is BUILT ON the shipped `POST_FAILURE_MESSAGES`, which
 // already carries the plain-English audit, the "nothing about what we found has
-// changed" rule and four genuinely different next steps. This module adds the
-// ONBOARDING-SPECIFIC clause the UX spec makes normative on top of it; it does
-// not paraphrase, shorten or re-word what the delivery lane already says. A
-// second vocabulary for the same four codes drifts within a week, and then two
-// screens tell one customer two different things about one Slack failure.
+// changed" rule and four genuinely different statements of WHAT HAPPENED. This
+// module adds the ONBOARDING-SPECIFIC clause the UX spec makes normative on top
+// of it; it does not paraphrase, shorten or re-word what the delivery lane
+// already says. A second vocabulary for the same four codes drifts within a
+// week, and then two screens tell one customer two different things about one
+// Slack failure.
+//
+// THE SHARED TABLE STOPS AT THE FACT, AND THAT IS WHY THIS FILE CAN EXIST.
+// It used to end `channel_unavailable` with "Someone will need to pick another
+// one", and because this module appends rather than rewrites, the founder read
+// that instruction AND this one — two next actions in a single paragraph,
+// pointing opposite ways, with only one of them reachable from the screen in
+// front of them. The instruction now lives once per surface: ours below, the
+// lane's in `DELIVERY_LANE_FAILURE_CLAUSE`. Appending to a table of facts is
+// safe; appending to a table that also instructs is how that paragraph happened.
 //
 // ── WHY THE INPUT CARRIES THE CHANNEL ───────────────────────────────────────
 //

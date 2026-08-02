@@ -42,7 +42,11 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createDeliveriesRepo, schema } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
-import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import {
+  deliveryFailureSentence,
+  tenantContextSchema,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import {
   assertUnderConstruction,
@@ -393,7 +397,18 @@ test("a poster failure leaves the finding row intact and the delivery row termin
   const deliveries = await deliveryRows();
   expect(deliveries).toHaveLength(1);
   expect(deliveries[0]?.status).toBe("failed");
-  expect(deliveries[0]?.failureReason).toBe("The channel is gone.");
+
+  // AND THE REASON IS THE LANE'S OWN SENTENCE, NOT THE PORT'S.
+  //
+  // This used to assert the fake's `"The channel is gone."` verbatim, which
+  // proved only that the tick echoed the message it was handed. The tick now
+  // builds the reason from `result.code`: the closed union is the redaction
+  // guarantee (no Slack response body has a route into a customer-facing
+  // column), and it is what lets THIS lane append a next action the first-run
+  // screen must not carry — the shared table states the fact and stops, because
+  // both surfaces read it.
+  expect(deliveries[0]?.failureReason).toBe(deliveryFailureSentence("channel_unavailable"));
+  expect(deliveries[0]?.failureReason).not.toBe("The channel is gone.");
 });
 
 // ###########################################################################

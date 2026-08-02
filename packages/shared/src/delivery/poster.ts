@@ -32,8 +32,10 @@ export const postFailureCodeSchema = z.enum([
   "rejected",
   /** Our credentials were refused. A human has to reconnect; retrying cannot help. */
   "not_authorised",
-  /** The channel is gone, archived, or we were never in it. A human has to pick another
-   * one; retrying cannot help. */
+  /** The channel is gone, archived, or we were never in it. A human has to change
+   * something over in Slack; retrying unchanged cannot help. WHAT they change is a
+   * question for whichever surface is rendering, never for this enum or for
+   * `POST_FAILURE_MESSAGES` — see `DELIVERY_LANE_FAILURE_CLAUSE` in `./messages.ts`. */
   "channel_unavailable",
 ]);
 export type PostFailureCode = z.infer<typeof postFailureCodeSchema>;
