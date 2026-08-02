@@ -174,6 +174,110 @@ export const CHANNEL_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
 });
 
 /**
+ * "Add to Slack" pressed on an installation that has no Slack app of its own.
+ *
+ * AD-6 says the OAuth path does not RENDER at all without the pair, so reaching
+ * this route in that state means the card was rendered from a stale payload or
+ * the address was typed. Either way the answer must not be a redirect: a 302
+ * into a consent screen built with no client id is a dead end wearing a working
+ * feature's clothes, and the founder leaves the product to read Slack's error
+ * page about an app that does not exist.
+ *
+ * IT NAMES THE VARIABLES because the person who can fix this is an operator,
+ * not the founder — the same reading `CONNECT_REFUSAL_MESSAGES.misconfigured`
+ * takes about the encryption key. Reusing that sentence here would point them
+ * at the wrong variable entirely.
+ */
+export const SLACK_APP_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
+  code: "slack_app_unavailable",
+  message:
+    "This installation has no Slack app of its own, so there is nothing to send you to yet. " +
+    "Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET, restart, then try again — or paste a bot " +
+    "token instead.",
+  status: 503,
+});
+
+/**
+ * A channel list asked for before any workspace was attached.
+ *
+ * NEVER AN EMPTY LIST. `[]` reads as "your workspace has no channels", which
+ * sends a founder off to create one they already have — work that cannot help,
+ * caused by us. Distinct from `NO_CHANNEL_CHOSEN`, which is the opposite half:
+ * there the workspace IS attached and the address is what is missing.
+ */
+export const NO_WORKSPACE_CONNECTED: FirstRunGateRefusal = Object.freeze({
+  code: "no_workspace_connected",
+  message:
+    "No Slack workspace is connected yet, so there are no channels to choose from. Connect " +
+    "Slack first, then pick a channel.",
+  status: 409,
+});
+
+/**
+ * A stored connection this installation can no longer open.
+ *
+ * The sibling of `CHANNEL_UNAVAILABLE` for the listing path rather than the
+ * posting one, and separate because the two say different things about what did
+ * not happen. Telling a founder "nothing was sent" while they are looking at an
+ * empty channel picker describes an act nobody attempted.
+ */
+export const CHANNELS_UNAVAILABLE: FirstRunGateRefusal = Object.freeze({
+  code: "channels_unavailable",
+  message:
+    "We could not open this workspace's connection to Slack, so we could not read its " +
+    "channels. Reconnect Slack and try again.",
+  status: 503,
+});
+
+/**
+ * Slack refused to list the workspace's channels.
+ *
+ * SEPARATE FROM `CHANNELS_CALL_FAILED` BECAUSE THE NEXT ACTIONS DIFFER, which
+ * is the whole reason `listChannels` returns two codes rather than one. This is
+ * the one where pressing the button again achieves nothing: the token is
+ * refused, or the install was made without the scopes that read channels, and
+ * a human has to reconnect the workspace.
+ */
+export const CHANNELS_NOT_AUTHORISED: FirstRunGateRefusal = Object.freeze({
+  code: "channels_not_authorised",
+  message:
+    "Slack would not let us read this workspace's channels. Someone has to reconnect Slack — " +
+    "trying again will not help.",
+  status: 502,
+});
+
+/** Slack is up and did not serve this one call. Pressing the button again is
+ *  the right move, which is why it never collapses into the refusal above. */
+export const CHANNELS_CALL_FAILED: FirstRunGateRefusal = Object.freeze({
+  code: "channels_call_failed",
+  message: "We could not reach Slack to read this workspace's channels. Try again.",
+  status: 502,
+});
+
+/**
+ * A channel id that is not one of the ones we just offered.
+ *
+ * THE ROUTE PROVES MEMBERSHIP OF THE LIVE LIST, AND NOTHING ELSE COULD.
+ * `firstRunSlackChannelInputSchema` deliberately declines to guess Slack's id
+ * format — a regex that guessed wrong would refuse a real channel a founder
+ * picked from our own list — and says in its own doc comment that the route
+ * checks membership instead. This is that check's answer.
+ *
+ * The realistic cause is not an attacker: it is a picker left open while the
+ * channel was archived or the bot was removed from it. So the sentence names
+ * the ordinary next act rather than accusing anybody, and 409 rather than 400
+ * says the request was fine and the world moved — the same reading
+ * `NO_CHANNEL_CHOSEN` and `SECOND_CHANNEL` take.
+ */
+export const CHANNEL_NOT_LISTED: FirstRunGateRefusal = Object.freeze({
+  code: "channel_not_listed",
+  message:
+    "That channel is not one we can post in any more, so nothing was changed. Pick one from " +
+    "the list on this screen.",
+  status: 409,
+});
+
+/**
  * The sentence for a body carrying something we do not read.
  *
  * IT NAMES THE OFFENDING KEYS, which is only reachable through `issue.keys`

@@ -137,6 +137,89 @@ export function slackOAuthRedirectUri(env: ServerEnv): string {
  */
 export const SLACK_OAUTH_STATE_COOKIE = "growthmind_slack_oauth_state";
 
+/**
+ * The cookie's ATTRIBUTES, beside its name for the same reason the name is
+ * exported at all.
+ *
+ * `HttpOnly` — the cookie value IS the secret in this mechanism, so a script on
+ * any page of this app being able to read it would hand an attacker the half of
+ * the pair they cannot otherwise obtain. `SameSite=Lax` — a third-party page
+ * must not be able to cause the round trip to be walked with the victim's cookie
+ * attached, and `Lax` still sends it on the top-level navigation Slack performs,
+ * which `Strict` would not. `Path=/` — the cookie is written by a route under
+ * `/api` and read by another one, and a narrower path is a cookie the callback
+ * never receives.
+ */
+const STATE_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; SameSite=Lax";
+
+/**
+ * `Secure` is decided by CONFIGURATION, never by the request.
+ *
+ * The same argument `slackOAuthRedirectUri` makes: `X-Forwarded-Proto` is
+ * caller-controlled, so a cookie whose `Secure` flag came from a header is one
+ * an attacker can ask us to drop. A self-hosted installation on plain http still
+ * has to work, which is why this is derived rather than hard-coded to `true`.
+ */
+function isSecurelyAddressed(env: ServerEnv): boolean {
+  return new URL(env.BETTER_AUTH_URL).protocol === "https:";
+}
+
+/**
+ * The `Set-Cookie` the start route writes.
+ *
+ * `Max-Age` is computed from the SAME `expiresAt` the MAC covers, so the cookie
+ * and the value inside it die together. A cookie that outlives its state
+ * produces `state_expired` on a round trip the browser still believes in, which
+ * reads to a founder as the button being broken.
+ */
+export function slackOAuthStateCookie(state: SignedOAuthState, env: ServerEnv, now: Date): string {
+  const maxAgeSeconds = Math.max(0, Math.ceil((state.expiresAt.getTime() - now.getTime()) / 1000));
+  const parts = [
+    `${SLACK_OAUTH_STATE_COOKIE}=${state.cookieValue}`,
+    STATE_COOKIE_ATTRIBUTES,
+    `Max-Age=${maxAgeSeconds}`,
+  ];
+  if (isSecurelyAddressed(env)) parts.push("Secure");
+  return parts.join("; ");
+}
+
+/**
+ * The `Set-Cookie` the callback writes on its way out, on EVERY exit.
+ *
+ * A state is single-use. Leaving it in the browser after the round trip has been
+ * settled leaves a redeemable value sitting in a shared machine's cookie jar for
+ * the rest of its ten minutes, and it is exactly as useful to an attacker after
+ * a failure as after a success — a refusal we cleared nothing for is a refusal
+ * that can simply be retried.
+ */
+export function clearedSlackOAuthStateCookie(env: ServerEnv): string {
+  const parts = [`${SLACK_OAUTH_STATE_COOKIE}=`, STATE_COOKIE_ATTRIBUTES, "Max-Age=0"];
+  if (isSecurelyAddressed(env)) parts.push("Secure");
+  return parts.join("; ");
+}
+
+/**
+ * The state cookie off a raw `Cookie` header, or `null`.
+ *
+ * `null` for absent AND for present-but-empty, because both are what a cleared
+ * cookie looks like on the wire and `verifyOAuthState` treats both as
+ * `state_missing` — absence is a refusal here, never a skipped check.
+ */
+export function slackOAuthStateCookieOf(header: string | null): string | null {
+  if (header === null) return null;
+
+  for (const pair of header.split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator === -1) continue;
+    if (pair.slice(0, separator).trim() !== SLACK_OAUTH_STATE_COOKIE) continue;
+
+    const value = pair.slice(separator + 1).trim();
+    return value.length === 0 ? null : value;
+  }
+
+  return null;
+}
+
 // ===========================================================================
 // AD-5 — the signed state
 // ===========================================================================

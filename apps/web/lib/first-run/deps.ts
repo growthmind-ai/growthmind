@@ -42,6 +42,7 @@ import {
 } from "@growthmind/adapters";
 
 import { getDb } from "@/lib/db";
+import { listChannels, type SlackChannelChoice } from "@/lib/slack/channels";
 import { getTenantContext } from "@/lib/tenant";
 
 /**
@@ -72,6 +73,43 @@ export type FirstRunPosterFor = (ctx: TenantContext) => Promise<DeliveryPoster |
  * translates its optional field to `null`; `undefined` is neither branch.
  */
 export type FirstRunDiscoverProjects = (input: DiscoveryInput) => Promise<DiscoveryResult>;
+
+/**
+ * Why a channel list could not be produced. Four codes, four next actions.
+ *
+ * `no_connection` and `unreadable_credential` are the two this file's own
+ * composition can answer without asking Slack anything; the other two are
+ * `listChannels`' own vocabulary, passed through unchanged rather than
+ * re-derived, so the adapter stays the one place that decides what a vendor
+ * error means.
+ */
+export type FirstRunChannelListingRefusal =
+  "no_connection" | "unreadable_credential" | "not_authorised" | "call_failed";
+
+export type FirstRunChannelListing =
+  | { readonly ok: true; readonly channels: readonly SlackChannelChoice[] }
+  | { readonly ok: false; readonly code: FirstRunChannelListingRefusal };
+
+/**
+ * AD-20's answer to "who opens the credential for the channel picker".
+ *
+ * ###########################################################################
+ * # THE ROUTE NEVER SEES THE BOT TOKEN, AND CANNOT.
+ * #
+ * # Task 5.4 originally told the channels route to open the credential
+ * # itself. That contradicts AD-20 and `slack-connections.repo.ts:28-31`,
+ * # which reserve `openCredentialForOrg` for the delivery composition root
+ * # and state plainly that no route, page or service may call it. The ADD
+ * # resolved the conflict in AD-7's own text: AD-20 wins, and the route takes
+ * # a per-org port built HERE, exactly as it takes `posterFor`.
+ * #
+ * # So the shape is `posterFor`'s: one function per organization, with the
+ * # credential opened inside this file and nothing decrypted crossing back
+ * # out. What the route receives can list channels and cannot do anything
+ * # else — most particularly, it cannot hand a token to a response.
+ * ###########################################################################
+ */
+export type FirstRunChannelsFor = (ctx: TenantContext) => Promise<FirstRunChannelListing>;
 
 /**
  * Everything an onboarding handler needs that is not its `Request`.
@@ -106,6 +144,22 @@ export interface FirstRunRouteDeps {
   readonly poster?: DeliveryPoster | undefined;
   /** The production route to a poster. See `FirstRunPosterFor`. */
   readonly posterFor?: FirstRunPosterFor | undefined;
+  /** The two channel steps only — AD-20's per-org port. See
+   *  `FirstRunChannelsFor`, and `resolveChannelsFor` for how a handler takes
+   *  it whether or not the composition root bound one. */
+  readonly channelsFor?: FirstRunChannelsFor | undefined;
+  /**
+   * AD-8's ONE new seam, and deliberately one rather than a port per vendor
+   * call.
+   *
+   * A port per call (`exchangeCode`, `listChannels`) would have pinned this
+   * sprint's internal decomposition as well as its behaviour. What the routes
+   * actually need is the ability to be driven with no network — without it,
+   * "a mismatched state costs zero outbound calls" is unprovable, and a test
+   * that cannot fail is not a test. `resolveFirstRunDeps` threads
+   * `globalThis.fetch` in, the same way it already does for the PostHog source.
+   */
+  readonly fetch?: typeof globalThis.fetch | undefined;
 }
 
 /**
@@ -231,6 +285,85 @@ function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
 }
 
 /**
+ * A channel lister per organization, built from that organization's stored
+ * envelope. The sibling of `makePosterFor`, one screen earlier in the flow.
+ *
+ * THE CREDENTIAL IS OPENED HERE AND NOWHERE ELSE, for the reason
+ * `FirstRunChannelsFor` states at length. `createSlackConnectionsRepo(db, ctx)`
+ * takes the organization at construction and `openCredentialForOrg` accepts no
+ * id, so no value travelling on a request can select a credential (D7).
+ *
+ * NOTHING IS STORED (AD-7). The list is fetched at pick time and handed
+ * straight back — no table, no sync, and therefore no staleness. A channel
+ * created a minute ago is pickable because there is nothing to invalidate.
+ *
+ * FAILS CLOSED, with the two installation failures kept apart from the two
+ * vendor ones: an unresolvable key means no listing on this installation at
+ * all, and an envelope we can no longer open names the reason and never the
+ * ciphertext.
+ */
+function makeChannelsFor(
+  db: ScopedDb,
+  resolution: CredentialKeyResolution,
+  fetchImpl: typeof globalThis.fetch,
+): FirstRunChannelsFor {
+  if (!resolution.ok) {
+    console.error(
+      `onboarding composition: the credential key could not be resolved (${resolution.reason}), ` +
+        `so no workspace's channels can be read on this installation until it is configured`,
+    );
+    return () => Promise.resolve({ ok: false, code: "unreadable_credential" });
+  }
+
+  const key = resolution.key;
+
+  return async (ctx) => {
+    const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
+
+    if (opened === null) {
+      return { ok: false, code: "no_connection" };
+    }
+
+    if (!opened.ok) {
+      console.error(
+        `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
+          `installation cannot open (${opened.reason}) — it must be reconnected`,
+      );
+      return { ok: false, code: "unreadable_credential" };
+    }
+
+    const listed = await listChannels(opened.value, { fetch: fetchImpl });
+
+    // The token went one function call into the adapter and is not in scope
+    // beyond this line. What crosses back is `{ id, name }` and a refusal code.
+    return listed.ok ? { ok: true, channels: listed.channels } : { ok: false, code: listed.code };
+  };
+}
+
+/**
+ * The channels port a handler actually uses.
+ *
+ * TWO WAYS IN, ONE COMPOSITION. `resolveFirstRunDeps` binds `channelsFor` for
+ * production; a test hands the raw deps a route needs and no port, exactly as
+ * it hands `poster` rather than `posterFor` to the test-message route. Both
+ * paths land on `makeChannelsFor` in this file, so there is no arrangement of
+ * deps under which a handler opens a credential itself.
+ *
+ * `deps.fetch ?? globalThis.fetch` is the AD-8 seam: the injected one when a
+ * caller supplied it, the real one in production.
+ */
+export function resolveChannelsFor(deps: FirstRunRouteDeps): FirstRunChannelsFor {
+  return (
+    deps.channelsFor ??
+    makeChannelsFor(
+      deps.db,
+      deps.credentialKey ?? resolveCredentialKey(parseServerEnv(process.env)),
+      deps.fetch ?? globalThis.fetch,
+    )
+  );
+}
+
+/**
  * The wire, in one function — exported so it has a test, and so every route on
  * this surface composes identically rather than each assembling its own.
  *
@@ -257,5 +390,7 @@ export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
     discoverProjects: credentialKey.ok ? discoverProjectsWith(credentialKey.key) : undefined,
     credentialKey,
     posterFor: makePosterFor(db, env),
+    channelsFor: makeChannelsFor(db, credentialKey, globalThis.fetch),
+    fetch: globalThis.fetch,
   };
 }
