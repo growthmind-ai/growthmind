@@ -1,22 +1,3 @@
-// Wave 0C (red), signature-ledger, T3's tdd-contract task. Add
-// tasks/signature-ledger/add.md, T-DB-6, T-DB-7, T-DB-22, T-DB-23, and "The end-to-end
-// persistence wire" (T-E2E-1, mandatory, never cut).
-//
-// `createSignatureLedgerService` and every method it returns are typed-stub throws
-// today (`packages/db/src/services/signature-ledger.service.ts`):
-// `computeFindingSignature` dispatches for real but calls `signatureTuple`
-// (`@growthmind/core`) and `sha256Hex` (`../../src/signatures/hex`), both of which
-// throw "not implemented", so every test below fails red on that throw, not on a
-// missing import. That is the point: these are the failing tests a later wave
-// implements against.
-//
-// The mandatory wire test drives the real repository/service entry points
-// against a real PGlite instance (`createTestDb`, every migration replayed). No fake
-// repository anywhere in it. A producer test plus a consumer test does not prove the
-// wire between them; this sprint has no production caller yet (its producer is
-// concurrent/unbuilt), so this test IS the wire. It proves the ledger decides suppress
-// end to end. It does not prove "no second delivery was sent", which needs the
-// scheduler and is out of scope here.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 
 import {
@@ -52,7 +33,6 @@ import {
 
 const NAMES = laneNames("sl");
 
-/** The suite's only instant. No clock, no randomness (test-requirements.md). */
 const FIXTURE_NOW = new Date("2026-06-01T12:00:00.000Z");
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -60,9 +40,6 @@ function windowEndingAt(now: Date): AnalysisWindow {
   return { start: new Date(now.getTime() - SEVEN_DAYS_MS), end: now };
 }
 
-/** A real, branded count, 12 of 28 kept sessions, nothing set aside. Built through
- * `measuredCount` (the only constructor) because a structurally identical literal is
- * not a `MeasuredCount`. */
 function fixtureCount(now: Date) {
   return measuredCount({
     numerator: 12,
@@ -73,21 +50,10 @@ function fixtureCount(now: Date) {
   });
 }
 
-/**
- * A representative, valid `CandidateFinding`. A clean `broken` claim that passed at its
- * first rung (no downgrade), so `claimedClass === finalClass` and `isReachableClass`
- * never has to be argued with. Built from `@growthmind/core`'s own public exports only
- * (never its `src/` internals, `packages/db` consumes core the same way any other
- * package would), so a failure here is attributable to the signature-ledger service,
- * not to a borrowed test-only builder.
- */
 function buildCandidate(now: Date, overrides: Record<string, unknown> = {}): CandidateFinding {
   return candidateFindingSchema.parse({
     detector: "funnel_dropoff",
-    // the candidate contract (merged to main after this sprint branched) made
-    // `claimSubject` a required literal. It is not a signature tuple input. Identity is
-    // (projectId, surfaceId, symptomClass, evidenceShape) and nothing else, so this
-    // addition must not, and does not, move any golden digest in this file.
+
     claimSubject: "surface",
     claimedClass: "broken",
     finalClass: "broken",
@@ -112,20 +78,11 @@ function buildCandidate(now: Date, overrides: Record<string, unknown> = {}): Can
   });
 }
 
-// The golden fixture (tasks/signature-ledger/probes.md)
-//
-// The exact 163-byte literal `evidenceShape` produced for the pinned probe input
-// (detector "funnel_dropoff", surface "/checkout", surfaceNormalisationVersion 2,
-// signals [struggle, failure_uncorrelated, struggle] de-duplicated and sorted,
-// symptomClass "broken", v1). Hardcoded here rather than computed by calling
-// `evidenceShape` again: owns that module, and this file must not take on a live
-// dependency on its current behaviour to reproduce a value the probe already committed.
 const GOLDEN_EVIDENCE_SHAPE =
   '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
   '"surface":"/checkout","surfaceNormalisationVersion":2,"symptomClass":"broken","v":1}';
 
 describe("computeFindingSignature — the one real digest (ADD, T-DB-6)", () => {
-  // T-DB-6.
   it("reproduces a committed golden hex digest for the W0-5 fixture input", () => {
     const input: ComputeFindingSignatureInput = {
       projectId: "00000000-0000-4000-8000-000000000001",
@@ -134,18 +91,8 @@ describe("computeFindingSignature — the one real digest (ADD, T-DB-6)", () => 
       evidenceShape: GOLDEN_EVIDENCE_SHAPE,
     };
 
-    // Pinned in the implementation wave by actually running
-    // `computeFindingSignature(input)` once `signatureTuple` and `sha256Hex` were
-    // implemented, and capturing the exact 64-char lowercase hex digest it printed
-    // (`bun test packages/db/__tests__/services/signature-ledger.service.test.ts -t
-    // "reproduces a committed golden hex digest"`), never guessed. This is the one and
-    // only place in the codebase that pins a real sha256 digest end to end (tuple
-    // string from `@growthmind/core` + hash from `packages/db`).
     const GOLDEN_SIGNATURE_HEX = "c3a43b5e321594016abb50d0f33a8d37013b5101dca1f6c39bddbe5daa672297";
 
-    // `computeFindingSignature` returns a branded `SignatureHex`; widening to `string`
-    // here is a safe upcast (every `SignatureHex` IS a `string`) and avoids fabricating
-    // a brand no constructor outside `hex.ts` may produce.
     expect(computeFindingSignature(input) as string).toBe(GOLDEN_SIGNATURE_HEX);
   });
 });
@@ -155,9 +102,7 @@ describe("computeFindingSignature — surface normalisation refusal (post-sprint
     expect(() =>
       computeFindingSignature({
         projectId: "00000000-0000-4000-8000-000000000001",
-        // A query string is stripped by `normaliseUrlPath`, so this is not a fixed
-        // point. Exactly the un-normalised shape this check exists to refuse before it
-        // is hashed into a permanent identity.
+
         surface: "/reset-password?token=abc123",
         symptomClass: "broken",
         evidenceShape: GOLDEN_EVIDENCE_SHAPE,
@@ -177,8 +122,6 @@ describe("computeFindingSignature — surface normalisation refusal (post-sprint
   });
 
   it("never echoes the offending surface value in its refusal message", () => {
-    // Shaped exactly like the leak this check exists to prevent. A raw password-reset
-    // token that must never reach a log line.
     const secretSurface = "/reset-password?token=should-never-reach-a-log-line";
 
     let caught: unknown;
@@ -213,7 +156,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     await close();
   });
 
-  // T-E2E-1, mandatory, never cut
   it("records, delivers, suppresses, dismisses, and stays suppressed for a teammate through the real repository entry points", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("e2e"),
@@ -225,8 +167,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
       name: NAMES.projectName("e2e"),
     });
 
-    //  the teammate, composed by hand, no one-call teammate helper exists:
-    // `seedUser` + `seedMember` + `makeTenantContext`.
     const teammate = await seedUser(db, {
       name: NAMES.userName("e2e-teammate"),
       email: NAMES.email("e2e-teammate"),
@@ -248,31 +188,24 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
 
     const candidate = buildCandidate(FIXTURE_NOW);
 
-    //  step 1, recordSignature: a ledger row exists with times_seen = 1.
     const first = await ownerService.recordSignature(project.id, candidate);
     expect(first.record.timesSeen).toBe(1);
 
-    // step 2, consultSignature: deliver / seen_not_delivered.
     const beforeDelivery = await ownerService.consultSignature(project.id, candidate);
     expect(beforeDelivery).toEqual({ decision: "deliver", reason: "seen_not_delivered" });
 
-    // step 3, markSignatureDelivered: delivered_at set.
     const delivered = await ownerService.markSignatureDelivered(project.id, first.signature);
     expect(delivered).not.toBeNull();
     expect(delivered?.deliveredAt).not.toBeNull();
 
-    //  step 4, recordSignature for the same candidate again: one row, times_seen =
-    // 2, delivered_at unchanged (the most dangerous line).
     const second = await ownerService.recordSignature(project.id, candidate);
     expect(second.record.id).toBe(first.record.id);
     expect(second.record.timesSeen).toBe(2);
     expect(second.record.deliveredAt).toEqual(delivered?.deliveredAt ?? null);
 
-    // step 5, consultSignature: suppress / already_delivered.
     const afterRedelivery = await ownerService.consultSignature(project.id, candidate);
     expect(afterRedelivery).toEqual({ decision: "suppress", reason: "already_delivered" });
 
-    //  step 6, recordDismissal, then consult: suppress / dismissed.
     const dismissal = await ownerService.recordDismissal({
       projectId: project.id,
       findingId: "finding-e2e-checkout-001",
@@ -283,13 +216,9 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     const afterDismissal = await ownerService.consultSignature(project.id, candidate);
     expect(afterDismissal).toEqual({ decision: "suppress", reason: "dismissed" });
 
-    //  step 7, the teammate's context consults: suppress / dismissed. A
-    // dismissal is org-wide, not owner-only.
     const teammateConsult = await teammateService.consultSignature(project.id, candidate);
     expect(teammateConsult).toEqual({ decision: "suppress", reason: "dismissed" });
 
-    //  step 8, recordDismissal called a second time with the same payload: one row,
-    // same result.
     const dismissalAgain = await ownerService.recordDismissal({
       projectId: project.id,
       findingId: "finding-e2e-checkout-001",
@@ -301,7 +230,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     expect(dismissalAgain.dismissedAt).toEqual(dismissal.dismissedAt);
   });
 
-  // T-DB-7.
   it("should suppress the new signature when the dismissal was recorded against the old one", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("rename"),
@@ -314,8 +242,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     });
     const service = createSignatureLedgerService(db, org.ctx);
 
-    // The identity churn this test is about: a surface rename from "/checkout" to
-    // "/pay" (the own naming for this exact case).
     const oldCandidate = buildCandidate(FIXTURE_NOW, { surface: "/checkout" });
     const newCandidate = buildCandidate(FIXTURE_NOW, { surface: "/pay" });
 
@@ -336,14 +262,10 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
       reason: "surface_rename",
     });
 
-    // The dismissal was recorded against the old signature; carry-forward must make the
-    // new signature suppress too, because the ledger row carried the dismissal forward,
-    // not because a read path searched backwards for it.
     const decision = await service.consultSignature(project.id, newCandidate);
     expect(decision).toEqual({ decision: "suppress", reason: "dismissed" });
   });
 
-  // T-DB-23.
   it("should resolve a stale pre-re-key signature forward before stamping a dismissal", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("stale"),
@@ -368,10 +290,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
       reason: "surface_rename",
     });
 
-    // A caller holding the stale pre-re-key signature. E.g. a Slack interaction payload
-    // minted before the churn (add, late/duplicate delivery). Dismisses by
-    // signature. The write path must resolve it forward onto the live row before
-    // stamping, never silently stamp a signature nothing consults anymore.
     const dismissal = await service.recordDismissal({
       projectId: project.id,
       findingId: "finding-stale-001",
@@ -385,7 +303,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     expect(decision).toEqual({ decision: "suppress", reason: "dismissed" });
   });
 
-  // T-DB-22.
   it("should surface an unknown evidence_shape version as suppress with reason unknown_shape_version rather than throwing to the caller", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("unknown-version"),
@@ -398,14 +315,8 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     });
     const service = createSignatureLedgerService(db, org.ctx);
 
-    // No serialiser is registered for this version. Computed rather than hardcoded so a
-    // future version bump can't accidentally make this a registered (and therefore
-    // non-doubt) version.
     const unregisteredVersion = Math.max(...EVIDENCE_SHAPE_SERIALISERS.keys()) + 1;
 
-    // A surface that looks like it carries a live token. The leak this assertion exists
-    // to catch is exactly this kind of value reaching a log line (evidence-shape.ts's
-    // own redaction rule, restated for this service's one catch boundary).
     const secretSurface = "/reset-password?token=should-never-reach-a-log-line";
 
     const candidate = buildCandidate(FIXTURE_NOW, {
@@ -418,13 +329,8 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     try {
       const decision = await service.consultSignature(project.id, candidate);
 
-      // The doubt path, suppress, never a thrown error reaching the caller (the
-      // fail-toward-suppress inversion).
       expect(decision).toEqual({ decision: "suppress", reason: "unknown_shape_version" });
 
-      // Whatever was logged (if anything) must never contain the raw surface value.
-      // Only the version number may be logged (the service's own header comment:
-      // "logged with the version only, never the surface value").
       for (const call of errorSpy.mock.calls) {
         for (const arg of call) {
           expect(String(arg)).not.toContain(secretSurface);
@@ -435,17 +341,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     }
   });
 
-  // security audit,
-  //
-  // `projectId` is caller-supplied on every entry point and `projects.id` is
-  // FK-enforced but not org-enforced. The hazard is integrity, not confidentiality: all
-  // three of this sprint's FKs are `ON DELETE cascade`, so a ledger/dismissal/ancestry
-  // row written by org A under org B's project id is destroyed when org B deletes that
-  // project. Silently un-suppressing every permanent dismissal recorded under it.
-  //
-  // Every case below asserts the row count, not just the thrown error: a rejection that
-  // still wrote something would satisfy a return-value assertion and be exactly the
-  // bug.
   describe("a foreign projectId is rejected by every write entry point", () => {
     it("rejects and writes no row for recordSignature, markSignatureDelivered, recordDismissal, and recordAncestry", async () => {
       const orgA = await seedOrgWithOwner(db, {
@@ -459,13 +354,11 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         email: NAMES.email("m2-b-owner"),
       });
 
-      // The project org A must not be able to write against.
       const foreignProject = await seedProject(db, {
         organizationId: orgB.organizationId,
         name: NAMES.projectName("m2-b"),
       });
-      // A legitimate project in org A, used only to mint a real signature through a
-      // path that IS allowed.
+
       const ownProject = await seedProject(db, {
         organizationId: orgA.organizationId,
         name: NAMES.projectName("m2-a"),
@@ -531,22 +424,18 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         }),
       ).rejects.toThrow(/does not belong to the caller's organization/);
 
-      // The assertion that matters: not one row landed under org B's project.
       expect(await rowsFor(foreignProject.id)).toEqual({
         ledger: 0,
         dismissals: 0,
         ancestry: 0,
       });
 
-      // …and nothing was quietly re-routed onto org A's own project either. A refusal
-      // that "helpfully" wrote somewhere else is still a bug.
       const ownRows = await rowsFor(ownProject.id);
       expect(ownRows.ledger).toBe(1);
       expect(ownRows.dismissals).toBe(0);
       expect(ownRows.ancestry).toBe(0);
     });
 
-    // The unknown-project case: same fail direction, no silent no-op.
     it("rejects a projectId that exists in no organization at all", async () => {
       const org = await seedOrgWithOwner(db, {
         orgName: NAMES.orgName("m2-unknown"),
@@ -564,14 +453,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     });
   });
 
-  // security audit,
-  //
-  // `dismissed_by_user_id` FKs `user.id` globally, so without a membership check org A
-  // could attribute a permanent, org-wide suppression to an arbitrary user, including
-  // one in org B. Chosen fail direction: Reject, not "null the attribution", because
-  // nulling would make a forgery attempt indistinguishable from a legitimate
-  // system/backfill dismissal in the very audit trail the check protects (and it is the
-  // column OQ-2's undo/appeal flow would key on).
   describe("dismissedByUserId must be a member of the caller's organization", () => {
     it("rejects a non-member author and lands no dismissal with forged attribution", async () => {
       const orgA = await seedOrgWithOwner(db, {
@@ -584,8 +465,7 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         userName: NAMES.userName("m1-b-owner"),
         email: NAMES.email("m1-b-owner"),
       });
-      // A user who is a member of NO organization. The second shape of the same forgery
-      // (a real `user.id` that the FK happily accepts).
+
       const orphan = await seedUser(db, {
         name: NAMES.userName("m1-orphan"),
         email: NAMES.email("m1-orphan"),
@@ -624,8 +504,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         expect(landed).toEqual([]);
       }
 
-      // The ledger row must be untouched too. No `dismissed_at` stamp from a rejected
-      // dismissal (the transaction never opened).
       const [ledgerRow] = await db
         .select()
         .from(schema.findingSignatures)
@@ -695,13 +573,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     });
   });
 
-  // "Dismissed forever" survives any arrival order
-  //
-  // The Slack "Not useful" click and the analysis lane are two independent producers
-  // with no ordering guarantee. Before this fix, a dismissal that arrived first stamped
-  // zero ledger rows and returned success, and the next `recordSignature` inserted a
-  // fresh row with `dismissed_at = NULL`. The permanent suppression vanished with no
-  // error, defeating the outcome's own definition of done.
   describe("dismissal arriving before the ledger row ( multiplicity / ordering)", () => {
     async function seedDismissableProject(lane: string) {
       const org = await seedOrgWithOwner(db, {
@@ -714,9 +585,7 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         name: NAMES.projectName(lane),
       });
       const candidate = buildCandidate(FIXTURE_NOW);
-      // The signature the analysis lane would compute. Derived here through the one
-      // production producer, never fabricated, so the dismissal and the later record
-      // land on the same identity.
+
       const signature = computeFindingSignature({
         projectId: project.id,
         surface: candidate.surface,
@@ -744,9 +613,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         dismissedByUserId: fx.org.userId,
       });
 
-      // The analysis lane arrives late and records the signature for the first time.
-      // Its row carries `dismissed_at = NULL`. The ledger alone cannot answer, and the
-      // `dismissals` row must.
       const recorded = await fx.service.recordSignature(fx.project.id, fx.candidate);
       expect(recorded.signature).toBe(fx.signature);
       expect(recorded.record.dismissedAt).toBeNull();
@@ -755,7 +621,7 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         decision: "suppress",
         reason: "dismissed",
       });
-      // ...and by bare signature, the stale-inbound shape of the same read.
+
       expect(await fx.service.consultSignature(fx.project.id, fx.signature)).toEqual({
         decision: "suppress",
         reason: "dismissed",
@@ -773,8 +639,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         dismissedByUserId: fx.org.userId,
       });
 
-      // No `recordSignature` has ever run for this identity, so `finding_signatures`
-      // holds nothing at all.
       const ledgerRow = await createFindingSignaturesRepo(db, fx.org.ctx).findBySignature(
         fx.project.id,
         fx.signature,
@@ -788,15 +652,7 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
     });
   });
 
-  // recordAncestry: the carry-forward divergence, closed (post-sprint
-  // audit Finding 1 and Finding 2)
   describe("recordAncestry — carry-forward's degenerate case, and idempotence on retry", () => {
-    // Finding 1's previously-untested branch: `recordAncestry` must not throw, and must
-    // touch no ledger row, when the old signature was never recorded. This is the no-op
-    // itself documents (a version-bump ancestry edge can legitimately be drawn before
-    // any candidate under the old identity was ever seen). Verified here that the edge
-    // is recorded and both signatures' ledger rows stay absent, not just that no error
-    // is thrown.
     it("records the ancestry edge and touches no ledger row when the old signature was never recorded", async () => {
       const org = await seedOrgWithOwner(db, {
         orgName: NAMES.orgName("ancestry-never-seen"),
@@ -825,8 +681,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
         evidenceShape: newCandidate.evidenceShape,
       });
 
-      // Neither signature has ever gone through `recordSignature`. There is nothing to
-      // carry forward.
       const edge = await service.recordAncestry({
         projectId: project.id,
         oldSignature,
@@ -841,9 +695,6 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
       expect(await ledgerRepo.findBySignature(project.id, newSignature)).toBeNull();
     });
 
-    // Finding 2: a retried `recordAncestry` call (the same edge recorded twice) must
-    // degrade cleanly (no raw unique-violation) and must not double-apply the
-    // carry-forward counters onto the new signature.
     it("is idempotent on retry — the same edge recorded twice does not throw and does not double-carry times_seen", async () => {
       const org = await seedOrgWithOwner(db, {
         orgName: NAMES.orgName("ancestry-retry"),
@@ -874,18 +725,15 @@ describe("signature ledger service — real persistence (ADD §7, §8)", () => {
 
       const firstEdge = await service.recordAncestry(ancestryInput);
       const afterFirst = await ledgerRepo.findBySignature(project.id, newRecorded.signature);
-      // Carried once: existing + old = 2.
+
       expect(afterFirst?.timesSeen).toBe(2);
 
-      // The retry, same payload, called a second time (an external retry, not a
-      // distinct migration).
       const secondEdge = await service.recordAncestry(ancestryInput);
       expect(secondEdge.id).toBe(firstEdge.id);
       expect(secondEdge.newSignature).toBe(firstEdge.newSignature);
 
       const afterSecond = await ledgerRepo.findBySignature(project.id, newRecorded.signature);
-      // Unchanged, not double-carried to 3. A raw unique-violation would have thrown
-      // before this point at all.
+
       expect(afterSecond?.timesSeen).toBe(2);
     });
   });

@@ -21,18 +21,9 @@ export {
   type OrganizationRecord,
 } from "./repositories/organizations.repo";
 
-// Tenancy bootstrap, the reads that resolve a request's identity before any
-// organization scope exists, plus the org auto-creation they trigger. Deliberately
-// unscoped (no `TenantContext` parameter); see the header of./tenancy/queries.ts for
-// the invariants that keeps safe. `findOrganizationBySlug` is deliberately absent: it
-// is the one tenancy query keyed on something other than the caller's own user id, so
-// it stays internal to./tenancy, where its only consumer lives.
 export { findMembershipsByUserId, findUserNameById } from "./tenancy/queries";
 export { ensureOrganization } from "./tenancy/ensure-organization";
 
-// -- NOTE: src/system/* is deliberately absent from this barrel. It is reachable only
-// through the "./system" subpath, and a committed test asserts that none of its three
-// functions is exported here.
 export {
   createProjectConnectionsRepo,
   toConnectionSummary,
@@ -85,13 +76,11 @@ export {
   type EventsCounterService,
 } from "./services/events-counter.service";
 
-// --
 export {
   createDetectorCorpusService,
   type DetectorCorpusService,
 } from "./services/detector-corpus.service";
 
-// --
 export {
   SIGNATURE_HEX_LENGTH,
   SIGNATURE_HEX_FORMAT,
@@ -140,13 +129,6 @@ export {
   type MarkFailedInput,
 } from "./repositories/deliveries.repo";
 
-// -- The read credential store. `resolveApiKeyForRead` sits beside the factory exactly
-// as `resolveWriteKeyForIngest` does: it takes no tenant context, because the presented
-// material IS the tenant proof.
-//
-// NOTE: src/admin/* is deliberately absent from this barrel, the same way src/system/*
-// is. It is reachable only through the "./admin" subpath, and a committed test asserts
-// nothing here re-exports it.
 export {
   createApiKeysRepo,
   resolveApiKeyForRead,
@@ -156,10 +138,6 @@ export {
   type ResolvedApiKey,
 } from "./repositories/api-keys.repo";
 
-// -- The analysis lane's two repositories. NOTE: `findings` has NO consumer this
-// sprint. The `delivery-tick` lane-source wire is deliberately cut and lands with the
-// first sprint that needs findings flowing to delivery. The full statement lives in
-// `./repositories/findings.repo.ts`'s header.
 export {
   createFindingsRepo,
   findingContextSchema,
@@ -171,11 +149,7 @@ export {
   type ListFindingsOptions,
   type MeasuredCountRow,
 } from "./repositories/findings.repo";
-// `ANALYSIS_RUN_LEASE_MS` is re-exported deliberately. The worker's own comments reason
-// about it in prose (`worker/src/tasks/ analysis-tick.ts`), so a constant the worker
-// argues from must be reachable from the barrel the worker imports, not only through a
-// deep path into `./repositories/analysis-runs.repo`, which until now was how the
-// single consumer (that repository's own suite) got at it.
+
 export {
   createAnalysisRunsRepo,
   ANALYSIS_RUN_LEASE_MS,
@@ -188,16 +162,6 @@ export {
   type ClaimModelCallResult,
 } from "./repositories/analysis-runs.repo";
 
-// --- O-008: the first-run surface --------------------------------------------
-// NOTE: `existsAnyActiveSlackConnection` and its two siblings are deliberately
-// absent from this barrel, exactly as the other system reads are. They live
-// behind the "./system" subpath and nothing here re-exports them.
-//
-// `openCredentialForOrg` IS reachable from here, on the repository this barrel
-// exports, and that is a deliberate difference from the PostHog credential —
-// AD-20 puts the Slack door on the repository so the delivery composition root
-// can build it per lane from the lane's own context. It is COMPOSITION-ROOT
-// ONLY, stated on the method itself, and its name is the grep.
 export {
   createSlackConnectionsRepo,
   toSlackConnectionSummary,
@@ -207,11 +171,7 @@ export {
   type SlackConnectionSummary,
   type InsertActiveSlackConnectionInput,
 } from "./repositories/slack-connections.repo";
-// The AAD this table's credential is sealed under has EXACTLY ONE PRODUCER, and
-// it is re-exported here so every consumer reaches it through the barrel rather
-// than deep-importing the schema module. It takes a `TenantContext` and no
-// project id, deliberately: an envelope sealed with `credentialAad(orgId,
-// projectId)` writes fine and fails at delivery time, per customer, silently.
+
 export { slackCredentialAad } from "./schema/slack-connections";
 export {
   createFirstRunRepo,
@@ -224,14 +184,4 @@ export {
 } from "./services/first-run-status.service";
 export { ensureProject } from "./tenancy/ensure-project";
 
-// Drizzle's predicate helpers, re-exported for TEST callers that read a table
-// back directly to prove a write landed.
-//
-// WHY THEY COME FROM HERE AND NOT FROM `drizzle-orm`. This package owns the
-// database; `apps/web` declares no `drizzle-orm` dependency and must not gain
-// one, for the same reason it declares no `zod` — "the database is an
-// implementation detail" is enforced by what a package can resolve, not by
-// remembering. A test that imported `drizzle-orm` directly typechecked locally
-// on a hoisted install and failed CI's clean one, which is exactly the class of
-// drift this re-export removes.
 export { and, eq, sql } from "drizzle-orm";

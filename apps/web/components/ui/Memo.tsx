@@ -4,21 +4,6 @@ import type { ReactNode } from "react";
 import { LogoMark } from "./Logo";
 import { Stamp } from "./Stamp";
 
-/**
- * The interoffice memo — the brand's one document object, ported from the
- * marketing site's `MemoCard` so the app and growthmind.ai read as one
- * product. A visitor arriving from the site should not cross a visual cliff
- * at the moment we ask them to commit.
- *
- * `MemoSheet` is the chrome only: the band stripe across the head, the
- * letterhead beneath it, an optional stamp, and the imprint rule that closes
- * the sheet. Whatever the memo is *about* composes as children — so a
- * specimen on the auth pages and (later) a real finding are the same object
- * carrying different content, not two implementations of a memo.
- *
- * Square corners are deliberate and override the theme's default radius: this
- * is a sheet of paper, not a card.
- */
 export function MemoSheet({
   department = "INTEROFFICE · GROWTH DIVISION",
   stamp,
@@ -26,9 +11,9 @@ export function MemoSheet({
   children,
 }: {
   department?: string;
-  /** Rubber-stamped verdict, set against the letterhead. */
+
   stamp?: string;
-  /** Wide-tracked mono line closing the sheet, above a hairline rule. */
+
   footnote?: string;
   children: ReactNode;
 }) {
@@ -42,8 +27,7 @@ export function MemoSheet({
           wrap="nowrap"
           pb="xs"
           justify="space-between"
-          // The letterhead rule is the memo's heaviest line — full-strength
-          // ink rather than the default hairline, matching the site.
+
           style={{ borderBottom: "1.5px solid var(--mantine-color-text)" }}
         >
           <Group gap="sm" wrap="nowrap">
@@ -89,15 +73,6 @@ export function MemoSheet({
 
 export type MemoField = { label: string; value: ReactNode };
 
-/**
- * The typewriter address block — `TO:` / `FROM:` / `RE:` in a fixed label
- * gutter so the values align down the sheet, the way a typed memo does.
- *
- * Each row is a flex pair rather than an inline-block label followed by inline
- * text: a long `RE:` line wraps at narrow widths, and inline text resumes at
- * the row's left edge, under the label. The flex column keeps the hanging
- * indent so every wrapped line stays in the value column.
- */
 export function MemoFields({ fields }: { fields: readonly MemoField[] }) {
   return (
     <Box mt="sm" ff="var(--type)" fz={12} style={{ lineHeight: 1.95 }}>

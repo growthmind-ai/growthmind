@@ -1,21 +1,3 @@
-// Worker-lane test fixtures (Wave 0b, lane L5).
-//
-// Deliberately worker-local rather than an import of
-// packages/db/__tests__/helpers/fixtures.ts: the five Wave 0b lanes are file-disjoint,
-// and a lane that reaches into another lane's helper file re-couples them. Everything
-// here seeds through `@growthmind/db`'s exported schema barrel against a real
-// `createTestDb` PGlite instance. No mocks, because the point of the wire proof is
-// real SQL.
-//
-// Fixture seed prefixes: `wk-` for the handler suite, `e2e-` for the wire proof. Every
-// organization name, user email, and project name carries one. The previous sprint lost
-// four tests to `user_email_unique` collisions from reused fixture emails (a red state
-// that looked correct and was not) so every email here is prefix + a uuid, unique by
-// construction.
-//
-// The repository is public. Every host, key, project id, and email below is an
-// obviously-fake placeholder on a reserved-for-testing domain. Nothing here is or
-// resembles real credential material.
 import { randomUUID } from "node:crypto";
 
 import type { FetchLike } from "@growthmind/adapters";
@@ -37,27 +19,12 @@ import type {
   SessionSourcePollDeps,
 } from "../../src/tasks/session-source-poll";
 
-// Obviously-fake placeholders. `.invalid` and `.example` are reserved by rfc 2606/6761
-// and can never resolve, so a test that somehow escaped its fake fetch would fail
-// loudly rather than reach anything real.
-
-/** Base64 of the 32 literal bytes `growthmind-worker-test-only-key!`. A structurally
- * valid AES-256 key that is published here and therefore worthless as a secret. Exactly
- * like the repo's own dev default, but distinct from it so a test can never be confused
- * for a deployment. */
 export const TEST_ENCRYPTION_KEY = "Z3Jvd3RobWluZC13b3JrZXItdGVzdC1vbmx5LWtleSE=";
 
 export const FAKE_HOST = "https://posthog.invalid";
 
-/** Shaped like a PostHog personal API key so `scrubSecrets` has something realistic to
- * redact, but composed entirely of the word "fake". */
 export const FAKE_PERSONAL_API_KEY = "phx_fakefakefakefakefakefake0000";
 
-/**
- * A `ServerEnv` with `NODE_ENV=test`, so `resolveCredentialKey` takes the
- * non-production branch and the published test key above is accepted. The production
- * refusal is lane L1's test, not this lane's.
- */
 export function testServerEnv(): ServerEnv {
   return parseServerEnv({
     NODE_ENV: "test",
@@ -67,13 +34,6 @@ export function testServerEnv(): ServerEnv {
   });
 }
 
-/**
- * Produces the stored credential envelope the handler must be able to read back. This
- * deliberately goes through the real `encryptSecret`, against the real key
- * `resolveCredentialKey` derives from the environment the handler is given. A
- * hand-written ciphertext would only ever exercise the F-11 fail-closed branch and
- * would prove nothing about the happy path.
- */
 export function encryptTestCredential(params: {
   env: ServerEnv;
   organizationId: string;
@@ -91,8 +51,6 @@ export function encryptTestCredential(params: {
   };
 }
 
-// Seeding
-
 export interface SeededConnection {
   projectId: string;
   connectionId: string;
@@ -108,43 +66,26 @@ export interface SeededWorkspace extends SeededConnection {
 }
 
 export interface SeedWorkspaceParams {
-  /** `wk-` or `e2e-`. Carried by the org name, the owner email, and the project name so
-   * no two lanes can collide on a unique index. */
   prefix: string;
-  /**
-   * The suite's own fake clock instant. Required, never defaulted to the wall clock.
-   * `nextPollAt`/`connectedAt` below are anchored to this value, not to `Date.now`. A
-   * fake-clock suite drives `runSessionSourcePoll` against
-   * `claimDuePollableConnections`'s `WHERE next_poll_at <= now`, where `now` is the
-   * suite's `FakeClock`, not the real wall clock. A scheduling column seeded from
-   * `Date.now` is only "due" while the real clock happens to sit after the fixture's
-   * fake `now`, which made this whole lane time-of-day flaky (it failed only after
-   * 18:00 UTC). Every caller must pass the same instant it hands to `createFakeClock`.
-   */
+
   now: Date;
   host?: string;
   sourceProjectId?: string;
   isActive?: boolean;
   watermarkAt?: Date | null;
   backfillBefore?: string | null;
-  /** Default is one hour before `now`, so the connection is due. */
+
   nextPollAt?: Date;
   pollIntervalSeconds?: number;
   connectedAt?: Date;
   inferredInternalDomain?: string | null;
-  /**
-   * Called once the org and project ids exist, because the ciphertext is bound to
-   * `${organizationId}:${projectId}` as additional authenticated data and cannot be
-   * produced before them. Omit to store an unreadable placeholder. Only tests that
-   * never reach a successful decrypt should do that.
-   */
+
   credentialFor?: (ids: { organizationId: string; projectId: string }) => {
     ciphertext: string;
     keyId: string;
   };
 }
 
-/** An org with one owner, one project, and one connection on it. */
 export async function seedPollableWorkspace(
   db: ScopedDb,
   params: SeedWorkspaceParams,
@@ -193,12 +134,6 @@ export async function seedPollableWorkspace(
   };
 }
 
-/**
- * A second project and connection inside an existing org. The partial unique index is
- * per project, so two active connections in one org are legitimate, which is exactly
- * the fixture the failure-isolation test needs (one bad connection must not fail its
- * sibling).
- */
 export async function seedProjectWithConnection(
   db: ScopedDb,
   params: SeedWorkspaceParams & { organizationId: string },
@@ -233,8 +168,7 @@ export async function seedProjectWithConnection(
     health: "healthy",
     watermarkAt: params.watermarkAt ?? null,
     backfillBefore: params.backfillBefore ?? null,
-    // Anchored to the suite's fake clock (`params.now`), never `Date.now`. See the
-    // invariant documented on `SeedWorkspaceParams.now`.
+
     nextPollAt: params.nextPollAt ?? new Date(params.now.getTime() - 60 * 60_000),
     pollIntervalSeconds: params.pollIntervalSeconds ?? 60,
     connectedAt: params.connectedAt ?? new Date(params.now.getTime() - 60 * 60_000),
@@ -244,11 +178,6 @@ export async function seedProjectWithConnection(
   return { projectId, connectionId, sourceProjectId, host };
 }
 
-/**
- * A second, non-owner member of an existing org. Item 120's whole point is that
- * this context reads the same numbers the connecting owner sees, so the teammate must
- * be a real `member` row, not a relabelled owner.
- */
 export async function seedTeammateContext(
   db: ScopedDb,
   params: { prefix: string; organizationId: string; organizationName: string },
@@ -280,13 +209,6 @@ export async function seedTeammateContext(
   });
 }
 
-// The faked PostHog HTTP layer
-
-/**
- * One upstream event, in the exact top-level shape the probe pinned
- * (addendum-a-pinned.md row 3/4/6): `person` is null on every item, and `timestamp` is
- * the client-declared event time in microsecond `+00:00` form, never a `Z` suffix.
- */
 export function fakeEvent(params: {
   id?: string;
   distinctId: string | null;
@@ -315,16 +237,13 @@ export function fakeEvent(params: {
   };
 }
 
-/** The wire form of an instant: `YYYY-MM-DDTHH:mm:ss.ffffff+00:00`. Written out here
- * rather than imported so this fixture pins the shape the probe observed, independently
- * of whatever `formatPostHogInstant` ends up doing. */
 export function toPostHogInstant(d: Date): string {
   return `${d.toISOString().replace("Z", "")}000+00:00`;
 }
 
 export interface FakeEventsPage {
   results: unknown[];
-  /** Literal `null` on the final page, never absent, never `""` (row 1). */
+
   next: string | null;
 }
 
@@ -341,7 +260,7 @@ export interface FakeEventsRequest {
   readonly url: URL;
   readonly after: string | null;
   readonly before: string | null;
-  /** 0-based, across the whole run, so a fault can fire on page 2 only. */
+
   readonly callIndex: number;
 }
 
@@ -354,13 +273,11 @@ export interface FakeCall {
 export interface FakePostHog {
   readonly fetch: FetchLike;
   readonly calls: FakeCall[];
-  /** Only the `/events` calls, in order. */
+
   eventsCalls(): FakeCall[];
   personsCalls(): FakeCall[];
 }
 
-/** The 401 envelope, verbatim in shape (sec-d): always 401, never 403, and branching is
- * on `code`, never on the status alone. */
 export const FAKE_AUTH_FAILURE_BODY = {
   type: "authentication_error",
   code: "authentication_failed",
@@ -368,7 +285,6 @@ export const FAKE_AUTH_FAILURE_BODY = {
   attr: null,
 };
 
-/** The 429 envelope, the same typed envelope as auth errors (row 5). */
 export const FAKE_THROTTLED_BODY = {
   type: "throttled_error",
   code: "throttled",
@@ -376,13 +292,9 @@ export const FAKE_THROTTLED_BODY = {
   attr: null,
 };
 
-/**
- * A faked PostHog. No real network call is ever made by any test in this lane: this is
- * the only `fetch` the handler is given, and it never touches a socket.
- */
 export function createFakePostHog(options: {
   events?: (request: FakeEventsRequest) => FakeEventsPage | FakeFault;
-  /** `distinct_id` → email, or `null` for "a completed lookup found no email". */
+
   persons?: (distinctId: string) => string | null;
 }): FakePostHog {
   const calls: FakeCall[] = [];
@@ -427,9 +339,6 @@ export function createFakePostHog(options: {
   };
 }
 
-/** Builds the absolute `next` URL the server would emit. Carrying every original
- * parameter forward plus an exclusive `before` (row 1). Tests build it here so the
- * adapter can only follow it verbatim. */
 export function nextCursorUrl(params: {
   host?: string;
   sourceProjectId: string;
@@ -463,23 +372,15 @@ function jsonResponse(status: number, body: unknown, headers?: Record<string, st
   });
 }
 
-// The injected clock and the deps builder
-
 export interface FakeClock {
   now: () => Date;
   sleep: (ms: number) => Promise<void>;
-  /** Every `sleep` duration requested, in order. Asserting on this is how a backoff
-   * sequence is proven with zero wall-clock waiting. */
+
   readonly sleeps: number[];
   advance: (ms: number) => void;
   set: (at: Date) => void;
 }
 
-/**
- * `sleep` advances the clock and resolves immediately. Nothing in this lane ever waits
- * on real time. `now` is a plain reader, so a test can also step the clock forward
- * between handler invocations.
- */
 export function createFakeClock(start: Date): FakeClock {
   let current = start.getTime();
   const sleeps: number[] = [];
@@ -521,11 +422,6 @@ export function createRecordingLogger(): RecordingLogger {
   };
 }
 
-/**
- * The deps the queue closure in ../../src/index.ts assembles, with every effect faked: no
- * network, no wall clock, no randomness. `random` returns a fixed value so both jitter
- * branches are exactly reproducible.
- */
 export function createPollDeps(params: {
   db: ScopedDb;
   fetch: FetchLike;
@@ -533,10 +429,7 @@ export function createPollDeps(params: {
   env?: ServerEnv;
   random?: () => number;
   logger?: PollLogger;
-  /** O-008 AD-11a. Defaults to a no-op recorder-free port, because every suite
-   *  predating the onboarding trigger asserts on POLL behaviour and must be
-   *  unaffected by it. A suite that cares about the ask supplies its own — see
-   *  `onboarding-trigger-wire.test.ts`, which overrides this by spread. */
+
   requestAnalysis?: AnalysisTrigger;
 }): SessionSourcePollDeps {
   return {
@@ -547,19 +440,11 @@ export function createPollDeps(params: {
     fetch: params.fetch,
     random: params.random ?? (() => 0.5),
     logger: params.logger ?? createRecordingLogger(),
-    // NOT OPTIONAL ON THE DEPS ITSELF, deliberately. An optional port is a wire
-    // a composition root can leave unconnected in silence, which is precisely
-    // the D11 failure this sprint inherits from the delivery composition. The
-    // default lives HERE, in the fixture, where "this suite is not about the
-    // trigger" is a statement a reader can check.
+
     requestAnalysis: params.requestAnalysis ?? { requestForProject: () => Promise.resolve() },
   };
 }
 
-// Plain-English assertions (P-2 bar), used by the terminal-state tests
-
-/** the forbidden vocabulary. A customer-facing failure reason may contain none of
- * these, and no bare 3-digit HTTP status. */
 export const FORBIDDEN_JARGON = [
   "tenant",
   "adapter",

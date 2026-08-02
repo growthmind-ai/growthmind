@@ -1,14 +1,3 @@
-// Wave 0b (red), lane L3, fixture seed prefix `db-`. Add
-// tasks/session-source-posthog-adapter/add.md items 64–69.
-//
-// Every assertion targets the public contract of `createProjectConnectionsRepo` and
-// `toConnectionSummary` against real SQL via PGlite. A fake would prove nothing about
-// the partial unique index or the `(org, id)` mutation key that this add rests on.
-//
-// The whole repository is a typed-stub throw today, so every test below fails on "not
-// implemented". They are written so the stub's generic throw can never satisfy them:
-// each one reads state back through the repository after the call, which an
-// unimplemented factory can never reach.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 
@@ -24,11 +13,6 @@ import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtur
 
 const NAMES = laneNames("pc");
 
-/**
- * An obviously-fake, envelope-shaped literal. This repository is public: no fixture in
- * it will ever carry usable key material, and the value exists only so a leak assertion
- * has a distinctive needle to search for.
- */
 const FAKE_ENVELOPE = "v1.00000000.FAKE-IV.FAKE-TAG.FAKE-CIPHERTEXT-NOT-A-SECRET";
 
 function makeInsertInput(
@@ -61,7 +45,6 @@ describe("project-connections repository", () => {
     await close();
   });
 
-  // -- item 64
   it("rejects a second ACTIVE connection on one project in the database, not by a prior read", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("second-source"),
@@ -85,9 +68,6 @@ describe("project-connections repository", () => {
       caught = error;
     }
 
-    // The refusal must come from the constraint. A generic "not implemented" cannot
-    // satisfy this: the message has to name the unique index or the duplicate-key
-    // violation, which only real SQL produces.
     expect(caught).toBeDefined();
     expect(String(caught)).toMatch(
       /project_connections_active_project_uidx|duplicate key|unique constraint/i,
@@ -98,7 +78,6 @@ describe("project-connections repository", () => {
     expect(active?.sourceProjectId).toBe("10001");
   });
 
-  // -- item 65
   it("yields exactly one active connection when two attach attempts race", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("race"),
@@ -116,8 +95,6 @@ describe("project-connections repository", () => {
       repo.insertActive(makeInsertInput(project.id, { sourceProjectId: "40004" })),
     ]);
 
-    // Exactly one winner, decided by the index. There is no read-then-write window here
-    // for both to pass through.
     expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(settled.filter((r) => r.status === "rejected")).toHaveLength(1);
 
@@ -128,7 +105,6 @@ describe("project-connections repository", () => {
     expect(["30003", "40004"]).toContain(active.sourceProjectId);
   });
 
-  // -- item 66
   it("re-attaching the same source after a deactivate succeeds and keeps the old row", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("reattach"),
@@ -148,8 +124,6 @@ describe("project-connections repository", () => {
     expect(deactivated?.health).toBe("disconnected");
     expect(await repo.getActiveForProject(project.id)).toBeNull();
 
-    // The partial index only covers active rows, so the same source attaches again
-    // rather than being permanently refused.
     const second = await repo.insertActive(makeInsertInput(project.id));
     expect(second.id).not.toBe(first.id);
     expect(second.isActive).toBe(true);
@@ -157,9 +131,6 @@ describe("project-connections repository", () => {
     const active = await repo.getActiveForProject(project.id);
     expect(active?.id).toBe(second.id);
 
-    // History survives the cutover: the deactivated row is kept, not deleted. Read raw
-    // here only because no repository method lists inactive rows. Every scoping
-    // assertion in this file goes through the repository.
     const rows = await db
       .select()
       .from(schema.projectConnections)
@@ -167,7 +138,6 @@ describe("project-connections repository", () => {
     expect(rows).toHaveLength(2);
   });
 
-  // -- item 66 (re-key path)
   it("updateCredential re-keys the existing attachment in place rather than adding one", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("rekey"),
@@ -199,7 +169,6 @@ describe("project-connections repository", () => {
     expect(rows).toHaveLength(1);
   });
 
-  // -- item 67
   it("exposes no credential field on any returned connection", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("dto"),
@@ -223,7 +192,6 @@ describe("project-connections repository", () => {
     }
   });
 
-  // -- item 67 (mapper + error string)
   it("maps a raw row to a summary that drops the ciphertext, and leaks none of it into an error", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("leak"),
@@ -247,13 +215,11 @@ describe("project-connections repository", () => {
       throw new Error("expected the seeded connection row");
     }
 
-    // The mapper is the DTO boundary: a field-by-field pick, never a spread.
     const summary = toConnectionSummary(row);
     expect(Object.keys(summary)).not.toContain("credentialCiphertext");
     expect(Object.keys(summary)).not.toContain("credentialKeyId");
     expect(JSON.stringify(summary)).not.toContain(row.credentialCiphertext);
 
-    // A constraint violation is an error string a customer or a log can see.
     const repo = createProjectConnectionsRepo(db, org.ctx);
     let caught: unknown;
     try {
@@ -265,7 +231,6 @@ describe("project-connections repository", () => {
     expect(String(caught)).not.toContain(FAKE_ENVELOPE);
   });
 
-  // -- item 68
   it("advances the watermark monotonically — a stale value cannot move it backwards", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("watermark"),
@@ -303,7 +268,6 @@ describe("project-connections repository", () => {
     expect(readBack?.watermarkAt?.getTime()).toBe(newer.getTime());
   });
 
-  // -- item 68 (concurrency)
   it("keeps the furthest watermark when two runs advance it concurrently", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("watermark-race"),
@@ -324,7 +288,6 @@ describe("project-connections repository", () => {
     const behind = new Date("2026-07-30T10:30:00.000Z");
     const ahead = new Date("2026-07-30T13:00:00.000Z");
 
-    // Whatever order they land in, neither run may lose the other's progress.
     await Promise.all([
       repo.advanceWatermark(connection.id, { watermarkAt: ahead, backfillBefore: null }),
       repo.advanceWatermark(connection.id, { watermarkAt: behind, backfillBefore: null }),
@@ -334,7 +297,6 @@ describe("project-connections repository", () => {
     expect(readBack?.watermarkAt?.getTime()).toBe(ahead.getTime());
   });
 
-  // -- item 68 (page-cap resume cursor)
   it("records a resume cursor without moving the watermark when a walk stopped on the page cap", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("backfill"),
@@ -365,7 +327,6 @@ describe("project-connections repository", () => {
     expect(readBack?.backfillBefore).toBe("2026-07-30T10:15:00.123+00:00");
   });
 
-  // -- fix
   it("setBackfillCursor persists a resume cursor on a NEVER-POLLED connection, leaving watermark_at NULL", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("cr1-never-polled"),
@@ -376,7 +337,7 @@ describe("project-connections repository", () => {
       organizationId: org.organizationId,
       name: NAMES.projectName("cr1-never-polled"),
     });
-    // No `watermarkAt` override, this connection has never been polled.
+
     const connection = await seedConnection(db, {
       organizationId: org.organizationId,
       projectId: project.id,
@@ -386,9 +347,6 @@ describe("project-connections repository", () => {
 
     const held = await repo.setBackfillCursor(connection.id, "2026-07-30T10:15:00.123+00:00");
 
-    // The whole point of the fix: a never-polled connection can now record a resume
-    // cursor without a watermark to hold steady, `advanceWatermark` cannot express this
-    // because its `watermarkAt` field is a non-null Date.
     expect(held?.watermarkAt).toBeNull();
     expect(held?.backfillBefore).toBe("2026-07-30T10:15:00.123+00:00");
 
@@ -451,7 +409,6 @@ describe("project-connections repository", () => {
     expect(after?.backfillBefore).toBeNull();
   });
 
-  // -- item 69
   it("returns null from every mutation for a foreign org's connection and changes nothing", async () => {
     const orgA = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("foreign-a"),
@@ -503,8 +460,6 @@ describe("project-connections repository", () => {
       }),
     ).toBeNull();
 
-    // Never a silent success: org A's own scoped read must show an untouched row, not
-    // "returned null while mutating anyway".
     const repoA = createProjectConnectionsRepo(db, orgA.ctx);
     const after = await repoA.getActiveForProject(project.id);
     expect(after?.id).toBe(connection.id);
@@ -515,7 +470,6 @@ describe("project-connections repository", () => {
     expect(after?.healthReasonCode).toBeNull();
   });
 
-  // -- item 69 (read side)
   it("returns null rather than data when a foreign org names another org's project", async () => {
     const orgA = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("read-a"),

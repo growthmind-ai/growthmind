@@ -1,19 +1,3 @@
-// Wave 0 (red), `mcp-read-credential`, "Integration tests: repository and resolver
-// (PGlite, lane `apikey`, `fixtures.ts`)", all 11 rows.
-//
-// Subject: `packages/db/src/repositories/api-keys.repo.ts` and the `api_keys` table.
-// Neither exists yet, so this suite is red at module resolution until Wave 2. That IS
-// the stated reason.
-//
-// Lane discipline: this is the `packages/db` lane, so seeding goes through
-// `__tests__/helpers/fixtures.ts` against `createTestDb`'s PGlite instance, not
-// `apps/web/__tests__/tenancy/helpers/auth-fixture.ts`, which is the other lane and
-// does not exist from here. Fixture names carry the lane prefix `apikey` so a parallel
-// suite can never collide on `organization.slug` or `user.email`.
-//
-// Every assertion targets the public contract (`createApiKeysRepo`,
-// `resolveApiKeyForRead`) against real SQL. A fake repository would prove nothing about
-// the tenant scoping and the revocation predicate this sprint turns on.
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -60,9 +44,6 @@ describe("api-keys repository and resolver", () => {
 
     const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "round-trip agent" });
 
-    // The other half of the cross-lane loop opens: `packages/shared`'s material suite
-    // proves the format accepts mint-shaped material; this proves a genuinely minted
-    // key is that shape.
     expect(isApiKeyFormat(minted.raw)).toBe(true);
 
     expect(await resolveApiKeyForRead(db, minted.raw)).toEqual({
@@ -90,9 +71,6 @@ describe("api-keys repository and resolver", () => {
     expect(row.keyHash).toBe(hashApiKeyMaterial(minted.raw));
     expect(row.keyPrefix).toBe(minted.raw.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH));
 
-    // No column carries the material, not the whole string, and not the tail that is
-    // the part actually worth stealing. The display prefix is the only fragment of the
-    // key allowed to survive the write.
     const persisted = JSON.stringify(row);
     expect(persisted).not.toContain(minted.raw);
     expect(persisted).not.toContain(minted.raw.slice(API_KEY_DISPLAY_PREFIX_LENGTH));
@@ -108,15 +86,12 @@ describe("api-keys repository and resolver", () => {
 
     const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "dto agent" });
 
-    // A `...row` spread at the DTO boundary would leak `keyHash` with nothing else
-    // failing. This is the row that notices (write-keys.repo.ts:28-41).
     const keys = Object.keys(minted.key);
     expect(keys).not.toContain("keyHash");
     expect(keys).not.toContain("raw");
     expect(Object.values(minted.key).some((value) => value === minted.raw)).toBe(false);
     expect(JSON.stringify(minted.key)).not.toContain(minted.raw);
 
-    // Not vacuous: the DTO really does carry the metadata it is supposed to.
     expect(minted.key.organizationId).toBe(org.organizationId);
     expect(minted.key.name).toBe("dto agent");
     expect(minted.key.keyPrefix).toBe(minted.raw.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH));
@@ -132,7 +107,6 @@ describe("api-keys repository and resolver", () => {
     const repo = createApiKeysRepo(db, org.ctx);
     const minted = await repo.mint({ name: "revoke-live agent" });
 
-    // Non-vacuity: it really did resolve before the revoke.
     expect(await resolveApiKeyForRead(db, minted.raw)).toEqual({
       organizationId: org.organizationId,
     });
@@ -143,10 +117,6 @@ describe("api-keys repository and resolver", () => {
 
     expect(await resolveApiKeyForRead(db, minted.raw)).toBeNull();
 
-    // The `null` above must be the `isNull(revokedAt)` predicate sharing one `where`
-    // with the hash lookup, not a delete, and not a second query or a post-filter (a
-    // post-filter would make revoked and unknown keys distinguishable by time even when
-    // the answers match).
     const [row] = await db
       .select()
       .from(schema.apiKeys)
@@ -172,19 +142,12 @@ describe("api-keys repository and resolver", () => {
       throw new Error("expected the first revoke to stamp revokedAt");
     }
 
-    // Real elapsed time between the two calls. Without it two statements microseconds
-    // apart could agree by accident and this row would pass against the very bug it
-    // exists to catch.
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     const second = await repo.revoke(minted.key.id);
 
-    // Two operators racing to kill a leaked key is the ordinary case. The second one is
-    // still told the key is revoked. That is true, and an error here would be a worse
-    // answer than the truth.
     expect(second?.id).toBe(minted.key.id);
-    // …but the one audit fact this table holds about a leaked credential (when it
-    // stopped working) is not rewritten by the later call.
+
     expect(second?.revokedAt?.getTime()).toBe(firstAt.getTime());
 
     const [row] = await db
@@ -193,12 +156,8 @@ describe("api-keys repository and resolver", () => {
       .where(eq(schema.apiKeys.id, minted.key.id));
     expect(row?.revokedAt?.getTime()).toBe(firstAt.getTime());
 
-    // Non-vacuity: the clock genuinely moved between the two revokes, so a plain
-    // `revokedAt: new Date` assignment would have failed both assertions above rather
-    // than passing by coincidence.
     expect(Date.now() - firstAt.getTime()).toBeGreaterThanOrEqual(25);
 
-    // And the key is still revoked for the only consumer that matters.
     expect(await resolveApiKeyForRead(db, minted.raw)).toBeNull();
   });
 
@@ -218,9 +177,6 @@ describe("api-keys repository and resolver", () => {
 
     expect(await createApiKeysRepo(db, orgB.ctx).revoke(minted.key.id)).toBeNull();
 
-    // Zero rows matched must mean zero rows changed. The retro's
-    // zero-row-write-reported-as-success class, inverted: here the report is honest and
-    // the row must be untouched to prove it.
     const [row] = await db
       .select()
       .from(schema.apiKeys)
@@ -240,8 +196,6 @@ describe("api-keys repository and resolver", () => {
 
     const result = await createApiKeysRepo(db, org.ctx).revoke(randomUUID());
 
-    // `null`, never a truthy "revoked nothing, successfully". The operator reads this
-    // as an exit code.
     expect(result).toBeNull();
   });
 
@@ -266,7 +220,6 @@ describe("api-keys repository and resolver", () => {
 
     await repo.revoke(first.key.id);
 
-    // Revoking one credential is not revoking the org.
     expect(await resolveApiKeyForRead(db, first.raw)).toBeNull();
     expect(await resolveApiKeyForRead(db, second.raw)).toEqual({
       organizationId: org.organizationId,
@@ -274,20 +227,12 @@ describe("api-keys repository and resolver", () => {
   });
 
   it("should never reach the database for malformed material", async () => {
-    // Its own PGlite instance, closed before use, so the suite's shared database is
-    // unaffected by this row.
     const dead = await createTestDb();
     await dead.close();
 
-    // Malformed input is refused by the format check, so no query is ever issued and a
-    // dead handle cannot be noticed…
     expect(await resolveApiKeyForRead(dead.db, "not-a-key")).toBeNull();
     expect(await resolveApiKeyForRead(dead.db, "")).toBeNull();
 
-    // …while a well-formed unknown key gets as far as the query and the dead handle
-    // rejects. That asymmetry is the proof that `isApiKeyFormat` short-circuits before
-    // any database access. If both branches behaved the same, this row would prove
-    // nothing.
     const wellFormedUnknown = `${API_KEY_PREFIX}${"a".repeat(43)}`;
     expect(isApiKeyFormat(wellFormedUnknown)).toBe(true);
     await expect(resolveApiKeyForRead(dead.db, wellFormedUnknown)).rejects.toThrow(/api_keys/);
@@ -311,8 +256,6 @@ describe("api-keys repository and resolver", () => {
 
     expect(await resolveApiKeyForRead(db, ingest.raw)).toBeNull();
 
-    // The non-vacuity half: the key is genuine, unrevoked and still admitted by its own
-    // resolver, so the `null` above is the family boundary and not a junk fixture.
     expect(isWriteKeyFormat(ingest.raw)).toBe(true);
     expect(await resolveWriteKeyForIngest(db, ingest.raw)).toEqual({
       projectId: project.id,
@@ -339,12 +282,9 @@ describe("api-keys repository and resolver", () => {
     const repoB = createApiKeysRepo(db, orgB.ctx);
     expect(await repoB.revoke(mintedByA.key.id)).toBeNull();
 
-    // P1 half (cut together with the `list`): org B cannot even see it.
     expect((await repoB.list()).map((key) => key.id)).not.toContain(mintedByA.key.id);
   });
 
-  // P1, cut together with. `list` and `revoke-api-key.ts --list` ship together or not
-  // at all.
   it("should list this organization's keys as metadata only, revoked rows included", async () => {
     const orgA = await seedOrgWithOwner(db, {
       orgName: NAMES.orgName("list-a"),
@@ -366,8 +306,6 @@ describe("api-keys repository and resolver", () => {
     const listed = await repoA.list();
     const ids = listed.map((key) => key.id);
 
-    // A revoked key still listed is the point: an operator needs to see that the key
-    // they revoked is the one that is gone.
     expect(ids).toContain(live.key.id);
     expect(ids).toContain(dead.key.id);
     expect(ids).not.toContain(foreign.key.id);

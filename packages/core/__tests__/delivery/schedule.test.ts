@@ -1,22 +1,3 @@
-// The delivery scheduler's pure decision.
-//
-// This suite is organised around the two things a scheduler can get wrong, and neither
-// of them is arithmetic:
-//
-// 1. Delivering when it should have withheld. The declared fail direction is
-//  Withhold (`schedule.ts` header): a withheld finding surfaces on the next
-//  tick, an extra one posted into a founder's Slack cannot be un-sent. Every
-//  doubt case below asserts `nothing_today`.
-//
-// 2. Telling the customer the wrong zero. `one_already_open`, `budget_spent`,
-//  and `no_findings_ready` are three different facts — "you still owe us an
-//  answer", "we are pacing ourselves", "your product was quiet" — and only
-//  the last one is a claim about the customer's product. The branch-order
-//  tests are what stop our own restraint being reported as their silence.
-//
-// Pure: no clock. Every instant here descends from the frozen constant below, and
-// `decideDelivery` takes `now` as a parameter precisely so this file never has to reach
-// for one.
 import { NOTHING_TODAY_REASONS } from "@growthmind/shared";
 import type { NothingTodayReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -29,11 +10,8 @@ import {
 } from "../../src/delivery/schedule";
 import type { DeliveryCandidate, DeliveryLaneState } from "../../src/delivery/schedule";
 
-// fixtures
-
 const NOW = new Date("2026-07-30T09:00:00.000Z");
 
-/** A candidate that would be delivered if nothing else stood in the way. */
 function candidate(overrides: Partial<DeliveryCandidate> = {}): DeliveryCandidate {
   return {
     findingId: "f-mid",
@@ -43,7 +21,6 @@ function candidate(overrides: Partial<DeliveryCandidate> = {}): DeliveryCandidat
   };
 }
 
-/** A lane with room in the budget, nothing open, and whatever candidates. */
 function lane(overrides: Partial<DeliveryLaneState> = {}): DeliveryLaneState {
   return {
     openFindingIds: [],
@@ -53,7 +30,6 @@ function lane(overrides: Partial<DeliveryLaneState> = {}): DeliveryLaneState {
   };
 }
 
-/** Every ordering of a small list. The "independent of input order" proof. */
 function permutations<T>(items: readonly T[]): T[][] {
   if (items.length <= 1) return [[...items]];
 
@@ -68,8 +44,6 @@ function permutations<T>(items: readonly T[]): T[][] {
   return ordered;
 }
 
-// one open finding at a time
-
 describe("decideDelivery — one open finding at a time", () => {
   test("should return nothing_today with reason one_already_open when a finding is already open", () => {
     const decision = decideDelivery(lane({ openFindingIds: ["f-open"] }), NOW);
@@ -82,9 +56,6 @@ describe("decideDelivery — one open finding at a time", () => {
   });
 
   test("should return one_already_open even when a stronger candidate is waiting", () => {
-    // The candidate here outranks anything: top confidence, largest sample.
-    // Backpressure is not a ranking input. It is the invariant ("one thing at a time,
-    // not a ranked list of twelve").
     const decision = decideDelivery(
       lane({
         openFindingIds: ["f-open"],
@@ -104,8 +75,6 @@ describe("decideDelivery — one open finding at a time", () => {
   });
 
   test("should return one_already_open regardless of how much budget remains", () => {
-    // "the scheduler refuses to open a second finding while one is open regardless of
-    // bucket balance. Backpressure is the invariant; the bucket is a ceiling on top."
     for (let spent = 0; spent < DELIVERY_BUDGET_PER_WEEK; spent += 1) {
       const decision = decideDelivery(
         lane({ openFindingIds: ["f-open"], deliveredThisWeek: spent }),
@@ -117,16 +86,11 @@ describe("decideDelivery — one open finding at a time", () => {
   });
 
   test("should report one_already_open rather than crash when more than one finding is open", () => {
-    // The DB invariant says this cannot happen. A read mid-migration, or a breached
-    // index, says it can, and a scheduler whose response to an impossible state is an
-    // exception takes down the lane it paces.
     const decision = decideDelivery(lane({ openFindingIds: ["f-a", "f-b"] }), NOW);
 
     expect(decision).toMatchObject({ reason: "one_already_open" });
   });
 });
-
-// nothing ready
 
 describe("decideDelivery — nothing ready to say", () => {
   test("should return nothing_today with reason no_findings_ready when there are no candidates", () => {
@@ -140,9 +104,6 @@ describe("decideDelivery — nothing ready to say", () => {
   });
 
   test("should return no_findings_ready when every candidate is below_threshold", () => {
-    // `below_threshold` is "present in the output for provenance, never surfaced as a
-    // finding on its own" (`findings/candidate.ts`). A lane full of them is a lane with
-    // nothing to say, not a lane with three options.
     const decision = decideDelivery(
       lane({
         candidates: [
@@ -186,8 +147,6 @@ describe("decideDelivery — nothing ready to say", () => {
   });
 });
 
-// the token bucket
-
 describe("decideDelivery — the weekly budget", () => {
   test("should deliver at one under the weekly budget", () => {
     const decision = decideDelivery(lane({ deliveredThisWeek: DELIVERY_BUDGET_PER_WEEK - 1 }), NOW);
@@ -196,9 +155,6 @@ describe("decideDelivery — the weekly budget", () => {
   });
 
   test("should return budget_spent at exactly the weekly budget", () => {
-    // The boundary pair with the test above: the ceiling is inclusive-spent. Having
-    // posted `DELIVERY_BUDGET_PER_WEEK` findings means the week is done, not that one
-    // more is owed.
     const decision = decideDelivery(lane({ deliveredThisWeek: DELIVERY_BUDGET_PER_WEEK }), NOW);
 
     expect(decision).toEqual({
@@ -215,9 +171,6 @@ describe("decideDelivery — the weekly budget", () => {
   });
 
   test("should treat an unreadable delivery count as budget spent rather than delivering", () => {
-    // Fail direction, asserted rather than commented. A count that is negative,
-    // fractional, or not a number at all means the caller's measurement is broken; the
-    // safe reading of a broken budget is "we have posted enough".
     const unreadable = [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY];
 
     expect(unreadable.length).toBeGreaterThan(0);
@@ -229,13 +182,8 @@ describe("decideDelivery — the weekly budget", () => {
   });
 });
 
-// branch order: whose silence is it?
-
 describe("decideDelivery — branch order keeps the three zeros honest", () => {
   test("should report budget_spent, not no_findings_ready, when the budget is spent and nothing is ready", () => {
-    // Both facts are true. Only one of them is ours. Reporting "your product was quiet"
-    // when we would have withheld anyway blames the customer's product for our own
-    // pacing. The exact collapse `NothingTodayReason` exists to prevent.
     const decision = decideDelivery(
       lane({ deliveredThisWeek: DELIVERY_BUDGET_PER_WEEK, candidates: [] }),
       NOW,
@@ -258,9 +206,6 @@ describe("decideDelivery — branch order keeps the three zeros honest", () => {
   });
 
   test("should produce every NothingTodayReason the shared union declares", () => {
-    // Completeness in the direction that matters: this function is the only producer of
-    // these three reasons, so a member nothing can emit is a state the customer will
-    // never be told. A dead member of a closed union.
     const produced = new Set<NothingTodayReason>();
 
     for (const state of [
@@ -272,13 +217,10 @@ describe("decideDelivery — branch order keeps the three zeros honest", () => {
       if (decision.decision === "nothing_today") produced.add(decision.reason);
     }
 
-    // Non-vacuity: the roster is real before "every member is covered" means anything.
     expect(NOTHING_TODAY_REASONS.length).toBe(3);
     expect([...produced].toSorted()).toEqual([...NOTHING_TODAY_REASONS].toSorted());
   });
 });
-
-// the total order
 
 describe("decideDelivery — exactly one candidate, chosen deterministically", () => {
   test("should choose exactly one candidate when several are eligible", () => {
@@ -294,8 +236,7 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
     );
 
     expect(decision.decision).toBe("deliver");
-    // The union carries one finding, not a ranked list. A ranked list is a dashboard
-    // with extra steps.
+
     expect(decision).toMatchObject({ finding: { findingId: "f-a" } });
   });
 
@@ -319,7 +260,7 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
     ];
 
     const orderings = permutations(candidates);
-    // Non-vacuity: 3! = 6 orderings, not one list standing in for "every order".
+
     expect(orderings.length).toBe(6);
 
     const chosen = new Set(
@@ -333,8 +274,6 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
   });
 
   test("should prefer threshold_met over at_threshold even when at_threshold rests on more sessions", () => {
-    // Key 1 beats key 2: evidence that cleared every threshold outranks evidence
-    // sitting exactly on one, whatever its sample.
     const decision = decideDelivery(
       lane({
         candidates: [
@@ -385,9 +324,6 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
   });
 
   test("should break a full tie on finding id, never on array order", () => {
-    // Two candidates identical in every ranking input. Without the id tiebreak the
-    // winner would be whichever the array happened to list first. A choice that changes
-    // when an unrelated query's order by changes.
     const first = candidate({ findingId: "f-aaa" });
     const second = candidate({ findingId: "f-bbb" });
 
@@ -399,8 +335,6 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
   });
 
   test("should not reorder the caller's candidate array", () => {
-    // `toSorted`, never `sort`: a scheduler that mutated its input would make its own
-    // determinism depend on how many times it had been called.
     const candidates = [
       candidate({ findingId: "f-z", sampleSize: { numerator: 1, denominator: 10 } }),
       candidate({ findingId: "f-a", sampleSize: { numerator: 9, denominator: 90 } }),
@@ -411,8 +345,6 @@ describe("decideDelivery — exactly one candidate, chosen deterministically", (
     expect(candidates.map((c) => c.findingId)).toEqual(["f-z", "f-a"]);
   });
 });
-
-// the comparator, on its own
 
 describe("compareDeliveryCandidates — a strict, total order", () => {
   const corpus: readonly DeliveryCandidate[] = [
@@ -432,7 +364,6 @@ describe("compareDeliveryCandidates — a strict, total order", () => {
   ];
 
   test("should order every distinct pair strictly, never reporting a tie", () => {
-    // Non-vacuity: a corpus of one pair would pass this trivially.
     expect(corpus.length).toBeGreaterThan(4);
 
     for (const a of corpus) {
@@ -447,9 +378,6 @@ describe("compareDeliveryCandidates — a strict, total order", () => {
     for (const a of corpus) {
       expect(compareDeliveryCandidates(a, a)).toBe(0);
       for (const b of corpus) {
-        // Summed rather than negated: `-Math.sign` is `-0`, and `toBe` is
-        // `Object.is`, which distinguishes `-0` from `0`. The sum states the property
-        // (`sign === -sign`) without that trap.
         expect(
           Math.sign(compareDeliveryCandidates(a, b)) + Math.sign(compareDeliveryCandidates(b, a)),
         ).toBe(0);
@@ -458,10 +386,6 @@ describe("compareDeliveryCandidates — a strict, total order", () => {
   });
 
   test("should order deterministically when a magnitude is not a readable number", () => {
-    // A `NaN` denominator arriving from a malformed persisted row must fall through to
-    // the next key, not poison the comparator: a comparator returning `NaN` produces an
-    // implementation-defined order, which is the one thing this function exists not to
-    // do.
     const broken = candidate({
       findingId: "f-broken",
       sampleSize: { numerator: Number.NaN, denominator: Number.NaN },
@@ -483,8 +407,6 @@ describe("isDeliverable — the eligibility gate", () => {
   });
 });
 
-// purity
-
 describe("decideDelivery — purity (no clock, no I/O)", () => {
   test("should stamp decidedAt from the caller's now rather than reading a clock", () => {
     const other = new Date("2019-01-01T00:00:00.000Z");
@@ -494,8 +416,6 @@ describe("decideDelivery — purity (no clock, no I/O)", () => {
   });
 
   test("should return byte-identical decisions for the same state across two calls", () => {
-    // A frozen literal state called twice: a scheduler that consulted a clock, a random
-    // tiebreak, or any I/O could not make this guarantee.
     const state = lane({
       candidates: [candidate({ findingId: "f-a" }), candidate({ findingId: "f-b" })],
     });

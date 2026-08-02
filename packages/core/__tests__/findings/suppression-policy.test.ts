@@ -1,25 +1,3 @@
-// "Unit tests (`packages/core`") the named tests for `suppressionDecision`.
-//
-// This is a Wave 0 tdd contract task: `suppressionDecision` and `policyV1` still throw
-// `not implemented`. Every assertion below is written against the final exported
-// contract in `suppression-policy.ts`, so this suite must typecheck cleanly today and
-// fail red until a later wave fills the bodies in.
-//
-// What this file pins, per the v1 branch order the header comment fixes:
-// 1. `unresolvable_ancestry` → suppress
-// 2. `unknown_shape_version` → suppress
-// 3. `dismissedAt !== null` → suppress / dismissed (checked before #4)
-// 4. `deliveredAt !== null` → suppress / already_delivered
-// 5. row present, neither → deliver / seen_not_delivered
-// 6. row === null → deliver / not_seen_before
-//
-// Both doubt paths assert suppress. The declared fail direction inverts the
-// pipeline's T1/T2 include-on-doubt convention (silence is recoverable; a duplicate
-// delivered to a founder is not). An unregistered policy version is a second, distinct
-// fail direction and throws instead. A policy version is chosen by our own code, never
-// read from external data, so it can never be "doubt".
-//
-// Pure: no clock, no I/O, no randomness. Every state below is a literal.
 import { describe, expect, test } from "bun:test";
 
 import { SUPPRESSION_POLICIES, suppressionDecision } from "../../src/findings/suppression-policy";
@@ -28,8 +6,6 @@ import type {
   ResolvedLedgerState,
   SuppressionDecision,
 } from "../../src/findings/suppression-policy";
-
-// fixtures
 
 const DELIVERED_AT = new Date("2026-06-01T12:00:00.000Z");
 const DISMISSED_AT = new Date("2026-06-02T09:30:00.000Z");
@@ -53,10 +29,6 @@ describe("suppressionDecision — v1 branch order", () => {
   });
 
   test("should prefer dismissed over already_delivered when both are present", () => {
-    // The load-bearing branch-order assertion: a row that was delivered and then
-    // dismissed must report the permanent reason, not the presentation one. A future
-    // "resurface after N days" policy must never be able to key off
-    // `already_delivered` for a dismissed signature.
     const state = resolvedRow({ deliveredAt: DELIVERED_AT, dismissedAt: DISMISSED_AT });
     expect(suppressionDecision(state, 1)).toEqual({ decision: "suppress", reason: "dismissed" });
   });
@@ -98,10 +70,6 @@ describe("suppressionDecision — both doubt paths assert SUPPRESS ('s inverted 
 
 describe("suppressionDecision — the policy VERSION's own, distinct fail direction", () => {
   test("should throw for an unregistered policy version rather than falling back to current", () => {
-    // A policy version is chosen by our own code, never read from external data.
-    // Throwing cannot deliver a duplicate, because it delivers nothing at all. This is
-    // not the same fail direction as the doubt paths above: those suppress, this
-    // throws.
     expect(SUPPRESSION_POLICIES.get(99)).toBeUndefined();
     expect(() => suppressionDecision(resolvedRow(null), 99)).toThrow(/version/i);
   });
@@ -149,14 +117,11 @@ describe("suppressionDecision — SUPPRESSION_POLICIES.get(1) is a standing guar
       },
     ];
 
-    // Non-vacuity: all six named `ResolvedLedgerState`/`SuppressionDecision` states are
-    // actually enumerated above, not a subset standing in for "every state".
     expect(cases.length).toBe(6);
 
     for (const { state, expected } of cases) {
       expect(policyV1!(state)).toEqual(expected);
-      // `suppressionDecision(state, 1)` must dispatch to the exact same function
-      // `.get` returns, not a parallel, possibly-drifting copy.
+
       expect(suppressionDecision(state, 1)).toEqual(expected);
     }
   });
@@ -169,9 +134,6 @@ describe("suppressionDecision — purity (no clock, no I/O)", () => {
     const first = suppressionDecision(state, 1);
     const second = suppressionDecision(state, 1);
 
-    // A frozen literal state, called twice, must produce byte-identical decisions. A
-    // policy that consulted a clock or performed I/O could not make this guarantee
-    // across two calls with nothing else changing.
     expect(first).toEqual(second);
     expect(first).toEqual({ decision: "suppress", reason: "already_delivered" });
   });

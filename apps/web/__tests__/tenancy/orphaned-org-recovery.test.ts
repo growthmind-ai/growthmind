@@ -1,19 +1,3 @@
-// regression: `ensureOrganization` must be idempotent against the orphaned-org state.
-// An organization exists under the user's deterministic slug (`ws-<userId>`) but the
-// user holds NO membership row in it.
-//
-// This is not hypothetical. Better Auth's organization plugin is mounted in
-// `apps/web/lib/auth.ts` with default config, which exposes member removal and
-// self-leave under `/api/auth/organization/*`. Either action leaves exactly this state
-// behind.
-//
-// Before the fix, the unique-violation branch re-read only *membership*, found none,
-// and threw. Because the slug is derived from the user id, every retry collided
-// identically, and because `/`, `/sign-in`, and `/sign-up` all resolve tenant context,
-// the user got a 500 on every page, including the one they would have signed out from.
-// A permanently bricked account with no recovery path.
-//
-// Found by the security audit.
 import { randomUUID } from "node:crypto";
 
 import { ensureOrganization, schema } from "@growthmind/db";
@@ -37,7 +21,6 @@ describe("ensureOrganization recovers an organization whose membership row is mi
     const userId = `user-${randomUUID()}`;
     const createdAt = new Date();
 
-    // The user must exist: `member.userId` is a foreign key.
     await handle.db.insert(schema.user).values({
       id: userId,
       name: "Grace Hopper",
@@ -47,8 +30,6 @@ describe("ensureOrganization recovers an organization whose membership row is mi
       updatedAt: createdAt,
     });
 
-    // The orphaned state: the org holds the user's deterministic slug, but no
-    // membership row links them. Exactly what removal or self-leave leaves.
     const organizationId = `org-${randomUUID()}`;
     await handle.db.insert(schema.organization).values({
       id: organizationId,
@@ -59,11 +40,8 @@ describe("ensureOrganization recovers an organization whose membership row is mi
 
     expect(await readMembershipsForUser(handle.db, userId)).toHaveLength(0);
 
-    // Previously threw "unique-slug conflict … but no membership found on re-read"
-    // here, permanently.
     const result = await ensureOrganization(handle.db, { id: userId, name: "Grace Hopper" });
 
-    // Recovered into the existing org, not a second one under a new id.
     expect(result.organizationId).toBe(organizationId);
 
     const memberships = await readMembershipsForUser(handle.db, userId);

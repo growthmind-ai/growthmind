@@ -6,9 +6,7 @@ import { LANDING_SETTLED_LINE, SET_UP_CTA_LABEL } from "@growthmind/shared";
 
 import { SignOutButton } from "../components/landing/sign-out-button";
 import { WorkspaceName } from "../components/landing/workspace-name";
-// Mantine link/button primitives that are safe to compose from a SERVER component.
-// `component={Link}` written inline here passes a function across the server→client
-// boundary and 500s the route — see the header on Links.tsx.
+
 import { AnchorLink, ButtonLink } from "../components/ui/Links";
 import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { tapTargetStyle } from "../components/ui/tap-target";
@@ -16,10 +14,6 @@ import { getDb } from "../lib/db";
 import { ROUTES } from "../lib/routes";
 import { getTenantContext } from "../lib/tenant";
 
-// Server component by convention. Client logic lives in separate "use client"
-// components (see agents.md). This is the authenticated workspace landing: a signed-out
-// visitor is redirected to `/sign-in` before anything renders, so there is no client
-// loading flash and no separate "no data" state. The landing IS the empty state.
 export default async function HomePage() {
   const tenantContext = await getTenantContext();
 
@@ -27,9 +21,6 @@ export default async function HomePage() {
     redirect(ROUTES.signIn);
   }
 
-  // Per-user, never per-org (O-008 AD-17): a teammate who set nothing up still
-  // gets their own first run, which is the only place this release lets them
-  // read the workspace's connection state and disconnect it.
   const dismissed = await createFirstRunRepo(getDb(), tenantContext).isDismissed(
     tenantContext.userId,
   );

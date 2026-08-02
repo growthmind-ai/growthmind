@@ -4,14 +4,8 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getPostHogClient } from "@/lib/posthog-server";
 
-// Always evaluated at request time. The whole point is a live probe.
 export const dynamic = "force-dynamic";
 
-/**
- * Liveness for humans, compose healthchecks, and CI. Reports degraded rather than
- * throwing when Postgres is unreachable, so the difference between "app down" and
- * "database down" is visible from the outside.
- */
 export async function GET() {
   try {
     await ping(getDb());

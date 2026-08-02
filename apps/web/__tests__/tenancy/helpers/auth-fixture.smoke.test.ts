@@ -1,14 +1,3 @@
-// Smoke test proving apps/web/__tests__/tenancy/helpers/auth-fixture.ts works end to
-// end: sign up an owner, create their organization, add a second user as a member via
-// Better Auth's real `addMember` API (the real product path), and assert both
-// memberships are readable back from the db.
-//
-// `ensureOrganization` is still an unimplemented Wave 0 stub, so this test creates the
-// organization explicitly via `createTestOrganization` rather than depending on it. Org
-// auto-creation itself is proven later by `signup-org.test.ts` against the real hook,
-// once it exists.
-//
-// This test must pass. It proves the shared fixture, not a production contract.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {

@@ -1,34 +1,20 @@
-// Pure renderers (file 12). Plain-English bar throughout: every count carries its
-// denominator; "p50"/"p90" appear only alongside their plain-English equivalents.
-// Renderers distinguish "0 of N retrieved", "leg failed", and "leg not run".
-
 import { computeStats } from "./stats";
 import type { LegResult, SignalType, StatsResult, TrialRecord } from "./types";
 
-/** Plain-English display names for the three signal legs. */
 const SIGNAL_LABELS: Record<SignalType, string> = {
   "custom-event": "custom events",
   exception: "exceptions",
   recording: "recordings",
 };
 
-/** Formats milliseconds as seconds to one decimal, e.g. 3200 → "3.2s". */
 function seconds(ms: number): string {
   return `${(ms / 1_000).toFixed(1)}s`;
 }
 
-/**
- * The timeout cap the leg's trials ran under, read off the first trial's
- * recorded poll params. Undefined when the leg has no trials.
- */
 function legTimeoutMs(leg: LegResult): number | undefined {
   return leg.trials[0]?.pollParams.timeoutMs;
 }
 
-/**
- * One per-trial progress line. The cli's "loading state" during long runs, e.g. trial
- * index, outcome, and elapsed ms.
- */
 export function renderTrialProgressLine(record: TrialRecord): string {
   const label = SIGNAL_LABELS[record.signalType];
   const trial = `trial ${record.trialIndex + 1}`;
@@ -51,12 +37,6 @@ export function renderTrialProgressLine(record: TrialRecord): string {
   }
 }
 
-/**
- * verdict line, e.g. "custom events: retrievable in 3.2s median across 20 trials
- * (worst: 8.1s, 2 timed out at 120s)". For failed / not-run legs it says so explicitly
- * instead of rendering numbers; a completed leg with zero retrieved trials reports "0
- * of N" from the leg's own records.
- */
 export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   const label = SIGNAL_LABELS[leg.signalType];
 
@@ -70,8 +50,6 @@ export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   }
 
   if (stats.kind === "no-data") {
-    // Completed leg, zero retrieved: counts come from the leg's own records, never from
-    // the no-data marker.
     const attempted = leg.trials.length;
     const timeoutMs = legTimeoutMs(leg);
     const cap = timeoutMs !== undefined ? ` at the ${seconds(timeoutMs)} timeout` : "";
@@ -91,11 +69,6 @@ export function renderVerdictLine(leg: LegResult, stats: StatsResult): string {
   return `${label}: retrievable in ${seconds(stats.p50)} median across ${stats.n} trials (${worstParts.join(", ")})`;
 }
 
-/**
- * summary table across all legs. Values are recomputed from each leg's own trial
- * records via the stats helper, so the table can never drift from the persisted JSON
- * (report.test.ts asserts the round-trip).
- */
 export function renderSummaryTable(legs: readonly LegResult[]): string {
   const header = [
     "signal          p50 (median)  p90     worst   trials  timed out  errored",
@@ -131,7 +104,6 @@ export function renderSummaryTable(legs: readonly LegResult[]): string {
   return [...header, ...rows].join("\n");
 }
 
-/** One leg's markdown section for the decision-doc results block. */
 function renderLegDocSection(leg: LegResult): string {
   const label = SIGNAL_LABELS[leg.signalType];
   const lines = [`### ${label}`, ""];
@@ -171,13 +143,6 @@ function renderLegDocSection(leg: LegResult): string {
   return lines.join("\n");
 }
 
-/**
- * The paste-ready markdown results block for
- * docs/decisions/0001-posthog-retrieval-latency.md: per-leg p50/p90/max with
- * plain-English equivalents and every count carrying its denominator. Run date and host
- * region are left as fill-in slots. This renderer sees only leg results, and the run
- * file carries a region string only (never keys, never the project ID).
- */
 export function renderDecisionDocBlock(legs: readonly LegResult[]): string {
   const sections = legs.map((leg) => renderLegDocSection(leg));
 

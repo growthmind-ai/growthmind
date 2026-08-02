@@ -1,24 +1,3 @@
-// O-008 Wave 0e — shared fixtures for the two delivery suites
-// (`delivery-composition.test.ts`, task 0e.3, and
-// `delivery-wire-end-to-end.test.ts`, task 0e.4).
-//
-// WHY A NEW FILE RATHER THAN AN EXTENSION OF `wire-fixtures.ts`. That file is
-// O-003 Wave 0b's, and its own header states the rule it was written under:
-// "a lane that reaches into another lane's helper file re-couples them". Its
-// org/project/connection seeders ARE reused below — they are this package's
-// established way to get a tenant into a `createTestDb()` — but everything
-// O-008 adds lives here, so the O-003 lane's file is not edited by a later
-// sprint's wave. ADD §5 grants Wave 0 "new files only" under `worker/__tests__/`.
-//
-// WHY THE TWO SUITES SHARE THIS RATHER THAN EACH CARRYING A COPY. Both seed a
-// `slack_connections` row that does not exist on this tree, both build the
-// deps shape AD-13 changes, and both need a recording poster. Two private
-// copies of that is the D11 duplication `module-under-construction.ts`'s header
-// exists to prevent, one package over.
-//
-// THE REPOSITORY IS PUBLIC. Every token, channel id and email below is an
-// obviously-fake placeholder. Nothing here is or resembles real credential
-// material.
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
@@ -49,33 +28,8 @@ import type {
   DeliveryLogger,
 } from "../../src/tasks/delivery-tick";
 
-// ===========================================================================
-// THE CONTRACT MIRROR — AD-13, copied verbatim from the ADD's own TypeScript
-// ===========================================================================
-
-/** ADD AD-13, line 422 — copied verbatim. */
 export type MirrorDeliveryPosterFor = (ctx: TenantContext) => Promise<DeliveryPoster | null>;
 
-/**
- * ADD AD-13, lines 424-430 — copied verbatim.
- *
- * `poster: DeliveryPoster` BECOMES `posterFor: DeliveryPosterFor`, and that is
- * the whole decision. Correction C-C: `createSlackDeliveryPoster` binds ONE
- * workspace's bearer token AT CONSTRUCTION, and `PostRequest` carries
- * `channelId`, `blocks`, `fallbackText` and NO ORGANIZATION — so one poster
- * instance can serve exactly one org's token while `runDeliveryTick` iterates
- * lanes across every org.
- *
- * THE REJECTED ALTERNATIVE IS A D7 HAZARD BY CONSTRUCTION: a dispatching poster
- * mapping `channelId` → org would key a CREDENTIAL LOOKUP on a value that
- * TRAVELS WITH THE MESSAGE. The credential is resolved from the tenant context,
- * never from anything the message carries.
- *
- * Written by explicit enumeration rather than as
- * `Omit<DeliveryTickDeps, "poster"> & {...}`: an `Omit` would silently re-admit
- * a `poster` field somebody re-adds later, and the absence of that field is the
- * contract.
- */
 export interface MirrorDeliveryTickDeps {
   lanes: DeliveryLaneSource;
   deliveriesFor: DeliveriesRepoFor;
@@ -84,38 +38,17 @@ export interface MirrorDeliveryTickDeps {
   logger: DeliveryLogger;
 }
 
-/** AD-14, line 451 — the composition's own shape once the wire lands. */
 export interface MirrorDeliveryComposition {
   lanes: DeliveryLaneSource;
   posterFor: MirrorDeliveryPosterFor;
 }
 
-/** AD-14, line 446 — `resolveDeliveryComposition` becomes `async`. */
 export type MirrorResolveDeliveryComposition = () => Promise<MirrorDeliveryComposition | null>;
 
-/** AD-14, line 451 — `makePosterFor(db, env)`. The `env` parameter is what
- *  `resolveCredentialKey` needs in order to open the stored envelope (Wave 5). */
 export type MirrorMakePosterFor = (db: unknown, env: unknown) => MirrorDeliveryPosterFor;
 
-// ===========================================================================
-// Reaching a table a later wave creates
-// ===========================================================================
-
-/** The parameter type `db.insert()` accepts, derived from the shipped handle
- *  rather than imported — `worker` does not depend on `drizzle-orm` directly
- *  (see `wire-fixtures.ts`'s header) and adding it for a test would be a real
- *  dependency for a fake reason. */
 export type AnyTable = Parameters<TestDb["insert"]>[0];
 
-/**
- * Resolve a drizzle table a LATER WAVE adds to the schema barrel, converting
- * its absence into the same named diagnostic every other Wave 0e red carries.
- *
- * Without this, seeding an absent table is either a TS2339 on
- * `schema.slackConnections` (which takes the typecheck gate down) or a raw
- * Postgres `relation "slack_connections" does not exist` (which reads as a
- * broken migration rather than an unwritten one).
- */
 export function tableUnderConstruction(name: string, ownedBy: string): AnyTable {
   const table = (schema as unknown as Record<string, unknown>)[name];
 
@@ -127,42 +60,12 @@ export function tableUnderConstruction(name: string, ownedBy: string): AnyTable 
   return table as AnyTable;
 }
 
-// ===========================================================================
-// Obviously-fake credential material
-// ===========================================================================
-
-/**
- * A deterministic 32-byte AES key.
- *
- * NOT REAL KEY MATERIAL, and it never can be: this repository is public. The
- * bytes are `0..31` rather than all-zero so an assertion that the key id is not
- * a prefix of the key material is testing something — an all-zero key encodes
- * to a long run of `A`s in base64, which makes any near-miss look like a pass.
- */
 export const SLACK_TEST_KEY: CredentialKey = {
   bytes: Uint8Array.from({ length: 32 }, (_, index) => index),
 };
 
-/** Shaped like a Slack bot token so a leak would be recognisable in a diff, and
- *  obviously invalid so it can never authenticate anywhere. */
 export const FAKE_BOT_TOKEN = "xoxb-fixture-only-never-a-real-token";
 
-/**
- * A `ServerEnv` whose `GROWTHMIND_ENCRYPTION_KEY` IS `SLACK_TEST_KEY`, derived
- * from those same 32 bytes rather than pasted beside them.
- *
- * `makePosterFor(db, env)` (../src/index.ts, AD-14) resolves its key through
- * the shipped `resolveCredentialKey(env)` gate — inherited, never
- * re-implemented — so a suite that wants a poster resolved against a seeded
- * envelope must hand it an environment carrying the key that envelope was
- * sealed under. Deriving it here means the sealing key and the configured key
- * cannot drift into disagreeing, which would show up as a `posterFor` that
- * silently answers `null` and reads as "this organization has no connection".
- *
- * `NODE_ENV=test`, so `resolveCredentialKey` takes the non-production branch;
- * the production insecure-default refusal is its own suite's subject, not this
- * one's.
- */
 export function slackTestServerEnv(): ServerEnv {
   return parseServerEnv({
     NODE_ENV: "test",
@@ -172,10 +75,6 @@ export function slackTestServerEnv(): ServerEnv {
   });
 }
 
-/**
- * AD-20: the AAD's second argument is the LITERAL `"slack"`, never a project id
- * — this connection is ORG-SCOPED and has no project.
- */
 export function slackEnvelopeFor(organizationId: string): { ciphertext: string; keyId: string } {
   return {
     ciphertext: encryptSecret(
@@ -187,27 +86,14 @@ export function slackEnvelopeFor(organizationId: string): { ciphertext: string; 
   };
 }
 
-// ===========================================================================
-// Seeders
-// ===========================================================================
-
 export interface SeedSlackConnectionParams {
   organizationId: string;
-  /** FR-O13: the ONE delivery address, read off this row and never off a
-   *  payload. Distinct per org in every multi-org fixture, so "org A's finding
-   *  reached org B's channel" is a detectable event rather than an invisible
-   *  one. */
+
   channelId: string;
   isActive?: boolean;
   connectedAt?: Date;
 }
 
-/**
- * One org-scoped Slack connection. ADD Wave 2 creates the table; the column
- * list below is derived from AD-8 and AD-20 and is FLAGGED as a derivation —
- * Wave 2 may name a column differently, in which case this seeder is the one
- * place that changes for both suites.
- */
 export async function seedSlackConnection(
   db: TestDb,
   params: SeedSlackConnectionParams,
@@ -238,23 +124,8 @@ export interface SeedFindingParams {
   at: Date;
 }
 
-/** The seeded finding's denominator: the kept sessions every count below rests
- *  on. One number, used by both counts and by the basis, because
- *  `measuredCount` refuses a denominator its own basis does not account for and
- *  the Slack renderer refuses two counts measured over different bases. */
 const SEEDED_KEPT_SESSIONS = 28;
 
-/**
- * The two counts a `funnel_dropoff` finding carries, IN EMISSION ORDER —
- * `[reached_surface, left_without_continuing]`, exactly as `COUNT_ROLES`
- * declares them and exactly as `toCountRows` persists them.
- *
- * Written as full `MeasuredCountRow`s (`timeframe` AND `basis`, no `role`)
- * because that is the shape `findings.persist` parses on the way in and the
- * delivery lane source rebuilds on the way out. A count without them is not a
- * count this pipeline could ever have written — it is refused at the wire, and
- * a fixture that cannot be persisted proves nothing about delivery.
- */
 function seededCounts(at: Date): PersistFindingInput["counts"] {
   const timeframe = { start: new Date(at.getTime() - 7 * 24 * 60 * 60 * 1_000), end: at };
   const basis = { totalInWindow: SEEDED_KEPT_SESSIONS, kept: SEEDED_KEPT_SESSIONS, setAside: [] };
@@ -271,16 +142,6 @@ function seededCounts(at: Date): PersistFindingInput["counts"] {
   ];
 }
 
-/**
- * A persisted finding, written through the REAL repositories against real SQL.
- *
- * Deliberately NOT a hand-built insert: `findings.run_id` is a RESTRICT FK onto
- * `analysis_runs`, so a hand-written row either violates the constraint or
- * quietly invents a run that never existed. Going through `open()` and
- * `persist()` means the fixture is a row the pipeline could actually have
- * produced — which is the difference between proving the delivery wire and
- * proving this file's ability to write SQL.
- */
 export async function seedFinding(
   db: TestDb,
   ctx: TenantContext,
@@ -303,13 +164,7 @@ export async function seedFinding(
     runId: opened.run.id,
     signature,
     signatureVersion: 1,
-    // `model_rendered`, and NOT a floor member, because `context` is what these
-    // suites steer. The Slack renderer only carries a finding's own prose on
-    // the model arm — every `floor_*` member is an ABSENCE STATEMENT ABOUT THE
-    // EXPLANATION, and the renderer supplies its own fixed sentence for it. A
-    // fixture seeding an email address into `context` under a floor source
-    // would render a message that never contained the address, and the
-    // residual-PII row would pass for the wrong reason: nothing was scanned.
+
     summarySource: "model_rendered",
     headline: params.headline ?? "The payment step is losing sessions",
     context: params.context ?? ["Sessions reached the payment step and left without finishing."],
@@ -322,9 +177,7 @@ export async function seedFinding(
     windowEnd: params.at,
     evidenceShape: `{"detector":"funnel_dropoff","surface":"${surface}","v":1}`,
     evidenceShapeVersion: 1,
-    // Non-null BECAUSE `summary_source` is `model_rendered`: the column's rule
-    // is "null iff no call was attempted", so a model-written summary with a
-    // null model id is a row this pipeline can never produce.
+
     resolvedModelId: "fixture-model-v1",
     tokensIn: null,
     tokensOut: null,
@@ -350,24 +203,10 @@ export async function seedFinding(
   return { findingId: row.id, signature };
 }
 
-// ===========================================================================
-// The recording poster and logger
-// ===========================================================================
-
 export interface RecordingPoster extends DeliveryPoster {
-  /** Every request this poster was handed, IN ORDER. The channel id on each is
-   *  what makes "org A's finding never reached org B's channel" checkable. */
   readonly posted: PostRequest[];
 }
 
-/**
- * A poster that records what it was asked to send.
- *
- * NEVER THROWS BY DEFAULT — the port is contracted never to throw, so a fake
- * that did would be testing a contract violation rather than the handler. The
- * `fails` option returns the `ok: false` arm instead, which is the shape the
- * real adapter uses and the one D8's row needs.
- */
 export function createRecordingPoster(
   options: {
     readonly fails?: { readonly code: PostFailureCode; readonly message: string };
@@ -403,8 +242,7 @@ export function createRecordingPoster(
 export interface RecordingDeliveryLogger extends DeliveryLogger {
   readonly infos: string[];
   readonly errors: string[];
-  /** Every line, so a "was this said anywhere" assertion does not have to guess
-   *  which severity the implementation picked. */
+
   lines(): string[];
 }
 
@@ -424,24 +262,15 @@ export function createRecordingDeliveryLogger(): RecordingDeliveryLogger {
   };
 }
 
-/**
- * A `posterFor` that RECORDS EVERY CONTEXT IT WAS ASKED ABOUT.
- *
- * The recorded contexts are how AD-13's central claim is checked: the resolver
- * is handed a tenant context and NOTHING ELSE, so there is no channel id, no
- * message and no finding anywhere in its input.
- */
 export interface RecordingPosterFor {
   posterFor: MirrorDeliveryPosterFor;
-  /** Every argument list the resolver was called with. */
+
   readonly calls: readonly unknown[][];
-  /** The poster handed back for one org, so a test can read what it posted. */
+
   posterOf(organizationId: string): RecordingPoster | undefined;
 }
 
 export function createRecordingPosterFor(options: {
-  /** Orgs with a live connection. Any other org resolves `null` — the per-org
-   *  absence path AD-13 introduces, distinct from the installation-wide one. */
   readonly connectedOrgIds: readonly string[];
   readonly posterOptions?: Parameters<typeof createRecordingPoster>[0];
 }): RecordingPosterFor {
