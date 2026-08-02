@@ -25,10 +25,24 @@ Anyone can ship a product now. A coding agent will build whatever you describe. 
 
 Growthmind is an open-source growth engine that closes that gap. It watches real people use your product, finds where they get stuck, and tells you. One finding at a time, in Slack, with the session recording and the numbers attached. Then it finishes the job: the fix gets specced for the coding agent you already use, verified once it ships, measured against a criterion set in advance, and closed with a straight answer, **keep, kill, or inconclusive**.
 
-> **Status: pre-release.** What runs today is a scaffold. Postgres, the app, the
-> worker, and a health endpoint. The loop described below is specified in
-> [`docs/`](docs/) and being implemented in the open; it does not work yet. This
-> README describes what Growthmind is for, not what you can run this afternoon.
+> **Status: pre-release, and the loop below does not close yet.**
+>
+> **Runs today.** Signup into an org, a five-step first run, PostHog and Slack
+> connected and stored encrypted. The worker polls sessions, runs two detectors
+> (funnel drop-off and error events) through an evidence gate, persists findings
+> behind a signature ledger that never repeats one and remembers a dismissal,
+> renders a summary — with a model when a key is configured, and a deterministic
+> floor when not — and posts to Slack on a schedule.
+>
+> **Does not run.** `packages/sdk-js` is a stub, so there is no first-party
+> capture, no auto-derived events, and no masking — everything above depends on
+> your PostHog. There is no ingest endpoint. Experiments, verification and
+> verdicts are specified and unbuilt. The MCP surface authenticates and serves
+> its three read tools, but is wired to a placeholder read port and answers empty
+> on every installation, including ones with findings.
+>
+> This README describes what Growthmind is for. The two lists above are what you
+> can run this afternoon.
 
 ## What a finding looks like
 
@@ -79,14 +93,20 @@ your coding agent (MCP) ─┼─▶  Growthmind  ─▶  one Slack message at a
 your analytics          ─┘
 ```
 
-The machine surfaces are specified, not yet shipped. No MCP server or skills
-directory exists in this repository today ([architecture.md §7](docs/architecture.md#7-machine-surfaces)).
-As designed: five MCP tools face your coding agent. Four reads and one write,
-and the write (`report_shipped`) records a claim that only independent
-verification can turn into a fact. A set of open skills (`growth-context`,
-`growth-events`, `growth-experiments`, `growth-simulations`) teaches your agent
-to write instrumentation and simulations as code, in your repo, reviewed like
-anything else you ship.
+An MCP server exists and speaks the wire protocol
+([`apps/web/app/api/mcp/route.ts`](apps/web/app/api/mcp/route.ts)): a real client
+handshakes, an API key is checked, and three read tools are advertised —
+`list_open_fixes`, `get_fix`, `get_finding`. It is not useful yet. Those tools
+are wired to a placeholder read port and return empty on every installation,
+so an agent that connects sees nothing even where findings exist.
+
+The rest is designed, not shipped ([architecture.md §7](docs/architecture.md#7-machine-surfaces)):
+five tools in total, four reads and one write, where the write
+(`report_shipped`) records a claim that only independent verification can turn
+into a fact. A set of open skills (`growth-context`, `growth-events`,
+`growth-experiments`, `growth-simulations`) teaches your agent to write
+instrumentation and simulations as code, in your repo, reviewed like anything
+else you ship. No skills directory exists here today.
 
 ## Run it
 
@@ -130,13 +150,20 @@ the open. The [product decisions](docs/product-decisions.md), the
 [architecture](docs/architecture.md) that enforces them, and the
 [stack rationale](docs/stack.md) are settled and published in [`docs/`](docs/).
 The full machine-surface contract is still a draft and graduates to `docs/` as
-it is implemented. The implementation is landing now. See the scaffold note at
-the top for what actually runs today. Watch or star the repo to follow along,
-and open an issue if you want to argue with a decision. That's what publishing
-them is for.
+it is implemented. The implementation is landing now. The status note at the top
+lists what runs and what does not, in both directions. Watch or star the repo to
+follow along, and open an issue if you want to argue with a decision. That's
+what publishing them is for.
 
-- **Cloud**: findings free forever, experiments from $20/mo, [growthmind.ai/pricing](https://growthmind.ai/pricing)
-- **Self-hosted**: free, no limits, your session data never leaves your infrastructure. You bring model keys, Postgres, and somewhere to run a container. It sends us nothing. No usage counters, no version pings, no opt-in switch to find. [How to verify that yourself](docs/telemetry.md).
+- **Self-hosted**: free, no limits, and not a lesser tier. Every feature, no
+  ceilings, your session data never leaves your infrastructure. You bring model
+  keys, Postgres, and somewhere to run a container. It sends us nothing. No
+  usage counters, no version pings, no opt-in switch to find.
+  [How to verify that yourself](docs/telemetry.md).
+- **Cloud**: the same thing, run for you. Findings and one active experiment are
+  free forever; $20/mo is what running it for you costs beyond that. You are
+  paying for the hosting, never for a feature we withheld,
+  [growthmind.ai/pricing](https://growthmind.ai/pricing)
 
 ## License
 
