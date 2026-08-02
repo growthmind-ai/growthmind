@@ -468,9 +468,31 @@ export const SLACK_TEST_SUCCESS_TEMPLATE =
  */
 export const SLACK_MUST_RECONNECT = "Someone has to reconnect Slack — trying again will not help.";
 
-/** The same shape for a different job, done by a different person. */
-export const SLACK_MUST_PICK_ANOTHER_CHANNEL =
-  "Someone has to pick another channel — trying again will not help.";
+/**
+ * THE OPPOSITE ADVICE TO ITS NEIGHBOUR, AND DELIBERATELY SO.
+ *
+ * This clause used to read "Someone has to pick another channel — trying again
+ * will not help." That was true while a channel could be re-picked. It cannot:
+ * `attachChannel` fills an empty address and never moves a chosen one, because
+ * the delivery ledger's identity carries the channel and re-pointing forks every
+ * delivery an installation has ever recorded
+ * (`packages/db/src/repositories/slack-connections.repo.ts`). The address is
+ * immovable, and this code is only reachable AFTER it is stamped — so the old
+ * sentence sent a founder looking for a control that does not exist, and told
+ * them not to do the one thing that works.
+ *
+ * WHAT ACTUALLY FIXES IT: the bot is not in the channel they chose. Inviting it
+ * over in Slack and pressing send again is the whole repair, and the send button
+ * is already on the screen in this state — so unlike `SLACK_MUST_RECONNECT`,
+ * which withholds a retry that can never succeed, this one points straight back
+ * at the control the founder is already looking at.
+ *
+ * It names the SEND button rather than "Try again", because `retryable` stays
+ * false here (this failure does not fix ITSELF) and no Try again is rendered.
+ * A clause naming a button that is not there is the same defect in a new place.
+ */
+export const SLACK_MUST_INVITE_THE_BOT =
+  "The bot has to be invited to that channel before it can post there. Invite it in Slack, then send the test message again.";
 
 /**
  * Derived from the persisted ABSENCE of a connection, never from a flag, so it
@@ -987,7 +1009,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   TRY_AGAIN_LABEL,
   SLACK_TEST_SUCCESS_TEMPLATE,
   SLACK_MUST_RECONNECT,
-  SLACK_MUST_PICK_ANOTHER_CHANNEL,
+  SLACK_MUST_INVITE_THE_BOT,
   SLACK_SKIPPED_NOTICE,
 
   STEP_AGENT_TITLE,

@@ -46,7 +46,7 @@ import { POST_FAILURE_MESSAGES } from "../delivery/messages";
 import type { PostFailureCode, PostResult } from "../delivery/poster";
 import { isRetryablePostFailure } from "../delivery/poster";
 import {
-  SLACK_MUST_PICK_ANOTHER_CHANNEL,
+  SLACK_MUST_INVITE_THE_BOT,
   SLACK_MUST_RECONNECT,
   SLACK_TEST_SUCCESS_TEMPLATE,
 } from "./messages";
@@ -84,10 +84,20 @@ const ONBOARDING_CLAUSE: Readonly<Record<PostFailureCode, string | null>> = {
   call_failed: null,
   rejected: null,
   not_authorised: SLACK_MUST_RECONNECT,
-  // A DIFFERENT JOB FOR A DIFFERENT PERSON. "Reconnect Slack" and "pick another
-  // channel" are not interchangeable, and a founder told the wrong one goes and
-  // does work that changes nothing.
-  channel_unavailable: SLACK_MUST_PICK_ANOTHER_CHANNEL,
+  // A DIFFERENT JOB, AND IT POINTS THE OPPOSITE WAY.
+  //
+  // "Reconnect Slack" and "invite the bot" are not interchangeable, and a
+  // founder told the wrong one goes and does work that changes nothing — but
+  // the difference that matters here is the DIRECTION. `not_authorised`
+  // withholds a retry that can never succeed; `channel_unavailable` on a
+  // stamped address is fixed by a step over in Slack followed by exactly the
+  // press this clause used to forbid.
+  //
+  // The address is stamped by the time this code is reachable, and
+  // `attachChannel` never moves a chosen one, so the clause that once said
+  // "pick another channel — trying again will not help" named an act the
+  // product does not serve and denied the one that works.
+  channel_unavailable: SLACK_MUST_INVITE_THE_BOT,
 };
 
 function failureSentence(code: PostFailureCode): string {
@@ -130,6 +140,18 @@ export function describeTestPostOutcome(input: TestPostInput): TestPostOutcome {
     // DERIVED, NEVER RESTATED. The shipped function is the only opinion about
     // which failures fix themselves, so a code added to the enum later inherits
     // the right answer here instead of falling through to a local default.
+    //
+    // AND `channel_unavailable` STAYS FALSE, EVEN THOUGH ITS CLAUSE NOW ENDS IN
+    // "send the test message again". The two do not disagree. This flag answers
+    // "does pressing again, right now, with nothing changed, fix it?" — and it
+    // does not: a person has to invite the bot over in Slack first. What the
+    // flag gates is the SECOND button; the send button is on the card in every
+    // unsettled state and, on a stamped address, does nothing but re-post. A
+    // `true` here would put a "Try again" beside it calling the same post twice
+    // over, which is a duplicate control (D3), not a next action. Flipping the
+    // shipped derivation instead would be worse still: the delivery lane would
+    // retry a terminal failure forever, which is the one thing four codes were
+    // paid for to prevent.
     retryable: isRetryablePostFailure(input.result.code),
     marksStepDone: false,
   };

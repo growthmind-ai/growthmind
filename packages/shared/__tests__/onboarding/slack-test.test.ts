@@ -88,22 +88,67 @@ describe("describeTestPostOutcome — FR-O11, UX Flow D", () => {
   });
 
   // ---------------------------------------------------------------- §9 row 2
-  test("a channel_unavailable failure says a human must act and is not retryable", async () => {
+  //
+  // ###########################################################################
+  // # THE CLAUSE THIS ROW PINS WAS REPLACED, AND THE REASON IS THE POINT.
+  // #
+  // # It used to be "Someone has to pick another channel — trying again will
+  // # not help.", and this row asserted it. That was correct while a channel
+  // # could be re-picked. `attachChannel` fills an empty address and never
+  // # moves a chosen one — the delivery ledger's identity carries the channel,
+  // # so re-pointing forks every delivery an installation has ever recorded
+  // # (`packages/db/src/repositories/slack-connections.repo.ts`) — and this
+  // # code is only reachable AFTER the address is stamped.
+  // #
+  // # So the sentence named an act the product does not serve, and "trying
+  // # again will not help" was the exact inverse of the truth: the bot has not
+  // # been invited to the chosen channel, and inviting it and pressing send is
+  // # what fixes it. The send button is already on the card in this state.
+  // #
+  // # A test asserting the old sentence would now be pinning the lie in place,
+  // # which is why it is replaced here rather than left to fail.
+  // ###########################################################################
+  test("a channel_unavailable failure names inviting the bot and sending again", async () => {
     const outcome = await describeFailure("channel_unavailable");
     const notAuthorised = await describeFailure("not_authorised");
 
-    expect(outcome.retryable).toBe(false);
     expect(outcome.marksStepDone).toBe(false);
     expect(outcome.sentence).toContain(POST_FAILURE_MESSAGES.channel_unavailable);
 
-    // DISTINCT FROM THE ROW ABOVE. "Reconnect Slack" and "pick another
-    // channel" are two different jobs for two different people, and a founder
-    // told the wrong one goes and does work that changes nothing.
+    // THE WORKING NEXT ACTION, NAMED. Both halves: the thing to do over in
+    // Slack, and the press that follows it here.
+    expect(outcome.sentence).toContain(
+      "The bot has to be invited to that channel before it can post there. Invite it in Slack, then send the test message again.",
+    );
+
+    // AND THE OLD ADVICE IS GONE FROM THE ONBOARDING CLAUSE. Asserted as the
+    // clause rather than over the whole rendered sentence deliberately: the
+    // shipped `POST_FAILURE_MESSAGES.channel_unavailable` still carries
+    // "Someone will need to pick another one", B3 forbids this module from
+    // re-wording it, and that half is the delivery lane's own decision to make.
+    // Flagged, not smuggled — a scan over the whole sentence here would either
+    // fail on the delivery lane's copy or quietly license changing it.
+    const clause = outcome.sentence.slice(POST_FAILURE_MESSAGES.channel_unavailable.length);
+    expect(clause).not.toContain("pick another");
+    expect(clause).not.toContain("trying again will not help");
+
+    // DISTINCT FROM THE ROW ABOVE, and now distinct in DIRECTION as well as in
+    // wording: one withholds a press that can never work, the other asks for
+    // it. A founder told the wrong one goes and does work that changes nothing.
     expect(outcome.sentence).not.toBe(notAuthorised.sentence);
 
+    // RETRYABLE STAYS FALSE, AND IT DOES NOT CONTRADICT THE COPY. The flag
+    // answers "does pressing again, unchanged, fix it?" — no, a person has to
+    // invite the bot first. What it gates is the SECOND button; the send button
+    // renders in every unsettled state and, on a stamped address, does nothing
+    // but re-post, so a `true` here would sit a "Try again" beside it firing
+    // the same post (D3). The derivation is the shipped one either way.
+    expect(outcome.retryable).toBe(false);
+    expect(outcome.retryable).toBe(isRetryablePostFailure("channel_unavailable"));
+
     // UX Flow D requires the same shape as row 13 — the shipped sentence PLUS
-    // the "a human has to act" clause — so the rendered sentence is strictly
-    // more than what the delivery lane already says.
+    // the onboarding clause — so the rendered sentence is strictly more than
+    // what the delivery lane already says.
     expect(outcome.sentence.length).toBeGreaterThan(
       POST_FAILURE_MESSAGES.channel_unavailable.length,
     );
