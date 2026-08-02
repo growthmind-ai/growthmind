@@ -159,7 +159,9 @@ export const SETUP_BLOCKERS: readonly SetupBlocker[] = Object.freeze(
 export function nextBlocker(facts: SetupFacts): SetupBlocker | null {
   const link = CHAIN.find((candidate) => !candidate.met(facts));
 
-  return link === undefined ? null : { id: link.id, heading: link.heading, sentence: link.sentence };
+  return link === undefined
+    ? null
+    : { id: link.id, heading: link.heading, sentence: link.sentence };
 }
 
 /**
