@@ -20,6 +20,7 @@ import {
   type StepSequenceFacts,
 } from "@growthmind/shared";
 
+import { ButtonLink } from "@/components/ui/Links";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
@@ -359,6 +360,21 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
         {terminal ? (
           <Group gap="sm" wrap="wrap">
+            {/* The closure above says "no Slack channel is connected, connect
+              one" whenever there is nowhere to deliver. Until this, that
+              sentence named an action the product offered nowhere (B-035). */}
+            {current.channelId === null ? (
+              <ButtonLink
+                href={ROUTES.settings}
+                variant="default"
+                className={styles.action}
+                style={tapTargetStyle}
+                w={{ base: "100%", xs: "auto" }}
+              >
+                {ONBOARDING_MESSAGES.settingsTitle}
+              </ButtonLink>
+            ) : null}
+
             {kind === "ended" ? (
               <Button
                 variant="default"

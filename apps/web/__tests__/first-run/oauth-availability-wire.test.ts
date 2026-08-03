@@ -7,12 +7,7 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-import {
-  ONBOARDING_MESSAGES,
-  STEP_DESCRIPTORS,
-  type StepView,
-  type WorkStep,
-} from "@growthmind/shared";
+import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
 import {
   assertUnderConstruction,
@@ -21,7 +16,7 @@ import {
 } from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
 import {
   blankComments,
-  CONNECT_SLACK_FORM,
+  SLACK_CONNECTION,
   fixture,
   fixtureAt,
   FIRST_RUN_COMPONENTS,
@@ -32,55 +27,31 @@ import {
   type ScannedFile,
 } from "./helpers/first-run-source";
 import { readMarkup, type RenderedCard } from "./helpers/rendered-markup";
+import { slackFields, stepCardProps, type SlackCardProps } from "./helpers/slack-card";
 
-const OWNER = "ADD Wave 6, task 6.2 (apps/web/components/first-run/ConnectSlackForm.tsx, AD-6)";
+const OWNER = "ADD Wave 6, task 6.2 (apps/web/components/slack/SlackConnection.tsx, AD-6)";
 
-interface DeliveryCardProps {
-  readonly step: WorkStep;
-  readonly view: StepView;
-  readonly channelId: string | null;
-  readonly slackOAuthAvailable: boolean;
-}
+type DeliveryCardProps = SlackCardProps;
 
 const loadDeliveryCard = (): Promise<ComponentType<DeliveryCardProps>> =>
   loadValueUnderConstruction<ComponentType<DeliveryCardProps>>({
-    modulePath: underConstructionSpecifier("apps/web/components/first-run/ConnectSlackForm"),
-    exportName: "ConnectSlackForm",
+    modulePath: underConstructionSpecifier("apps/web/components/slack/SlackConnection"),
+    exportName: "SlackConnection",
     ownedBy: OWNER,
   });
 
 // Props erase at runtime; today's card IS the false branch, so without this the row greens vacuously.
 function deliveryCardTakesTheFlag(): void {
-  const source = blankComments(readFirstRun(CONNECT_SLACK_FORM).source);
+  const source = blankComments(readFirstRun(SLACK_CONNECTION).source);
 
   assertUnderConstruction(/\bslackOAuthAvailable\b/.test(source), {
     contract:
       "the delivery card takes `slackOAuthAvailable` and branches on it — today it takes " +
-      "`step`, `view` and `channelId` only, so the flag is a wire with one end unattached (AD-6, D11)",
+      "its fields, its settled/interactive flags and `channelId` only, so the flag is a wire " +
+      "with one end unattached (AD-6, D11)",
     ownedBy: OWNER,
   });
 }
-
-function slackStep(): WorkStep {
-  const found = STEP_DESCRIPTORS.find((descriptor) => descriptor.id === "slack");
-
-  if (found === undefined || found.kind !== "work") {
-    throw new Error(
-      "STEP_DESCRIPTORS carries no `work` step `slack`. Step 3 is the delivery step and it has " +
-        "a form; a `coming-next` or missing descriptor here means the sequence changed shape.",
-    );
-  }
-
-  return found;
-}
-
-const ACTIVE_VIEW: StepView = {
-  id: "slack",
-  ordinal: 3,
-  state: "active",
-  open: true,
-  interactive: true,
-};
 
 const FAKE_ROUTER: AppRouterInstance = {
   back: () => {},
@@ -103,12 +74,15 @@ function renderDeliveryCard(
         createElement(
           AppRouterContext.Provider,
           { value: FAKE_ROUTER },
-          createElement(Card, {
-            step: slackStep(),
-            view: ACTIVE_VIEW,
-            channelId: null,
-            slackOAuthAvailable,
-          }),
+          createElement(
+            Card,
+            stepCardProps({
+              channelId: null,
+              slackWorkspaceAttached: false,
+              slackWorkspaceName: null,
+              slackOAuthAvailable,
+            }),
+          ),
         ),
       ),
     ),
@@ -151,7 +125,7 @@ const PLANTED_ENV_CLIENT = fixture(
   `"use client";
 import { Button } from "@mantine/core";
 
-export function ConnectSlackForm() {
+export function SlackConnection() {
   // Reaching for the variable directly, one component deep.
   const available = process.env.SLACK_CLIENT_ID !== undefined;
   const publicId = process.env.NEXT_PUBLIC_SLACK_CLIENT_ID;
@@ -166,7 +140,7 @@ const CLEAN_ENV_CLIENT = fixture(
   `"use client";
 import { Button } from "@mantine/core";
 
-export function ConnectSlackForm({ slackOAuthAvailable }: { slackOAuthAvailable: boolean }) {
+export function SlackConnection({ slackOAuthAvailable }: { slackOAuthAvailable: boolean }) {
   return slackOAuthAvailable ? <Button>Add to Slack</Button> : <Button>Send a test message</Button>;
 }
 `,
@@ -210,9 +184,7 @@ describe("AD-6's delivery-card wire — slackOAuthAvailable, driven from both en
 
     const Card = await loadDeliveryCard();
     const rendered = renderDeliveryCard(Card, false);
-    const step = slackStep();
-
-    for (const field of step.fields) {
+    for (const field of slackFields()) {
       expect(rendered.text).toContain(field.label);
     }
     expect(rendered.controls).toContain(ONBOARDING_MESSAGES.sendTestMessage);
@@ -228,11 +200,9 @@ describe("AD-6's delivery-card wire — slackOAuthAvailable, driven from both en
 
     const Card = await loadDeliveryCard();
     const rendered = renderDeliveryCard(Card, true);
-    const step = slackStep();
-
     expect(named(rendered.controls, ADD_TO_SLACK)).not.toEqual([]);
 
-    for (const field of step.fields) {
+    for (const field of slackFields()) {
       expect(rendered.text).not.toContain(field.label);
     }
 

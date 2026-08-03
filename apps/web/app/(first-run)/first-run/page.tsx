@@ -15,12 +15,12 @@ import {
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
-import { ConnectSlackForm } from "@/components/first-run/ConnectSlackForm";
 import { CounterGrid } from "@/components/first-run/CounterGrid";
 import { FirstRunClient } from "@/components/first-run/FirstRunClient";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { Roadmap } from "@/components/first-run/Roadmap";
 import { StepRow } from "@/components/first-run/StepRow";
+import { SlackConnection } from "@/components/slack/SlackConnection";
 import { getDb } from "@/lib/db";
 import { echoFirstRunStatus, type FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
@@ -52,9 +52,12 @@ function workBody(input: WorkBodyInput): ReactNode {
     // drives it through the real card, and this attribute is what that test is
     // about.
     return (
-      <ConnectSlackForm
-        step={step}
-        view={view}
+      <SlackConnection
+        fields={step.fields}
+        settled={view.state === "done" || view.state === "skipped"}
+        interactive={view.interactive}
+        skippable={step.skippable}
+        skipped={view.state === "skipped"}
         channelId={status.channelId}
         slackWorkspaceAttached={status.slackWorkspaceAttached}
         slackWorkspaceName={status.slackWorkspaceName}
