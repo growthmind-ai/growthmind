@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { createFirstRunRepo, schema } from "@growthmind/db";
-import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { createTestDb, driverQueryError, type TestDb } from "@growthmind/db/testing";
 
 import { MAX_ONBOARDING_PASSES } from "../src/tasks/poll-plan";
 import { runSessionSourcePoll } from "../src/tasks/session-source-poll";
@@ -121,11 +121,14 @@ function recordingTrigger(): RecordedTrigger {
 const FAILED_READ_SQL =
   'select "armed_at", "slack_skipped_at" from "first_run_state" where "organization_id" = $1 and "project_id" = $2';
 
+const DRIVER_MESSAGE = "this project's setup row could not be read";
+
 function dbThatFailsToRead(realDb: TestDb, table: unknown, bound: readonly string[]): TestDb {
   const refuse = (): never => {
-    throw Object.assign(new Error("this project's setup row could not be read"), {
-      query: FAILED_READ_SQL,
-      parameters: [...bound],
+    throw driverQueryError({
+      sql: FAILED_READ_SQL,
+      params: [...bound],
+      driverMessage: DRIVER_MESSAGE,
     });
   };
 
@@ -242,6 +245,17 @@ test("a throwing arm clock read leaves the poll successful on the connect-clock 
   const posthog = quietPostHog();
 
   const bound = [seeded.organizationId, seeded.projectId];
+
+  const thrown = driverQueryError({
+    sql: FAILED_READ_SQL,
+    params: bound,
+    driverMessage: DRIVER_MESSAGE,
+  });
+  expect(thrown.message).toContain(FAILED_READ_SQL);
+  for (const value of bound) {
+    expect(thrown.message).toContain(value);
+  }
+
   const blindDb = dbThatFailsToRead(db, schema.firstRunState, bound);
 
   const summary = await runSessionSourcePoll(
@@ -257,8 +271,10 @@ test("a throwing arm clock read leaves the poll successful on the connect-clock 
 
   const logged = logger.errors.join("\n");
   expect(logged).toContain(seeded.connectionId);
+  expect(logged).toContain(DRIVER_MESSAGE);
   expect(logged).not.toContain(FAILED_READ_SQL);
   expect(logged).not.toContain("select ");
+  expect(logged).not.toContain("Failed query");
   for (const value of bound) {
     expect(logged).not.toContain(value);
   }

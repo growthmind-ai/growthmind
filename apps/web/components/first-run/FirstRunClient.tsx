@@ -8,6 +8,7 @@ import {
   canArm,
   deriveStepStates,
   displayOrdinal,
+  firstRunDeliveryStateSchema,
   isAnalyticsAttached,
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
@@ -20,6 +21,7 @@ import {
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
+import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
 import { resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
@@ -43,6 +45,11 @@ function seedClock(status: FirstRunStatusPayload): number {
   return Math.max(0, ...stamps.map((at) => toStamp(at)?.getTime() ?? 0));
 }
 
+// A rolling deploy serves the shape the OLD instance had, so the delivery state is
+// parsed rather than cast: `DELIVERY_TEMPLATES[undefined]` is a TypeError that takes the
+// whole screen down, and an unreadable answer is worth no claim rather than a crash.
+const deliveryStateOf = firstRunDeliveryStateSchema.catch("none");
+
 function readStatus(body: unknown): FirstRunStatusPayload | null {
   if (typeof body !== "object" || body === null) {
     return null;
@@ -51,7 +58,16 @@ function readStatus(body: unknown): FirstRunStatusPayload | null {
   const record = body as Record<string, unknown>;
   const counter = record.counter;
 
-  return typeof counter === "object" && counter !== null ? (body as FirstRunStatusPayload) : null;
+  if (typeof counter !== "object" || counter === null) {
+    return null;
+  }
+
+  return {
+    ...(body as FirstRunStatusPayload),
+    deliveryState: deliveryStateOf.parse(record.deliveryState),
+    deliveryFailureReason:
+      typeof record.deliveryFailureReason === "string" ? record.deliveryFailureReason : null,
+  };
 }
 
 async function pollStatus(): Promise<FirstRunStatusPayload | null> {
@@ -125,7 +141,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
   };
 
   const offered = !armed && canArm(setupFacts);
-  const cadenceMs = resolvePollCadenceMs({ attached, armed });
 
   const armedOnArrival = useRef(armed);
   const wasOffered = useRef(offered);
@@ -157,8 +172,19 @@ export function FirstRunClient(props: FirstRunClientProps) {
     return undefined;
   }, [offered]);
 
+  // Whether a terminal stage still has something to watch is the cadence question, and it
+  // has one home. Asking it here as well is how the screen stopped polling with the
+  // delivery line still reading "not posted", and how a founder who never armed but has a
+  // finding from the hourly check got a counter that never moved again.
+  const cadenceMs = resolvePollCadenceMs({
+    attached,
+    armed,
+    terminal,
+    deliveryState: current.deliveryState,
+  });
+
   useEffect(() => {
-    if (terminal || cadenceMs === null) {
+    if (cadenceMs === null) {
       clearInterval(handle.current);
       return undefined;
     }
@@ -187,7 +213,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
       clearTimeout(first);
       clearInterval(handle.current);
     };
-  }, [cadenceMs, terminal]);
+  }, [cadenceMs]);
 
   useEffect(() => {
     if (!folding) {
@@ -243,6 +269,8 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const resolved = new Map(deriveStepStates(sequenceFacts).map((view) => [view.id, view]));
 
+  const notice = resolveOfflineNotice({ lost, armed, terminal });
+
   return (
     <LiveCounter value={current.counter}>
       <Stack gap="md">
@@ -258,6 +286,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
               channelId={current.channelId}
               findingUnavailable={current.findingUnavailable === true}
               delivery={current.deliveryState}
+              deliveryReason={current.deliveryFailureReason ?? null}
             />
           ) : (
             <SetupStage
@@ -312,13 +341,14 @@ export function FirstRunClient(props: FirstRunClientProps) {
           <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
         )}
 
-        {/* The page lost the connection; the check did not. The elapsed keeps
-          counting and the line disappears again on its own. */}
-        {lost && !terminal ? (
+        {/* Which sentence a lost connection may claim depends on whether a check is
+          running at all; before arming there is none, and the elapsed it refers to is
+          not counting. Either line disappears again on its own. */}
+        {notice === null ? null : (
           <Text size="sm" c="dimmed">
-            {ONBOARDING_MESSAGES.offlineNotice}
+            {notice}
           </Text>
-        ) : null}
+        )}
 
         {failure === null ? null : (
           <Text size="sm" c="stamp.4">

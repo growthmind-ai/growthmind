@@ -4,10 +4,13 @@ interface DriverErrorFields {
   constraint?: unknown;
 }
 
-function readDriverFields(error: unknown): DriverErrorFields {
+function readCauseFields(error: unknown): DriverErrorFields | null {
   const cause = (error as { cause?: unknown } | null | undefined)?.cause;
-  const candidate = (cause ?? error) as DriverErrorFields | null | undefined;
-  return candidate ?? {};
+  return (cause as DriverErrorFields | null | undefined) ?? null;
+}
+
+function readDriverFields(error: unknown): DriverErrorFields {
+  return readCauseFields(error) ?? (error as DriverErrorFields | null | undefined) ?? {};
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -30,6 +33,26 @@ export class RepoWriteError extends Error {
     this.code = code;
     this.constraint = constraint;
   }
+}
+
+const REFUSED_WITHOUT_A_READABLE_CAUSE = "the database refused the query";
+
+// `DrizzleQueryError.message` is the statement and every bound parameter, so a read path
+// that logs it writes tenancy ids and ciphertext into the log. The cause is the driver's
+// own message, which names no value; anything still carrying `query`/`params` is refused
+// a message rather than trusted.
+export function describeDriverError(error: unknown): string {
+  const fields = readDriverFields(error);
+  const carriesStatement =
+    typeof error === "object" &&
+    error !== null &&
+    ("query" in error || "params" in error || "parameters" in error);
+
+  if (!carriesStatement) {
+    return asStringOrNull(fields.message) ?? String(error);
+  }
+
+  return asStringOrNull(readCauseFields(error)?.message) ?? REFUSED_WITHOUT_A_READABLE_CAUSE;
 }
 
 // The driver puts bound parameters in the message, so a ciphertext or key id reaches the

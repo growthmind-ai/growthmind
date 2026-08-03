@@ -340,6 +340,7 @@ export {
   ONBOARDING_PROPER_NOUNS,
   SET_UP_CTA_LABEL,
   LANDING_SETTLED_LINE,
+  LANDING_SETTLED_NO_DELIVERY_LINE,
   FIRST_RUN_TITLE,
   STEP_REPO_TITLE,
   STEP_REPO_WHAT_IT_WILL_DO,
@@ -422,9 +423,11 @@ export {
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,
   STAGE_OFFLINE_NOTICE,
+  STAGE_OFFLINE_SETUP_NOTICE,
   STAGE_DELIVERED_TEMPLATE,
   STAGE_DELIVERY_PENDING_TEMPLATE,
   STAGE_DELIVERY_FAILED_TEMPLATE,
+  STAGE_NO_DELIVERY_LINE,
   STAGE_RETIRE_CLOSURE,
   STRIP_LEAD,
   STRIP_SEEN_TEMPLATE,
@@ -482,6 +485,7 @@ export { reduceStage, type StagePersistedFacts, type RenderedStageState } from "
 export {
   renderStageView,
   renderDeliveryLine,
+  renderDeliveryClosure,
   type StageLogLine,
   type StageView,
 } from "./onboarding/stage-view";

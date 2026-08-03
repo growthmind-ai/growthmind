@@ -17,15 +17,23 @@ import {
   type MeasuredCountRow,
   type ScopedDb,
 } from "@growthmind/db";
+import { driverQueryError } from "@growthmind/db/testing";
 import {
+  DELIVERY_LANE_FAILURE_CLAUSE,
+  deliveryFailureSentence,
   firstRunDeliveryStateSchema,
+  postFailureCodeSchema,
+  setLogSink,
   STAGE_DELIVERED_TEMPLATE,
   STAGE_DELIVERY_FAILED_TEMPLATE,
   STAGE_DELIVERY_PENDING_TEMPLATE,
+  STAGE_NO_DELIVERY_LINE,
   STAGE_RETIRE_CLOSURE,
+  renderDeliveryClosure,
   renderDeliveryLine,
   type DeliveryStatus,
   type FirstRunDeliveryState,
+  type LogRecord,
   type OnboardingFinding,
   type StagePersistedFacts,
 } from "@growthmind/shared";
@@ -34,6 +42,7 @@ import { Stage } from "../../components/first-run/Stage";
 import {
   buildFirstRunStatus,
   echoFirstRunStatus,
+  toDeliveryFailureReason,
   toFirstRunDeliveryState,
 } from "../../lib/first-run/status";
 
@@ -101,7 +110,11 @@ const FOUND: StagePersistedFacts = {
   finding: FINDING,
 };
 
-const stageMarkup = (delivery: FirstRunDeliveryState, channelId: string | null): string =>
+const stageMarkup = (
+  delivery: FirstRunDeliveryState,
+  channelId: string | null,
+  deliveryReason: string | null = null,
+): string =>
   render(
     createElement(Stage, {
       facts: FOUND,
@@ -109,6 +122,7 @@ const stageMarkup = (delivery: FirstRunDeliveryState, channelId: string | null):
       channelId,
       findingUnavailable: false,
       delivery,
+      deliveryReason,
     }),
   );
 
@@ -174,6 +188,35 @@ function copyOffencesIn(sentence: string): readonly string[] {
 
   return offences;
 }
+
+// Two of the stage's own rules do not survive contact with a sentence written elsewhere:
+// FORWARD_LOOKING, because a lane that retries is a fact about the lane rather than a
+// promise this screen invented, and HEDGE, which fires on the preposition in "nothing
+// about what we found has changed". Both were standing in for one thing on this
+// surface — no committed wait — so that is asserted directly instead, and it is
+// stricter: DURATION needs a digit, and this catches "about half a minute" too.
+const TIME_WORD =
+  /\b(seconds?|minutes?|hours?|days?|weeks?|moments?|shortly|soon|instantly|immediately)\b/i;
+
+const surfaceOffencesIn = (sentence: string): readonly string[] => {
+  const offences = copyOffencesIn(sentence).filter(
+    (offence) => !offence.startsWith("FORWARD_LOOKING") && !offence.startsWith("HEDGE"),
+  );
+
+  return TIME_WORD.test(sentence) ? [...offences, `TIME_WORD in: ${sentence}`] : offences;
+};
+
+function repairFor(code: "channel_unavailable"): string {
+  const clause = DELIVERY_LANE_FAILURE_CLAUSE[code];
+  if (clause === null) {
+    throw new Error(
+      `the delivery lane no longer names a repair for ${code}, so this surface has nothing to carry`,
+    );
+  }
+  return clause;
+}
+
+const CHANNEL_UNAVAILABLE_REPAIR = repairFor("channel_unavailable");
 
 const MEASURED_COUNT: MeasuredCountRow = {
   numerator: 3,
@@ -279,8 +322,11 @@ async function seedDelivery(
     readonly channelId: string;
     readonly status: DeliveryStatus;
     readonly findingId?: string;
+    readonly failureReason?: string;
   },
 ): Promise<void> {
+  const failed = input.status === "failed";
+
   await bed.db.insert(schema.deliveries).values({
     organizationId: lane.scope.organizationId,
     projectId: lane.projectId,
@@ -289,8 +335,8 @@ async function seedDelivery(
     channelId: input.channelId,
     status: input.status,
     postedAt: input.status === "posted" ? new Date("2026-08-01T09:45:00.000Z") : null,
-    failedAt: input.status === "failed" ? new Date("2026-08-01T09:45:00.000Z") : null,
-    failureReason: input.status === "failed" ? "the channel refused the post" : null,
+    failedAt: failed ? new Date("2026-08-01T09:45:00.000Z") : null,
+    failureReason: failed ? (input.failureReason ?? "the channel refused the post") : null,
   });
 }
 
@@ -346,11 +392,14 @@ function countingDb(realDb: ScopedDb, named: ReadonlyMap<unknown, string>): Tabl
 const BLIND_READ_SQL =
   'select * from "deliveries" where "organization_id" = $1 and "finding_id" = $2 and "channel_id" = $3';
 
+const BLIND_DRIVER_MESSAGE = "the delivery record for this finding could not be read";
+
 function dbThatCannotReadDeliveries(realDb: ScopedDb, bound: readonly string[]): ScopedDb {
   const refuse = (): never => {
-    throw Object.assign(new Error("the delivery record for this finding could not be read"), {
-      query: BLIND_READ_SQL,
-      parameters: [...bound],
+    throw driverQueryError({
+      sql: BLIND_READ_SQL,
+      params: [...bound],
+      driverMessage: BLIND_DRIVER_MESSAGE,
     });
   };
 
@@ -471,15 +520,80 @@ describe("the pure delivery classifier", () => {
 
     const sentences = [
       STAGE_RETIRE_CLOSURE,
-      ...EVERY_DELIVERY_STATE.flatMap((state) =>
-        [renderDeliveryLine(state, SAMPLE_CHANNEL), renderDeliveryLine(state, "growth")].filter(
-          (line): line is string => line !== null,
-        ),
-      ),
+      STAGE_NO_DELIVERY_LINE,
+      ...EVERY_DELIVERY_STATE.flatMap((state) => [
+        renderDeliveryClosure(state, SAMPLE_CHANNEL),
+        renderDeliveryClosure(state, "growth"),
+        renderDeliveryClosure(state, null),
+      ]),
     ];
 
     expect(sentences.length).toBeGreaterThan(1);
     expect(sentences.flatMap((sentence) => copyOffencesIn(sentence))).toEqual([]);
+  });
+
+  test("the pending sentence does not stop on the negative — it names where this lands", () => {
+    const pending = renderDeliveryLine("unposted", SAMPLE_CHANNEL) ?? "";
+    const negative = pending.indexOf("not been posted");
+
+    expect(negative).toBeGreaterThan(-1);
+    expect(pending.trim().endsWith("posted there.")).toBe(false);
+
+    const after = pending.slice(negative);
+    expect(after).toContain("channel");
+    expect(after).toContain("screen");
+  });
+
+  test("a terminal stage with nowhere to deliver names what is missing, not just the closure", () => {
+    for (const channelId of [null, "null", "undefined", "", " "]) {
+      expect(renderDeliveryClosure("none", channelId)).toBe(STAGE_NO_DELIVERY_LINE);
+      expect(renderDeliveryClosure("posted", channelId)).toBe(STAGE_NO_DELIVERY_LINE);
+    }
+
+    expect(renderDeliveryClosure("posted", SAMPLE_CHANNEL)).not.toBe(STAGE_NO_DELIVERY_LINE);
+
+    expect(STAGE_NO_DELIVERY_LINE).toContain("Slack");
+    expect(STAGE_NO_DELIVERY_LINE.split(/(?<=\.)\s+/).length).toBeGreaterThan(1);
+
+    const markup = stageMarkup("none", null);
+    expect(markup).toContain(STAGE_NO_DELIVERY_LINE);
+    expect(markup).toContain(STAGE_RETIRE_CLOSURE);
+  });
+
+  test("the failed reason is carried only by the failed state, and never blank", () => {
+    const reason = deliveryFailureSentence("channel_unavailable");
+
+    expect(toDeliveryFailureReason({ state: "failed", delivery: { failureReason: reason } })).toBe(
+      reason,
+    );
+
+    for (const state of ["none", "unposted", "posted"] as const) {
+      expect(toDeliveryFailureReason({ state, delivery: { failureReason: reason } })).toBeNull();
+    }
+
+    for (const failureReason of [null, "", "   "]) {
+      expect(toDeliveryFailureReason({ state: "failed", delivery: { failureReason } })).toBeNull();
+    }
+
+    expect(toDeliveryFailureReason({ state: "failed", delivery: null })).toBeNull();
+  });
+
+  test("every delivery-package sentence this surface may render clears the onboarding audit", () => {
+    expect(copyOffencesIn("This will arrive shortly.").length).toBeGreaterThan(0);
+
+    // The relaxed audit still bites the thing it was relaxed around.
+    expect(surfaceOffencesIn("Sorry, this lands in about 30 seconds!").length).toBeGreaterThan(0);
+    expect(surfaceOffencesIn("It lands in about half a minute.").length).toBeGreaterThan(0);
+    expect(surfaceOffencesIn("It will arrive shortly.").length).toBeGreaterThan(0);
+    expect(surfaceOffencesIn("Nothing about what we found has changed.")).toEqual([]);
+
+    for (const code of postFailureCodeSchema.options) {
+      const sentence = deliveryFailureSentence(code);
+
+      expect(`${code}: ${surfaceOffencesIn(sentence).join(", ")}`).toBe(`${code}: `);
+    }
+
+    expect(deliveryFailureSentence("channel_unavailable")).toContain(CHANNEL_UNAVAILABLE_REPAIR);
   });
 });
 
@@ -589,6 +703,41 @@ describe("the delivery fact through the real entry points", () => {
     expect(teammate).toBe(owner);
   });
 
+  test("a failed delivery carries the repair the lane already wrote, onto the screen", async () => {
+    await showChannel(orgA, "C35REASON");
+
+    const reason = deliveryFailureSentence("channel_unavailable");
+    await seedDelivery(orgA, {
+      channelId: "C35REASON",
+      status: "failed",
+      failureReason: reason,
+    });
+
+    const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(orgA.scope)));
+
+    expect(body.deliveryState).toBe("failed");
+    expect(body.deliveryFailureReason).toBe(reason);
+
+    const markup = stageMarkup("failed", "C35REASON", reason);
+    expect(markup).toContain(withChannel(STAGE_DELIVERY_FAILED_TEMPLATE, "C35REASON"));
+    expect(markup).toContain(CHANNEL_UNAVAILABLE_REPAIR);
+    expect(markup).toContain(STAGE_RETIRE_CLOSURE);
+
+    const echoed = await echoFirstRunStatus(bed.db, orgA.scope.ctx, orgA.projectId);
+    expect(echoed.deliveryFailureReason).toBe(reason);
+  });
+
+  test("a delivery that has not failed carries no reason at all", async () => {
+    await showChannel(orgA, "C36QUIET");
+
+    const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(orgA.scope)));
+
+    expect(body.deliveryState).toBe("unposted");
+    expect(body.deliveryFailureReason).toBeNull();
+
+    expect(stageMarkup("unposted", "C36QUIET")).not.toContain(CHANNEL_UNAVAILABLE_REPAIR);
+  });
+
   test("the server-rendered path carries the same delivery state as the polled one", async () => {
     await showChannel(orgA, "C34PARITY");
     await seedDelivery(orgA, { channelId: "C34PARITY", status: "posted" });
@@ -602,21 +751,45 @@ describe("the delivery fact through the real entry points", () => {
 });
 
 describe("the delivery read may never cost the screen", () => {
-  test("a throwing delivery lookup does not blank the finding", async () => {
+  test("a throwing delivery lookup does not blank the finding, and writes no statement to the log", async () => {
     await showChannel(orgA, "C33BLIND");
 
     const bound = [orgA.scope.organizationId, orgA.findingId, "C33BLIND"];
+
+    // The shape the runtime actually throws: the statement and every bound value are in
+    // `message`, and the driver's own message is reachable only through `cause`.
+    const thrown = driverQueryError({
+      sql: BLIND_READ_SQL,
+      params: bound,
+      driverMessage: BLIND_DRIVER_MESSAGE,
+    });
+    expect(thrown.message).toContain(BLIND_READ_SQL);
+    for (const value of bound) {
+      expect(thrown.message).toContain(value);
+    }
+
     const blind = dbThatCannotReadDeliveries(bed.db, bound);
 
-    const payload = await buildFirstRunStatus({
-      db: blind,
-      ctx: orgA.scope.ctx,
-      projectId: orgA.projectId,
-      facts: FOUND,
-      findingUnavailable: false,
+    const written: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      written.push(record);
     });
 
+    let payload: Awaited<ReturnType<typeof buildFirstRunStatus>>;
+    try {
+      payload = await buildFirstRunStatus({
+        db: blind,
+        ctx: orgA.scope.ctx,
+        projectId: orgA.projectId,
+        facts: FOUND,
+        findingUnavailable: false,
+      });
+    } finally {
+      restore();
+    }
+
     expect(payload.deliveryState).toBe("none");
+    expect(payload.deliveryFailureReason).toBeNull();
     expect(payload.finding).not.toBeNull();
     expect(payload.counter).not.toBeUndefined();
 
@@ -626,6 +799,22 @@ describe("the delivery read may never cost the screen", () => {
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain(BLIND_READ_SQL);
     expect(serialized).not.toContain("select ");
+
+    const logged = JSON.stringify(written);
+    expect(written.length).toBeGreaterThan(0);
+    expect(logged).not.toContain(BLIND_READ_SQL);
+    expect(logged).not.toContain("select ");
+    expect(logged).not.toContain("Failed query");
+
+    // The scope of the log is a field somebody chose to write. The reason is the part
+    // that comes from the error, and it is the part a statement rides in on.
+    const reasons = written
+      .map((record) => (typeof record.fields.reason === "string" ? record.fields.reason : ""))
+      .join("\n");
+    expect(reasons).toContain(BLIND_DRIVER_MESSAGE);
+    for (const value of bound) {
+      expect(reasons).not.toContain(value);
+    }
   });
 
   test("the pre-arm poll adds no database read", async () => {

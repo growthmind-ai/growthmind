@@ -5,6 +5,7 @@ import {
   createFirstRunRepo,
   createPollRunsRepo,
   createProjectConnectionsRepo,
+  describeDriverError,
   persistPullResult,
 } from "@growthmind/db";
 import type { PollableConnection } from "@growthmind/db/system";
@@ -277,9 +278,10 @@ async function readArmClock(
     const state = await createFirstRunRepo(deps.db, ctx).readState(connection.projectId);
     return state?.armedAt ?? null;
   } catch (error) {
+    // A failed query's own message carries the statement and both bound tenancy ids.
     deps.logger.error(
       `session source poll: connection ${connection.id} could not read when this project started ` +
-        `watching, so this pass uses the connect clock — ${describeError(error)}`,
+        `watching, so this pass uses the connect clock — ${describeDriverError(error)}`,
     );
     return null;
   }

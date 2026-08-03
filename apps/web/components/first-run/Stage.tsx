@@ -5,7 +5,7 @@ import { useRef } from "react";
 
 import {
   reduceStage,
-  renderDeliveryLine,
+  renderDeliveryClosure,
   renderStageView,
   STAGE_FINDING_UNAVAILABLE,
   STAGE_RETIRE_CLOSURE,
@@ -27,12 +27,16 @@ interface StageProps {
   readonly findingUnavailable: boolean;
 
   readonly delivery: FirstRunDeliveryState;
+
+  // Written by the delivery lane when the post failed, so the repair is the sentence
+  // that already exists rather than a second one composed on this screen.
+  readonly deliveryReason: string | null;
 }
 
 export function Stage(props: StageProps) {
   const state = reduceStage(props.facts, props.nowMs);
   const view = renderStageView(state);
-  const deliveryLine = renderDeliveryLine(props.delivery, props.channelId);
+  const deliveryLine = renderDeliveryClosure(props.delivery, props.channelId);
 
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;
@@ -69,9 +73,13 @@ export function Stage(props: StageProps) {
 
       {state.kind === "finding" ? (
         <>
-          {deliveryLine === null ? null : (
+          <Text size="sm" c="dimmed">
+            {deliveryLine}
+          </Text>
+
+          {props.deliveryReason === null ? null : (
             <Text size="sm" c="dimmed">
-              {deliveryLine}
+              {props.deliveryReason}
             </Text>
           )}
 

@@ -4,6 +4,7 @@ import {
   STAGE_DELIVERY_FAILED_TEMPLATE,
   STAGE_DELIVERY_PENDING_TEMPLATE,
   STAGE_ENDED_HINT,
+  STAGE_NO_DELIVERY_LINE,
   STAGE_FOUND_HEADING,
   STAGE_FOUND_HINT,
   STAGE_LOG_ARMED,
@@ -50,6 +51,15 @@ export function renderDeliveryLine(
   }
 
   return DELIVERY_TEMPLATES[state].replaceAll("{channel}", address);
+}
+
+// The terminal state always says where this went, and "nowhere" is one of the answers.
+// A null here left the closure below it reading as the whole story.
+export function renderDeliveryClosure(
+  state: FirstRunDeliveryState,
+  channelId: string | null,
+): string {
+  return renderDeliveryLine(state, channelId) ?? STAGE_NO_DELIVERY_LINE;
 }
 
 const ENDED_HEADINGS: Record<EndedReason, string> = {

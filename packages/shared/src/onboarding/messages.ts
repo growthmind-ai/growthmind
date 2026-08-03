@@ -22,6 +22,10 @@ export const SET_UP_CTA_LABEL = "Set up Growthmind";
 
 export const LANDING_SETTLED_LINE = "You're set up. What we find arrives in your Slack from here.";
 
+// The same moment for a founder who skipped Slack, for whom the line above is false.
+export const LANDING_SETTLED_NO_DELIVERY_LINE =
+  "You're set up, and what we find has nowhere to arrive: no Slack channel is connected. Connect one to get it where your team already works.";
+
 export const FIRST_RUN_TITLE = "First run";
 
 export const STEP_REPO_TITLE = "Connect your code";
@@ -284,12 +288,23 @@ export const STAGE_LOG_READING = "we started reading it";
 export const STAGE_OFFLINE_NOTICE =
   "We have lost the connection to this page — the check is still running.";
 
+// Its sibling above names a check. Before there is one, this claims only what is true.
+export const STAGE_OFFLINE_SETUP_NOTICE =
+  "We cannot reach the server from this page. Nothing you have set up is affected, and this page keeps trying on its own.";
+
 export const STAGE_DELIVERED_TEMPLATE = "The same thing is now in #{channel}.";
 
+// The second sentence stops the first reading as a failure: the channel is where it
+// lands, and this screen is not. No duration and no countdown, ever (R-LATENCY).
 export const STAGE_DELIVERY_PENDING_TEMPLATE =
-  "Findings for this project go to #{channel}. This one has not been posted there.";
+  "Findings for this project go to #{channel}. This one has not been posted there yet — it arrives in the channel, not on this screen.";
 
 export const STAGE_DELIVERY_FAILED_TEMPLATE = "This one did not reach #{channel}.";
+
+// The terminal state with nowhere to deliver: a bare closure leaves a founder who
+// skipped Slack with no idea what they gave up, or how to get it.
+export const STAGE_NO_DELIVERY_LINE =
+  "No Slack channel is connected, so this screen is the only place this has appeared. Connect one to get what we find where your team already works.";
 
 export const STAGE_RETIRE_CLOSURE =
   "This screen retires with setup — there is nothing here to come back and check.";
@@ -385,6 +400,7 @@ export const ONBOARDING_MESSAGES = {
   stripLead: STRIP_LEAD,
   stripReopen: STRIP_REOPEN_LABEL,
   offlineNotice: STAGE_OFFLINE_NOTICE,
+  offlineSetupNotice: STAGE_OFFLINE_SETUP_NOTICE,
 
   networkFailure: NETWORK_FAILURE_NOTICE,
 } as const;
@@ -392,6 +408,7 @@ export const ONBOARDING_MESSAGES = {
 export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SET_UP_CTA_LABEL,
   LANDING_SETTLED_LINE,
+  LANDING_SETTLED_NO_DELIVERY_LINE,
   FIRST_RUN_TITLE,
 
   STEP_REPO_TITLE,
@@ -495,9 +512,11 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,
   STAGE_OFFLINE_NOTICE,
+  STAGE_OFFLINE_SETUP_NOTICE,
   STAGE_DELIVERED_TEMPLATE,
   STAGE_DELIVERY_PENDING_TEMPLATE,
   STAGE_DELIVERY_FAILED_TEMPLATE,
+  STAGE_NO_DELIVERY_LINE,
   STAGE_RETIRE_CLOSURE,
 
   STRIP_LEAD,

@@ -187,6 +187,10 @@ export {
   type DeliveryTarget,
 } from "./services/delivery-channel-guard";
 
+// The one safe way to put a failed query in a log: every caller outside this package
+// reaches the driver through here, so nothing else has to know what the message holds.
+export { describeDriverError } from "./repositories/driver-error";
+
 export { slackCredentialAad } from "./schema/slack-connections";
 export {
   createFirstRunRepo,

@@ -12,6 +12,8 @@ import {
   COUNTER_WINDOW_STATEMENT,
   describeExpectedLag,
   EXCLUSION_REASON_LABELS,
+  STAGE_OFFLINE_NOTICE,
+  STAGE_OFFLINE_SETUP_NOTICE,
   toOnboardingCounterView,
   type ConnectionState,
   type EventsSeenCounter,
@@ -21,9 +23,11 @@ import {
 
 import {
   ARMED_POLL_MS,
+  DELIVERY_WATCH_POLL_MS,
   PRE_ARM_POLL_MS,
   resolvePollCadenceMs,
 } from "../../lib/first-run/poll-cadence";
+import { resolveOfflineNotice } from "../../lib/first-run/offline-notice";
 import type { FirstRunStatusPayload } from "../../lib/first-run/status";
 
 import { CounterGrid } from "../../components/first-run/CounterGrid";
@@ -103,6 +107,7 @@ const unarmedPayload = (counter: OnboardingCounterView): FirstRunStatusPayload =
   finding: null,
   findingUnavailable: false,
   deliveryState: "none",
+  deliveryFailureReason: null,
   armedAt: null,
   retrievedAt: null,
   readingAt: null,
@@ -151,18 +156,69 @@ function pollEffect(code: string): string {
   return code.slice(start, end + 3);
 }
 
+// Terminal and deliveryState are REQUIRED properties: a call site that forgets to say
+// what it knows is a compile error rather than a branch nobody wired.
+const WATCHING = { terminal: false, deliveryState: "none" } as const;
+
 describe("resolvePollCadenceMs", () => {
   test("the pre-arm cadence is slower than the armed cadence", () => {
     expect(PRE_ARM_POLL_MS).toBeGreaterThan(ARMED_POLL_MS);
 
-    expect(resolvePollCadenceMs({ attached: true, armed: false })).toBe(PRE_ARM_POLL_MS);
-    expect(resolvePollCadenceMs({ attached: true, armed: true })).toBe(ARMED_POLL_MS);
+    expect(resolvePollCadenceMs({ ...WATCHING, attached: true, armed: false })).toBe(
+      PRE_ARM_POLL_MS,
+    );
+    expect(resolvePollCadenceMs({ ...WATCHING, attached: true, armed: true })).toBe(ARMED_POLL_MS);
   });
 
   test("a client with no connection creates no interval and issues no fetch", () => {
-    expect(resolvePollCadenceMs({ attached: false, armed: false })).toBeNull();
+    expect(resolvePollCadenceMs({ ...WATCHING, attached: false, armed: false })).toBeNull();
 
-    expect(resolvePollCadenceMs({ attached: false, armed: true })).toBe(ARMED_POLL_MS);
+    expect(resolvePollCadenceMs({ ...WATCHING, attached: false, armed: true })).toBe(ARMED_POLL_MS);
+  });
+
+  test("a terminal stage whose delivery is unposted keeps polling, so the line can flip", () => {
+    expect(
+      resolvePollCadenceMs({
+        attached: true,
+        armed: true,
+        terminal: true,
+        deliveryState: "unposted",
+      }),
+    ).toBe(DELIVERY_WATCH_POLL_MS);
+
+    expect(
+      resolvePollCadenceMs({
+        attached: false,
+        armed: true,
+        terminal: true,
+        deliveryState: "unposted",
+      }),
+    ).toBe(DELIVERY_WATCH_POLL_MS);
+  });
+
+  test("a terminal stage with nothing left to watch stops, and only then", () => {
+    for (const deliveryState of ["none", "posted", "failed"] as const) {
+      expect(
+        resolvePollCadenceMs({ attached: true, armed: true, terminal: true, deliveryState }),
+      ).toBeNull();
+    }
+  });
+
+  test("a finding on a project nobody armed keeps the setup cadence, findings and all", () => {
+    for (const deliveryState of ["none", "unposted", "posted", "failed"] as const) {
+      expect(
+        resolvePollCadenceMs({ attached: true, armed: false, terminal: true, deliveryState }),
+      ).toBe(PRE_ARM_POLL_MS);
+    }
+
+    expect(
+      resolvePollCadenceMs({
+        attached: false,
+        armed: false,
+        terminal: true,
+        deliveryState: "unposted",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -232,7 +288,71 @@ describe("the wire into the client (D11)", () => {
     const effect = pollEffect(code);
 
     expect(effect).not.toMatch(/\barmed\b/);
-    expect(effect).toContain("terminal");
     expect(effect).toContain("cadenceMs");
+
+    // `terminal` joins `armed` on the far side of the resolver. Asked here as well, the
+    // effect tore the interval down while the delivery line still said "not posted".
+    expect(effect).not.toMatch(/\bterminal\b/);
+
+    const asked = code.indexOf("resolvePollCadenceMs({");
+    const call = code.slice(asked, code.indexOf("});", asked));
+
+    const unasked = ["attached", "armed", "terminal", "deliveryState"].filter(
+      (fact) => !new RegExp(`\\b${fact}\\b`).test(call),
+    );
+    expect(unasked).toEqual([]);
+  });
+});
+
+describe("the pre-arm poll degrades cleanly — FR-GL14", () => {
+  test("a lost connection before arming claims nothing about a check", () => {
+    const preArm = resolveOfflineNotice({ lost: true, armed: false, terminal: false });
+
+    expect(preArm).toBe(STAGE_OFFLINE_SETUP_NOTICE);
+    expect(preArm).not.toBe(STAGE_OFFLINE_NOTICE);
+
+    expect(STAGE_OFFLINE_NOTICE).toContain("check");
+    expect(preArm).not.toContain("check");
+    expect(preArm).not.toContain("elapsed");
+  });
+
+  test("the sentence that names a running check renders only while one is running", () => {
+    expect(resolveOfflineNotice({ lost: true, armed: true, terminal: false })).toBe(
+      STAGE_OFFLINE_NOTICE,
+    );
+
+    expect(resolveOfflineNotice({ lost: true, armed: true, terminal: true })).toBe(
+      STAGE_OFFLINE_SETUP_NOTICE,
+    );
+
+    for (const armed of [true, false]) {
+      for (const terminal of [true, false]) {
+        expect(resolveOfflineNotice({ lost: false, armed, terminal })).toBeNull();
+      }
+    }
+  });
+
+  test("a failed pre-arm fetch keeps the counter and leaves the interval running", () => {
+    const effect = pollEffect(blankComments(readExisting(CLIENT).source));
+
+    const callback = effect.slice(effect.indexOf("setInterval("), effect.indexOf("}, cadenceMs);"));
+
+    expect(callback).toContain("setLost(next === null)");
+
+    // The failure path writes no state the counter is rendered from...
+    expect(occurrences(callback, "setPolled(")).toBe(1);
+    expect(callback).toMatch(/if\s*\(next\s*!==\s*null\)\s*\{\s*setPolled\(next\);/);
+
+    // ...and tears nothing down, so the next tick still happens.
+    expect(callback).not.toContain("clearInterval");
+    expect(callback).not.toContain("clearTimeout");
+  });
+
+  test("the client renders the resolver's sentence, never the armed one directly", () => {
+    const code = blankComments(readExisting(CLIENT).source);
+
+    expect(code).toContain("resolveOfflineNotice");
+    expect(code).not.toContain("ONBOARDING_MESSAGES.offlineNotice");
+    expect(code).not.toContain("STAGE_OFFLINE_NOTICE");
   });
 });

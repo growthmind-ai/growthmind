@@ -6,6 +6,7 @@ import {
   createFirstRunRepo,
   createFirstRunStatusService,
   createSlackConnectionsRepo,
+  describeDriverError,
   isDeliveryTarget,
 } from "@growthmind/db";
 import type {
@@ -19,7 +20,6 @@ import {
   CONNECTION_STATE_MESSAGES,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
-  describeError,
   logger,
   parseServerEnv,
   toOnboardingCounterView,
@@ -48,6 +48,10 @@ export type FirstRunStatusPayload = FirstRunStatus & {
   readonly slackOAuthAvailable: boolean;
 
   readonly deliveryState: FirstRunDeliveryState;
+
+  // The delivery lane's own next action, already written when the post failed. Non-null
+  // only in the failed state, so no screen can pair it with a claim that contradicts it.
+  readonly deliveryFailureReason: string | null;
 };
 
 export interface BuildFirstRunStatusInput {
@@ -79,6 +83,26 @@ export function toFirstRunDeliveryState(input: {
   }
 }
 
+// The reason is a sentence @growthmind/shared composed from a closed union of failure
+// codes, never a driver or Slack response body. Blank text is treated as absent, because
+// a row written by an older shape can carry an empty column.
+export function toDeliveryFailureReason(input: {
+  state: FirstRunDeliveryState;
+  delivery: { failureReason: string | null } | null;
+}): string | null {
+  if (input.state !== "failed") return null;
+
+  const reason = input.delivery?.failureReason ?? null;
+  return reason !== null && reason.trim().length > 0 ? reason : null;
+}
+
+export interface ResolvedDelivery {
+  readonly state: FirstRunDeliveryState;
+  readonly failureReason: string | null;
+}
+
+const NO_DELIVERY: ResolvedDelivery = { state: "none", failureReason: null };
+
 async function readNewestFindingId(
   db: ScopedDb,
   ctx: TenantContext,
@@ -91,35 +115,41 @@ async function readNewestFindingId(
     logger.error("onboarding status: the finding on screen could not be matched to a Slack post", {
       organizationId: ctx.organizationId,
       projectId,
-      reason: describeError(error),
+      reason: describeDriverError(error),
     });
     return null;
   }
 }
 
-async function resolveDeliveryState(input: {
+async function resolveDelivery(input: {
   readonly db: ScopedDb;
   readonly ctx: TenantContext;
   readonly findingId: string | null;
   readonly channelId: string | null;
-}): Promise<FirstRunDeliveryState> {
+}): Promise<ResolvedDelivery> {
   const { findingId } = input;
   const target = { channelId: input.channelId };
 
-  if (findingId === null || !isDeliveryTarget(target)) return "none";
+  if (findingId === null || !isDeliveryTarget(target)) return NO_DELIVERY;
 
   try {
     const delivery = await createDeliveriesRepo(input.db, input.ctx).findFor(
       findingId,
       target.channelId,
     );
-    return toFirstRunDeliveryState({ hasFinding: true, channelId: target.channelId, delivery });
+    const state = toFirstRunDeliveryState({
+      hasFinding: true,
+      channelId: target.channelId,
+      delivery,
+    });
+
+    return { state, failureReason: toDeliveryFailureReason({ state, delivery }) };
   } catch (error) {
     logger.error("onboarding status: whether this finding reached Slack could not be read", {
       organizationId: input.ctx.organizationId,
-      reason: describeError(error),
+      reason: describeDriverError(error),
     });
-    return "none";
+    return NO_DELIVERY;
   }
 }
 
@@ -137,7 +167,7 @@ export async function buildFirstRunStatus(
 
   const view = toOnboardingCounterView(counter);
 
-  const deliveryState = await resolveDeliveryState({
+  const delivery = await resolveDelivery({
     db,
     ctx,
     findingId,
@@ -164,7 +194,8 @@ export async function buildFirstRunStatus(
     // Read here so no caller threads it, and parsed per call so an env captured
     // at import time cannot outlive a redeploy.
     slackOAuthAvailable: slackOAuthConfigured(parseServerEnv(process.env)),
-    deliveryState,
+    deliveryState: delivery.state,
+    deliveryFailureReason: delivery.failureReason,
   };
 }
 
