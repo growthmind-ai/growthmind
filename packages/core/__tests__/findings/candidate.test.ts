@@ -111,6 +111,10 @@ const REQUIRED_FIELDS = [
   "coverage",
 ] as const;
 
+// Present on every parsed candidate, but absent from the loop below: a defaulted field
+// cannot reject when deleted, which is the whole difference between the two lists.
+const DEFAULTED_FIELDS = ["signals"] as const;
+
 function rejectionPaths(input: unknown): readonly string[] {
   const result = candidateFindingSchema.safeParse(input);
   if (result.success) return [];
@@ -174,7 +178,9 @@ describe("candidateFindingSchema — what the contract carries", () => {
   test("should carry class, trace, counts, timeframe, surface, evidence_shape + version, and rule-set version", () => {
     const parsed = candidateFindingSchema.parse(candidateFixture(FIXTURE_NOW));
 
-    expect(Object.keys(parsed).toSorted()).toEqual(REQUIRED_FIELDS.toSorted());
+    expect(Object.keys(parsed).toSorted()).toEqual(
+      [...REQUIRED_FIELDS, ...DEFAULTED_FIELDS].toSorted(),
+    );
 
     expect(parsed.detector).toBe("funnel_dropoff");
     expect(parsed.claimedClass).toBe("broken");
@@ -198,6 +204,14 @@ describe("candidateFindingSchema — what the contract carries", () => {
         field,
         rejected: true,
       });
+    }
+
+    for (const field of DEFAULTED_FIELDS) {
+      const missingOne = candidateFixture(FIXTURE_NOW);
+      delete missingOne[field];
+      const result = candidateFindingSchema.safeParse(missingOne);
+      expect({ field, accepted: result.success }).toEqual({ field, accepted: true });
+      expect(result.success && result.data.signals).toEqual([]);
     }
   });
 });

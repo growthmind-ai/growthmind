@@ -26,7 +26,17 @@ import type {
   SlackActionsBlock,
   SlackBlock,
   SlackMessageInput,
+  SlackTextBlock,
 } from "../../src/delivery/slack-message";
+
+function isTextBlock(block: SlackBlock | undefined): block is SlackTextBlock {
+  return block !== undefined && block.kind !== "actions";
+}
+
+function textAt(blocks: readonly SlackBlock[], index: number): string {
+  const block = blocks[index];
+  return isTextBlock(block) ? block.text : "";
+}
 
 const FIXTURE_WINDOW = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -160,7 +170,9 @@ describe("renderSlackMessage — the deliver arm", () => {
     );
     expect(message.text).toContain("Sessions from 1 June 2026 to 8 June 2026.");
     expect(message.blocks.length).toBeGreaterThan(1);
-    expect(message.blocks.every((block) => block.text.trim().length > 0)).toBe(true);
+    expect(message.blocks.filter(isTextBlock).every((block) => block.text.trim().length > 0)).toBe(
+      true,
+    );
   });
 
   test("renders each count as its own sentence with its own denominator", () => {
@@ -173,7 +185,7 @@ describe("renderSlackMessage — the deliver arm", () => {
 
     const observationBlock = message.blocks[1];
     expect(observationBlock).toBeDefined();
-    const lines = String(observationBlock?.text).split("\n");
+    const lines = textAt(message.blocks, 1).split("\n");
     expect(lines).toHaveLength(2);
     for (const line of lines) {
       expect(line).toContain("of 28 sessions");
@@ -197,7 +209,9 @@ describe("renderSlackMessage — the deliver arm", () => {
     expect(message.text).toContain(SUMMARY_SOURCE_MESSAGES.floor_no_key_configured);
     expect(message.text.trim().endsWith(".")).toBe(true);
     expect(message.text).not.toContain("\n\n");
-    expect(message.blocks.every((block) => block.text.trim().length > 0)).toBe(true);
+    expect(message.blocks.filter(isTextBlock).every((block) => block.text.trim().length > 0)).toBe(
+      true,
+    );
   });
 
   test("should not spend a line saying an explanation exists when the explanation is right there", () => {
@@ -239,7 +253,7 @@ describe("renderSlackMessage — the deliver arm", () => {
     const path = `/checkout/${"very-long-segment/".repeat(12)}step-two`;
     const message = renderSlackMessage(deliver({ surfacePath: path }), VOCABULARY);
 
-    const heading = String(message.blocks[0]?.text).split("\n")[0];
+    const heading = textAt(message.blocks, 0).split("\n")[0];
     expect(String(heading).length).toBeLessThanOrEqual(SURFACE_PATH_BUDGET + 2);
     expect(message.text).toContain("/checkout/");
     expect(message.text).toContain("step-two");
@@ -305,7 +319,7 @@ describe("renderSlackMessage — the deliver arm", () => {
     const message = renderSlackMessage(deliver({}), VOCABULARY);
 
     expect(message.text).not.toContain("*");
-    expect(message.blocks[0]?.text.startsWith("*")).toBe(true);
+    expect(textAt(message.blocks, 0).startsWith("*")).toBe(true);
   });
 });
 
@@ -432,9 +446,8 @@ const ACTION_FINDING_ID = "fnd-t1sm-get-it-fixed";
 
 const DELIVERY_SRC_DIR = join(import.meta.dir, "..", "..", "src", "delivery");
 
-// Wave 2 widens the deliver arm with `findingId`; the assertion is the seam until it does.
 function deliverWithFinding(): SlackMessageInput {
-  return { ...deliver({}), findingId: ACTION_FINDING_ID } as SlackMessageInput;
+  return { ...deliver({}), findingId: ACTION_FINDING_ID };
 }
 
 function actionsBlockOf(blocks: readonly SlackBlock[]): SlackActionsBlock | undefined {

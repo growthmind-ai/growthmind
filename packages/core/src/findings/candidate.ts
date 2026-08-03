@@ -3,6 +3,7 @@ import { z } from "zod";
 import { measuredCountSchema } from "../counts/measured-count";
 import { analysisWindowSchema, claimSubjectSchema, detectorCoverageSchema } from "../detect/types";
 import { isReachableClass } from "../evidence/gate";
+import { evidenceSignalSchema } from "../evidence/signals";
 import { downgradeTraceSchema } from "../evidence/trace";
 import { detectorNameSchema, findingClassSchema } from "../rules/types";
 
@@ -26,6 +27,10 @@ export const candidateFindingSchema = z
     trace: downgradeTraceSchema,
     counts: z.array(measuredCountSchema).min(1),
     timeframe: analysisWindowSchema,
+
+    // Defaulted, not required: a candidate written before this key existed still parses,
+    // and a candidate genuinely without signals renders through FIX_SPEC_NO_EVIDENCE_TEMPLATE.
+    signals: z.array(evidenceSignalSchema).default([]),
 
     claimSubject: claimSubjectSchema,
 

@@ -3,11 +3,9 @@
 import {
   COUNT_ROLES,
   confidenceBasisSchema,
-  measuredCount,
-  measuredCountInputSchema,
+  toMeasuredCount,
   type ConfidenceBasis,
   type CountRole,
-  type MeasuredCount,
 } from "@growthmind/core";
 import type {
   DeliveryRecord,
@@ -67,26 +65,6 @@ function buildRolesByArity(): ReadonlyMap<number, readonly CountRole[] | null> {
 
 function contextFor(organization: SlackDeliveryOrganization): TenantContext {
   return systemContextFor(SYSTEM_ACTOR.DELIVERY_TICK, organization);
-}
-
-function toMeasuredCount(row: MeasuredCountRow): MeasuredCount {
-  return measuredCount(
-    measuredCountInputSchema.parse({
-      numerator: row.numerator,
-      denominator: row.denominator,
-      unit: row.unit,
-      timeframe: { start: row.timeframe.start, end: row.timeframe.end },
-      basis: {
-        totalInWindow: row.basis.totalInWindow,
-        kept: row.basis.kept,
-        setAside: row.basis.setAside.map((aside) => ({
-          reason: aside.reason,
-          count: aside.count,
-          label: aside.label,
-        })),
-      },
-    }),
-  );
 }
 
 function messageInputFor(finding: FindingRecord): DeliverMessageInput | null {

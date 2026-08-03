@@ -59,6 +59,7 @@ export function assembleCandidates(
           trace: outcome.trace,
           counts: candidate.counts,
           timeframe: candidate.timeframe,
+          signals: candidate.signals,
           claimSubject: candidate.claimSubject,
           surface: candidate.surface,
           surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,

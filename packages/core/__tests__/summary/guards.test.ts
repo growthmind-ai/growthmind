@@ -8,6 +8,7 @@ import {
 } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import { measuredCount } from "../../src/counts/measured-count";
 import { detectErrorEvent } from "../../src/detect/error-event";
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
 import type {
@@ -422,11 +423,23 @@ describe("floor summary guards", () => {
     }
   });
 
-  test("a CandidateFinding carries no struggling-cohort count for the renderer to conflate", () => {
+  test("a struggling-cohort count never reaches a rendered sentence", () => {
     const ruleSet = ruleSetV1();
     const source = firstCandidateOf(detectFunnelDropoff(firingFunnelCorpus(ruleSet), ruleSet));
     const sampleSize = source.counts[0];
     if (!sampleSize) throw new Error("a detector candidate must carry at least one count");
+
+    const allowed = new Set<string>();
+    for (const count of source.counts) {
+      allowed.add(String(count.numerator));
+      allowed.add(String(count.denominator));
+    }
+
+    // A cohort size the renderer has no licence to print: inside the basis, outside
+    // every count the sentences may substitute from.
+    let strugglers = sampleSize.denominator;
+    while (strugglers > 0 && allowed.has(String(strugglers))) strugglers -= 1;
+    if (strugglers === 0) throw new Error("no struggling-cohort size outside the allowed digits");
 
     const parsed = candidateFindingSchema.parse({
       detector: source.detector,
@@ -450,10 +463,37 @@ describe("floor summary guards", () => {
       thresholdRuleSetVersion: ruleSet.version,
       ranking: { sampleSize, confidenceBasis: "threshold_met" },
       coverage: source.coverage,
-      signals: [{ kind: "struggle", sessionIds: ["t1gd-struggler"] }],
+      signals: [
+        {
+          kind: "struggle",
+          subkind: "repeated_attempt",
+          surface: source.surface,
+          attempts: 4,
+          strugglingSessions: measuredCount({
+            numerator: strugglers,
+            denominator: sampleSize.denominator,
+            unit: sampleSize.unit,
+            timeframe: sampleSize.timeframe,
+            basis: sampleSize.basis,
+          }),
+        },
+      ],
     });
 
-    expect(Object.keys(parsed)).not.toContain("signals");
+    // Signals persist on the candidate now (fix specs render from them), so the
+    // guarantee moved rather than held: the cohort count exists, and no sentence prints it.
+    expect(parsed.signals).toHaveLength(1);
+    expect(allowed.has(String(strugglers))).toBe(false);
+
+    const rendered = elementsOf(
+      renderFloorSummary({ candidate: parsed, source: "floor_no_key_configured" }),
+    )
+      .join(" ")
+      .replaceAll(parsed.surface, "<surface>")
+      .replaceAll(parsed.timeframe.start.toISOString().slice(0, 10), "<start>")
+      .replaceAll(parsed.timeframe.end.toISOString().slice(0, 10), "<end>");
+
+    expect(bareDigitOffenders(rendered, allowed)).toHaveLength(0);
   });
 
   test("no floor template contains a third-person plural pronoun", () => {
