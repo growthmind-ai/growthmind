@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createBareTestDb, createTestDb } from "../../../../packages/db/src/testing";
+import { createBareTestDb, createTestDb } from "@growthmind/db/testing";
 import { handle } from "../../app/api/health/route";
 
 describe("GET /api/health", () => {

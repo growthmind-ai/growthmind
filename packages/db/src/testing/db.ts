@@ -6,7 +6,7 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
-import * as schema from "./schema";
+import * as schema from "../schema";
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -16,7 +16,12 @@ export interface TestDbHandle {
   close: () => Promise<void>;
 }
 
-const MIGRATIONS_FOLDER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "drizzle");
+const MIGRATIONS_FOLDER = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "drizzle",
+);
 
 const drizzleFor = (client: PGlite): TestDb => drizzle(client, { schema, casing: "snake_case" });
 

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createOrganizationsRepo } from "../../src/repositories/organizations.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner } from "../helpers/fixtures";
+import { seedOrgWithOwner } from "../../src/testing";
 
 describe("createOrganizationsRepo", () => {
   let db: TestDb;

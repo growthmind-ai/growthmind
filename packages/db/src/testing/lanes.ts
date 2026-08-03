@@ -10,8 +10,8 @@ import type {
   SourceFailureCode,
 } from "@growthmind/shared";
 
-import type { ScopedDb } from "../../src/repositories/types";
-import * as schema from "../../src/schema";
+import type { ScopedDb } from "../repositories/types";
+import * as schema from "../schema";
 
 export function laneNames(fileToken: string): {
   orgName: (label: string) => string;
@@ -92,21 +92,34 @@ export interface SeededEvent {
   sourceEventId: string;
 }
 
-export async function seedEvent(
-  db: ScopedDb,
-  params: {
-    organizationId: string;
-    projectId: string;
-    connectionId: string;
-    sessionId: string;
-    sourceEventId: string;
-    name?: string;
-    occurredAt?: Date;
-    urlPath?: string | null;
+export interface SeedEventParams {
+  organizationId: string;
+  projectId: string;
+  connectionId: string;
+  sessionId: string;
+  sourceEventId: string;
+  name?: string;
+  occurredAt?: Date;
+  urlPath?: string | null;
 
-    urlPathNormalisationVersion?: number | null;
-  },
-): Promise<SeededEvent> {
+  urlPathNormalisationVersion?: number | null;
+}
+
+export async function seedEvents(
+  db: ScopedDb,
+  rows: readonly SeedEventParams[],
+): Promise<SeededEvent[]> {
+  const seeded: SeededEvent[] = [];
+
+  for (const row of rows) {
+    // eslint-disable-next-line no-await-in-loop
+    seeded.push(await seedEvent(db, row));
+  }
+
+  return seeded;
+}
+
+export async function seedEvent(db: ScopedDb, params: SeedEventParams): Promise<SeededEvent> {
   const [row] = await db
     .insert(schema.events)
     .values({

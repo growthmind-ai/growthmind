@@ -22,14 +22,14 @@ import {
   type ComputeFindingSignatureInput,
 } from "../../src/services/signature-ledger.service";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
+import { laneNames } from "../../src/testing";
 import {
   makeTenantContext,
   seedMember,
   seedOrgWithOwner,
   seedProject,
   seedUser,
-} from "../helpers/fixtures";
+} from "../../src/testing";
 
 import { setLogSink, type LogRecord } from "@growthmind/shared";
 const NAMES = laneNames("sl");

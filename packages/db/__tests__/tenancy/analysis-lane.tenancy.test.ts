@@ -18,8 +18,8 @@ import { createSessionsRepo } from "../../src/repositories/sessions.repo";
 import * as schema from "../../src/schema";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedEvent, seedSession } from "../helpers/db-lane-fixtures";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames, seedEvent, seedSession } from "../../src/testing";
+import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("al");
 

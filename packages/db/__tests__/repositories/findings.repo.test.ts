@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createFindingsRepo, type PersistFindingInput } from "../../src/repositories/findings.repo";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");

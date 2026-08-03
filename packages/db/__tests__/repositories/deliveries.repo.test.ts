@@ -12,7 +12,7 @@ import {
   seedOrgWithOwner,
   seedProject,
   seedUser,
-} from "../helpers/fixtures";
+} from "../../src/testing";
 
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;

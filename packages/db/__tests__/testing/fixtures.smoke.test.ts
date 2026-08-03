@@ -5,7 +5,7 @@ import { tenantContextSchema } from "@growthmind/shared";
 
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { makeTenantContext, seedMember, seedOrgWithOwner, seedUser } from "./fixtures";
+import { makeTenantContext, seedMember, seedOrgWithOwner, seedUser } from "../../src/testing";
 
 describe("repository test fixtures", () => {
   let db: TestDb;

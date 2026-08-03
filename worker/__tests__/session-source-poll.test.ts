@@ -1,9 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { schema } from "@growthmind/db";
-import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { createTestDb, seedEvent, seedSession, type TestDb } from "@growthmind/db/testing";
 
 import { runSessionSourcePoll } from "../src/tasks/session-source-poll";
 import {
@@ -308,34 +306,20 @@ test("a mid-persist DB write failure leaves already-persisted events untouched a
   const seeded = await seedWired({ watermarkAt: watermark });
 
   const priorOccurredAt = new Date(NOW.getTime() - 20 * 60_000);
-  const priorSessionId = randomUUID();
-  await db.insert(schema.sessions).values({
-    id: priorSessionId,
+  const priorSession = await seedSession(db, {
     organizationId: seeded.organizationId,
     projectId: seeded.projectId,
     connectionId: seeded.connectionId,
     sessionKey: `${PREFIX}prior-session`,
-    identityKey: null,
-    identityEmailDomain: null,
-    identityResolution: "unresolved",
-    userAgent: null,
-    entryUrlPath: null,
     startedAt: priorOccurredAt,
     lastEventAt: priorOccurredAt,
-    origin: "real",
-    exclusionReason: "none",
-    internalDomainAtStamp: null,
-    exclusionRuleSetVersion: 1,
-    groupingVersion: 1,
   });
-  await db.insert(schema.events).values({
-    id: randomUUID(),
+  await seedEvent(db, {
     organizationId: seeded.organizationId,
     projectId: seeded.projectId,
     connectionId: seeded.connectionId,
-    sessionId: priorSessionId,
+    sessionId: priorSession.id,
     sourceEventId: `${PREFIX}prior-event`,
-    name: "$pageview",
     occurredAt: priorOccurredAt,
     urlPath: "/prior",
   });

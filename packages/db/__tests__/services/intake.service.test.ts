@@ -15,9 +15,9 @@ import { createEventsRepo } from "../../src/repositories/events.repo";
 import { createSessionsRepo } from "../../src/repositories/sessions.repo";
 import { persistPullResult, type IntakeConnection } from "../../src/services/intake.service";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedConnection } from "../helpers/fixtures";
+import { seedConnection } from "../../src/testing";
 import { failedPull, sourceEvent, sourceSession, successfulPull } from "./fake-source";
-import { seedWorkspace, type SeededWorkspace } from "./seed";
+import { seedWorkspace, type SeededWorkspace } from "../../src/testing";
 
 const INTERNAL_DOMAIN = "acme-internal-example.test";
 

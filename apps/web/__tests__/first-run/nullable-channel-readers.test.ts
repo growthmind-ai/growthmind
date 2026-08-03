@@ -16,7 +16,7 @@ import {
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 
-import { seedOrgWithOwner, seedProject } from "../../../../packages/db/__tests__/helpers/fixtures";
+import { seedOrgWithOwner, seedProject } from "@growthmind/db/testing";
 import {
   readPgFailure,
   readRawRows,

@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
-import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.repo";
-import type { ScopedDb } from "../../src/repositories/types";
-import * as schema from "../../src/schema";
+import { createAnalysisRunsRepo } from "../repositories/analysis-runs.repo";
+import type { ScopedDb } from "../repositories/types";
+import * as schema from "../schema";
 
 export interface SeededOrganization {
   id: string;
@@ -179,21 +179,32 @@ export interface SeededConnection {
   projectId: string;
 }
 
+export const PLACEHOLDER_CREDENTIAL_CIPHERTEXT = "v1.00000000.aaaa.bbbb.cccc";
+
+export const PLACEHOLDER_CREDENTIAL_KEY_ID = "00000000";
+
+export interface SeedConnectionParams {
+  organizationId: string;
+  projectId: string;
+  host?: string;
+  sourceProjectId?: string;
+
+  // A real envelope where the test decrypts it; the placeholder otherwise.
+  credentialCiphertext?: string;
+  credentialKeyId?: string;
+  isActive?: boolean;
+  health?: "validating" | "healthy" | "failing" | "disconnected";
+  watermarkAt?: Date | null;
+  backfillBefore?: string | null;
+  nextPollAt?: Date;
+  pollIntervalSeconds?: number;
+  connectedAt?: Date;
+  inferredInternalDomain?: string | null;
+}
+
 export async function seedConnection(
   db: ScopedDb,
-  params: {
-    organizationId: string;
-    projectId: string;
-    host?: string;
-    sourceProjectId?: string;
-    isActive?: boolean;
-    health?: "validating" | "healthy" | "failing" | "disconnected";
-    watermarkAt?: Date | null;
-    nextPollAt?: Date;
-    pollIntervalSeconds?: number;
-    connectedAt?: Date;
-    inferredInternalDomain?: string | null;
-  },
+  params: SeedConnectionParams,
 ): Promise<SeededConnection> {
   const [row] = await db
     .insert(schema.projectConnections)
@@ -204,11 +215,12 @@ export async function seedConnection(
       sourceKind: "posthog",
       host: params.host ?? "https://eu.posthog.example.invalid",
       sourceProjectId: params.sourceProjectId ?? "00000",
-      credentialCiphertext: "v1.00000000.aaaa.bbbb.cccc",
-      credentialKeyId: "00000000",
+      credentialCiphertext: params.credentialCiphertext ?? PLACEHOLDER_CREDENTIAL_CIPHERTEXT,
+      credentialKeyId: params.credentialKeyId ?? PLACEHOLDER_CREDENTIAL_KEY_ID,
       isActive: params.isActive ?? true,
       health: params.health ?? "healthy",
       watermarkAt: params.watermarkAt ?? null,
+      backfillBefore: params.backfillBefore ?? null,
       nextPollAt: params.nextPollAt ?? new Date(),
       pollIntervalSeconds: params.pollIntervalSeconds ?? 60,
       connectedAt: params.connectedAt ?? new Date(),

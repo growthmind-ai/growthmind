@@ -20,7 +20,7 @@ import {
 import { createEventsCounterService } from "../../src/services/events-counter.service";
 import { persistPullResult } from "../../src/services/intake.service";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedConnection } from "../helpers/fixtures";
+import { seedConnection } from "../../src/testing";
 import {
   FAKE_HOST,
   FAKE_PERSONAL_KEY,
@@ -37,7 +37,7 @@ import {
   successfulPull,
   type FakeSourceHarness,
 } from "./fake-source";
-import { OWNER_EMAIL_DOMAIN, seedWorkspace, seedWorkspaceWithoutOwner } from "./seed";
+import { OWNER_EMAIL_DOMAIN, seedWorkspace, seedWorkspaceWithoutOwner } from "../../src/testing";
 
 const FIXED_NOW = new Date("2026-07-30T12:00:00.000Z");
 

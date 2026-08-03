@@ -12,7 +12,7 @@ import {
 import type { ScopedDb } from "../../src/repositories/types";
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner } from "../helpers/fixtures";
+import { seedOrgWithOwner } from "../../src/testing";
 
 async function seedProject(
   db: ScopedDb,

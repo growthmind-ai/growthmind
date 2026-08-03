@@ -4,8 +4,8 @@ import type { IdentityResolution, TenantContext } from "@growthmind/shared";
 
 import { createSessionsRepo, type SessionUpsertRow } from "../../src/repositories/sessions.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("se");
 

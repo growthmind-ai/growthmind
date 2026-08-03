@@ -8,8 +8,8 @@ import {
 import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.repo";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
 import {
   type CreateFirstRunRepo,
   type CreateFirstRunStatusService,
