@@ -44,6 +44,7 @@ const OAUTH_START = routeById("slack-oauth-start");
 const OAUTH_CALLBACK = routeById("slack-oauth-callback");
 const CHANNELS = routeById("slack-channels");
 const CHANNEL = routeById("slack-channel");
+const CONNECT = routeById("slack-connect");
 
 const NEW_SLACK_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freeze([
   OAUTH_START,
@@ -459,6 +460,32 @@ describe("the four new Slack routes accept no tenancy id (AD-16, AD-16a)", () =>
     const padded = schemaUnderTest.safeParse({ channelId: `  ${CHOSEN_CHANNEL}  ` });
     expect(padded.success).toBe(true);
     expect(padded.success ? padded.data : null).toEqual({ channelId: CHOSEN_CHANNEL });
+  });
+
+  // The lesson above was learned on slack/channel and not on its sibling, which
+  // still took a bare `.min(1)` — so the pasted-token path could persist "   "
+  // as an address, and the delivery guard then refuses that row for good with
+  // every screen saying a channel is chosen. There is no disconnect control.
+  test("slack/connect refuses the same blank channelId its sibling refuses", async () => {
+    const schemaUnderTest = await loadRouteInputSchema(CONNECT);
+
+    for (const blank of ["", " ", "   ", "\t", "\n"]) {
+      const body = { botToken: BOT_TOKEN, channelId: blank };
+      expect(`${JSON.stringify(blank)}:${schemaUnderTest.safeParse(body).success}`).toBe(
+        `${JSON.stringify(blank)}:false`,
+      );
+    }
+
+    // Control - a schema that refused every body would pass the loop above.
+    const accepted = schemaUnderTest.safeParse({
+      botToken: BOT_TOKEN,
+      channelId: `  ${CHOSEN_CHANNEL}  `,
+    });
+    expect(accepted.success).toBe(true);
+    expect(accepted.success ? accepted.data : null).toEqual({
+      botToken: BOT_TOKEN,
+      channelId: CHOSEN_CHANNEL,
+    });
   });
 });
 

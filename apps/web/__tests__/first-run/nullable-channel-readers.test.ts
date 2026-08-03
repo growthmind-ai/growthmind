@@ -5,6 +5,7 @@ import { listOrgsWithActiveSlackConnection } from "@growthmind/db/system";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
 import {
   ALL_ONBOARDING_MESSAGES,
+  SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
   canArm,
   nextBlocker,
@@ -302,6 +303,43 @@ describe("REGRESSION BASELINE — the payload for the two rows AD-4 does not cha
   });
 });
 
+describe("a SENTINEL channel is the same absence as a NULL one, on every surface", () => {
+  // `isDeliveryTarget` has refused "null"/"undefined"/""/whitespace since AD-4,
+  // and `readLandingDeliveryTarget` and the settings read both consult it. The
+  // status payload did not, so one org read step 3 as done on the setup screen
+  // and "no Slack channel is connected" on the other two — and the settings link
+  // on `/`, gated on the address being absent, hid from exactly those users.
+  const SENTINELS: readonly string[] = ["null", "undefined", "   "];
+
+  for (const sentinel of SENTINELS) {
+    test(`a channel_id of ${JSON.stringify(sentinel)} yields no address and the pick prompt`, async () => {
+      const lane = await seedLane(`sentinel-${sentinel.trim() === "" ? "blank" : sentinel}`);
+
+      await readRawRows(
+        db,
+        sql`INSERT INTO slack_connections
+              (id, organization_id, channel_id, credential_ciphertext, credential_key_id,
+               is_active, connected_by_user_id, connected_at)
+            VALUES (${randomUUID()}, ${lane.organizationId}, ${sentinel}, ${CIPHERTEXT},
+                    ${CREDENTIAL_KEY_ID}, true, ${lane.userId}, ${CONNECTED_AT.toISOString()})`,
+      );
+
+      const payload = await statusFor(lane);
+
+      expect(payload.channelId).toBeNull();
+      expect(payload.slackNotice).toBe(SLACK_CHANNEL_PICK_PROMPT);
+      expect(payload[NEW_PAYLOAD_FIELD]).toBe(true);
+    });
+  }
+
+  test("REGRESSION BASELINE: a real address still reads as one", async () => {
+    const payload = await statusFor(connected);
+
+    expect(payload.channelId).toBe(CHANNEL_ID);
+    expect(payload.slackNotice).toBeNull();
+  });
+});
+
 describe("the setup chain, for a workspace with no channel (AD-4 rows 4-5)", () => {
   test("SetupFacts.deliveryResolved is false — a workspace is not somewhere to deliver", async () => {
     await nullChannelConnection();
@@ -401,12 +439,18 @@ describe("the delivery lane's population, over a workspace with no channel", () 
     expect(postable).toContain(connected.organizationId);
   });
 
-  test("no organization in the population carries a stringified channel", async () => {
+  test("the reader never stringifies a NULL channel into the four characters null", async () => {
     await nullChannelConnection();
 
-    const channels = (await listOrgsWithActiveSlackConnection(db)).map(
-      (row) => (row as unknown as Record<string, unknown>).channelId,
-    );
+    // Scoped to the three lanes this suite seeds. The sentinel suite above writes
+    // rows that genuinely hold "null" as data, and over the whole population this
+    // assertion could no longer tell a coerced NULL from an honest sentinel —
+    // which is the one thing it is here to catch.
+    const seeded = new Set([attached, connected, bare].map((lane) => lane.organizationId));
+
+    const channels = (await listOrgsWithActiveSlackConnection(db))
+      .filter((row) => seeded.has(row.organizationId))
+      .map((row) => (row as unknown as Record<string, unknown>).channelId);
 
     expect(channels).not.toContain("null");
     expect(channels).not.toContain("undefined");

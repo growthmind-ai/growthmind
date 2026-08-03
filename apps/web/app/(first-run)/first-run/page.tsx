@@ -54,7 +54,11 @@ function workBody(input: WorkBodyInput): ReactNode {
     return (
       <SlackConnection
         fields={step.fields}
-        settled={view.state === "done" || view.state === "skipped"}
+        // `done`, not `done || skipped`. A skipped step still renders its
+        // notice — "nothing will arrive anywhere until Slack is connected" —
+        // and it used to render that beside no control at all, which is B-035
+        // one surface further in.
+        settled={view.state === "done"}
         interactive={view.interactive}
         skippable={step.skippable}
         skipped={view.state === "skipped"}

@@ -211,12 +211,23 @@ export const SLACK_SKIPPED_NOTICE =
 // somewhere permanent to point at.
 export const SETTINGS_TITLE = "Where what we find arrives";
 
-export const SETTINGS_POSTING_TEMPLATE = "What we find is posted to #{channel}.";
+// "goes to", not "is posted to": the address is what is stored, and the last post
+// having failed does not unstamp it. A perfect-tense claim here contradicted the
+// failure sentence rendered directly beneath it.
+export const SETTINGS_POSTING_TEMPLATE = "What we find goes to #{channel}.";
+
+// The success moment, which is otherwise a confirmation with no next action.
+export const SETTINGS_SETTLED_LINE =
+  "That is everything we need. What we find arrives there from now on, and there is nothing here to come back and check.";
+
+// The D12 consequence, said out loud rather than left as an absent control.
+export const SETTINGS_CHANNEL_FIXED_LINE =
+  "The channel is chosen once and does not move. What we already sent would otherwise arrive a second time somewhere new.";
 
 export const SETTINGS_NO_DELIVERY_LINE =
   "No Slack channel is connected, so what we find has nowhere to arrive. Connect one below and it goes where your team already works.";
 
-export const SETTINGS_BACK_LABEL = "Back";
+export const SETTINGS_BACK_LABEL = "Back to your workspace";
 
 // Not the field it replaces: on this path the list IS the field, no id is typed.
 export const FIELD_CHANNEL_LABEL = "Channel";
@@ -427,6 +438,8 @@ export const ONBOARDING_MESSAGES = {
 
   settingsTitle: SETTINGS_TITLE,
   settingsPostingTemplate: SETTINGS_POSTING_TEMPLATE,
+  settingsSettled: SETTINGS_SETTLED_LINE,
+  settingsChannelFixed: SETTINGS_CHANNEL_FIXED_LINE,
   settingsNoDelivery: SETTINGS_NO_DELIVERY_LINE,
   settingsBack: SETTINGS_BACK_LABEL,
 
@@ -538,6 +551,8 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   SETTINGS_TITLE,
   SETTINGS_POSTING_TEMPLATE,
+  SETTINGS_SETTLED_LINE,
+  SETTINGS_CHANNEL_FIXED_LINE,
   SETTINGS_NO_DELIVERY_LINE,
   SETTINGS_BACK_LABEL,
 

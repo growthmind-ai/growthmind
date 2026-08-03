@@ -1,7 +1,5 @@
-import { Box, Container, Group, Text } from "@mantine/core";
+import { Box, Container, Group } from "@mantine/core";
 import type { ReactNode } from "react";
-
-import { SETTINGS_TITLE } from "@growthmind/shared";
 
 import { SignOutButton } from "@/components/landing/sign-out-button";
 import { AnchorLink } from "@/components/ui/Links";
@@ -26,12 +24,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                 <LogoWordmark size={16} />
               </Group>
             </AnchorLink>
-            <Group gap="sm" wrap="nowrap">
-              <Text size="sm" c="dimmed">
-                {SETTINGS_TITLE}
-              </Text>
-              <SignOutButton />
-            </Group>
+            <SignOutButton />
           </Group>
         </Container>
       </Box>

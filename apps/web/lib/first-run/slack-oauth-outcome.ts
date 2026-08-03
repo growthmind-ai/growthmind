@@ -22,6 +22,12 @@ export function slackOAuthOutcomeOf(search: URLSearchParams): SlackOAuthOutcome 
   return SLACK_OAUTH_OUTCOMES.find((outcome) => outcome === value) ?? null;
 }
 
-export function firstRunLandingFor(outcome: SlackOAuthOutcome): string {
-  return `${ROUTES.firstRun}?${SLACK_OAUTH_OUTCOME_PARAM}=${outcome}`;
+// Setup redirects a dismissed founder home and drops the parameter, so the
+// surface the founder left is the only landing that keeps the outcome sentence.
+export function slackOAuthLandingFor(input: {
+  readonly outcome: SlackOAuthOutcome;
+  readonly dismissed: boolean;
+}): string {
+  const base = input.dismissed ? ROUTES.settings : ROUTES.firstRun;
+  return `${base}?${SLACK_OAUTH_OUTCOME_PARAM}=${input.outcome}`;
 }

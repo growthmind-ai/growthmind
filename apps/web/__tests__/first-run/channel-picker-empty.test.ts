@@ -54,13 +54,20 @@ const readPicker = (channels: readonly SlackChannelChoice[] | null): RenderedCar
         value: null,
         onChange: () => {},
         disabled: false,
+        loading: false,
       }),
     ),
   );
 
 const pickerMarkup = (channels: readonly SlackChannelChoice[] | null): string =>
   render(
-    createElement(ChannelPicker, { channels, value: null, onChange: () => {}, disabled: false }),
+    createElement(ChannelPicker, {
+      channels,
+      value: null,
+      onChange: () => {},
+      disabled: false,
+      loading: false,
+    }),
   );
 
 const PICKER_CONTROL = /<input\b/;
