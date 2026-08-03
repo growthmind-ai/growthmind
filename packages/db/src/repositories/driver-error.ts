@@ -37,22 +37,32 @@ export class RepoWriteError extends Error {
 
 const REFUSED_WITHOUT_A_READABLE_CAUSE = "the database refused the query";
 
-// `DrizzleQueryError.message` is the statement and every bound parameter, so a read path
-// that logs it writes tenancy ids and ciphertext into the log. The cause is the driver's
-// own message, which names no value; anything still carrying `query`/`params` is refused
-// a message rather than trusted.
-export function describeDriverError(error: unknown): string {
-  const fields = readDriverFields(error);
-  const carriesStatement =
-    typeof error === "object" &&
-    error !== null &&
-    ("query" in error || "params" in error || "parameters" in error);
+function carriesStatement(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ("query" in value || "params" in value || "parameters" in value)
+  );
+}
 
-  if (!carriesStatement) {
-    return asStringOrNull(fields.message) ?? String(error);
+// `DrizzleQueryError.message` is the statement and every bound parameter, so a read path
+// that logs it writes tenancy ids and ciphertext into the log. The cause names no value.
+// The CAUSE is tested too: reading only the top level meant one
+// `throw new Error(msg, { cause: queryError })` handed the statement straight back.
+export function describeDriverError(error: unknown): string {
+  const cause = readCauseFields(error);
+
+  if (!carriesStatement(error) && !carriesStatement(cause)) {
+    return asStringOrNull(readDriverFields(error).message) ?? String(error);
   }
 
-  return asStringOrNull(readCauseFields(error)?.message) ?? REFUSED_WITHOUT_A_READABLE_CAUSE;
+  // The code was read either way and names no bound value, so refusing without it left
+  // an operator a sentence they could do nothing with.
+  const refused = [REFUSED_WITHOUT_A_READABLE_CAUSE, asStringOrNull(cause?.code)]
+    .filter((part) => part !== null)
+    .join(" ");
+
+  return carriesStatement(cause) ? refused : (asStringOrNull(cause?.message) ?? refused);
 }
 
 // The driver puts bound parameters in the message, so a ciphertext or key id reaches the

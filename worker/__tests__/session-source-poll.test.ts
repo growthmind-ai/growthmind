@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { schema } from "@growthmind/db";
-import { createTestDb, seedEvent, seedSession, type TestDb } from "@growthmind/db/testing";
+import {
+  createTestDb,
+  driverQueryError,
+  seedEvent,
+  seedSession,
+  type TestDb,
+} from "@growthmind/db/testing";
+import { describeError } from "@growthmind/shared";
 
 import { runSessionSourcePoll } from "../src/tasks/session-source-poll";
 import {
@@ -65,14 +72,15 @@ function dbThatFailsOn(
   realDb: TestDb,
   operation: "insert" | "update",
   table: unknown,
-  message: string,
+  thrown: string | Error,
 ): TestDb {
+  const failure = (): Error => (typeof thrown === "string" ? new Error(thrown) : thrown);
   const handler: ProxyHandler<TestDb> = {
     get(target, prop, receiver) {
       if (prop === operation) {
         return (arg: unknown) => {
           if (arg === table) {
-            throw new Error(message);
+            throw failure();
           }
           const original = Reflect.get(target, prop, receiver) as (arg: unknown) => unknown;
           return original.call(target, arg);
@@ -93,7 +101,8 @@ function dbThatFailsToInsert(realDb: TestDb, table: unknown, message: string): T
 
 // Keyed on the payload, not on call order: the same table is also updated by the
 // claim and by the watermark advance, and both must still succeed.
-function dbThatFailsHealthWrites(realDb: TestDb, message: string): TestDb {
+function dbThatFailsHealthWrites(realDb: TestDb, thrown: string | Error): TestDb {
+  const failure = (): Error => (typeof thrown === "string" ? new Error(thrown) : thrown);
   const handler: ProxyHandler<TestDb> = {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -126,7 +135,7 @@ function dbThatFailsHealthWrites(realDb: TestDb, message: string): TestDb {
 
             return (payload: Record<string, unknown>) => {
               if ("health" in payload) {
-                throw new Error(message);
+                throw failure();
               }
               return (member as (payload: unknown) => unknown).call(builderTarget, payload);
             };
@@ -626,4 +635,127 @@ test("when both the failed-run write and the health badge fail, neither log clai
       line.includes("could not record its failed run, and its health badge could not be updated"),
     ),
   ).toBe(true);
+});
+
+// B-039. `describeError` returns `error.message`, and in drizzle-orm 0.45.2 a query
+// failure's message IS the statement and every bound parameter — so three catches on
+// this task wrote tenancy ids and credential material into the log. The fixtures below
+// throw the REAL `DrizzleQueryError` shape: a hand-built `Object.assign(new Error(safe),
+// { query })` asserts against a shape the runtime never produces, and passes while the
+// real error leaks.
+const BOUND_SECRET = "xoxb-a-bound-parameter-that-must-never-reach-a-log";
+const STATEMENT = "update project_connections set health = $1 where id = $2";
+const DRIVER_SAID = "deadlock detected";
+
+const leakyFailure = (): Error =>
+  driverQueryError({
+    sql: STATEMENT,
+    params: [BOUND_SECRET, "org-fixture-id"],
+    driverMessage: DRIVER_SAID,
+  });
+
+test("CONTROL: the fixture really does carry the statement and its parameters in its message", () => {
+  // Without this row the two below pass against any error whose message happens to be
+  // safe, which is exactly how the leak survived a green suite.
+  const failure = leakyFailure();
+
+  expect(failure.message).toContain(STATEMENT);
+  expect(failure.message).toContain(BOUND_SECRET);
+  expect(describeError(failure)).toContain(BOUND_SECRET);
+});
+
+test("a driver failure on the health badge logs the driver's own words, not the query", async () => {
+  await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({
+      results: [
+        fakeEvent({
+          distinctId: `${PREFIX}visitor-leak`,
+          sessionId: `${PREFIX}session-leak`,
+          occurredAt: new Date(NOW.getTime() - 60_000),
+        }),
+      ],
+      next: null,
+    }),
+  });
+
+  await runSessionSourcePoll(
+    createPollDeps({
+      db: dbThatFailsHealthWrites(db, leakyFailure()),
+      fetch: posthog.fetch,
+      clock,
+      logger,
+    }),
+  );
+
+  const logged = logger.errors.join("\n");
+
+  expect(logged).toContain("health badge could not be updated");
+  expect(logged).toContain(DRIVER_SAID);
+  expect(logged).not.toContain(BOUND_SECRET);
+  expect(logged).not.toContain(STATEMENT);
+});
+
+test("a driver failure recording the failed run logs the driver's own words, not the query", async () => {
+  await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({ kind: "network", message: "connection reset by peer" }),
+  });
+
+  await runSessionSourcePoll(
+    createPollDeps({
+      db: dbThatFailsOn(db, "update", schema.sessionSourcePollRuns, leakyFailure()),
+      fetch: posthog.fetch,
+      clock,
+      logger,
+    }),
+  );
+
+  const logged = logger.errors.join("\n");
+
+  expect(logged).toContain("could not record its failed run");
+  expect(logged).toContain(DRIVER_SAID);
+  expect(logged).not.toContain(BOUND_SECRET);
+  expect(logged).not.toContain(STATEMENT);
+});
+
+// The largest bound-parameter payload on this task: `persistPullResult` writes the
+// sessions and events, so its statement carries identity HMACs and session keys.
+// It was the highest-value leak site on the file and the one with nothing on it.
+test("a driver failure storing what it fetched logs the driver's own words, not the query", async () => {
+  await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({
+      results: [
+        fakeEvent({
+          distinctId: `${PREFIX}visitor-store`,
+          sessionId: `${PREFIX}session-store`,
+          occurredAt: new Date(NOW.getTime() - 60_000),
+        }),
+      ],
+      next: null,
+    }),
+  });
+
+  await runSessionSourcePoll(
+    createPollDeps({
+      db: dbThatFailsOn(db, "insert", schema.sessions, leakyFailure()),
+      fetch: posthog.fetch,
+      clock,
+      logger,
+    }),
+  );
+
+  const logged = logger.errors.join("\n");
+
+  expect(logged).toContain("could not store what it fetched");
+  expect(logged).toContain(DRIVER_SAID);
+  expect(logged).not.toContain(BOUND_SECRET);
+  expect(logged).not.toContain(STATEMENT);
 });

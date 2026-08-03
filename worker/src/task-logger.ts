@@ -1,4 +1,5 @@
-import { describeError, logger as sharedLogger } from "@growthmind/shared";
+import { describeDriverError } from "@growthmind/db";
+import { logger as sharedLogger } from "@growthmind/shared";
 
 export interface TaskLogger {
   info(message: string): void;
@@ -28,7 +29,7 @@ export async function isolated(
     await work();
     return true;
   } catch (error) {
-    logger.error(`${sentence} — ${describeError(error)}`);
+    logger.error(`${sentence} — ${describeDriverError(error)}`);
     return false;
   }
 }

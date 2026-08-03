@@ -1,6 +1,4 @@
-// B-040: two states rendered no exit control at all. One contradicted itself while
-// doing it — a sentence saying there was nothing more to wait for, above a heading
-// saying the screen was still reading and a counter that kept climbing.
+// B-040: two states rendered no exit control at all, and one contradicted itself.
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -23,7 +21,6 @@ import { readMarkup } from "./helpers/rendered-markup";
 const ARMED_AT = new Date("2026-08-01T10:00:00.000Z");
 const NOW = ARMED_AT.getTime() + 90_000;
 
-// Armed, reading, and no finding: the shape `findingUnavailable` arrives on.
 const READING: StagePersistedFacts = Object.freeze({
   armedAt: ARMED_AT,
   retrievedAt: new Date(ARMED_AT.getTime() + 20_000),
@@ -64,8 +61,6 @@ describe("B-040 — a found-but-unrenderable row is a terminal state", () => {
   });
 
   test("CONTROL: without the fault the same facts still render the reading heading", () => {
-    // Without this row the assertion above would pass against a Stage that never
-    // rendered the reading heading at all.
     const rendered = readMarkup(stageMarkup(false));
 
     expect(rendered.text).toContain(STAGE_READING_HEADING);
@@ -86,14 +81,12 @@ describe("B-040 — a found-but-unrenderable row is a terminal state", () => {
       /const terminal =[\s\S]{0,120}?kind === "ended"[\s\S]{0,40}?\|\|\s*findingUnavailable/,
     );
 
-    // `terminal` is the cadence input, so folding the flag in is what ends the climb.
     expect(code).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,120}?terminal,/);
     expect(
       resolvePollCadenceMs({ attached: true, armed: true, terminal: true, deliveryState: "none" }),
     ).toBeNull();
 
-    // Control - the same call while NOT terminal still polls, so the row above is
-    // not asserting a function that returns null for everything.
+    // Control - not-terminal still polls, so the row above is not vacuous.
     expect(
       resolvePollCadenceMs({ attached: true, armed: true, terminal: false, deliveryState: "none" }),
     ).not.toBeNull();
@@ -104,8 +97,7 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
   test("the exit row renders whenever armed, not only on the two terminal kinds", () => {
     const code = clientCode();
 
-    // Leg 1 never becomes `ended` on its own: nothing breaks unless the founder
-    // breaks it, so gating the row on `terminal` left that screen with no control.
+    // Leg 1 never becomes `ended` on its own, so gating on `terminal` stranded it.
     expect(code).toMatch(/\{armed \? \(\s*<Group/);
     expect(code).not.toMatch(/\{terminal \? \(\s*<Group/);
   });
@@ -113,8 +105,7 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
   test("the two controls inside it stay gated on terminal", () => {
     const code = clientCode();
 
-    // Watch again needs a run that ended, and the Slack link belongs to the closure
-    // sentence — neither means anything while the screen is still counting.
+    // Neither means anything while the screen is still counting.
     expect(code).toMatch(/\{kind === "ended" \? \(/);
     expect(code).toMatch(/\{terminal && current\.channelId === null \? \(/);
   });
@@ -126,7 +117,6 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
       /terminal \? ONBOARDING_MESSAGES\.done : ONBOARDING_MESSAGES\.finishSetup/,
     );
 
-    // Both are shipped copy, and they are different sentences.
     expect(ONBOARDING_MESSAGES.finishSetup).not.toBe(ONBOARDING_MESSAGES.done);
   });
 
@@ -134,8 +124,7 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
     const code = clientCode();
     const group = code.slice(code.indexOf("{armed ? ("));
 
-    // One `finish()` handler under the row: a second control would be a second way
-    // to leave, and only one of them would be tested.
+    // One handler: a second control would be a second way to leave.
     expect([...group.matchAll(/void finish\(\)/g)]).toHaveLength(1);
   });
 });
