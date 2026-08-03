@@ -289,8 +289,7 @@ const PLANTED_ENQUEUE_ROUTE =
   `  return Response.json({ noted: true });\n` +
   `}\n`;
 
-const CLEAN_ROUTE =
-  `export async function handle() {\n` + `  return Response.json({ noted: true });\n` + `}\n`;
+const CLEAN_ROUTE = `export async function handle() {\n  return Response.json({ noted: true });\n}\n`;
 
 const WEB_ENQUEUE = /graphile-worker|\baddJob\b/;
 
