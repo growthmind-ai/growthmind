@@ -53,6 +53,7 @@ const readPicker = (channels: readonly SlackChannelChoice[] | null): RenderedCar
         channels,
         value: null,
         onChange: () => {},
+        onRefresh: () => {},
         disabled: false,
         loading: false,
       }),
@@ -65,6 +66,7 @@ const pickerMarkup = (channels: readonly SlackChannelChoice[] | null): string =>
       channels,
       value: null,
       onChange: () => {},
+      onRefresh: () => {},
       disabled: false,
       loading: false,
     }),
@@ -92,14 +94,15 @@ const readPickingCard = (): RenderedCard =>
     ),
   );
 
-const RELIST_BRANCH = /if\s*\(\s*relistable\s*\)/;
+// A list is stale the moment the bot is invited to something, and a healthy list
+// goes stale exactly like a broken one — so nothing may gate the re-list on the
+// list having failed or arrived empty.
+const BROKEN_LIST_GATE = /\b(?:relistable|listUnavailable|listEmpty)\b/;
 
-const FAILURE_ONLY_BRANCH = /if\s*\(\s*listUnavailable\s*\)/;
-
-const PLANTED_FAILURE_ONLY_RETRY = fixture(
-  "PlantedFailureOnlyRetry",
+const PLANTED_GATED_RELIST = fixture(
+  "PlantedGatedRelist",
   `async function retry(): Promise<void> {
-  if (listUnavailable) {
+  if (relistable) {
     setListingAttempt((attempt) => attempt + 1);
     return;
   }
@@ -108,14 +111,11 @@ const PLANTED_FAILURE_ONLY_RETRY = fixture(
 `,
 );
 
-const CLEAN_RELIST_RETRY = fixture(
-  "CleanRelistRetry",
-  `async function retry(): Promise<void> {
-  if (relistable) {
-    setListingAttempt((attempt) => attempt + 1);
-    return;
-  }
-  await post();
+const CLEAN_UNGATED_RELIST = fixture(
+  "CleanUngatedRelist",
+  `function relist(): void {
+  setChannels(null);
+  setListingAttempt((attempt) => attempt + 1);
 }
 `,
 );
@@ -173,17 +173,29 @@ describe("the channel list that arrives empty — the sweep's dead end", () => {
     expect(rendered.controls).toContain(ONBOARDING_MESSAGES.skipForNow);
   });
 
-  test("try again re-lists on both list states rather than re-posting", () => {
-    expect(offenders([PLANTED_FAILURE_ONLY_RETRY], FAILURE_ONLY_BRANCH)).not.toEqual([]);
-    expect(offenders([PLANTED_FAILURE_ONLY_RETRY], RELIST_BRANCH)).toEqual([]);
-    expect(offenders([CLEAN_RELIST_RETRY], RELIST_BRANCH)).not.toEqual([]);
-    expect(offenders([CLEAN_RELIST_RETRY], FAILURE_ONLY_BRANCH)).toEqual([]);
+  test("re-listing is offered in every picking state, not only the broken ones", () => {
+    expect(offenders([PLANTED_GATED_RELIST], BROKEN_LIST_GATE)).not.toEqual([]);
+    expect(offenders([CLEAN_UNGATED_RELIST], BROKEN_LIST_GATE)).toEqual([]);
 
     const card = readFirstRun(SLACK_CONNECTION);
 
-    expect(offenders([card], RELIST_BRANCH)).not.toEqual([]);
-    expect(offenders([card], FAILURE_ONLY_BRANCH)).toEqual([]);
-
+    expect(offenders([card], BROKEN_LIST_GATE)).toEqual([]);
     expect(blankComments(card.source)).toContain("setListingAttempt");
+
+    for (const channels of [null, [], CHANNELS]) {
+      expect(readPicker(channels).controls).toContain(ONBOARDING_MESSAGES.refreshChannels);
+    }
+  });
+
+  // Slack shows a bot only the private channels it was invited to, and no scope
+  // grants more — so the picker itself has to say how one gets here.
+  test("every picking state names the invite and carries the command to run", () => {
+    for (const channels of [null, [], CHANNELS]) {
+      const rendered = readPicker(channels);
+
+      expect(rendered.text).toContain(ONBOARDING_MESSAGES.slackPrivateChannelHint);
+      expect(rendered.text).toContain(ONBOARDING_MESSAGES.slackInviteCommand);
+      expect(rendered.controls).toContain(ONBOARDING_MESSAGES.copy);
+    }
   });
 });
