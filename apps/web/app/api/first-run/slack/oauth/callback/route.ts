@@ -1,8 +1,9 @@
 // State is verified BEFORE the code is exchanged: a mismatch must cost zero
 // outbound calls, observable only as the absence of a request to Slack.
-// Every exit is a redirect to /first-run — failures included, cookie cleared on
-// all of them — because a browser lands here, not a script.
+// Every exit is a redirect to the surface the founder left — failures included,
+// cookie cleared on all of them — because a browser lands here, not a script.
 import {
+  createFirstRunRepo,
   createSlackConnectionsRepo,
   describeDriverError,
   ensureProject,
@@ -20,7 +21,7 @@ import {
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody } from "@/lib/first-run/gate";
-import { firstRunLandingFor, type SlackOAuthOutcome } from "@/lib/first-run/slack-oauth-outcome";
+import { slackOAuthLandingFor, type SlackOAuthOutcome } from "@/lib/first-run/slack-oauth-outcome";
 import {
   clearedSlackOAuthStateCookie,
   exchangeCode,
@@ -53,20 +54,29 @@ function outcomeOfStateRefusal(code: OAuthStateRefusalCode): SlackOAuthOutcome {
   return code === "state_expired" ? "expired" : "failed";
 }
 
-const land = (outcome: SlackOAuthOutcome): Response =>
-  new Response(null, {
-    status: 302,
-    headers: {
-      location: firstRunLandingFor(outcome),
-      "set-cookie": clearedSlackOAuthStateCookie(),
-    },
-  });
+const landOn =
+  (dismissed: boolean) =>
+  (outcome: SlackOAuthOutcome): Response =>
+    new Response(null, {
+      status: 302,
+      headers: {
+        location: slackOAuthLandingFor({ outcome, dismissed }),
+        "set-cookie": clearedSlackOAuthStateCookie(),
+      },
+    });
 
 export async function handle(request: Request, deps: FirstRunRouteDeps): Promise<Response> {
   const env = parseWebEnv(process.env);
 
   const ctx = await deps.tenant();
-  if (ctx === null) return land("failed");
+  if (ctx === null) return landOn(false)("failed");
+
+  // The same fact that decides whether the setup screen still exists for them.
+  const dismissed = await createFirstRunRepo(deps.db, ctx)
+    .isDismissed(ctx.userId)
+    .catch(() => false);
+
+  const land = landOn(dismissed);
 
   const parsed = inputSchema.safeParse(await readRequestBody(request));
   if (!parsed.success) return refuseBody(parsed.error);

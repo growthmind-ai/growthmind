@@ -14,6 +14,7 @@ import {
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
+  SLACK_CONNECTION_FIELDS,
   STAGE_RETIRE_CLOSURE,
   type OnboardingCounterView,
   type SetupFacts,
@@ -21,7 +22,7 @@ import {
   type StepSequenceFacts,
 } from "@growthmind/shared";
 
-import { ButtonLink } from "@/components/ui/Links";
+import { SlackConnection } from "@/components/slack/SlackConnection";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
@@ -366,11 +367,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Text>
         )}
 
-        {/* ARMED, not terminal. Leg 1 never ends on its own — nothing breaks unless the
-          founder breaks it — so a founder who armed and then broke nothing sat at a
-          climbing counter with no way off the screen at all (B-040). The press is the
-          same one Done makes; only the label differs, because "Done" over a screen
-          still counting would be answering a question nobody asked. */}
         {/* What pressing it costs, said BEFORE it is pressed. `STAGE_RETIRE_CLOSURE`
           existed already and rendered only under the finding — after the payoff,
           where it matters least — while the founder still waiting for one had an
@@ -381,23 +377,31 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Text>
         ) : null}
 
+        {/* The closure above says "no Slack channel is connected, connect one"
+          whenever there is nowhere to deliver, and until this that sentence
+          named an action the product offered nowhere (B-035). The card itself
+          rather than a link to it: setup has not been dismissed yet, so sending
+          the founder to `/settings` and back would land them on `/` reading the
+          pre-setup CTA, as though none of this had happened. */}
+        {terminal && current.channelId === null ? (
+          <SlackConnection
+            fields={SLACK_CONNECTION_FIELDS}
+            settled={false}
+            interactive
+            skippable={false}
+            skipped={false}
+            channelId={current.channelId}
+            slackWorkspaceAttached={current.slackWorkspaceAttached}
+            slackWorkspaceName={current.slackWorkspaceName}
+            slackOAuthAvailable={current.slackOAuthAvailable}
+          />
+        ) : null}
+
+        {/* ARMED, not terminal. Leg 1 never ends on its own — nothing breaks unless the
+          founder breaks it — so a founder who armed and then broke nothing sat at a
+          climbing counter with no way off the screen at all (B-040). */}
         {armed ? (
           <Group gap="sm" wrap="wrap">
-            {/* The closure above says "no Slack channel is connected, connect
-              one" whenever there is nowhere to deliver. Until this, that
-              sentence named an action the product offered nowhere (B-035). */}
-            {terminal && current.channelId === null ? (
-              <ButtonLink
-                href={ROUTES.settings}
-                variant="default"
-                className={styles.action}
-                style={tapTargetStyle}
-                w={{ base: "100%", xs: "auto" }}
-              >
-                {ONBOARDING_MESSAGES.settingsTitle}
-              </ButtonLink>
-            ) : null}
-
             {kind === "ended" ? (
               <Button
                 variant="default"

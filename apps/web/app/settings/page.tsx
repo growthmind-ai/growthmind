@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 
 import {
   SETTINGS_BACK_LABEL,
+  SETTINGS_CHANNEL_FIXED_LINE,
   SETTINGS_NO_DELIVERY_LINE,
   SETTINGS_POSTING_TEMPLATE,
+  SETTINGS_SETTLED_LINE,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
-  STEP_SLACK_HELPER,
 } from "@growthmind/shared";
 
 import { SlackConnection } from "@/components/slack/SlackConnection";
@@ -41,13 +42,19 @@ export default async function SettingsPage() {
         {slack.channelId === null ? (
           <Text c="dimmed">{SETTINGS_NO_DELIVERY_LINE}</Text>
         ) : (
-          <Text>{SETTINGS_POSTING_TEMPLATE.replaceAll("{channel}", slack.channelId)}</Text>
-        )}
+          <>
+            <Text>{SETTINGS_POSTING_TEMPLATE.replaceAll("{channel}", slack.channelId)}</Text>
 
-        {connected ? null : (
-          <Text size="sm" c="dimmed">
-            {STEP_SLACK_HELPER}
-          </Text>
+            {/* The success moment says what became true and that nothing more is
+                owed, then names the one thing this page cannot undo. Without
+                both, a founder who has just finished reads a confirmation and a
+                Back link, and a founder who picked the wrong channel finds an
+                absent control with no explanation (D12). */}
+            <Text c="dimmed">{SETTINGS_SETTLED_LINE}</Text>
+            <Text size="sm" c="dimmed">
+              {SETTINGS_CHANNEL_FIXED_LINE}
+            </Text>
+          </>
         )}
 
         {/* `settled` is whether there is anywhere to deliver, never whether setup

@@ -145,11 +145,65 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(panel).toContain("ROUTES.settings");
   });
 
-  test("the terminal setup state offers the same control beside Done", () => {
+  test("the terminal setup state mounts the card itself rather than linking away", () => {
     const client = blankComments(
       readExisting("apps/web/components/first-run/FirstRunClient.tsx").source,
     );
 
-    expect(client).toContain("ROUTES.settings");
+    // A link would send an un-dismissed founder to /settings, whose exit is `/`,
+    // which renders the pre-setup CTA — a reset, from the terminal state.
+    expect(client).toContain("<SlackConnection");
+    expect(client).toMatch(/terminal\s*&&\s*current\.channelId === null/);
+    expect(client).not.toContain("ROUTES.settings");
+  });
+
+  test("the OAuth return lands on the surface the founder left, not always on setup", () => {
+    const outcome = blankComments(
+      readExisting("apps/web/lib/first-run/slack-oauth-outcome.ts").source,
+    );
+    const callback = blankComments(
+      readExisting("apps/web/app/api/first-run/slack/oauth/callback/route.ts").source,
+    );
+
+    // `/first-run` redirects a dismissed founder home and drops the query, so a
+    // hardcoded landing swallowed all six outcome sentences on /settings — the
+    // one-click path this page exists to offer.
+    expect(outcome).toContain("ROUTES.settings");
+    expect(outcome).toMatch(/dismissed\s*\?\s*ROUTES\.settings\s*:\s*ROUTES\.firstRun/);
+    expect(callback).toContain("isDismissed");
+    expect(callback).not.toContain("firstRunLandingFor");
+  });
+
+  test("a post that failed keeps the control its own error sentence names", () => {
+    const card = blankComments(
+      readExisting("apps/web/components/slack/SlackConnection.tsx").source,
+    );
+
+    // The channel route answers 200 with the failure inside it (D8), so the
+    // address lands and `settled` arrives true on the render that must retry.
+    expect(card).toMatch(/const\s+postFailed\s*=\s*outcome !== null && !outcome\.ok/);
+    expect(card).toMatch(/const\s+settled\s*=\s*props\.settled && !postFailed/);
+  });
+
+  test("the connected state says what became true and what cannot be changed here", () => {
+    const code = settingsSource();
+
+    expect(code).toContain("SETTINGS_SETTLED_LINE");
+    expect(code).toContain("SETTINGS_CHANNEL_FIXED_LINE");
+  });
+
+  test("the posting sentence is a claim about the address, not about the last post", () => {
+    // "is posted to" contradicted the failure sentence rendered beneath it.
+    expect(ONBOARDING_MESSAGES.settingsPostingTemplate).toContain("{channel}");
+    expect(ONBOARDING_MESSAGES.settingsPostingTemplate).not.toMatch(/\bis posted\b/);
+  });
+
+  test("an unreadable connection degrades to the connect path, never to an error screen", () => {
+    const reader = blankComments(readExisting("apps/web/lib/settings/slack.ts").source);
+
+    // There is no error.tsx anywhere under app/, so a driver throw here would be
+    // the framework's error page on the only surface that can attach a channel.
+    expect(reader).toMatch(/catch\s*\(/);
+    expect(reader).toContain("describeDriverError");
   });
 });

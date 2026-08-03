@@ -23,10 +23,14 @@ export type FirstRunAnalyticsConnectInput = z.infer<typeof firstRunAnalyticsConn
 
 export const firstRunAnalyticsDisconnectInputSchema = z.strictObject({});
 
-export const firstRunSlackConnectInputSchema = z.strictObject({
-  botToken: z.string().min(1),
+// `.trim()` is load-bearing: a bare `.min(1)` accepts `"   "`, and the delivery
+// guard then refuses that row for good while the screen says "chosen". One home,
+// because the two routes that take an address had drifted to different rules.
+const channelIdField = z.string().trim().min(1);
 
-  channelId: z.string().min(1),
+export const firstRunSlackConnectInputSchema = z.strictObject({
+  botToken: z.string().trim().min(1),
+  channelId: channelIdField,
 });
 export type FirstRunSlackConnectInput = z.infer<typeof firstRunSlackConnectInputSchema>;
 
@@ -37,9 +41,7 @@ export const firstRunSlackOAuthCallbackInputSchema = z.strictObject({});
 export const firstRunSlackChannelsInputSchema = z.strictObject({});
 
 export const firstRunSlackChannelInputSchema = z.strictObject({
-  // `.trim()` is load-bearing: a bare `.min(1)` accepts `"   "`, and the delivery
-  // guard then refuses that row for good while the screen says "chosen".
-  channelId: z.string().trim().min(1),
+  channelId: channelIdField,
 });
 export type FirstRunSlackChannelInput = z.infer<typeof firstRunSlackChannelInputSchema>;
 
