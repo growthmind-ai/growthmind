@@ -268,14 +268,6 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
 
   return (
     <Stack gap="sm">
-      {/* A status row, not a selector (UX §1): above the form in DOM order, and
-          the form never moves, closes, or loses focus to a chip tap (FR-12). */}
-      <ProviderChips
-        rail="analytics"
-        providerInterest={providerInterest}
-        interestPingAvailable={interestPingAvailable}
-      />
-
       <Text size="sm" c="dimmed">
         {connectionMessage}
       </Text>
@@ -366,6 +358,17 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
           {ONBOARDING_MESSAGES.disconnect}
         </Button>
       ) : null}
+
+      {/* A status list, not a selector (UX §1): under the form, so a tap can
+          never move the field being typed into (FR-12). Labelled here and
+          nowhere else — this card is the one place the list sits among things
+          that do work. */}
+      <ProviderChips
+        rail="analytics"
+        providerInterest={providerInterest}
+        interestPingAvailable={interestPingAvailable}
+        label={ONBOARDING_MESSAGES.providerSoonBadge}
+      />
     </Stack>
   );
 }

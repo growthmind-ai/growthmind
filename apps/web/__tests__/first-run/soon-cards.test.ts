@@ -359,8 +359,8 @@ describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
     expect(pings).toHaveLength(await roadmapSoonChipCount());
   });
 
-  test("interestPingAvailable=false renders badge-only soon cards with zero controls", async () => {
-    expect(readMarkup("<div><span>Coming soon</span></div>").controls).toEqual([]);
+  test("interestPingAvailable=false names every soon provider and renders zero controls", async () => {
+    expect(readMarkup("<div><span>Amplitude</span></div>").controls).toEqual([]);
 
     const { html, card } = await renderRoadmap({
       providerInterest: [],
@@ -371,8 +371,30 @@ describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
     expect(html).not.toContain("<button");
     expect(/tabindex/i.test(html)).toBe(false);
 
+    const catalogue = await loadCatalogue();
+    const soon = catalogue.filter((provider) => !provider.live && provider.rail !== "analytics");
+    expect(soon).toHaveLength(await roadmapSoonChipCount());
+
+    for (const provider of soon) {
+      expect(card.text).toContain(provider.displayName);
+    }
+  });
+
+  test("the soon label is said once, and only where the list sits among live things", async () => {
     const badge = await loadMessage("PROVIDER_SOON_BADGE");
-    expect(card.text.split(badge).length - 1).toBe(await roadmapSoonChipCount());
+
+    const analytics = await renderAnalyticsCard({
+      providerInterest: [],
+      interestPingAvailable: true,
+    });
+
+    expect(analytics.card.text.split(badge).length - 1).toBe(1);
+
+    // The roadmap's own heading already says it. Repeating it per row was the
+    // mess: four providers, three shapes, the same two words three times.
+    const roadmap = await renderRoadmap({ providerInterest: [], interestPingAvailable: true });
+
+    expect(roadmap.card.text).not.toContain(badge);
   });
 
   test("the only interactive element on a soon card is the ping chip — no links, no anchors, no inputs", async () => {
@@ -435,6 +457,15 @@ describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
     for (const provider of catalogue.filter((entry) => entry.rail === "analytics")) {
       expect(analytics.card.text).toContain(provider.displayName);
     }
+
+    // The live provider is the card's subject, so it is named by the form and
+    // carries no row of its own: one ping per provider that is NOT live.
+    const pingLabel = await loadMessage("INTEREST_PING_LABEL");
+    const pings = analytics.card.controls.filter((label) => label.includes(pingLabel));
+
+    expect(pings).toHaveLength(
+      catalogue.filter((entry) => entry.rail === "analytics" && !entry.live).length,
+    );
   });
 
   test("a payload with noted providers renders those chips noted-on-load: badge only, no sentence", async () => {

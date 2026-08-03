@@ -21,10 +21,12 @@ export function SoonCard({ step, providerInterest, interestPingAvailable }: Soon
       <Text c="dimmed" size="sm">
         {step.whatItWillDo}
       </Text>
+      {/* No label: the section heading above already says these are unbuilt. */}
       <ProviderChips
         rail={step.rail}
         providerInterest={providerInterest}
         interestPingAvailable={interestPingAvailable}
+        label={null}
       />
     </Stack>
   );
