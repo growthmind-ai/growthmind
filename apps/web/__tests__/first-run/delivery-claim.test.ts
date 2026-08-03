@@ -294,9 +294,9 @@ async function seedDelivery(
   });
 }
 
-async function deliveryStateFor(scope: SeededMemberScope): Promise<unknown> {
+async function deliveryStateFor(scope: SeededMemberScope): Promise<FirstRunDeliveryState> {
   const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(scope)));
-  return body.deliveryState;
+  return firstRunDeliveryStateSchema.parse(body.deliveryState);
 }
 
 interface TableCounter {
