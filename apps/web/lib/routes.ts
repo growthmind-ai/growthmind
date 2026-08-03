@@ -4,4 +4,6 @@ export const ROUTES = {
   signUp: "/sign-up",
 
   firstRun: "/first-run",
+
+  settings: "/settings",
 } as const;

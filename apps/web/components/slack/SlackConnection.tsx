@@ -1,19 +1,16 @@
 "use client";
 
-// Step 3 — Slack. Four card states in one component, branching on the
+// The Slack connection. Four card states in one component, branching on the
 // server-computed `slackOAuthAvailable`: the one-click button with the token
 // form folded behind it, the token form as the card, the channel picker, and no
-// body at all once a channel is chosen. "Skip for now" is in EVERY state.
+// body at all once a channel is chosen. Mounted as setup's step 3 and as the
+// settings page that outlives it; "Skip for now" is in every unsettled state of
+// the former and none of the latter.
 import { Button, Collapse, Group, Select, Stack, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import {
-  ONBOARDING_MESSAGES,
-  type FieldDescriptor,
-  type StepView,
-  type WorkStep,
-} from "@growthmind/shared";
+import { ONBOARDING_MESSAGES, type FieldDescriptor } from "@growthmind/shared";
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { slackOAuthOutcomeOf, type SlackOAuthOutcome } from "@/lib/first-run/slack-oauth-outcome";
@@ -28,9 +25,9 @@ import {
   readTestPostAnswer,
   type SlackChannelChoice,
   type TestPostAnswer,
-} from "./api";
-import { FieldRow } from "./FieldRow";
-import { changeField, initialValues, type FieldValues } from "./form-fields";
+} from "../first-run/api";
+import { FieldRow } from "../first-run/FieldRow";
+import { changeField, initialValues, type FieldValues } from "../first-run/form-fields";
 
 const BOT_TOKEN = "botToken";
 const CHANNEL_ID = "channelId";
@@ -109,9 +106,14 @@ export function ChannelPicker(props: ChannelPickerProps): ReactNode {
   );
 }
 
-interface ConnectSlackFormProps {
-  readonly step: WorkStep;
-  readonly view: StepView;
+interface SlackConnectionProps {
+  // Primitives rather than a step and a view: the same card is the setup step and
+  // the settings page's whole body, and post-setup there is no step to skip.
+  readonly fields: readonly FieldDescriptor[];
+  readonly settled: boolean;
+  readonly interactive: boolean;
+  readonly skippable: boolean;
+  readonly skipped: boolean;
 
   readonly channelId: string | null;
   // AD-4: EXISTENCE, not address. Never re-derived from `channelId`.
@@ -122,8 +124,7 @@ interface ConnectSlackFormProps {
   readonly slackOAuthAvailable: boolean;
 }
 
-export function ConnectSlackForm(props: ConnectSlackFormProps) {
-  const { step, view } = props;
+export function SlackConnection(props: SlackConnectionProps) {
   const router = useRouter();
 
   // Derived here rather than handed down (D11): the callback route puts the
@@ -132,7 +133,7 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   const landing: SlackOAuthOutcome | null = search === null ? null : slackOAuthOutcomeOf(search);
   const notice = landing === null ? null : OAUTH_NOTICES[landing];
 
-  const [values, setValues] = useState<FieldValues>(() => initialValues(step.fields));
+  const [values, setValues] = useState<FieldValues>(() => initialValues(props.fields));
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<TestPostAnswer | null>(null);
@@ -145,8 +146,8 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   const [workspaceNow, setWorkspaceNow] = useState(false);
   const [channelNow, setChannelNow] = useState(false);
 
-  const settled = view.state === "done" || view.state === "skipped";
-  const locked = pending || !view.interactive;
+  const settled = props.settled;
+  const locked = pending || !props.interactive;
 
   const workspaceAttached = props.slackWorkspaceAttached || workspaceNow;
   const channelAttached = props.channelId !== null || channelNow;
@@ -349,7 +350,7 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   }
 
   function tokenFields(): ReactNode {
-    return <Stack gap="sm">{step.fields.map((field) => renderField(field))}</Stack>;
+    return <Stack gap="sm">{props.fields.map((field) => renderField(field))}</Stack>;
   }
 
   // THE INVARIANT: the pasted-token form may never render on an organization
@@ -437,13 +438,13 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
 
       {/* FR-O14, derived from the persisted absence of a connection, so it
           survives a reload and clears itself when one arrives. */}
-      {view.state === "skipped" ? (
+      {props.skipped ? (
         <Text size="sm" c="dimmed">
           {ONBOARDING_MESSAGES.slackSkippedNotice}
         </Text>
       ) : null}
 
-      {settled || !view.interactive ? null : (
+      {settled || !props.interactive ? null : (
         <Group gap="sm" wrap="wrap">
           {offerOAuth ? (
             <Button
@@ -470,16 +471,21 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
             </Button>
           ) : null}
 
-          <Button
-            variant="subtle"
-            color="gray"
-            onClick={() => void skip()}
-            disabled={locked}
-            style={tapTargetStyle}
-            w={{ base: "100%", xs: "auto" }}
-          >
-            {ONBOARDING_MESSAGES.skipForNow}
-          </Button>
+          {/* Nothing to skip once setup has retired: on the settings page this
+              card IS the page, and a control that puts it back would be a
+              button whose only effect is to say no to itself. */}
+          {props.skippable ? (
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => void skip()}
+              disabled={locked}
+              style={tapTargetStyle}
+              w={{ base: "100%", xs: "auto" }}
+            >
+              {ONBOARDING_MESSAGES.skipForNow}
+            </Button>
+          ) : null}
         </Group>
       )}
     </Stack>

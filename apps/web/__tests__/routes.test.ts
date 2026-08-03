@@ -15,21 +15,18 @@ const LITERAL_EXEMPT_PREFIXES: readonly string[] = [
   "app/api/first-run/", // its routes
   "components/first-run/", // its components
   "__tests__/", // this scan, and the suites that name the path
-  // THE ONE FILE THAT CONTAINS THE LITERAL WITHOUT RETYPING THE ROUTE.
-  //
-  // `SLACK_OAUTH_CALLBACK_PATH` is `/api/first-run/slack/oauth/callback` — an
-  // API address that merely CONTAINS `/first-run` as a substring, not the page
-  // path this guard is about, and not something `ROUTES.firstRun` could
-  // produce. It lives there because the authorize request and the token
-  // exchange must send a byte-identical `redirect_uri` or Slack refuses the
-  // exchange, so the string has exactly one home (`lib/slack/oauth.ts:111-114`).
-  //
-  // The alternative was teaching the scan to ignore `/api/first-run/...`, which
-  // is a better guard and a bigger change than the one this red is worth; a
-  // named single-file exemption keeps the substring scan simple and keeps the
-  // exception visible in a diff. That file has no reason to hold a page link.
-  "lib/slack/oauth.ts",
 ];
+
+// THE PAGE PATH, not every string that contains it. A bare substring scan called
+// three different things offenders — `SLACK_OAUTH_CALLBACK_PATH`
+// (`/api/first-run/slack/oauth/callback`, which must stay byte-identical between
+// the authorize request and the token exchange or Slack refuses it), the import
+// specifier `@/components/slack/…` reaching into `lib/first-run/`, and the
+// settings page importing a first-run sibling. None of them is a page link and
+// none is something `ROUTES.firstRun` could produce, and the named per-file
+// exemptions they were costing hid real ones. A page link is the whole path:
+// quoted, and ending where the quote does.
+const RETYPED_PAGE_PATH = /["'`]\/first-run(?=["'`?#])/;
 
 interface RoutableFile {
   readonly file: string;
@@ -105,7 +102,7 @@ function filesRetypingFirstRun(): string[] {
 
       const relative = path.relative(APPS_WEB, full).split(path.sep).join("/");
       if (isExempt(relative)) continue;
-      if (readFileSync(full, "utf8").includes(FIRST_RUN_PATH)) offenders.push(relative);
+      if (RETYPED_PAGE_PATH.test(readFileSync(full, "utf8"))) offenders.push(relative);
     }
   };
 
@@ -151,7 +148,27 @@ describe("ROUTES coverage (AD-17, EC-O9, D9)", () => {
 describe("the first-run path has exactly one home (AD-17, D9)", () => {
   test("CONTROL: the literal scan finds a planted offender and clears a clean fixture", () => {
     expect(isExempt("app/page.tsx")).toBe(false);
-    expect(`<Link href="/first-run">`.includes(FIRST_RUN_PATH)).toBe(true);
+
+    for (const retyped of [
+      `<Link href="/first-run">`,
+      `redirect("/first-run")`,
+      `router.push('/first-run')`,
+      "fetch(`/first-run?step=3`)",
+    ]) {
+      expect(`${retyped}: ${RETYPED_PAGE_PATH.test(retyped)}`).toBe(`${retyped}: true`);
+    }
+
+    // Every one of these was an offender under the old substring scan, and each
+    // is the whole reason a per-file exemption used to be needed.
+    for (const innocent of [
+      `const CALLBACK = "/api/first-run/slack/oauth/callback";`,
+      `import { SlackConnection } from "@/components/slack/SlackConnection";`,
+      `import { slackOAuthOutcomeOf } from "@/lib/first-run/slack-oauth-outcome";`,
+      `import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";`,
+      `await fetch("/api/first-run/status");`,
+    ]) {
+      expect(`${innocent}: ${RETYPED_PAGE_PATH.test(innocent)}`).toBe(`${innocent}: false`);
+    }
 
     for (const exempt of [
       "lib/routes.ts",
@@ -159,10 +176,14 @@ describe("the first-run path has exactly one home (AD-17, D9)", () => {
       "app/api/first-run/status/route.ts",
       "components/first-run/Stage.tsx",
       "__tests__/routes.test.ts",
-      "lib/slack/oauth.ts",
     ]) {
       expect(`${exempt}: ${isExempt(exempt)}`).toBe(`${exempt}: true`);
     }
+
+    // The card moved out of the surface's directory when the settings page began
+    // mounting it, so it is no longer exempt — and must not be.
+    expect(isExempt("components/slack/SlackConnection.tsx")).toBe(false);
+    expect(isExempt("lib/slack/oauth.ts")).toBe(false);
   });
 
   test("firstRun is registered in ROUTES and is never retyped as a literal", () => {
