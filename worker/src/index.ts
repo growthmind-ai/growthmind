@@ -36,6 +36,7 @@ import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tic
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
+import { runProviderInterestTick } from "./tasks/provider-interest-tick";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
 let resources: { db: ScopedDb; env: ServerEnv } | null = null;
@@ -240,6 +241,18 @@ export const taskList: TaskList = {
 
     await runOnboardingAnalysis(analysisDepsFor(composed, helpers.logger), payload);
   },
+
+  [TASK.PROVIDER_INTEREST_TICK]: async (_payload, helpers) => {
+    const { db, env } = resolveResources();
+
+    await runProviderInterestTick({
+      db,
+      env,
+      fetch: globalThis.fetch,
+      logger: helpers.logger,
+      now: () => new Date(),
+    });
+  },
 };
 
 export const crontab = [
@@ -247,4 +260,5 @@ export const crontab = [
   `* * * * * ${TASK.SESSION_SOURCE_POLL_SCHEDULE}`,
   `*/15 * * * * ${TASK.DELIVERY_TICK}`,
   `0 * * * * ${TASK.ANALYSIS_TICK}`,
+  `* * * * * ${TASK.PROVIDER_INTEREST_TICK}`,
 ].join("\n");
