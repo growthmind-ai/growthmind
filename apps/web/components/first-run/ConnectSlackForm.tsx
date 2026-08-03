@@ -4,18 +4,9 @@
 // server-computed `slackOAuthAvailable`: the one-click button with the token
 // form folded behind it, the token form as the card, the channel picker, and no
 // body at all once a channel is chosen. "Skip for now" is in EVERY state.
-import {
-  Button,
-  Collapse,
-  Group,
-  PasswordInput,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Button, Collapse, Group, Select, Stack, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   ONBOARDING_MESSAGES,
@@ -30,6 +21,7 @@ import { slackOAuthOutcomeOf, type SlackOAuthOutcome } from "@/lib/first-run/sla
 import {
   FIRST_RUN_API,
   getJson,
+  postForOutcome,
   postJson,
   readChannelList,
   readRefusal,
@@ -37,7 +29,8 @@ import {
   type SlackChannelChoice,
   type TestPostAnswer,
 } from "./api";
-import { initialValues, type FieldValues } from "./form-fields";
+import { FieldRow } from "./FieldRow";
+import { changeField, initialValues, type FieldValues } from "./form-fields";
 
 const BOT_TOKEN = "botToken";
 const CHANNEL_ID = "channelId";
@@ -204,27 +197,15 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
     };
   }, [picking, listingAttempt]);
 
-  function changeField(id: string) {
-    return (event: ChangeEvent<HTMLInputElement>) => {
-      const next = event.currentTarget.value;
-      setValues((current) => ({ ...current, [id]: next }));
-    };
-  }
-
   function renderField(field: FieldDescriptor): ReactNode {
-    const shared = {
-      label: field.label,
-      description: field.helper,
-      placeholder: field.placeholder ?? undefined,
-      value: values[field.id] ?? "",
-      onChange: changeField(field.id),
-      disabled: locked,
-    };
-
-    return field.secret ? (
-      <PasswordInput key={field.id} {...shared} />
-    ) : (
-      <TextInput key={field.id} {...shared} />
+    return (
+      <FieldRow
+        key={field.id}
+        field={field}
+        value={values[field.id] ?? ""}
+        onChange={changeField(setValues, field.id)}
+        disabled={locked}
+      />
     );
   }
 
@@ -296,14 +277,18 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
       return;
     }
 
-    const attached = await postJson(FIRST_RUN_API.slackConnect, {
-      botToken: values[BOT_TOKEN] ?? "",
-      channelId: values[CHANNEL_ID] ?? "",
-    });
+    const attached = await postForOutcome(
+      FIRST_RUN_API.slackConnect,
+      {
+        botToken: values[BOT_TOKEN] ?? "",
+        channelId: values[CHANNEL_ID] ?? "",
+      },
+      ONBOARDING_MESSAGES.networkFailure,
+    );
 
-    if (attached === null || !attached.ok) {
+    if (!attached.ok) {
       setPending(false);
-      setFailure(readRefusal(attached?.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
+      setFailure(attached.message);
       return;
     }
 
@@ -335,11 +320,15 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
     setPending(true);
     setFailure(null);
 
-    const answer = await postJson(FIRST_RUN_API.slackSkip, {});
+    const answer = await postForOutcome(
+      FIRST_RUN_API.slackSkip,
+      {},
+      ONBOARDING_MESSAGES.networkFailure,
+    );
     setPending(false);
 
-    if (answer === null || !answer.ok) {
-      setFailure(readRefusal(answer?.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
+    if (!answer.ok) {
+      setFailure(answer.message);
       return;
     }
     router.refresh();

@@ -5,9 +5,9 @@
 // address field is earned (AD-2) — it appears only after both probes refuse.
 // The fields are data off the step descriptor, including which refusal each is
 // the subject of; on any refusal masked fields are cleared and visible kept.
-import { Button, Collapse, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Collapse, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import {
   ONBOARDING_MESSAGES,
@@ -20,6 +20,7 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 
 import {
   FIRST_RUN_API,
+  postForOutcome,
   postJson,
   readDiscovery,
   readRefusal,
@@ -27,7 +28,14 @@ import {
   type DiscoveryAnswer,
   type ResponseRefusal,
 } from "./api";
-import { initialValues, offendingField, withSecretsCleared, type FieldValues } from "./form-fields";
+import { FieldRow } from "./FieldRow";
+import {
+  changeField,
+  initialValues,
+  offendingField,
+  withSecretsCleared,
+  type FieldValues,
+} from "./form-fields";
 
 // The two field ids, named once. There is no third: the project number is
 // discovered now, so the form never asks for one.
@@ -88,28 +96,17 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
     };
   }
 
-  function changeField(id: string) {
-    return (event: ChangeEvent<HTMLInputElement>) => {
-      const next = event.currentTarget.value;
-      setValues((current) => ({ ...current, [id]: next }));
-    };
-  }
-
   function renderField(field: FieldDescriptor): ReactNode {
-    const shared = {
-      label: field.label,
-      description: field.helper,
-      placeholder: field.placeholder ?? undefined,
-      value: values[field.id] ?? "",
-      onChange: changeField(field.id),
-      disabled: locked,
-      error: offender?.id === field.id ? refusal?.message : undefined,
-    };
-
-    return field.secret ? (
-      <PasswordInput key={field.id} ref={rememberInput(field.id)} {...shared} />
-    ) : (
-      <TextInput key={field.id} ref={rememberInput(field.id)} {...shared} />
+    return (
+      <FieldRow
+        key={field.id}
+        field={field}
+        value={values[field.id] ?? ""}
+        onChange={changeField(setValues, field.id)}
+        disabled={locked}
+        error={offender?.id === field.id ? refusal?.message : undefined}
+        inputRef={rememberInput(field.id)}
+      />
     );
   }
 
@@ -245,11 +242,15 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
     setRefusal(null);
     setFailure(null);
 
-    const answer = await postJson(FIRST_RUN_API.analyticsDisconnect, {});
+    const answer = await postForOutcome(
+      FIRST_RUN_API.analyticsDisconnect,
+      {},
+      ONBOARDING_MESSAGES.networkFailure,
+    );
     setPending(false);
 
-    if (answer === null || !answer.ok) {
-      setFailure(readRefusal(answer?.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
+    if (!answer.ok) {
+      setFailure(answer.message);
       return;
     }
 

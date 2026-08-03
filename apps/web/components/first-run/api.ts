@@ -96,6 +96,26 @@ export function readRefusal(body: unknown): ResponseRefusal | null {
   return { code: typeof nested.code === "string" ? nested.code : null, message };
 }
 
+export type ActionOutcome =
+  { readonly ok: true; readonly body: unknown } | { readonly ok: false; readonly message: string };
+
+// The three-way discrimination every card's simple POST repeats: a dead transport
+// and a refusal both read as one sentence, because a person cannot act on which
+// it was. `fallback` is the sentence for a refusal that carries none.
+export async function postForOutcome(
+  path: string,
+  body: unknown,
+  fallback: string,
+): Promise<ActionOutcome> {
+  const answer = await postJson(path, body);
+
+  if (answer === null || !answer.ok) {
+    return { ok: false, message: readRefusal(answer?.body)?.message ?? fallback };
+  }
+
+  return { ok: true, body: answer.body };
+}
+
 // A nameless row is a choice nobody can make, so an entry missing either field
 // is dropped and an emptied list answers `null`. Discovery's order is preserved.
 export function readDiscovery(body: unknown): DiscoveryAnswer | null {
