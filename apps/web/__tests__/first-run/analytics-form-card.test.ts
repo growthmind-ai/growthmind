@@ -110,6 +110,19 @@ describe("the analytics card — one visible field, one earned", () => {
     expect(html).toContain(`placeholder="${VISIBLE_FIELD?.placeholder ?? ""}"`);
   });
 
+  test("the shared tap target reaches the rendered input, not just the source file", () => {
+    // The style contract only asserts the file names the symbol; this asserts it lands.
+    const html = render(
+      createElement(ConnectAnalyticsForm, {
+        step: STEP,
+        view: ACTIVE_VIEW,
+        connectionMessage: CONNECTION_SENTENCE,
+      }),
+    );
+
+    expect(html).toContain("touch-action:manipulation");
+  });
+
   test("a secret field renders as a password input, never as plain text", () => {
     const html = render(
       createElement(ConnectAnalyticsForm, {
