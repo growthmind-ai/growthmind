@@ -449,6 +449,7 @@ function harness(options: {
         summariser === null ? null : { port: summariser.port, resolvedModelId: MODEL_ID },
       findingsFor: findings.repoFor,
       runsFor: runs.repoFor,
+      payloadsFor: createFakePayloads().repoFor,
       ledgerFor:
         options.ledgerThrows === true
           ? (ctx: TenantContext) => ({

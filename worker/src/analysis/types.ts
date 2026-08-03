@@ -1,6 +1,11 @@
 import type { SessionSummariser } from "@growthmind/adapters";
 import type { CandidateFinding } from "@growthmind/core";
-import type { AnalysisRunsRepo, FindingsRepo, SignatureLedgerService } from "@growthmind/db";
+import type {
+  AnalysisRunsRepo,
+  FindingPayloadsRepo,
+  FindingsRepo,
+  SignatureLedgerService,
+} from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { SummarySource, SummaryUsage, TenantContext } from "@growthmind/shared";
 
@@ -25,6 +30,7 @@ export interface AnalysisLaneSource {
 }
 
 export type FindingsRepoFor = (ctx: TenantContext) => FindingsRepo;
+export type FindingPayloadsRepoFor = (ctx: TenantContext) => FindingPayloadsRepo;
 export type AnalysisRunsRepoFor = (ctx: TenantContext) => AnalysisRunsRepo;
 export type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
 
@@ -36,6 +42,8 @@ export type ConfiguredSummariser = {
 export interface AnalysisLaneDeps {
   summariser: ConfiguredSummariser | null;
   findingsFor: FindingsRepoFor;
+
+  payloadsFor: FindingPayloadsRepoFor;
   runsFor: AnalysisRunsRepoFor;
   ledgerFor: SignatureLedgerFor;
 

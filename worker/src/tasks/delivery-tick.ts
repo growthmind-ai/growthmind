@@ -1,5 +1,5 @@
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
-import { decideDelivery, renderSlackMessage, scanResidualPii } from "@growthmind/core";
+import { decideDelivery, renderSlackMessage, scanResidualPii, toBlockKit } from "@growthmind/core";
 import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
@@ -121,11 +121,15 @@ function prepare(
 ): PreparedPost {
   let request: PostRequest;
   try {
-    const message = renderSlackMessage(finding.message, DELIVERY_VOCABULARY);
+    const message = renderSlackMessage(
+      { ...finding.message, findingId: finding.findingId },
+      DELIVERY_VOCABULARY,
+    );
     request = {
       channelId: lane.channelId,
-      blocks: message.blocks,
-       
+      // Slack is handed Block Kit, never Growthmind's intermediate model.
+      blocks: toBlockKit(message.blocks),
+
       fallbackText: message.text,
     };
   } catch (error) {

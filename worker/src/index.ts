@@ -12,6 +12,7 @@ import {
   createAnalysisRunsRepo,
   createDb,
   createDeliveriesRepo,
+  createFindingPayloadsRepo,
   createFindingsRepo,
   createSignatureLedgerService,
   createSlackConnectionsRepo,
@@ -150,6 +151,7 @@ function analysisDepsFor(
     summariser: composed.summariser,
 
     findingsFor: (ctx) => createFindingsRepo(db, ctx),
+    payloadsFor: (ctx) => createFindingPayloadsRepo(db, ctx),
     runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
     ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
 

@@ -1,8 +1,9 @@
 import type { AnalysisRunRecord, AnalysisRunsRepo, SignatureLedgerService } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
-import type { AnalysisStopReason } from "@growthmind/shared";
+import type { AnalysisStopReason, TenantContext } from "@growthmind/shared";
 import { ANALYSIS_RUN_STATUS_MESSAGES } from "@growthmind/shared";
 import type { CandidateFinding } from "@growthmind/core";
+import { serialiseFixSpecInput } from "@growthmind/core";
 
 import { isolated } from "../task-logger";
 import { planCandidate } from "../analysis/plan";
@@ -28,6 +29,7 @@ export type {
   AnalysisTickSummary,
   AnalysisRunsRepoFor,
   ConfiguredSummariser,
+  FindingPayloadsRepoFor,
   FindingsRepoFor,
   LaneOutcome,
   SignatureLedgerFor,
@@ -75,6 +77,27 @@ async function recordIdentity(
     logger,
     `analysis tick: candidate ${signature} was recorded as a finding but its identity could not be filed`,
     () => ledger.recordSignature(lane.projectId, candidate),
+  );
+}
+
+// Deliberately not transactional with the finding write. A finding without a payload is the
+// pre-sprint shape, which FixesService.openFor already refuses by name; a rollback here would
+// cost the run its only output.
+async function recordPayload(
+  deps: AnalysisLaneDeps,
+  ctx: TenantContext,
+  findingId: string,
+  candidate: CandidateFinding,
+): Promise<void> {
+  const sentence =
+    `analysis tick: finding ${findingId} was recorded, but the detail a coding agent ` +
+    `needs was not stored beside it, so no fix can be raised from this finding`;
+
+  await isolated(deps.logger, sentence, () =>
+    deps.payloadsFor(ctx).upsertFor({
+      findingId,
+      payload: serialiseFixSpecInput({ candidate, signals: candidate.signals }),
+    }),
   );
 }
 
@@ -174,7 +197,7 @@ export async function runAnalysisLane(
       const identity = plan.action.identity;
       applyAttribution(tally, rendered.attribution);
 
-      await findings.persist({
+      const persisted = await findings.persist({
         projectId: lane.projectId,
         runId: run.id,
         signature: identity.signature,
@@ -199,6 +222,8 @@ export async function runAnalysisLane(
       });
 
       tally.findingsPersisted += 1;
+
+      await recordPayload(deps, ctx, persisted.id, candidate);
 
       await recordIdentity(ledger, lane, candidate, identity.signature, deps.logger);
     }

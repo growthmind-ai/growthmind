@@ -522,6 +522,33 @@ test("generated text carrying personal data is never posted and the recorded rea
   }
 });
 
+function stringsAt(value: unknown): readonly string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value !== "object" || value === null) return [];
+  const nested = (value as { readonly text?: unknown }).text;
+  return typeof nested === "string" ? [nested] : [];
+}
+
+// Block Kit spreads one message's text across three positions: a section's at `text.text`, a
+// context's at `elements[].text`, a button's label at `elements[].text.text`. All of it, plus
+// the ids Growthmind mints into `block_id` and a button's `value`, is bytes on the wire.
+function deliveredStringsIn(block: unknown): readonly string[] {
+  const shape = block as {
+    readonly block_id?: unknown;
+    readonly text?: unknown;
+    readonly elements?: readonly unknown[];
+  };
+
+  const found: string[] = [...stringsAt(shape.block_id), ...stringsAt(shape.text)];
+
+  for (const element of shape.elements ?? []) {
+    const part = element as { readonly text?: unknown; readonly value?: unknown };
+    found.push(...stringsAt(part.text), ...stringsAt(part.value));
+  }
+
+  return found;
+}
+
 test("the residual gate scans the exact text the poster is handed", async () => {
    
   const scene = harness({ lanes: [lane()] });
@@ -534,9 +561,19 @@ test("the residual gate scans the exact text the poster is handed", async () => 
   expect(scanned.text).not.toBeNull();
   expect(scanned.text).toContain((request as PostRequest).fallbackText);
 
-  for (const block of (request as PostRequest).blocks) {
-    const text = (block as { text: string }).text;
-    expect(scanned.text).toContain(JSON.stringify(text).slice(1, -1));
+  const blocks = (request as PostRequest).blocks;
+  expect(blocks.length).toBeGreaterThan(0);
+
+  for (const block of blocks) {
+    const strings = deliveredStringsIn(block);
+
+    // A block the reader cannot see into is the failure this test exists to catch: it would
+    // otherwise pass with nothing asserted while unscanned text went to Slack.
+    expect({ block, readable: strings.length > 0 }).toEqual({ block, readable: true });
+
+    for (const text of strings) {
+      expect(scanned.text).toContain(JSON.stringify(text).slice(1, -1));
+    }
   }
 });
 
