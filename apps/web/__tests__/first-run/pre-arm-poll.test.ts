@@ -117,6 +117,7 @@ const unarmedPayload = (counter: OnboardingCounterView): FirstRunStatusPayload =
   counter,
   connectionMessage: "",
   channelId: "C01AB2CD3EF",
+  channelLabel: "growth",
   slackSkippedAt: null,
   slackNotice: null,
   slackWorkspaceAttached: true,

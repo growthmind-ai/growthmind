@@ -24,7 +24,7 @@ const failure = (code: PostFailureCode): PostResult => ({
 
 const describeFailure = async (code: PostFailureCode): Promise<TestPostOutcome> => {
   const describeTestPostOutcome = await loadDescribeTestPostOutcome();
-  return describeTestPostOutcome({ result: failure(code), channelId: CHANNEL });
+  return describeTestPostOutcome({ result: failure(code), channelId: CHANNEL, channelLabel: null });
 };
 
 describe("describeTestPostOutcome — FR-O11, UX Flow D", () => {
@@ -106,9 +106,12 @@ describe("describeTestPostOutcome — FR-O11, UX Flow D", () => {
   test("a successful post marks the step done and names the channel", async () => {
     const describeTestPostOutcome = await loadDescribeTestPostOutcome();
 
+    // No label: a row with no stored channel name still names the id rather than
+    // rendering `#undefined`, which is what an omitted prop reaches here as.
     const outcome = describeTestPostOutcome({
       result: { ok: true, messageRef: "1735689600.000100" },
       channelId: CHANNEL,
+      channelLabel: null,
     });
 
     expect(outcome.marksStepDone).toBe(true);

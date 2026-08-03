@@ -130,7 +130,7 @@ describe("attachChannel fills anything that is not yet an address, and moves not
       const org = await seedConnectionWith(`fill-${index}`, blank);
       const repo = createSlackConnectionsRepo(db, org.ctx);
 
-      const filled = await repo.attachChannel(REAL_CHANNEL);
+      const filled = await repo.attachChannel(REAL_CHANNEL, null);
 
       expect(filled?.channelId).toBe(REAL_CHANNEL);
       expect(isDeliveryTarget({ channelId: filled?.channelId ?? null })).toBe(true);
@@ -142,7 +142,7 @@ describe("attachChannel fills anything that is not yet an address, and moves not
       const org = await seedConnectionWith(`held-${index}`, address);
       const repo = createSlackConnectionsRepo(db, org.ctx);
 
-      const moved = await repo.attachChannel(OTHER_CHANNEL);
+      const moved = await repo.attachChannel(OTHER_CHANNEL, null);
       expect({ address, moved }).toEqual({ address, moved: null });
       expect((await repo.getActiveForOrg())?.channelId).toBe(address);
     }
@@ -153,19 +153,19 @@ describe("attachChannel fills anything that is not yet an address, and moves not
     const repo = createSlackConnectionsRepo(db, org.ctx);
 
     for (const blank of CORPUS.filter((value) => value !== null && !isDeliveryAddress(value))) {
-      const written = await repo.attachChannel(blank as string);
+      const written = await repo.attachChannel(blank as string, null);
       expect({ blank, written }).toEqual({ blank, written: null });
     }
 
     // Control - the row is still fillable afterwards; nothing was stamped.
-    expect((await repo.attachChannel(REAL_CHANNEL))?.channelId).toBe(REAL_CHANNEL);
+    expect((await repo.attachChannel(REAL_CHANNEL, null))?.channelId).toBe(REAL_CHANNEL);
   });
 
   test("a NULL row is still filled — the case the guard already handled", async () => {
     const org = await seedConnectionWith("fill-null-column", null);
 
     expect(
-      (await createSlackConnectionsRepo(db, org.ctx).attachChannel(REAL_CHANNEL))?.channelId,
+      (await createSlackConnectionsRepo(db, org.ctx).attachChannel(REAL_CHANNEL, null))?.channelId,
     ).toBe(REAL_CHANNEL);
   });
 
@@ -175,7 +175,7 @@ describe("attachChannel fills anything that is not yet an address, and moves not
     const org = await seedConnectionWith("no-repoint", REAL_CHANNEL);
     const repo = createSlackConnectionsRepo(db, org.ctx);
 
-    expect(await repo.attachChannel(OTHER_CHANNEL)).toBeNull();
+    expect(await repo.attachChannel(OTHER_CHANNEL, null)).toBeNull();
     expect((await repo.getActiveForOrg())?.channelId).toBe(REAL_CHANNEL);
   });
 
@@ -183,7 +183,7 @@ describe("attachChannel fills anything that is not yet an address, and moves not
     const mine = await seedConnectionWith("scope-mine", null);
     const theirs = await seedConnectionWith("scope-theirs", null);
 
-    await createSlackConnectionsRepo(db, mine.ctx).attachChannel(REAL_CHANNEL);
+    await createSlackConnectionsRepo(db, mine.ctx).attachChannel(REAL_CHANNEL, null);
 
     expect(
       (await createSlackConnectionsRepo(db, theirs.ctx).getActiveForOrg())?.channelId,

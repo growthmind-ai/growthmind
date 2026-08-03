@@ -43,6 +43,7 @@ const stageMarkup = (findingUnavailable: boolean): string =>
         facts: READING,
         nowMs: NOW,
         channelId: null,
+        channelLabel: null,
         findingUnavailable,
         delivery: "none" as const,
         deliveryReason: null,

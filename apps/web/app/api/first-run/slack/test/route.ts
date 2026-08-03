@@ -9,6 +9,7 @@ import {
   isDeliveryTarget,
 } from "@growthmind/db";
 import {
+  channelLabel,
   describeTestPostOutcome,
   firstRunSlackTestInputSchema,
   POST_FAILURE_MESSAGES,
@@ -66,7 +67,11 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     }),
   );
 
-  const outcome = describeTestPostOutcome({ result, channelId: connection.channelId });
+  const outcome = describeTestPostOutcome({
+    result,
+    channelId: connection.channelId,
+    channelLabel: channelLabel(connection),
+  });
 
   return Response.json({
     ok: result.ok,

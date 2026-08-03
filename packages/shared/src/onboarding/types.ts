@@ -69,4 +69,9 @@ export type FirstRunStatus = {
   readonly counter: OnboardingCounterView;
 
   readonly channelId: string | null;
+
+  // What every screen renders where a channel is named — the stored name, or the id
+  // when there is none. Derived once on the server rather than per surface: the
+  // fallback is the half that gets forgotten, and forgetting it renders `#null`.
+  readonly channelLabel: string | null;
 };

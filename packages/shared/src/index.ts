@@ -248,6 +248,7 @@ export {
   type DeliveryStatus,
   type ResidualPiiKind,
 } from "./delivery/types";
+export { channelLabel, type ChannelIdentity } from "./delivery/channel-label";
 export {
   isDeliveryAddress,
   NON_ADDRESS_SENTINELS,

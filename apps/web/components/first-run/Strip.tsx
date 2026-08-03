@@ -31,7 +31,7 @@ const rowValue = (counter: OnboardingCounterView, label: string): number =>
 interface StripProps {
   readonly counter: OnboardingCounterView;
 
-  readonly channelId: string | null;
+  readonly channelLabel: string | null;
 
   readonly notice: string | null;
   readonly reopened: boolean;
@@ -39,12 +39,14 @@ interface StripProps {
 }
 
 export function Strip(props: StripProps) {
-  const { counter, channelId, notice } = props;
+  const { counter, channelLabel, notice } = props;
 
   const seen = withCount(STRIP_SEEN_TEMPLATE, rowValue(counter, COUNTER_LABELS.totalReceived));
   const counted = withCount(STRIP_COUNTED_TEMPLATE, rowValue(counter, COUNTER_LABELS.kept));
-  const posting = isDeliveryAddress(channelId)
-    ? [withChannel(STRIP_POSTING_TO_TEMPLATE, channelId)]
+  // The predicate, not `=== null`: a rolling deploy answers the poll with the OLD
+  // instance shape, which carries no label at all, and `#undefined` is the render.
+  const posting = isDeliveryAddress(channelLabel)
+    ? [withChannel(STRIP_POSTING_TO_TEMPLATE, channelLabel)]
     : [];
 
   const parts = [STRIP_LEAD, seen, counted, ...posting];

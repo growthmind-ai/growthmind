@@ -119,6 +119,7 @@ const stageMarkup = (
       facts: FOUND,
       nowMs: CLOCK().getTime(),
       channelId,
+      channelLabel: channelId,
       findingUnavailable: false,
       delivery,
       deliveryReason,

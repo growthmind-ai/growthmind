@@ -823,6 +823,31 @@ describe("POST /api/first-run/slack/channel (D7, D8)", () => {
     expect((await activeRow(theirs.organizationId)).channel_id).toBeNull();
   });
 
+  // B-037's wire, end to end through the real route. The producer (the picker has the
+  // name) and the consumer (a label renders it) each passed in isolation while nothing
+  // carried the name between them — which is the pair D11 says proves nothing.
+  test("the name the founder picked is stamped beside the address and named in the sentence", async () => {
+    const scope = await bed.member("attach-names");
+    await connectWorkspace(scope);
+
+    const response = await drive(
+      CHANNEL,
+      slackRequest(CHANNEL, { body: { channelId: CHOSEN_CHANNEL } }),
+      depsFor(scope, { poster: recordingPoster(OK_POST) }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const row = await activeRow(scope.organizationId);
+    expect(row.channel_id).toBe(CHOSEN_CHANNEL);
+    expect(row.channel_name).toBe("growth");
+
+    // The sentence the founder reads names the channel, not the id.
+    const sentence = String((await bodyOf(response)).sentence);
+    expect(sentence).toContain("#growth");
+    expect(sentence).not.toContain(CHOSEN_CHANNEL);
+  });
+
   test("an actor whose organization has no connection cannot attach to anyone else's", async () => {
     const stranger = await bed.member("attach-stranger");
     const victim = await bed.member("attach-victim");
@@ -937,8 +962,13 @@ describe("POST /api/first-run/slack/channel (D7, D8)", () => {
     expect(poster.sent.length).toBe(1);
 
     const body = await bodyOf(second);
-    expect(collectStrings(body)).toContain(channelAlreadyChosen(CHOSEN_CHANNEL).message);
-    expect(collectStrings(body).join(" ")).toContain(CHOSEN_CHANNEL);
+
+    // The refusal names the channel the founder PICKED, not its id: this sentence read
+    // "already sends what we find to #C01AB2CD3EF", which is B-037 on the very route
+    // that fixes it (two tabs, a double submit, or a teammate a moment later).
+    expect(collectStrings(body)).toContain(channelAlreadyChosen("growth").message);
+    expect(collectStrings(body).join(" ")).toContain("#growth");
+    expect(collectStrings(body).join(" ")).not.toContain(CHOSEN_CHANNEL);
 
     expect(second.status).toBe(409);
   });
@@ -962,7 +992,9 @@ describe("POST /api/first-run/slack/channel (D7, D8)", () => {
     );
 
     const said = collectStrings(await bodyOf(second)).join(" ");
-    expect(said).toContain(channelAlreadyChosen(CHOSEN_CHANNEL).message);
+    // Named, not identified: the teammate is told which channel is set in the words
+    // the owner picked it by (B-037).
+    expect(said).toContain(channelAlreadyChosen("growth").message);
     expect(said).not.toContain(NO_WORKSPACE_CONNECTED.message);
   });
 

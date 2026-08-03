@@ -9,6 +9,7 @@
 import { createSlackConnectionsRepo, ensureProject, findUserNameById } from "@growthmind/db";
 import { isDeliveryTarget } from "@growthmind/db";
 import {
+  channelLabel,
   describeTestPostOutcome,
   firstRunSlackChannelInputSchema,
   POST_FAILURE_MESSAGES,
@@ -65,7 +66,10 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   }
 
   const connections = createSlackConnectionsRepo(deps.db, gate.ctx);
-  const connection = await connections.attachChannel(parsed.data.channelId);
+  // The name comes from the listing the choice was just proved against, so the row
+  // is stamped with the same words the founder read on the picker (B-037).
+  const chosen = listing.channels.find((channel) => channel.id === parsed.data.channelId);
+  const connection = await connections.attachChannel(parsed.data.channelId, chosen?.name ?? null);
   if (connection === null) {
     // The repository reports only that it changed no row, so which of the two
     // reasons applies is read AFTER the write that lost, never before it (D6).
@@ -75,7 +79,9 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     }
 
     return refusalResponse(
-      isDeliveryTarget(existing) ? channelAlreadyChosen(existing.channelId) : NO_CHANNEL_CHOSEN,
+      isDeliveryTarget(existing)
+        ? channelAlreadyChosen(channelLabel(existing) ?? existing.channelId)
+        : NO_CHANNEL_CHOSEN,
     );
   }
 
@@ -102,7 +108,11 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     }),
   );
 
-  const outcome = describeTestPostOutcome({ result, channelId: connection.channelId });
+  const outcome = describeTestPostOutcome({
+    result,
+    channelId: connection.channelId,
+    channelLabel: channelLabel(connection),
+  });
 
   return Response.json({
     ok: result.ok,

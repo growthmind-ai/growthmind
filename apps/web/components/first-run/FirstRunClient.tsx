@@ -292,6 +292,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
               facts={facts}
               nowMs={nowMs}
               channelId={current.channelId}
+              channelLabel={current.channelLabel}
               findingUnavailable={findingUnavailable}
               delivery={current.deliveryState}
               deliveryReason={current.deliveryFailureReason ?? null}
@@ -311,7 +312,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
           <Box className={armedOnArrival.current ? undefined : styles.foldIn}>
             <Strip
               counter={current.counter}
-              channelId={current.channelId}
+              channelLabel={current.channelLabel}
               notice={current.slackNotice}
               reopened={reopened}
               onToggle={() => setReopened((shown) => !shown)}

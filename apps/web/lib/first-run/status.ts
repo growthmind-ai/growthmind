@@ -17,6 +17,7 @@ import type {
   TenantContext,
 } from "@growthmind/shared";
 import {
+  channelLabel,
   CONNECTION_STATE_MESSAGES,
   isDeliveryAddress,
   SLACK_CHANNEL_PICK_PROMPT,
@@ -168,6 +169,10 @@ export async function buildFirstRunStatus(
   // at import time cannot outlive a redeploy. One parse feeds both flags.
   const env = parseServerEnv(process.env);
 
+  // One address feeds both fields, so a sentinel row cannot read as deliverable
+  // in the label while reading as undeliverable in the id.
+  const address = isDeliveryAddress(slack?.channelId) ? slack.channelId : null;
+
   return {
     finding: facts.finding,
     findingUnavailable: facts.findingUnavailable,
@@ -180,7 +185,9 @@ export async function buildFirstRunStatus(
     runOutcome: facts.runOutcome,
     counter: view,
     connectionMessage: CONNECTION_STATE_MESSAGES[view.state.status],
-    channelId: isDeliveryAddress(slack?.channelId) ? slack.channelId : null,
+    channelId: address,
+    // Derived here and nowhere else, so no screen can forget the fallback to the id.
+    channelLabel: slack === null || address === null ? null : channelLabel(slack),
     slackSkippedAt: state?.slackSkippedAt ?? null,
     slackNotice: notice(slack),
     slackWorkspaceAttached: slack !== null,

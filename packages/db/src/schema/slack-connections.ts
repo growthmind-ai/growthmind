@@ -48,6 +48,10 @@ export const slackConnections = pgTable(
     // Never the empty string; every reader must distinguish it from a connected row.
     channelId: text("channel_id"),
 
+    // Stamped beside the address at `attachChannel`, from the listing the founder chose
+    // from. NULL on the pasted-token path and on rows predating this column.
+    channelName: text("channel_name"),
+
     workspaceName: text("workspace_name"),
 
     // `v1.<keyId>.<iv>.<tag>.<ciphertext>`; no repository method returns it.

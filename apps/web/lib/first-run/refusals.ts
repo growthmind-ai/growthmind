@@ -122,11 +122,11 @@ export const CHANNEL_NOT_LISTED: FirstRunGateRefusal = Object.freeze({
 
 // `attachChannel` fills an empty address and never moves a chosen one — moving
 // it forks every delivery already recorded (D12). It names the stored channel.
-export function channelAlreadyChosen(channelId: string): FirstRunGateRefusal {
+export function channelAlreadyChosen(label: string): FirstRunGateRefusal {
   return Object.freeze({
     code: "channel_already_chosen",
     message:
-      `This workspace already sends what we find to #${channelId}, so nothing was changed. A ` +
+      `This workspace already sends what we find to #${label}, so nothing was changed. A ` +
       `channel is chosen once, and that one is set — your findings arrive there from now on.`,
     status: 409,
   });

@@ -23,6 +23,10 @@ export interface SlackConnectionSummary {
   // which is this whole summary being `null`. Consumers needing an address use `isDeliveryTarget`.
   readonly channelId: string | null;
 
+  // What a founder is shown in place of the id, which they cannot recognise. `null`
+  // on the pasted-token path and on rows written before the column existed.
+  readonly channelName: string | null;
+
   // Not a credential, so it may ride in a summary. `null` on the pasted-token path.
   readonly workspaceName: string | null;
 
@@ -54,7 +58,10 @@ export interface SlackConnectionsRepo {
 
   // Fills the org's own active row: no connection id parameter exists, so one organization
   // cannot name another's. Once-only (see the guard below); `null` means nothing was updated.
-  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
+  attachChannel(
+    channelId: string,
+    channelName: string | null,
+  ): Promise<SlackConnectionSummary | null>;
 
   // Org-wide revocation, never a DELETE: the row survives so history outlives a reconnect.
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
@@ -77,6 +84,7 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
     id: row.id,
     organizationId: row.organizationId,
     channelId: row.channelId,
+    channelName: row.channelName,
     workspaceName: row.workspaceName,
     isActive: row.isActive,
     connectedByUserId: row.connectedByUserId,
@@ -128,7 +136,10 @@ export function createSlackConnectionsRepo(
       }
     },
 
-    async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
+    async attachChannel(
+      channelId: string,
+      channelName: string | null,
+    ): Promise<SlackConnectionSummary | null> {
       // The guard decides what may be FILLED; this decides what may be WRITTEN.
       if (!isDeliveryAddress(channelId)) {
         return null;
@@ -137,7 +148,7 @@ export function createSlackConnectionsRepo(
       // A FILL, NEVER A RE-POINT: the delivery dedup key is
       // `(organization_id, finding_id, channel_id)`, so moving a chosen channel forks every
       // recorded identity and replays the org backlog. Filling a sentinel forks nothing.
-      const row = await c.update({ channelId }, activeRow(), noAddressYet());
+      const row = await c.update({ channelId, channelName }, activeRow(), noAddressYet());
 
       return row ? toSlackConnectionSummary(row) : null;
     },
