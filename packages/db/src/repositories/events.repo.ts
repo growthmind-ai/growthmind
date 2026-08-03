@@ -2,8 +2,9 @@ import type { TenantContext } from "@growthmind/shared";
 import { desc, eq } from "drizzle-orm";
 
 import { events } from "../schema/events";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type EventRecord = typeof events.$inferSelect;
 
@@ -28,8 +29,9 @@ export interface EventsRepo {
   listForSession(sessionId: string, options: { limit: number }): Promise<EventRecord[]>;
 }
 
-export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
+export function createEventsRepo(db: ScopedExecutor, ctx: TenantContext): EventsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, events);
 
   return {
     async insertManyIgnoringDuplicates(rows: readonly EventInsertRow[]): Promise<number> {
@@ -48,7 +50,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
         .insert(events)
         .values(
           ourRows.map((row) => ({
-            organizationId: s.stamp.organizationId,
+            ...s.stamp,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionId: row.sessionId,
@@ -60,30 +62,25 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
           })),
         )
         .onConflictDoNothing({ target: [events.projectId, events.sourceEventId] })
-        // No-arg `.returning`, the projected form does not resolve across the
-        // `ScopedDb` union (NodePgDatabase | PgliteDatabase), and every other
-        // repository here uses the same no-arg call.
         .returning();
 
       return inserted.length;
     },
 
     async listForProject(projectId: string, options: { limit: number }): Promise<EventRecord[]> {
-      return db
-        .select()
-        .from(events)
-        .where(s.owned(events, eq(events.projectId, projectId)))
-        .orderBy(desc(events.occurredAt))
-        .limit(options.limit);
+      return c.list({
+        where: eq(events.projectId, projectId),
+        orderBy: [desc(events.occurredAt)],
+        limit: options.limit,
+      });
     },
 
     async listForSession(sessionId: string, options: { limit: number }): Promise<EventRecord[]> {
-      return db
-        .select()
-        .from(events)
-        .where(s.owned(events, eq(events.sessionId, sessionId)))
-        .orderBy(desc(events.occurredAt))
-        .limit(options.limit);
+      return c.list({
+        where: eq(events.sessionId, sessionId),
+        orderBy: [desc(events.occurredAt)],
+        limit: options.limit,
+      });
     },
   };
 }

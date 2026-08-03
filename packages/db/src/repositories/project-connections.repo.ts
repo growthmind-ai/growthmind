@@ -10,9 +10,10 @@ import { eq, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
 import { projectConnections } from "../schema/project-connections";
+import { orgCrud } from "./crud";
 import { rethrowScrubbed } from "./driver-error";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type ProjectConnectionRow = typeof projectConnections.$inferSelect;
 
@@ -111,41 +112,29 @@ export function toConnectionSummary(row: ProjectConnectionRow): ConnectionSummar
 }
 
 export function createProjectConnectionsRepo(
-  db: ScopedDb,
+  db: ScopedExecutor,
   ctx: TenantContext,
 ): ProjectConnectionsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, projectConnections);
 
   const notOurProject = () =>
     new ConnectionWriteError("project not found in this organization", null, null);
-
-  function byId(id: string) {
-    return s.owned(projectConnections, eq(projectConnections.id, id));
-  }
 
   async function updateById(
     id: string,
     set: PgUpdateSetSource<typeof projectConnections>,
   ): Promise<ConnectionSummary | null> {
-    const row = s.maybe(await db.update(projectConnections).set(set).where(byId(id)).returning());
+    const row = await c.update(set, eq(projectConnections.id, id));
 
     return row ? toConnectionSummary(row) : null;
   }
 
   return {
     async getActiveForProject(projectId: string): Promise<ConnectionSummary | null> {
-      const row = s.maybe(
-        await db
-          .select()
-          .from(projectConnections)
-          .where(
-            s.owned(
-              projectConnections,
-              eq(projectConnections.projectId, projectId),
-              eq(projectConnections.isActive, true),
-            ),
-          )
-          .limit(1),
+      const row = await c.maybe(
+        eq(projectConnections.projectId, projectId),
+        eq(projectConnections.isActive, true),
       );
 
       return row ? toConnectionSummary(row) : null;
@@ -155,32 +144,21 @@ export function createProjectConnectionsRepo(
       await s.assertProjectOwned(input.projectId, notOurProject);
 
       try {
-        const [row] = await db
-          .insert(projectConnections)
-          .values({
-            ...s.stamp,
-            projectId: input.projectId,
-            sourceKind: input.sourceKind,
-            host: input.host,
-            sourceProjectId: input.sourceProjectId,
-            credentialCiphertext: input.credentialCiphertext,
-            credentialKeyId: input.credentialKeyId,
-            isActive: true,
-            health: input.health,
-            connectedAt: input.connectedAt,
-            nextPollAt: input.nextPollAt,
-          })
-          .returning();
-
-        if (!row) {
-          throw new ConnectionWriteError("insertActive: insert returned no row", null, null);
-        }
+        const row = await c.insert({
+          projectId: input.projectId,
+          sourceKind: input.sourceKind,
+          host: input.host,
+          sourceProjectId: input.sourceProjectId,
+          credentialCiphertext: input.credentialCiphertext,
+          credentialKeyId: input.credentialKeyId,
+          isActive: true,
+          health: input.health,
+          connectedAt: input.connectedAt,
+          nextPollAt: input.nextPollAt,
+        });
 
         return toConnectionSummary(row);
       } catch (error) {
-        if (error instanceof ConnectionWriteError) {
-          throw error;
-        }
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }
     },
@@ -190,18 +168,10 @@ export function createProjectConnectionsRepo(
       input: { credentialCiphertext: string; credentialKeyId: string },
     ): Promise<ConnectionSummary | null> {
       try {
-        const row = s.maybe(
-          await db
-            .update(projectConnections)
-            .set({
-              credentialCiphertext: input.credentialCiphertext,
-              credentialKeyId: input.credentialKeyId,
-            })
-            .where(byId(id))
-            .returning(),
-        );
-
-        return row ? toConnectionSummary(row) : null;
+        return await updateById(id, {
+          credentialCiphertext: input.credentialCiphertext,
+          credentialKeyId: input.credentialKeyId,
+        });
       } catch (error) {
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }

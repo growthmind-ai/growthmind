@@ -11,8 +11,8 @@ import {
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { apiKeys } from "../schema/api-keys";
-import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import { orgCrud } from "./crud";
+import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 
@@ -44,8 +44,8 @@ export interface ApiKeysRepo {
   revoke(id: string): Promise<ApiKeyMetadata | null>;
 }
 
-export function createApiKeysRepo(db: ScopedDb, ctx: TenantContext): ApiKeysRepo {
-  const s = scoped(db, ctx);
+export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKeysRepo {
+  const c = orgCrud(db, ctx, apiKeys);
 
   return {
     async mint(input: { name: string }): Promise<MintedApiKey> {
@@ -53,33 +53,22 @@ export function createApiKeysRepo(db: ScopedDb, ctx: TenantContext): ApiKeysRepo
       const keyHash = hashApiKeyMaterial(raw);
       const keyPrefix = raw.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH);
 
-      const rows = await db
-        .insert(apiKeys)
-        .values({ ...s.stamp, name: input.name, keyHash, keyPrefix, revokedAt: null })
-        .returning();
+      const row = await c.insert({ name: input.name, keyHash, keyPrefix, revokedAt: null });
 
-      return { raw, key: toMetadata(s.one(rows, "createApiKeysRepo.mint")) };
+      return { raw, key: toMetadata(row) };
     },
 
     async list(): Promise<ApiKeyMetadata[]> {
-      const rows = await db
-        .select()
-        .from(apiKeys)
-        .where(s.org(apiKeys))
-        .orderBy(desc(apiKeys.createdAt));
+      const rows = await c.list({ orderBy: [desc(apiKeys.createdAt)] });
 
       return rows.map(toMetadata);
     },
 
     async revoke(id: string): Promise<ApiKeyMetadata | null> {
-      const row = s.maybe(
-        await db
-          .update(apiKeys)
-          // `coalesce` so a second revoke keeps the first revocation's timestamp.
-          // `write-keys.repo.ts:revoke` assigns `new Date` and does not preserve it.
-          .set({ revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` })
-          .where(s.owned(apiKeys, eq(apiKeys.id, id)))
-          .returning(),
+      // `coalesce` so a second revoke keeps the first revocation's timestamp.
+      const row = await c.update(
+        { revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` },
+        eq(apiKeys.id, id),
       );
 
       return row ? toMetadata(row) : null;

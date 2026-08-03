@@ -1,10 +1,11 @@
 import { summarySourceSchema, type SummarySource, type TenantContext } from "@growthmind/shared";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { findings } from "../schema/findings";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export const measuredCountRowSchema = z.object({
   numerator: z.number().int().nonnegative(),
@@ -92,11 +93,12 @@ function toRecord(row: FindingRow): FindingRecord {
   };
 }
 
-export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRepo {
+export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): FindingsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, findings);
 
   function bySignature(projectId: string, signature: string) {
-    return s.owned(findings, eq(findings.projectId, projectId), eq(findings.signature, signature));
+    return and(eq(findings.projectId, projectId), eq(findings.signature, signature));
   }
 
   return {
@@ -106,10 +108,8 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
       const counts = countsSchema.parse(input.counts);
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const [inserted] = await db
-        .insert(findings)
-        .values({
-          ...s.stamp,
+      const row = await c.insertOrFetch(
+        {
           projectId: input.projectId,
           runId: input.runId,
           signature: input.signature,
@@ -130,33 +130,18 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
 
           tokensIn: input.tokensIn ?? null,
           tokensOut: input.tokensOut ?? null,
-        })
-        .onConflictDoNothing({ target: FINDING_CONFLICT_TARGET })
-        .returning();
-
-      if (inserted) {
-        return toRecord(inserted);
-      }
-
-      const existing = s.maybe(
-        await db
-          .select()
-          .from(findings)
-          .where(bySignature(input.projectId, input.signature))
-          .limit(1),
+        },
+        {
+          target: FINDING_CONFLICT_TARGET,
+          fetch: [bySignature(input.projectId, input.signature)],
+        },
       );
 
-      if (!existing) {
-        throw new Error("findings: persist conflicted but no row was found to return");
-      }
-
-      return toRecord(existing);
+      return toRecord(row);
     },
 
     async findBySignature(projectId: string, signature: string): Promise<FindingRecord | null> {
-      const row = s.maybe(
-        await db.select().from(findings).where(bySignature(projectId, signature)).limit(1),
-      );
+      const row = await c.maybe(bySignature(projectId, signature));
 
       return row ? toRecord(row) : null;
     },
@@ -165,12 +150,11 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
       projectId: string,
       options: ListFindingsOptions,
     ): Promise<FindingRecord[]> {
-      const rows = await db
-        .select()
-        .from(findings)
-        .where(s.owned(findings, eq(findings.projectId, projectId)))
-        .orderBy(desc(findings.createdAt))
-        .limit(options.limit);
+      const rows = await c.list({
+        where: eq(findings.projectId, projectId),
+        orderBy: [desc(findings.createdAt)],
+        limit: options.limit,
+      });
 
       return rows.map(toRecord);
     },

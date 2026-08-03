@@ -1,11 +1,11 @@
 import type { TenantContext } from "@growthmind/shared";
 import type { FindingClass } from "@growthmind/core";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { findingSignatures } from "../schema/finding-signatures";
-import { scoped } from "./scope";
+import { orgCrud } from "./crud";
 import type { SignatureHex } from "../signatures/hex";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type FindingSignatureRecord = typeof findingSignatures.$inferSelect;
 
@@ -82,14 +82,13 @@ export interface FindingSignaturesRepo {
 }
 
 export function createFindingSignaturesRepo(
-  db: ScopedDb,
+  db: ScopedExecutor,
   ctx: TenantContext,
 ): FindingSignaturesRepo {
-  const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, findingSignatures);
 
   function byTuple(projectId: string, signature: SignatureHex) {
-    return s.owned(
-      findingSignatures,
+    return and(
       eq(findingSignatures.projectId, projectId),
       eq(findingSignatures.signature, signature),
     );
@@ -97,10 +96,8 @@ export function createFindingSignaturesRepo(
 
   return {
     async upsertSeen(input: UpsertSeenInput): Promise<FindingSignatureRecord> {
-      const rows = await db
-        .insert(findingSignatures)
-        .values({
-          ...s.stamp,
+      return c.insertOrFetch(
+        {
           projectId: input.projectId,
           signature: input.signature,
           symptomClass: input.symptomClass,
@@ -111,30 +108,23 @@ export function createFindingSignaturesRepo(
           firstSeenAt: input.seenAt,
           lastSeenAt: input.seenAt,
           timesSeen: 1,
-        })
-        .onConflictDoUpdate({
-          target: [
-            findingSignatures.organizationId,
-            findingSignatures.projectId,
-            findingSignatures.signature,
-          ],
+        },
+        {
+          target: LEDGER_CONFLICT_TARGET,
           set: {
             timesSeen: sql`${findingSignatures.timesSeen} + 1`,
             lastSeenAt: sql`greatest(${findingSignatures.lastSeenAt}, excluded.last_seen_at)`,
           },
-        })
-        .returning();
-
-      return s.one(rows, "createFindingSignaturesRepo.upsertSeen");
+          fetch: [byTuple(input.projectId, input.signature)],
+        },
+      );
     },
 
     async findBySignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<FindingSignatureRecord | null> {
-      return s.maybe(
-        await db.select().from(findingSignatures).where(byTuple(projectId, signature)),
-      );
+      return c.maybe(byTuple(projectId, signature));
     },
 
     async markDelivered(
@@ -142,44 +132,31 @@ export function createFindingSignaturesRepo(
       signature: SignatureHex,
       at: Date,
     ): Promise<FindingSignatureRecord | null> {
-      return s.maybe(
-        await db
-          .update(findingSignatures)
-          .set({ deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, ${at})` })
-          .where(byTuple(projectId, signature))
-          .returning(),
+      return c.update(
+        { deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, ${at})` },
+        byTuple(projectId, signature),
       );
     },
 
     async carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null> {
-      const oldRow = s.maybe(
-        await db
-          .select()
-          .from(findingSignatures)
-          .where(byTuple(input.projectId, input.oldSignature)),
-      );
+      const oldRow = await c.maybe(byTuple(input.projectId, input.oldSignature));
 
       if (!oldRow) {
         return null;
       }
 
-      const rows = await db
-        .insert(findingSignatures)
-        .values({
-          ...s.stamp,
-          ...carryForwardValues({
-            projectId: input.projectId,
-            newSignature: input.newSignature,
-            oldRow,
-          }),
-        })
-        .onConflictDoUpdate({
+      return c.insertOrFetch(
+        carryForwardValues({
+          projectId: input.projectId,
+          newSignature: input.newSignature,
+          oldRow,
+        }),
+        {
           target: LEDGER_CONFLICT_TARGET,
           set: CARRY_FORWARD_SET,
-        })
-        .returning();
-
-      return s.one(rows, "createFindingSignaturesRepo.carryForward");
+          fetch: [byTuple(input.projectId, input.newSignature)],
+        },
+      );
     },
   };
 }

@@ -423,37 +423,28 @@ describe("no bypass context is reachable from the analysis lane", () => {
     }
   });
 
-  it("scopes every where clause in both analysis repositories through the scope helper", () => {
+  it("routes every query in both analysis repositories through the crud or scope helpers", () => {
     for (const file of LANE_SOURCES) {
       const code = stripSourceComments(readFileSync(file, "utf8"));
 
-      expect(code).toMatch(/const s = scoped\(db, ctx\)/);
+      expect(code).toMatch(/const c = orgCrud\(db, ctx, (findings|analysisRuns)\)/);
 
-      const clauses = whereArguments(code);
-      expect(clauses.length).toBeGreaterThan(0);
-
-      for (const clause of clauses) {
+      // Any query still built beside the crud helper must take its filter from the scope
+      // helper — nothing may reconstruct the org predicate by hand.
+      for (const clause of whereArguments(code)) {
         expect({ file: path.basename(file), clause: clause.trim() }).toMatchObject({
           clause: expect.stringMatching(SCOPE_DERIVED),
         });
       }
-
-      // Nothing may reconstruct the filter by hand beside the helper.
       expect(code).not.toMatch(/eq\(\s*\w+\.organizationId\s*,\s*ctx\.organizationId\s*\)/);
     }
   });
 
-  it("defines each local where-clause helper from the scope helper, not from a bare eq", () => {
+  it("stamps the organization on every insert that bypasses the crud helper", () => {
+    // Findings writes all go through the crud helper, which stamps; a direct insert
+    // appearing here would be a write path outside the stamp.
     const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
-
-    expect(findingsCode).toMatch(/function bySignature\([^)]*\)\s*\{\s*return s\.owned\(/);
-  });
-
-  it("stamps the organization on every insert in both analysis repositories", () => {
-    const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
-    const findingWrites = countOf(findingsCode, /\.insert\(\s*findings\s*\)/g);
-    expect(findingWrites).toBeGreaterThan(0);
-    expect(countOf(findingsCode, /\.\.\.s\.stamp\b/g)).toBe(findingWrites);
+    expect(countOf(findingsCode, /db\s*\.insert\(/g)).toBe(0);
 
     const runsCode = stripSourceComments(readFileSync(LANE_SOURCES[1] as string, "utf8"));
     const runWrites = countOf(runsCode, /\.insert\(\s*analysisRuns\s*\)/g);

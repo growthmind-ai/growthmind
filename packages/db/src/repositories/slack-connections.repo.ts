@@ -6,9 +6,9 @@ import { decryptSecret } from "@growthmind/shared";
 import { eq, isNull } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
+import { orgCrud } from "./crud";
 import { rethrowScrubbed } from "./driver-error";
-import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type SlackConnectionRow = typeof slackConnections.$inferSelect;
 
@@ -92,44 +92,36 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
   };
 }
 
-export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): SlackConnectionsRepo {
-  const s = scoped(db, ctx);
+export function createSlackConnectionsRepo(
+  db: ScopedExecutor,
+  ctx: TenantContext,
+): SlackConnectionsRepo {
+  const c = orgCrud(db, ctx, slackConnections);
 
-  const ourActiveRow = () => s.owned(slackConnections, eq(slackConnections.isActive, true));
+  const activeRow = () => eq(slackConnections.isActive, true);
 
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
-      const row = s.maybe(await db.select().from(slackConnections).where(ourActiveRow()).limit(1));
+      const row = await c.maybe(activeRow());
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary> {
       try {
-        const [row] = await db
-          .insert(slackConnections)
-          .values({
-            ...s.stamp,
-            channelId: input.channelId,
-            // `?? null` so an absent key and an explicit null persist as the same value.
-            workspaceName: input.workspaceName ?? null,
-            credentialCiphertext: input.credentialCiphertext,
-            credentialKeyId: input.credentialKeyId,
-            isActive: true,
-            connectedByUserId: input.connectedByUserId,
-            connectedAt: input.connectedAt,
-          })
-          .returning();
-
-        if (!row) {
-          throw new SlackConnectionWriteError("insertActive: insert returned no row", null, null);
-        }
+        const row = await c.insert({
+          channelId: input.channelId,
+          // `?? null` so an absent key and an explicit null persist as the same value.
+          workspaceName: input.workspaceName ?? null,
+          credentialCiphertext: input.credentialCiphertext,
+          credentialKeyId: input.credentialKeyId,
+          isActive: true,
+          connectedByUserId: input.connectedByUserId,
+          connectedAt: input.connectedAt,
+        });
 
         return toSlackConnectionSummary(row);
       } catch (error) {
-        if (error instanceof SlackConnectionWriteError) {
-          throw error;
-        }
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }
     },
@@ -142,52 +134,32 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
       // channel forks every delivery identity already recorded — every sent finding reads as
       // never sent and the weekly budget resets, silently. No index can refuse an UPDATE, so
       // this clause is the only thing holding that line. Re-pointing needs a migration.
-      const row = s.maybe(
-        await db
-          .update(slackConnections)
-          .set({ channelId })
-          .where(
-            s.owned(
-              slackConnections,
-              eq(slackConnections.isActive, true),
-              isNull(slackConnections.channelId),
-            ),
-          )
-          .returning(),
+      const row = await c.update(
+        { channelId },
+        activeRow(),
+        isNull(slackConnections.channelId),
       );
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {
-      const row = s.maybe(
-        await db
-          .update(slackConnections)
-          .set({ isActive: false, health: "disconnected" })
-          .where(s.owned(slackConnections, eq(slackConnections.id, id)))
-          .returning(),
+      const row = await c.update(
+        { isActive: false, health: "disconnected" },
+        eq(slackConnections.id, id),
       );
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null> {
-      const row = s.maybe(
-        await db
-          .select({
-            ciphertext: slackConnections.credentialCiphertext,
-            keyId: slackConnections.credentialKeyId,
-          })
-          .from(slackConnections)
-          .where(ourActiveRow())
-          .limit(1),
-      );
+      const row = await c.maybe(activeRow());
 
       if (!row) {
         return null;
       }
 
-      return decryptSecret(row.ciphertext, key, slackCredentialAad(ctx));
+      return decryptSecret(row.credentialCiphertext, key, slackCredentialAad(ctx));
     },
   };
 }

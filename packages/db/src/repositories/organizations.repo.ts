@@ -4,7 +4,7 @@ import type { TenantContext } from "@growthmind/shared";
 
 import { member, organization, user } from "../schema/auth";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type OrganizationRecord = typeof organization.$inferSelect;
 
@@ -16,7 +16,7 @@ export interface OrganizationsRepo {
   creatorEmail(): Promise<string | null>;
 }
 
-export function createOrganizationsRepo(db: ScopedDb, ctx: TenantContext): OrganizationsRepo {
+export function createOrganizationsRepo(db: ScopedExecutor, ctx: TenantContext): OrganizationsRepo {
   const s = scoped(db, ctx);
 
   return {

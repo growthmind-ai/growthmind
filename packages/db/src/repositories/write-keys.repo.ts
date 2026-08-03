@@ -8,11 +8,12 @@ import {
   type WriteKeyKind,
   type WriteKeyMetadata,
 } from "@growthmind/shared";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { writeKeys } from "../schema/write-keys";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type WriteKeyRow = typeof writeKeys.$inferSelect;
 
@@ -45,8 +46,9 @@ export interface WriteKeysRepo {
   revoke(id: string): Promise<WriteKeyMetadata | null>;
 }
 
-export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeysRepo {
+export function createWriteKeysRepo(db: ScopedExecutor, ctx: TenantContext): WriteKeysRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, writeKeys);
 
   return {
     async mint(input: { projectId: string; kind: WriteKeyKind }): Promise<MintedWriteKey> {
@@ -59,37 +61,28 @@ export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeys
       const keyHash = hashWriteKeyMaterial(raw);
       const keyPrefix = raw.slice(0, 12);
 
-      const rows = await db
-        .insert(writeKeys)
-        .values({
-          ...s.stamp,
-          projectId: input.projectId,
-          kind: input.kind,
-          keyHash,
-          keyPrefix,
-          revokedAt: null,
-        })
-        .returning();
+      const row = await c.insert({
+        projectId: input.projectId,
+        kind: input.kind,
+        keyHash,
+        keyPrefix,
+        revokedAt: null,
+      });
 
-      return { raw, key: toMetadata(s.one(rows, "createWriteKeysRepo.mint")) };
+      return { raw, key: toMetadata(row) };
     },
 
     async listByProject(projectId: string): Promise<WriteKeyMetadata[]> {
-      const rows = await db
-        .select()
-        .from(writeKeys)
-        .where(s.owned(writeKeys, eq(writeKeys.projectId, projectId)));
+      const rows = await c.list({ where: eq(writeKeys.projectId, projectId) });
 
       return rows.map(toMetadata);
     },
 
     async revoke(id: string): Promise<WriteKeyMetadata | null> {
-      const row = s.maybe(
-        await db
-          .update(writeKeys)
-          .set({ revokedAt: new Date() })
-          .where(s.owned(writeKeys, eq(writeKeys.id, id)))
-          .returning(),
+      // `coalesce` so a second revoke keeps the first revocation's timestamp.
+      const row = await c.update(
+        { revokedAt: sql`coalesce(${writeKeys.revokedAt}, now())` },
+        eq(writeKeys.id, id),
       );
 
       return row ? toMetadata(row) : null;
