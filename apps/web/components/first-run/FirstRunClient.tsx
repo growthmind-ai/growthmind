@@ -2,7 +2,7 @@
 
 import { Box, Button, Collapse, Group, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   canArm,
@@ -12,6 +12,7 @@ import {
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
+  type OnboardingCounterView,
   type SetupFacts,
   type StagePersistedFacts,
   type StepSequenceFacts,
@@ -19,6 +20,7 @@ import {
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
+import { resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
@@ -38,10 +40,7 @@ function toStamp(at: Date | null): Date | null {
 function seedClock(status: FirstRunStatusPayload): number {
   const stamps = [status.armedAt, status.retrievedAt, status.readingAt, status.endedAt];
 
-  return stamps.reduce((newest, at) => {
-    const stamp = toStamp(at);
-    return stamp === null ? newest : Math.max(newest, stamp.getTime());
-  }, 0);
+  return Math.max(0, ...stamps.map((at) => toStamp(at)?.getTime() ?? 0));
 }
 
 function readStatus(body: unknown): FirstRunStatusPayload | null {
@@ -62,6 +61,14 @@ async function pollStatus(): Promise<FirstRunStatusPayload | null> {
   } catch {
     return null;
   }
+}
+
+const LiveCounter = createContext<OnboardingCounterView | null>(null);
+
+// The server subtree's counter is a frozen element tree; a client component
+// inside it still re-renders when a context it consumes changes.
+export function useLiveCounter(fallback: OnboardingCounterView): OnboardingCounterView {
+  return useContext(LiveCounter) ?? fallback;
 }
 
 interface FirstRunClientProps {
@@ -118,6 +125,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   };
 
   const offered = !armed && canArm(setupFacts);
+  const cadenceMs = resolvePollCadenceMs({ attached, armed });
 
   const armedOnArrival = useRef(armed);
   const wasOffered = useRef(offered);
@@ -150,7 +158,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   }, [offered]);
 
   useEffect(() => {
-    if (!armed || terminal) {
+    if (terminal || cadenceMs === null) {
       clearInterval(handle.current);
       return undefined;
     }
@@ -171,7 +179,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
           setPolled(next);
         }
       });
-    }, 1000);
+    }, cadenceMs);
 
     const first = setTimeout(() => setNowMs(Date.now()), 0);
 
@@ -179,7 +187,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
       clearTimeout(first);
       clearInterval(handle.current);
     };
-  }, [armed, terminal]);
+  }, [cadenceMs, terminal]);
 
   useEffect(() => {
     if (!folding) {
@@ -236,112 +244,115 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const resolved = new Map(deriveStepStates(sequenceFacts).map((view) => [view.id, view]));
 
   return (
-    <Stack gap="md">
-      {/* The payoff is first in both phases: the blocker panel naming the one
+    <LiveCounter value={current.counter}>
+      <Stack gap="md">
+        {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.
           `findingUnavailable` rides the poll rather than a client flag, so a
           row that becomes readable clears the sentence on its own. */}
-      <Box ref={lead}>
-        {armed ? (
-          <Stage
-            facts={facts}
-            nowMs={nowMs}
-            channelId={current.channelId}
-            findingUnavailable={current.findingUnavailable === true}
-          />
-        ) : (
-          <SetupStage
-            facts={setupFacts}
-            counter={current.counter}
-            attached={attached}
-            pending={pending}
-            onArm={() => void startWatching()}
-          />
-        )}
-      </Box>
-
-      {armed ? (
-        <Box className={armedOnArrival.current ? undefined : styles.foldIn}>
-          <Strip
-            counter={current.counter}
-            channelId={current.channelId}
-            notice={current.slackNotice}
-            reopened={reopened}
-            onToggle={() => setReopened((shown) => !shown)}
-          />
+        <Box ref={lead}>
+          {armed ? (
+            <Stage
+              facts={facts}
+              nowMs={nowMs}
+              channelId={current.channelId}
+              findingUnavailable={current.findingUnavailable === true}
+              delivery={current.deliveryState}
+            />
+          ) : (
+            <SetupStage
+              facts={setupFacts}
+              counter={current.counter}
+              attached={attached}
+              pending={pending}
+              onArm={() => void startWatching()}
+            />
+          )}
         </Box>
-      ) : null}
 
-      {armed ? (
-        <Collapse expanded={reopened}>
-          <Stack gap="md">
-            {/* `displayOrdinal`, not `descriptor.ordinal`: the record numbers
+        {armed ? (
+          <Box className={armedOnArrival.current ? undefined : styles.foldIn}>
+            <Strip
+              counter={current.counter}
+              channelId={current.channelId}
+              notice={current.slackNotice}
+              reopened={reopened}
+              onToggle={() => setReopened((shown) => !shown)}
+            />
+          </Box>
+        ) : null}
+
+        {armed ? (
+          <Collapse expanded={reopened}>
+            <Stack gap="md">
+              {/* `displayOrdinal`, not `descriptor.ordinal`: the record numbers
                 the steps the way the founder counted them. */}
-            {LIVE_STEP_DESCRIPTORS.map((descriptor) => {
-              const view = resolved.get(descriptor.id);
-              if (view === undefined) {
-                return null;
-              }
+              {LIVE_STEP_DESCRIPTORS.map((descriptor) => {
+                const view = resolved.get(descriptor.id);
+                if (view === undefined) {
+                  return null;
+                }
 
-              return (
-                <StepRow
-                  key={descriptor.id}
-                  ordinal={displayOrdinal(descriptor.id)}
-                  title={descriptor.title}
-                  helper={descriptor.kind === "work" ? descriptor.helper : null}
-                  state={view.state}
-                  open={false}
-                />
-              );
-            })}
-          </Stack>
-        </Collapse>
-      ) : null}
+                return (
+                  <StepRow
+                    key={descriptor.id}
+                    ordinal={displayOrdinal(descriptor.id)}
+                    title={descriptor.title}
+                    helper={descriptor.kind === "work" ? descriptor.helper : null}
+                    state={view.state}
+                    open={false}
+                  />
+                );
+              })}
+            </Stack>
+          </Collapse>
+        ) : null}
 
-      {armed && !folding ? null : (
-        <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
-      )}
+        {armed && !folding ? null : (
+          <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
+        )}
 
-      {/* The page lost the connection; the check did not. The elapsed keeps
+        {/* The page lost the connection; the check did not. The elapsed keeps
           counting and the line disappears again on its own. */}
-      {lost && !terminal ? (
-        <Text size="sm" c="dimmed">
-          {ONBOARDING_MESSAGES.offlineNotice}
-        </Text>
-      ) : null}
+        {lost && !terminal ? (
+          <Text size="sm" c="dimmed">
+            {ONBOARDING_MESSAGES.offlineNotice}
+          </Text>
+        ) : null}
 
-      {failure === null ? null : (
-        <Text size="sm" c="stamp.4">
-          {failure}
-        </Text>
-      )}
+        {failure === null ? null : (
+          <Text size="sm" c="stamp.4">
+            {failure}
+          </Text>
+        )}
 
-      {terminal ? (
-        <Group gap="sm" wrap="wrap">
-          {kind === "ended" ? (
+        {terminal ? (
+          <Group gap="sm" wrap="wrap">
+            {kind === "ended" ? (
+              <Button
+                variant="default"
+                onClick={() => void startWatching()}
+                loading={pending}
+                className={styles.action}
+                style={tapTargetStyle}
+                w={{ base: "100%", xs: "auto" }}
+              >
+                {ONBOARDING_MESSAGES.watchAgain}
+              </Button>
+            ) : null}
+
             <Button
-              variant="default"
-              onClick={() => void startWatching()}
+              onClick={() => void finish()}
               loading={pending}
               className={styles.action}
               style={tapTargetStyle}
               w={{ base: "100%", xs: "auto" }}
             >
-              {ONBOARDING_MESSAGES.watchAgain}
+              {ONBOARDING_MESSAGES.done}
             </Button>
-          ) : null}
-
-          <Button
-            onClick={() => void finish()}
-            loading={pending}
-            className={styles.action}
-            style={tapTargetStyle}
-            w={{ base: "100%", xs: "auto" }}
-          >
-            {ONBOARDING_MESSAGES.done}
-          </Button>
-        </Group>
-      ) : null}
-    </Stack>
+          </Group>
+        ) : null}
+      </Stack>
+    </LiveCounter>
   );
 }
