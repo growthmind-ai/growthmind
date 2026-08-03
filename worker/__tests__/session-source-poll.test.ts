@@ -722,3 +722,40 @@ test("a driver failure recording the failed run logs the driver's own words, not
   expect(logged).not.toContain(BOUND_SECRET);
   expect(logged).not.toContain(STATEMENT);
 });
+
+// The largest bound-parameter payload on this task: `persistPullResult` writes the
+// sessions and events, so its statement carries identity HMACs and session keys.
+// It was the highest-value leak site on the file and the one with nothing on it.
+test("a driver failure storing what it fetched logs the driver's own words, not the query", async () => {
+  await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({
+      results: [
+        fakeEvent({
+          distinctId: `${PREFIX}visitor-store`,
+          sessionId: `${PREFIX}session-store`,
+          occurredAt: new Date(NOW.getTime() - 60_000),
+        }),
+      ],
+      next: null,
+    }),
+  });
+
+  await runSessionSourcePoll(
+    createPollDeps({
+      db: dbThatFailsOn(db, "insert", schema.sessions, leakyFailure()),
+      fetch: posthog.fetch,
+      clock,
+      logger,
+    }),
+  );
+
+  const logged = logger.errors.join("\n");
+
+  expect(logged).toContain("could not store what it fetched");
+  expect(logged).toContain(DRIVER_SAID);
+  expect(logged).not.toContain(BOUND_SECRET);
+  expect(logged).not.toContain(STATEMENT);
+});
