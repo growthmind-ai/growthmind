@@ -284,8 +284,15 @@ export const STAGE_LOG_READING = "we started reading it";
 export const STAGE_OFFLINE_NOTICE =
   "We have lost the connection to this page — the check is still running.";
 
-export const STAGE_RETIRE_TEMPLATE =
-  "The same thing is now in #{channel}. This screen retires with setup — there is nothing here to come back and check.";
+export const STAGE_DELIVERED_TEMPLATE = "The same thing is now in #{channel}.";
+
+export const STAGE_DELIVERY_PENDING_TEMPLATE =
+  "Findings for this project go to #{channel}. This one has not been posted there.";
+
+export const STAGE_DELIVERY_FAILED_TEMPLATE = "This one did not reach #{channel}.";
+
+export const STAGE_RETIRE_CLOSURE =
+  "This screen retires with setup — there is nothing here to come back and check.";
 
 export const STRIP_LEAD = "Watching your product";
 
@@ -295,7 +302,7 @@ export const STRIP_COUNTED_TEMPLATE = "{count} counted";
 
 export const STRIP_POSTING_TO_TEMPLATE = "posting to #{channel}";
 
-export const STRIP_REOPEN_LABEL = "Setup done — show the five steps";
+export const STRIP_REOPEN_LABEL = "Setup done — show the steps";
 
 export const FINDING_CLASS_UNKNOWN_TEMPLATE = "Something on {page} is worth a look.";
 
@@ -488,7 +495,10 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,
   STAGE_OFFLINE_NOTICE,
-  STAGE_RETIRE_TEMPLATE,
+  STAGE_DELIVERED_TEMPLATE,
+  STAGE_DELIVERY_PENDING_TEMPLATE,
+  STAGE_DELIVERY_FAILED_TEMPLATE,
+  STAGE_RETIRE_CLOSURE,
 
   STRIP_LEAD,
   STRIP_SEEN_TEMPLATE,

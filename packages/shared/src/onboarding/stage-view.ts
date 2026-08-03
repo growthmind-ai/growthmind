@@ -1,5 +1,8 @@
 import { ANALYSIS_OUTCOME_MESSAGES, ANALYSIS_RUN_STATUS_MESSAGES } from "../summary/messages";
 import {
+  STAGE_DELIVERED_TEMPLATE,
+  STAGE_DELIVERY_FAILED_TEMPLATE,
+  STAGE_DELIVERY_PENDING_TEMPLATE,
   STAGE_ENDED_HINT,
   STAGE_FOUND_HEADING,
   STAGE_FOUND_HINT,
@@ -14,7 +17,7 @@ import {
   STAGE_WATCHING_HINT,
 } from "./messages";
 import type { RenderedStageState } from "./stage";
-import type { EndedReason } from "./types";
+import type { EndedReason, FirstRunDeliveryState } from "./types";
 
 export type StageLogLine = {
   readonly atSeconds: number;
@@ -28,6 +31,23 @@ export type StageView = {
   readonly lines: readonly StageLogLine[];
   readonly elapsedSeconds: number;
 };
+
+const DELIVERY_TEMPLATES: Record<Exclude<FirstRunDeliveryState, "none">, string> = {
+  posted: STAGE_DELIVERED_TEMPLATE,
+  unposted: STAGE_DELIVERY_PENDING_TEMPLATE,
+  failed: STAGE_DELIVERY_FAILED_TEMPLATE,
+};
+
+export function renderDeliveryLine(
+  state: FirstRunDeliveryState,
+  channelId: string | null,
+): string | null {
+  if (state === "none" || channelId === null) {
+    return null;
+  }
+
+  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", channelId);
+}
 
 const ENDED_HEADINGS: Record<EndedReason, string> = {
   failed: ANALYSIS_RUN_STATUS_MESSAGES.failed,

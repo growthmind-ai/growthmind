@@ -15,14 +15,23 @@ export interface PollPlan {
   readonly sleepMsBetween: number;
 }
 
+export function isInsideOnboardingWindow(from: Date | null, now: Date): boolean {
+  if (from === null) return false;
+
+  return now.getTime() - from.getTime() < ONBOARDING_WINDOW_MINUTES * 60_000;
+}
+
 export function resolvePollPlan(input: {
   connectedAt: Date;
+  armedAt: Date | null;
   now: Date;
   pollIntervalSeconds: number;
 }): PollPlan {
-  const elapsedMs = input.now.getTime() - input.connectedAt.getTime();
+  const insideEitherClock =
+    isInsideOnboardingWindow(input.connectedAt, input.now) ||
+    isInsideOnboardingWindow(input.armedAt, input.now);
 
-  if (elapsedMs < ONBOARDING_WINDOW_MINUTES * 60_000) {
+  if (insideEitherClock) {
     return {
       passes: MAX_ONBOARDING_PASSES,
       sleepMsBetween: ONBOARDING_POLL_INTERVAL_SECONDS * 1000,
