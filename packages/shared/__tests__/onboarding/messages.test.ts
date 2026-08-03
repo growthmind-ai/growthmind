@@ -86,7 +86,8 @@ const UX_BANNED_WORDS = [
 
 const BARE_STATUS = /\b[1-5]\d{2}\b/;
 const LIVE_CLAIM = /\blive\b/i;
-const APOLOGETIC = /\bsorry\b|\bunfortunately\b|\bcoming soon\b|!/i;
+// "Coming soon" left this ban with AD-7.2: it is now the sanctioned badge copy.
+const APOLOGETIC = /\bsorry\b|\bunfortunately\b|!/i;
 
 const maskInterpolations = (message: string): string =>
   message
@@ -127,6 +128,25 @@ describe("the onboarding copy audit — AD-4, FR-O22", () => {
     const missing = derived.filter((message) => !registered.has(message));
     expect(missing).toEqual([]);
     expect(registered.size).toBeGreaterThan(0);
+  });
+
+  test("the five interest strings are exported constants registered in the audit", async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = new Set(await everyOnboardingMessage());
+
+    const expected = [
+      "PROVIDER_SOON_BADGE",
+      "INTEREST_PING_LABEL",
+      "INTEREST_PENDING_LABEL",
+      "INTEREST_NOTED_BADGE",
+      "INTEREST_NOTED_TEMPLATE",
+    ] as const;
+
+    const missingExports = expected.filter((name) => typeof namespace[name] !== "string");
+    expect(missingExports).toEqual([]);
+
+    const unregistered = expected.filter((name) => !registered.has(namespace[name] as string));
+    expect(unregistered).toEqual([]);
   });
 
   test("no user-facing string commits to a duration", async () => {
@@ -222,11 +242,23 @@ describe("the onboarding copy audit — AD-4, FR-O22", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("the proper-noun allow-list is exactly PostHog and Slack", async () => {
+  test("the proper-noun allow-list is exactly the eleven connection names", async () => {
     const namespace = await loadOnboardingMessages();
     const allowList = namespace.ONBOARDING_PROPER_NOUNS;
 
-    expect(allowList).toEqual(["PostHog", "Slack"]);
+    expect(allowList).toEqual([
+      "PostHog",
+      "Slack",
+      "GitHub",
+      "GitLab",
+      "Claude Code",
+      "Cursor",
+      "Copilot",
+      "Codex",
+      "Windsurf",
+      "Amplitude",
+      "Mixpanel",
+    ]);
   });
 
   test("every capitalised proper noun in every onboarding string is in the allow-list", async () => {
@@ -267,11 +299,13 @@ describe("the onboarding copy audit — AD-4, FR-O22", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("no stub string is apologetic", async () => {
+  test("no onboarding string is apologetic", async () => {
     const messages = await everyOnboardingMessage();
 
-    expect("Sorry, this one is coming soon!").toMatch(APOLOGETIC);
-    expect("Not built yet. It arrives with the fix-spec work.").not.toMatch(APOLOGETIC);
+    expect("Sorry, this one is late.").toMatch(APOLOGETIC);
+    expect("Unfortunately, not yet.").toMatch(APOLOGETIC);
+    expect("It landed!").toMatch(APOLOGETIC);
+    expect("Coming soon.").not.toMatch(APOLOGETIC);
 
     const offenders = messages.filter((message) => APOLOGETIC.test(message));
     expect(offenders).toEqual([]);
@@ -287,6 +321,27 @@ describe("rulings settled by the copy wave", () => {
 
     expect(messages.has("Watching for what you just did")).toBe(false);
     expect(messages.has("Reading what came back")).toBe(false);
+  });
+
+  test("the agent step title is the coding-assistant form, verbatim", async () => {
+    const namespace = await loadOnboardingMessages();
+
+    expect(namespace.STEP_AGENT_TITLE).toBe("Connect your coding assistant");
+  });
+
+  test("the filler line is retired: neither filler constant is exported or registered", async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = await everyOnboardingMessage();
+
+    expect(Object.keys(namespace)).not.toContain("STEP_REPO_FILLER");
+    expect(Object.keys(namespace)).not.toContain("STEP_AGENT_FILLER");
+
+    for (const retired of [
+      "Not built yet. It arrives with the fix-spec work.",
+      "Not built yet. It arrives with the agent-protocol work.",
+    ]) {
+      expect(registered).not.toContain(retired);
+    }
   });
 
   test("no onboarding string carries a machine class identifier, and no second class table is authored here", async () => {

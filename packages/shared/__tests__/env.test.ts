@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import type { ServerEnv } from "../src/env";
 import { parseServerEnv } from "../src/env";
+import { loadUnderConstruction } from "./onboarding/module-under-construction";
 
 const PROD_COMPLETE = {
   NODE_ENV: "production",
@@ -181,5 +183,44 @@ describe("parseServerEnv", () => {
       // REQUIRED instead.
       expect(() => parseServerEnv({ ...PROD_COMPLETE, [key]: SLACK_ID })).not.toThrow();
     }
+  });
+
+  // W-7/W-8 (AD-5, AD-9): optional-by-construction like the Slack pair above, but a SET
+  // value must be a URL — the operator set it deliberately, so a typo fails at boot.
+  const INTEREST_WEBHOOK = "https://hooks.slack.com/services/T0000/B0000/fixture-token";
+
+  const loadInterestPingConfigured = (): Promise<(env: ServerEnv) => boolean> =>
+    loadUnderConstruction<(env: ServerEnv) => boolean>({
+      modulePath: "../../src/env",
+      exportName: "interestPingConfigured",
+      ownedBy: "ADD Wave 1, the env task (AD-5, AD-9)",
+    });
+
+  test("production boots with the interest webhook absent or set, and the configured flag follows", async () => {
+    const interestPingConfigured = await loadInterestPingConfigured();
+
+    expect(PROD_COMPLETE).not.toHaveProperty("GROWTHMIND_INTEREST_SLACK_WEBHOOK");
+
+    for (const [label, patch, configured] of [
+      ["absent", {}, false],
+      ["set", { GROWTHMIND_INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }, true],
+    ] as const) {
+      const env = parseServerEnv({ ...PROD_COMPLETE, ...patch });
+
+      expect(`${label}:${env.NODE_ENV}`).toBe(`${label}:production`);
+      expect(`${label}:${interestPingConfigured(env)}`).toBe(`${label}:${configured}`);
+    }
+  });
+
+  test("a malformed interest webhook fails the parse at boot, never each send", () => {
+    expect(() =>
+      parseServerEnv({ ...PROD_COMPLETE, GROWTHMIND_INTEREST_SLACK_WEBHOOK: "not-a-webhook-url" }),
+    ).toThrow(/GROWTHMIND_INTEREST_SLACK_WEBHOOK/);
+
+    // THE CONTROL: the well-formed value still boots, so the row above cannot pass by the
+    // variable being refused outright.
+    expect(() =>
+      parseServerEnv({ ...PROD_COMPLETE, GROWTHMIND_INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }),
+    ).not.toThrow();
   });
 });
