@@ -25,12 +25,26 @@ const CONNECTED_AT = new Date("2026-08-01T09:00:00.000Z");
 const REAL_CHANNEL = "C01AB2CD3EF";
 const OTHER_CHANNEL = "C09ZY8XW7VU";
 
+// Written as code points, because these are exactly the characters `btrim(x)` does
+// NOT remove and a literal would be invisible in review: a non-breaking space, an
+// ideographic space and a byte-order mark.
+const NBSP = String.fromCodePoint(0x00a0);
+const IDEOGRAPHIC_SPACE = String.fromCodePoint(0x3000);
+const BOM = String.fromCodePoint(0xfeff);
+
 const CORPUS: readonly (string | null)[] = [
   null,
   "",
   " ",
   "   ",
   "\t",
+  "\n",
+  NBSP,
+  IDEOGRAPHIC_SPACE,
+  BOM,
+  "\tnull",
+  "null\n",
+  `${NBSP}undefined${NBSP}`,
   "null",
   "NULL",
   " null ",
@@ -38,6 +52,7 @@ const CORPUS: readonly (string | null)[] = [
   "UNDEFINED",
   REAL_CHANNEL,
   `  ${REAL_CHANNEL}  `,
+  `${NBSP}${REAL_CHANNEL}${NBSP}`,
   "general",
   "C0NULL123",
 ];
@@ -106,9 +121,13 @@ describe("the guard and the shared predicate cannot disagree (B-036)", () => {
 });
 
 describe("attachChannel fills anything that is not yet an address, and moves nothing that is", () => {
-  for (const [index, sentinel] of ["null", "undefined", "   ", ""].entries()) {
-    test(`a row holding ${JSON.stringify(sentinel)} can still be given a real channel`, async () => {
-      const org = await seedConnectionWith(`fill-${index}`, sentinel);
+  // THE WHOLE CORPUS, not four hand-picked values. The four this started with were
+  // the four `btrim(x)` happens to cover; a tab or a non-breaking space is blank to
+  // the predicate and was not to the SQL, which is the divergence that made the
+  // "cannot disagree" heading above false.
+  for (const [index, blank] of CORPUS.filter((value) => !isDeliveryAddress(value)).entries()) {
+    test(`a row holding ${JSON.stringify(blank)} can still be given a real channel`, async () => {
+      const org = await seedConnectionWith(`fill-${index}`, blank);
       const repo = createSlackConnectionsRepo(db, org.ctx);
 
       const filled = await repo.attachChannel(REAL_CHANNEL);
@@ -117,6 +136,30 @@ describe("attachChannel fills anything that is not yet an address, and moves not
       expect(isDeliveryTarget({ channelId: filled?.channelId ?? null })).toBe(true);
     });
   }
+
+  test("no address in the corpus can be filled over — the widening is not a re-point", async () => {
+    for (const [index, address] of CORPUS.filter((value) => isDeliveryAddress(value)).entries()) {
+      const org = await seedConnectionWith(`held-${index}`, address);
+      const repo = createSlackConnectionsRepo(db, org.ctx);
+
+      const moved = await repo.attachChannel(OTHER_CHANNEL);
+      expect({ address, moved }).toEqual({ address, moved: null });
+      expect((await repo.getActiveForOrg())?.channelId).toBe(address);
+    }
+  });
+
+  test("attachChannel refuses to WRITE a value the guard would not accept", async () => {
+    const org = await seedConnectionWith("refuse-write", null);
+    const repo = createSlackConnectionsRepo(db, org.ctx);
+
+    for (const blank of CORPUS.filter((value) => value !== null && !isDeliveryAddress(value))) {
+      const written = await repo.attachChannel(blank as string);
+      expect({ blank, written }).toEqual({ blank, written: null });
+    }
+
+    // Control - the row is still fillable afterwards; nothing was stamped.
+    expect((await repo.attachChannel(REAL_CHANNEL))?.channelId).toBe(REAL_CHANNEL);
+  });
 
   test("a NULL row is still filled — the case the guard already handled", async () => {
     const org = await seedConnectionWith("fill-null-column", null);

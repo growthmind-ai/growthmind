@@ -8,6 +8,7 @@ import {
   isDeliveryAddress,
   NON_ADDRESS_SENTINELS,
   NON_ADDRESS_VALUES,
+  TRIMMED_WHITESPACE,
 } from "../../src/delivery/address";
 import { renderDeliveryClosure, renderDeliveryLine } from "../../src/onboarding/stage-view";
 import { STAGE_NO_DELIVERY_LINE } from "../../src/onboarding/messages";
@@ -81,6 +82,31 @@ describe("one definition of not-an-address (B-036)", () => {
   test("the rendered channel is trimmed, so padding never reaches the sentence", () => {
     expect(renderDeliveryLine("posted", `  ${REAL_CHANNEL}  `)).toContain(`#${REAL_CHANNEL}`);
     expect(renderDeliveryLine("posted", `  ${REAL_CHANNEL}  `)).not.toContain(`# ${REAL_CHANNEL}`);
+  });
+
+  // Re-derived from `.trim()` rather than restated: a JS revision that widens the set
+  // fails here rather than silently in Postgres, where this string is `btrim`s argument.
+  test("the shared trim set is exactly what String.prototype.trim removes", () => {
+    const removed = [...Array(0x110000).keys()]
+      .filter((code) => code < 0xd800 || code > 0xdfff)
+      .filter((code) => {
+        const ch = String.fromCodePoint(code);
+        return `${ch}x${ch}`.trim() === "x";
+      })
+      .map((code) => String.fromCodePoint(code));
+
+    expect([...TRIMMED_WHITESPACE].toSorted()).toEqual(removed.toSorted());
+  });
+
+  test("every trimmed character makes a value blank, and none of them is an address", () => {
+    for (const ch of TRIMMED_WHITESPACE) {
+      const point = `U+${ch.codePointAt(0)?.toString(16).padStart(4, "0")}`;
+
+      expect(`${point}:${isDeliveryAddress(ch)}`).toBe(`${point}:false`);
+      expect(`${point}:${isDeliveryAddress(`${ch}null${ch}`)}`).toBe(`${point}:false`);
+      // Control - the same character around a real id leaves it an address.
+      expect(`${point}:${isDeliveryAddress(`${ch}C01AB2CD3EF${ch}`)}`).toBe(`${point}:true`);
+    }
   });
 
   test("the SQL guard's list is the predicate's list plus the empty string", () => {

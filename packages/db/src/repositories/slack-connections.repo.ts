@@ -1,5 +1,10 @@
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
-import { decryptSecret, NON_ADDRESS_VALUES } from "@growthmind/shared";
+import {
+  decryptSecret,
+  isDeliveryAddress,
+  NON_ADDRESS_VALUES,
+  TRIMMED_WHITESPACE,
+} from "@growthmind/shared";
 import { eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
@@ -81,11 +86,15 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
 
 const activeRow = () => eq(slackConnections.isActive, true);
 
-// `isDeliveryAddress` inverted, in SQL, over the shared list.
+// `isDeliveryAddress` inverted, in SQL, over the shared list — and over the shared
+// TRIM SET, because one-argument `btrim` removes only U+0020 and would disagree with
+// the predicate on a tab, a newline and every Unicode space.
 const noAddressYet = () =>
   or(
     isNull(slackConnections.channelId),
-    inArray(sql`lower(btrim(${slackConnections.channelId}))`, [...NON_ADDRESS_VALUES]),
+    inArray(sql`lower(btrim(${slackConnections.channelId}, ${TRIMMED_WHITESPACE}))`, [
+      ...NON_ADDRESS_VALUES,
+    ]),
   );
 
 export function createSlackConnectionsRepo(
@@ -120,11 +129,14 @@ export function createSlackConnectionsRepo(
     },
 
     async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
+      // The guard decides what may be FILLED; this decides what may be WRITTEN.
+      if (!isDeliveryAddress(channelId)) {
+        return null;
+      }
+
       // A FILL, NEVER A RE-POINT: the delivery dedup key is
       // `(organization_id, finding_id, channel_id)`, so moving a chosen channel forks every
-      // recorded identity and replays the org's backlog. Filling a sentinel forks nothing —
-      // it was never an identity — and matching NULL alone left such a row unfillable for
-      // good, with no disconnect control anywhere.
+      // recorded identity and replays the org backlog. Filling a sentinel forks nothing.
       const row = await c.update({ channelId }, activeRow(), noAddressYet());
 
       return row ? toSlackConnectionSummary(row) : null;

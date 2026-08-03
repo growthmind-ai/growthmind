@@ -10,6 +10,7 @@ import {
   displayOrdinal,
   firstRunDeliveryStateSchema,
   isAnalyticsAttached,
+  isDeliveryAddress,
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
@@ -136,7 +137,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const setupFacts: SetupFacts = {
     analyticsAttached: attached,
     workspaceAttached: current.slackWorkspaceAttached,
-    deliveryResolved: current.channelId !== null || current.slackSkippedAt !== null,
+    deliveryResolved: isDeliveryAddress(current.channelId) || current.slackSkippedAt !== null,
     armedAt: facts.armedAt,
   };
 
@@ -258,7 +259,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const sequenceFacts: StepSequenceFacts = {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
-    slackConnected: current.channelId !== null,
+    slackConnected: isDeliveryAddress(current.channelId),
     slackSkipped: current.slackSkippedAt !== null,
 
     slackTestPostFailed: false,

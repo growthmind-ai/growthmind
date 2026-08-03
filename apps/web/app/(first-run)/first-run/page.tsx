@@ -7,6 +7,7 @@ import {
   COMING_NEXT_DESCRIPTORS,
   deriveStepStates,
   displayOrdinal,
+  isDeliveryAddress,
   LIVE_STEP_DESCRIPTORS,
   type StepSequenceFacts,
   type StepView,
@@ -101,7 +102,7 @@ export default async function FirstRunPage() {
   const connectionState = status.counter.state;
   const facts: StepSequenceFacts = {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
-    slackConnected: status.channelId !== null,
+    slackConnected: isDeliveryAddress(status.channelId),
     slackSkipped: status.slackSkippedAt !== null,
 
     slackTestPostFailed: false,

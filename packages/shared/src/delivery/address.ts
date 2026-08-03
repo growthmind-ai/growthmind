@@ -1,24 +1,17 @@
-// One definition of "not an address", for every consumer of a stored channel id.
-//
-// There were two, in two packages, holding the same three strings independently —
-// and nothing failed if they drifted. A sentinel added to one and not the other
-// produces `deliveryState: "posted"` beside a render that returns null, or `#null`
-// back on screen. They could not simply be merged because `@growthmind/db`'s barrel
-// pulls `pg` and drizzle and cannot enter a client bundle; this module has no
-// dependencies at all, so both sides can consume it.
-//
-// A third home is the `attachChannel` fill guard, which is SQL and cannot call a
-// predicate — it consumes the list below instead.
-
-// What a stringified null looks like once it has already gone wrong. Lowercased
-// and trimmed before the comparison, so `" NULL "` is caught too.
 export const NON_ADDRESS_SENTINELS: readonly string[] = Object.freeze(["null", "undefined"]);
 
-// Every value the SQL guard must treat as "no address chosen yet", including the
-// empty string that `NON_ADDRESS_SENTINELS` leaves to the length check here.
 export const NON_ADDRESS_VALUES: readonly string[] = Object.freeze(["", ...NON_ADDRESS_SENTINELS]);
 
-export function isDeliveryAddress(channelId: string | null | undefined): boolean {
+const TRIMMED_WHITESPACE_CODES: readonly number[] = Object.freeze([
+  0x0009, 0x000a, 0x000b, 0x000c, 0x000d, 0x0020, 0x00a0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003,
+  0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+  0xfeff,
+]);
+
+// Postgres `btrim(x)` removes U+0020 and nothing else; this is its second argument.
+export const TRIMMED_WHITESPACE: string = String.fromCodePoint(...TRIMMED_WHITESPACE_CODES);
+
+export function isDeliveryAddress(channelId: string | null | undefined): channelId is string {
   if (typeof channelId !== "string") {
     return false;
   }

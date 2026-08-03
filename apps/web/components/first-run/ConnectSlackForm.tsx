@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
+  isDeliveryAddress,
   ONBOARDING_MESSAGES,
   type FieldDescriptor,
   type StepView,
@@ -149,7 +150,9 @@ export function ConnectSlackForm(props: ConnectSlackFormProps) {
   const locked = pending || !view.interactive;
 
   const workspaceAttached = props.slackWorkspaceAttached || workspaceNow;
-  const channelAttached = props.channelId !== null || channelNow;
+  // The predicate, not `!== null`: a sentinel address is not somewhere to post, and
+  // treating one as attached hides the picker from exactly the row that needs it.
+  const channelAttached = isDeliveryAddress(props.channelId) || channelNow;
 
   // The window AD-4 opens: consented, nowhere to post yet, reachable on BOTH
   // paths. `offerOAuth` never re-offers "Add to Slack" to an attached org.
