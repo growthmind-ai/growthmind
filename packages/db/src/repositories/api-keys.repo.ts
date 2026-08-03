@@ -11,6 +11,7 @@ import {
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { apiKeys } from "../schema/api-keys";
+import { organization } from "../schema/auth";
 import { orgCrud } from "./crud";
 import type { ScopedDb, ScopedExecutor } from "./types";
 
@@ -107,13 +108,37 @@ export const API_KEY_ACTOR_PREFIX = "api-key:";
 
 export const API_KEY_ACTOR_ROLE = "api_key";
 
-const PRINCIPAL_NOT_IMPLEMENTED = "api-keys.repo: resolveApiKeyPrincipal is not implemented";
-
-export function resolveApiKeyPrincipal(
+// The organization is read out of the database, keyed by the digest of an unforgeable
+// secret, so no caller can name the tenancy it acts in.
+export async function resolveApiKeyPrincipal(
   db: ScopedDb,
   presented: string,
 ): Promise<TenantContext | null> {
-  void db;
-  void presented;
-  throw new Error(PRINCIPAL_NOT_IMPLEMENTED);
+  if (!isApiKeyFormat(presented)) {
+    return null;
+  }
+
+  const keyHash = hashApiKeyMaterial(presented);
+
+  const [row] = await db
+    .select({
+      keyId: apiKeys.id,
+      organizationId: apiKeys.organizationId,
+      organizationName: organization.name,
+    })
+    .from(apiKeys)
+    .innerJoin(organization, eq(apiKeys.organizationId, organization.id))
+    .where(and(eq(apiKeys.keyHash, keyHash), isNull(apiKeys.revokedAt)))
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    userId: `${API_KEY_ACTOR_PREFIX}${row.keyId}`,
+    organizationId: row.organizationId,
+    organizationName: row.organizationName,
+    role: API_KEY_ACTOR_ROLE,
+  };
 }

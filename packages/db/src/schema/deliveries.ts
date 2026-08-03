@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { DeliveryStatus } from "@growthmind/shared";
+import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
@@ -61,5 +62,12 @@ export const deliveries = pgTable(
     ),
 
     index("deliveries_org_signature_idx").on(table.organizationId, table.signature),
+
+    // Globally unique, not org-scoped: a Slack (channel, message) pair is the only key an
+    // interactivity payload carries, and it must resolve to exactly one organization.
+    // Partial, because a delivery claimed but never posted still has a null message_ref.
+    uniqueIndex("deliveries_channel_message_uidx")
+      .on(table.channelId, table.messageRef)
+      .where(sql`${table.messageRef} is not null`),
   ],
 );

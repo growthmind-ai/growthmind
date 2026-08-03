@@ -1,19 +1,12 @@
 import type { FixSpecPayload } from "@growthmind/core";
 import type { TenantContext } from "@growthmind/shared";
+import { eq } from "drizzle-orm";
 
+import { findingPayloads } from "../schema/finding-payloads";
+import { orgCrud } from "./crud";
 import type { ScopedExecutor } from "./types";
 
-// Declared here rather than derived from the Drizzle table, because the table itself
-// lands in Wave 3. The column list is Decision R-8's.
-export type FindingPayloadRow = {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly findingId: string;
-  readonly payloadVersion: number;
-  readonly candidate: unknown;
-  readonly signals: readonly unknown[];
-  readonly createdAt: Date;
-};
+export type FindingPayloadRow = typeof findingPayloads.$inferSelect;
 
 export interface UpsertFindingPayloadInput {
   readonly findingId: string;
@@ -26,24 +19,35 @@ export interface FindingPayloadsRepo {
   findForFinding(findingId: string): Promise<FindingPayloadRow | null>;
 }
 
-const NOT_IMPLEMENTED = "finding-payloads.repo: not implemented";
+export const FINDING_PAYLOAD_CONFLICT_TARGET = [
+  findingPayloads.organizationId,
+  findingPayloads.findingId,
+];
 
 export function createFindingPayloadsRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
 ): FindingPayloadsRepo {
-  void db;
-  void ctx;
+  const c = orgCrud(db, ctx, findingPayloads);
 
   return {
-    upsertFor(input: UpsertFindingPayloadInput): Promise<FindingPayloadRow> {
-      void input;
-      throw new Error(NOT_IMPLEMENTED);
+    async upsertFor(input: UpsertFindingPayloadInput): Promise<FindingPayloadRow> {
+      return c.insertOrFetch(
+        {
+          findingId: input.findingId,
+          payloadVersion: input.payload.payloadVersion,
+          candidate: input.payload.candidate,
+          signals: input.payload.signals,
+        },
+        {
+          target: FINDING_PAYLOAD_CONFLICT_TARGET,
+          fetch: [eq(findingPayloads.findingId, input.findingId)],
+        },
+      );
     },
 
-    findForFinding(findingId: string): Promise<FindingPayloadRow | null> {
-      void findingId;
-      throw new Error(NOT_IMPLEMENTED);
+    async findForFinding(findingId: string): Promise<FindingPayloadRow | null> {
+      return c.maybe(eq(findingPayloads.findingId, findingId));
     },
   };
 }

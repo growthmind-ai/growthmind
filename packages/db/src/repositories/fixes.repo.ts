@@ -1,24 +1,17 @@
-import type { FixStatus, TenantContext } from "@growthmind/shared";
+import {
+  FIX_CONFLICT_TARGET,
+  type FixConflictColumn,
+  type TenantContext,
+} from "@growthmind/shared";
+import { and, asc, eq, sql } from "drizzle-orm";
+import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import type { ClaimResult } from "./crud";
+import { fixes } from "../schema/fixes";
+import { orgCrud, type ClaimResult } from "./crud";
+import { scoped } from "./scope";
 import type { ScopedExecutor } from "./types";
 
-// Declared here rather than derived from the Drizzle table, because the table itself
-// lands in Wave 3. The column list is Decision R-8's.
-export type FixRow = {
-  readonly id: string;
-  readonly organizationId: string;
-  readonly projectId: string;
-  readonly findingId: string;
-  readonly status: FixStatus;
-  readonly attempt: number;
-  readonly alreadyLanded: readonly string[];
-  readonly resultsBy: Date;
-  readonly resultsByRuleVersion: number;
-  readonly openedAt: Date;
-  readonly openedBy: string;
-  readonly createdAt: Date;
-};
+export type FixRow = typeof fixes.$inferSelect;
 
 export interface ClaimFixInput {
   readonly projectId: string;
@@ -50,36 +43,76 @@ export interface FixesRepo {
   countOpen(options: CountOpenFixesOptions): Promise<number>;
 }
 
-const NOT_IMPLEMENTED = "fixes.repo: not implemented";
+// `packages/shared` names the identity's columns; this is the same list as Drizzle columns,
+// so a name added there fails to compile until the column beside it is named.
+const CONFLICT_COLUMN = {
+  organization_id: fixes.organizationId,
+  finding_id: fixes.findingId,
+} satisfies Record<FixConflictColumn, IndexColumn>;
+
+export const FIX_CONFLICT_COLUMNS: IndexColumn[] = FIX_CONFLICT_TARGET.map(
+  (name) => CONFLICT_COLUMN[name],
+);
+
+export const OPEN_FIX_STATUS = "open";
+
+function byFinding(findingId: string) {
+  return eq(fixes.findingId, findingId);
+}
+
+export function openFixesIn(projectId: string | null) {
+  return projectId === null
+    ? eq(fixes.status, OPEN_FIX_STATUS)
+    : and(eq(fixes.status, OPEN_FIX_STATUS), eq(fixes.projectId, projectId));
+}
 
 export function createFixesRepo(db: ScopedExecutor, ctx: TenantContext): FixesRepo {
-  void db;
-  void ctx;
+  const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, fixes);
 
   return {
-    claimFor(input: ClaimFixInput): Promise<ClaimResult<FixRow>> {
-      void input;
-      throw new Error(NOT_IMPLEMENTED);
+    async claimFor(input: ClaimFixInput): Promise<ClaimResult<FixRow>> {
+      // No `set`, so the conflict is `onConflictDoNothing` and a second press reads back
+      // the row the first press wrote. Never check-then-create.
+      return c.claim(
+        {
+          projectId: input.projectId,
+          findingId: input.findingId,
+          status: OPEN_FIX_STATUS,
+          attempt: 1,
+          alreadyLanded: [],
+          resultsBy: input.resultsBy,
+          resultsByRuleVersion: input.resultsByRuleVersion,
+          openedAt: input.openedAt,
+          openedBy: input.openedBy,
+        },
+        { target: FIX_CONFLICT_COLUMNS, fetch: [byFinding(input.findingId)] },
+      );
     },
 
-    findById(fixId: string): Promise<FixRow | null> {
-      void fixId;
-      throw new Error(NOT_IMPLEMENTED);
+    async findById(fixId: string): Promise<FixRow | null> {
+      return c.maybe(eq(fixes.id, fixId));
     },
 
-    findForFinding(findingId: string): Promise<FixRow | null> {
-      void findingId;
-      throw new Error(NOT_IMPLEMENTED);
+    async findForFinding(findingId: string): Promise<FixRow | null> {
+      return c.maybe(byFinding(findingId));
     },
 
-    listOpen(options: ListOpenFixesOptions): Promise<FixRow[]> {
-      void options;
-      throw new Error(NOT_IMPLEMENTED);
+    async listOpen(options: ListOpenFixesOptions): Promise<FixRow[]> {
+      return c.list({
+        where: openFixesIn(options.projectId),
+        orderBy: [asc(fixes.resultsBy), asc(fixes.openedAt)],
+        limit: options.limit,
+      });
     },
 
-    countOpen(options: CountOpenFixesOptions): Promise<number> {
-      void options;
-      throw new Error(NOT_IMPLEMENTED);
+    async countOpen(options: CountOpenFixesOptions): Promise<number> {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(fixes)
+        .where(s.owned(fixes, openFixesIn(options.projectId)));
+
+      return Number(row?.count ?? 0);
     },
   };
 }

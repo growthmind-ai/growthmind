@@ -155,6 +155,8 @@ export {
 
 export {
   createFixesRepo,
+  FIX_CONFLICT_COLUMNS,
+  OPEN_FIX_STATUS,
   type FixesRepo,
   type FixRow,
   type ClaimFixInput,
@@ -164,6 +166,7 @@ export {
 
 export {
   createFindingPayloadsRepo,
+  FINDING_PAYLOAD_CONFLICT_TARGET,
   type FindingPayloadsRepo,
   type FindingPayloadRow,
   type UpsertFindingPayloadInput,
