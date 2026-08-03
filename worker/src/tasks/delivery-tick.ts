@@ -1,6 +1,7 @@
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
 import { decideDelivery, renderSlackMessage, scanResidualPii } from "@growthmind/core";
 import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
+import { describeDriverError } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
 import {
@@ -182,7 +183,7 @@ async function recordFailed(
     }
   } catch (error) {
     deps.logger.error(
-      `delivery tick: finding ${input.findingId} failed to post AND its failure could not be recorded — ${describeError(error)}`,
+      `delivery tick: finding ${input.findingId} failed to post AND its failure could not be recorded — ${describeDriverError(error)}`,
     );
   }
 }
@@ -310,7 +311,7 @@ async function runLane(
   } catch (error) {
      
     deps.logger.error(
-      `delivery tick: finding ${chosen.findingId} posted, but the delivery could not be recorded as posted — ${describeError(error)}`,
+      `delivery tick: finding ${chosen.findingId} posted, but the delivery could not be recorded as posted — ${describeDriverError(error)}`,
     );
   }
 
@@ -370,7 +371,7 @@ export async function runDeliveryTick(deps: DeliveryTickDeps): Promise<DeliveryT
     } catch (error) {
        
       deps.logger.error(
-        `delivery tick: project ${lane.projectId} could not be processed — ${describeError(error)}`,
+        `delivery tick: project ${lane.projectId} could not be processed — ${describeDriverError(error)}`,
       );
       summary.lanesErrored += 1;
     }

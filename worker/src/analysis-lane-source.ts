@@ -7,7 +7,7 @@ import {
 } from "@growthmind/core";
 import type { ThresholdRuleSet } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
-import { createDetectorCorpusService } from "@growthmind/db";
+import { createDetectorCorpusService, describeDriverError } from "@growthmind/db";
 import type { AnalysableProject } from "@growthmind/db/system";
 import {
   SYSTEM_ACTOR,
@@ -15,7 +15,6 @@ import {
   listAnalysableProjects,
   systemContextFor,
 } from "@growthmind/db/system";
-import { describeError } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import { type AnalysisLane, type AnalysisLaneSource, type AnalysisLogger } from "./analysis/types";
@@ -82,7 +81,7 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
     } catch (error) {
       deps.logger.error(
         `analysis lane source: skipping project ${project.projectId} (org ` +
-          `${project.organizationId}) this tick: ${describeError(error)}`,
+          `${project.organizationId}) this tick: ${describeDriverError(error)}`,
       );
       return null;
     }

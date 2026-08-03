@@ -20,6 +20,7 @@ import {
   createDeliveriesRepo,
   createFindingsRepo,
   createProjectsRepo,
+  describeDriverError,
   isDeliveryTarget,
   isSignatureHex,
   signatureHex,
@@ -256,7 +257,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
     } catch (error) {
       deps.logger.error(
         `delivery lane source: skipping project ${projectId} (org ${organization.organizationId}) ` +
-          `this tick: ${describeError(error)}`,
+          `this tick: ${describeDriverError(error)}`,
       );
       return null;
     }
@@ -292,7 +293,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
         } catch (error) {
           deps.logger.error(
             `delivery lane source: skipping org ${organization.organizationId} this tick: ` +
-              `${describeError(error)}`,
+              `${describeDriverError(error)}`,
           );
           continue;
         }
