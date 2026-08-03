@@ -18,26 +18,21 @@ import {
   suppressionDecision,
   SUPPRESSION_POLICY_VERSION,
 } from "@growthmind/core";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createDismissalsRepo, type DismissalRecord } from "../repositories/dismissals.repo";
 import { createProjectsRepo } from "../repositories/projects.repo";
 import {
-  carryForwardValues,
-  CARRY_FORWARD_SET,
   createFindingSignaturesRepo,
-  LEDGER_CONFLICT_TARGET,
   type FindingSignatureRecord,
 } from "../repositories/finding-signatures.repo";
 import {
   createSignatureAncestryRepo,
   type AncestryRecord,
 } from "../repositories/signature-ancestry.repo";
+import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { member } from "../schema/auth";
-import { dismissals } from "../schema/dismissals";
-import { findingSignatures } from "../schema/finding-signatures";
-import { signatureAncestry } from "../schema/signature-ancestry";
 import { sha256Hex, type SignatureHex } from "../signatures/hex";
 
 export interface ComputeFindingSignatureInput {
@@ -136,6 +131,7 @@ export function createSignatureLedgerService(
   db: ScopedDb,
   ctx: TenantContext,
 ): SignatureLedgerService {
+  const s = scoped(db, ctx);
   const ledgerRepo = createFindingSignaturesRepo(db, ctx);
   const ancestryRepo = createSignatureAncestryRepo(db, ctx);
   const dismissalsRepo = createDismissalsRepo(db, ctx);
@@ -156,7 +152,7 @@ export function createSignatureLedgerService(
     const [row] = await db
       .select({ id: member.id })
       .from(member)
-      .where(and(eq(member.organizationId, ctx.organizationId), eq(member.userId, userId)));
+      .where(and(s.org(member), eq(member.userId, userId)));
 
     if (!row) {
       throw new Error(
@@ -276,51 +272,22 @@ export function createSignatureLedgerService(
       const now = new Date();
 
       return db.transaction(async (tx) => {
-        await tx
-          .insert(dismissals)
-          .values({
-            organizationId: ctx.organizationId,
-            projectId: input.projectId,
-            findingId: input.findingId,
-            signature: resolvedSignature,
-            action: input.action,
-            dismissedByUserId: input.dismissedByUserId,
-            dismissedAt: now,
-          })
-          .onConflictDoNothing({
-            target: [dismissals.organizationId, dismissals.findingId, dismissals.action],
-          });
+        const dismissalRow = await createDismissalsRepo(tx, ctx).record({
+          projectId: input.projectId,
+          findingId: input.findingId,
+          signature: resolvedSignature,
+          action: input.action,
+          dismissedByUserId: input.dismissedByUserId,
+          dismissedAt: now,
+        });
 
-        const [dismissalRow] = await tx
-          .select()
-          .from(dismissals)
-          .where(
-            and(
-              eq(dismissals.organizationId, ctx.organizationId),
-              eq(dismissals.findingId, input.findingId),
-              eq(dismissals.action, input.action),
-            ),
-          );
+        const stamped = await createFindingSignaturesRepo(tx, ctx).markDismissed(
+          input.projectId,
+          resolvedSignature,
+          now,
+        );
 
-        if (!dismissalRow) {
-          throw new Error(
-            "signature-ledger.recordDismissal: dismissal insert/read-back returned no row",
-          );
-        }
-
-        const stamped = await tx
-          .update(findingSignatures)
-          .set({ dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, ${now})` })
-          .where(
-            and(
-              eq(findingSignatures.organizationId, ctx.organizationId),
-              eq(findingSignatures.projectId, input.projectId),
-              eq(findingSignatures.signature, resolvedSignature),
-            ),
-          )
-          .returning();
-
-        if (stamped.length === 0) {
+        if (!stamped) {
           logger.error(
             "signature-ledger: dismissal recorded before any ledger row exists for this signature — " +
               "suppression is held by the dismissals row, which consultSignature reads as a fallback",
@@ -336,78 +303,19 @@ export function createSignatureLedgerService(
       await assertProjectInOrg(input.projectId);
 
       return db.transaction(async (tx) => {
-        const [insertedEdge] = await tx
-          .insert(signatureAncestry)
-          .values({
-            organizationId: ctx.organizationId,
-            projectId: input.projectId,
-            oldSignature: input.oldSignature,
-            newSignature: input.newSignature,
-            reason: input.reason,
-          })
-          .onConflictDoNothing({
-            target: [signatureAncestry.organizationId, signatureAncestry.oldSignature],
-          })
-          .returning();
+        const result = await createSignatureAncestryRepo(tx, ctx).claimEdge(input);
 
-        if (!insertedEdge) {
-          const [existingEdge] = await tx
-            .select()
-            .from(signatureAncestry)
-            .where(
-              and(
-                eq(signatureAncestry.organizationId, ctx.organizationId),
-                eq(signatureAncestry.oldSignature, input.oldSignature),
-              ),
-            );
-
-          if (!existingEdge) {
-            throw new Error(
-              "signature-ledger.recordAncestry: insert conflicted but no existing edge was found on read-back",
-            );
-          }
-
-          return existingEdge;
+        if (!result.claimed) {
+          return result.edge;
         }
 
-        const edge = insertedEdge;
+        await createFindingSignaturesRepo(tx, ctx).carryForward({
+          projectId: input.projectId,
+          oldSignature: input.oldSignature,
+          newSignature: input.newSignature,
+        });
 
-        const [oldRow] = await tx
-          .select()
-          .from(findingSignatures)
-          .where(
-            and(
-              eq(findingSignatures.organizationId, ctx.organizationId),
-              eq(findingSignatures.projectId, input.projectId),
-              eq(findingSignatures.signature, input.oldSignature),
-            ),
-          );
-
-        if (oldRow) {
-          const [carried] = await tx
-            .insert(findingSignatures)
-            .values({
-              organizationId: ctx.organizationId,
-              ...carryForwardValues({
-                projectId: input.projectId,
-                newSignature: input.newSignature,
-                oldRow,
-              }),
-            })
-            .onConflictDoUpdate({
-              target: LEDGER_CONFLICT_TARGET,
-              set: CARRY_FORWARD_SET,
-            })
-            .returning();
-
-          if (!carried) {
-            throw new Error(
-              "signature-ledger.recordAncestry: carry-forward upsert returned no row",
-            );
-          }
-        }
-
-        return edge;
+        return result.edge;
       });
     },
   };

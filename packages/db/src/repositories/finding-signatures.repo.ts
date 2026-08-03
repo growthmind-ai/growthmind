@@ -78,6 +78,12 @@ export interface FindingSignaturesRepo {
     at: Date,
   ): Promise<FindingSignatureRecord | null>;
 
+  markDismissed(
+    projectId: string,
+    signature: SignatureHex,
+    at: Date,
+  ): Promise<FindingSignatureRecord | null>;
+
   carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null>;
 }
 
@@ -134,6 +140,17 @@ export function createFindingSignaturesRepo(
     ): Promise<FindingSignatureRecord | null> {
       return c.update(
         { deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, ${at})` },
+        byTuple(projectId, signature),
+      );
+    },
+
+    async markDismissed(
+      projectId: string,
+      signature: SignatureHex,
+      at: Date,
+    ): Promise<FindingSignatureRecord | null> {
+      return c.update(
+        { dismissedAt: sql`coalesce(${findingSignatures.dismissedAt}, ${at})` },
         byTuple(projectId, signature),
       );
     },

@@ -8,7 +8,19 @@ import type { ScopedExecutor } from "./types";
 
 export type DismissalRecord = typeof dismissals.$inferSelect;
 
+export interface RecordDismissalRowInput {
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly signature: SignatureHex;
+  readonly action: DismissalAction;
+
+  readonly dismissedByUserId: string | null;
+  readonly dismissedAt: Date;
+}
+
 export interface DismissalsRepo {
+  record(input: RecordDismissalRowInput): Promise<DismissalRecord>;
+
   findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null>;
 
   findLatestForSignature(
@@ -21,6 +33,23 @@ export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): Di
   const c = orgCrud(db, ctx, dismissals);
 
   return {
+    async record(input: RecordDismissalRowInput): Promise<DismissalRecord> {
+      return c.insertOrFetch(
+        {
+          projectId: input.projectId,
+          findingId: input.findingId,
+          signature: input.signature,
+          action: input.action,
+          dismissedByUserId: input.dismissedByUserId,
+          dismissedAt: input.dismissedAt,
+        },
+        {
+          target: [dismissals.organizationId, dismissals.findingId, dismissals.action],
+          fetch: [eq(dismissals.findingId, input.findingId), eq(dismissals.action, input.action)],
+        },
+      );
+    },
+
     async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {
       return c.maybe(eq(dismissals.findingId, findingId), eq(dismissals.action, action));
     },

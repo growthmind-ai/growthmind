@@ -1,4 +1,8 @@
-import { ANCESTRY_RESOLUTION_MAX_HOPS, type TenantContext } from "@growthmind/shared";
+import {
+  ANCESTRY_RESOLUTION_MAX_HOPS,
+  type AncestryReason,
+  type TenantContext,
+} from "@growthmind/shared";
 import { eq } from "drizzle-orm";
 
 import { signatureAncestry } from "../schema/signature-ancestry";
@@ -12,7 +16,21 @@ export type AncestryResolution =
   | { readonly resolution: "resolved"; readonly signature: SignatureHex; readonly hops: number }
   | { readonly resolution: "unresolvable"; readonly cause: "cycle" | "depth_cap" };
 
+export interface RecordAncestryEdgeInput {
+  readonly projectId: string;
+  readonly oldSignature: SignatureHex;
+  readonly newSignature: SignatureHex;
+  readonly reason: AncestryReason;
+}
+
+export interface ClaimedAncestryEdge {
+  readonly claimed: boolean;
+  readonly edge: AncestryRecord;
+}
+
 export interface SignatureAncestryRepo {
+  claimEdge(input: RecordAncestryEdgeInput): Promise<ClaimedAncestryEdge>;
+
   forwardEdge(oldSignature: SignatureHex): Promise<AncestryRecord | null>;
 
   resolve(signature: SignatureHex): Promise<AncestryResolution>;
@@ -29,6 +47,29 @@ export function createSignatureAncestryRepo(
   }
 
   return {
+    async claimEdge(input: RecordAncestryEdgeInput): Promise<ClaimedAncestryEdge> {
+      const result = await c.claim(
+        {
+          projectId: input.projectId,
+          oldSignature: input.oldSignature,
+          newSignature: input.newSignature,
+          reason: input.reason,
+        },
+        {
+          target: [signatureAncestry.organizationId, signatureAncestry.oldSignature],
+          fetch: [eq(signatureAncestry.oldSignature, input.oldSignature)],
+        },
+      );
+
+      if (!result.row) {
+        throw new Error(
+          "signature_ancestry: edge claim conflicted but no existing edge was found on read-back",
+        );
+      }
+
+      return { claimed: result.claimed, edge: result.row };
+    },
+
     async forwardEdge(oldSignature: SignatureHex): Promise<AncestryRecord | null> {
       return edgeFrom(oldSignature);
     },

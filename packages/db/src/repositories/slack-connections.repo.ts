@@ -7,7 +7,7 @@ import { eq, isNull } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import { orgCrud } from "./crud";
-import { rethrowScrubbed } from "./driver-error";
+import { RepoWriteError, rethrowScrubbed } from "./driver-error";
 import type { ScopedExecutor } from "./types";
 
 export type SlackConnectionRow = typeof slackConnections.$inferSelect;
@@ -60,17 +60,7 @@ export interface SlackConnectionsRepo {
   openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null>;
 }
 
-export class SlackConnectionWriteError extends Error {
-  readonly code: string | null;
-  readonly constraint: string | null;
-
-  constructor(message: string, code: string | null, constraint: string | null) {
-    super(message);
-    this.name = "SlackConnectionWriteError";
-    this.code = code;
-    this.constraint = constraint;
-  }
-}
+export class SlackConnectionWriteError extends RepoWriteError {}
 
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
   rethrowScrubbed(

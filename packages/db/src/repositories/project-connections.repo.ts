@@ -11,7 +11,7 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
 import { projectConnections } from "../schema/project-connections";
 import { orgCrud } from "./crud";
-import { rethrowScrubbed } from "./driver-error";
+import { RepoWriteError, rethrowScrubbed } from "./driver-error";
 import { scoped } from "./scope";
 import type { ScopedExecutor } from "./types";
 
@@ -69,17 +69,7 @@ export interface ProjectConnectionsRepo {
   ): Promise<ConnectionSummary | null>;
 }
 
-export class ConnectionWriteError extends Error {
-  readonly code: string | null;
-  readonly constraint: string | null;
-
-  constructor(message: string, code: string | null, constraint: string | null) {
-    super(message);
-    this.name = "ConnectionWriteError";
-    this.code = code;
-    this.constraint = constraint;
-  }
-}
+export class ConnectionWriteError extends RepoWriteError {}
 
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
   rethrowScrubbed(
