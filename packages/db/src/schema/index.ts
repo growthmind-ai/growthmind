@@ -18,3 +18,4 @@ export * from "./analysis-model-calls";
 export * from "./slack-connections";
 export * from "./first-run-state";
 export * from "./first-run-dismissals";
+export * from "./provider-interest";

@@ -105,8 +105,8 @@ describe("claimUnnotifiedProviderInterest — the notified_at stamp is the claim
 
     const claimed = await claimUnnotifiedProviderInterest(db, NOW);
 
-    expect(claimed.map((row) => row.id).sort()).toEqual([unnotifiedA, unnotifiedB].sort());
-    expect(claimed.map((row) => row.provider).sort()).toEqual(["github", "mixpanel"]);
+    expect(claimed.map((row) => row.id).toSorted()).toEqual([unnotifiedA, unnotifiedB].toSorted());
+    expect(claimed.map((row) => row.provider).toSorted()).toEqual(["github", "mixpanel"]);
     for (const row of claimed) {
       expect(row.notifiedAt.getTime()).toBe(NOW.getTime());
       expect(row.organizationId).toBe(org.organizationId);
