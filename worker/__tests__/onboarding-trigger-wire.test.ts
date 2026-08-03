@@ -248,6 +248,7 @@ test("isOnboardingPlan is true for the four-pass plan and false for the one-pass
   const planAt = (elapsedMs: number): PollPlan =>
     resolvePollPlan({
       connectedAt: new Date(NOW.getTime() - elapsedMs),
+      armedAt: null,
       now: NOW,
       pollIntervalSeconds: 60,
     });
