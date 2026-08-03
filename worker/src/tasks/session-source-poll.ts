@@ -1,7 +1,12 @@
 import type { FetchLike, SessionSource } from "@growthmind/adapters";
 import { createPostHogSessionSource, POSTHOG_SOURCE_KIND } from "@growthmind/adapters";
 import type { PollRunCounts, ScopedDb } from "@growthmind/db";
-import { createPollRunsRepo, createProjectConnectionsRepo, persistPullResult } from "@growthmind/db";
+import {
+  createFirstRunRepo,
+  createPollRunsRepo,
+  createProjectConnectionsRepo,
+  persistPullResult,
+} from "@growthmind/db";
 import type { PollableConnection } from "@growthmind/db/system";
 import {
   claimDuePollableConnections,
@@ -206,6 +211,7 @@ async function pollConnection(
   );
   const plan = resolvePollPlan({
     connectedAt: connection.connectedAt,
+    armedAt: await readArmClock(deps, ctx, connection),
     now: deps.now(),
     pollIntervalSeconds: connection.pollIntervalSeconds,
   });
@@ -260,6 +266,23 @@ async function pollConnection(
   }
 
   return outcome;
+}
+
+async function readArmClock(
+  deps: SessionSourcePollDeps,
+  ctx: TenantContext,
+  connection: PollableConnection,
+): Promise<Date | null> {
+  try {
+    const state = await createFirstRunRepo(deps.db, ctx).readState(connection.projectId);
+    return state?.armedAt ?? null;
+  } catch (error) {
+    deps.logger.error(
+      `session source poll: connection ${connection.id} could not read when this project started ` +
+        `watching, so this pass uses the connect clock — ${describeError(error)}`,
+    );
+    return null;
+  }
 }
 
 async function runOnePass(input: {
