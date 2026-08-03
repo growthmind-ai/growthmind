@@ -2,6 +2,7 @@ import type { OnboardingFinding, StagePersistedFacts, TenantContext } from "@gro
 import { logger, onboardingFindingSchema } from "@growthmind/shared";
 import { asc, eq, gt, gte } from "drizzle-orm";
 
+import { describeDriverError } from "../repositories/driver-error";
 import { createFindingsRepo } from "../repositories/findings.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
@@ -53,10 +54,13 @@ async function readNewestFinding(
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
   } catch (error) {
+    // `describeDriverError`, never the caught value: a failed query's own message IS
+    // the statement and its bound parameters. Both deleted readers said so; this is
+    // now the only one left, so it has to.
     logger.error("first-run status: could not read the newest finding for the project", {
       organizationId: ctx.organizationId,
       projectId,
-      error,
+      reason: describeDriverError(error),
     });
     return UNREADABLE;
   }
@@ -89,7 +93,12 @@ async function readNewestFinding(
       findingId: record.id,
       issues: parsed.error.issues,
     });
-    return { id: record.id, finding: null, unavailable: true };
+
+    // UNREADABLE, not `{ id: record.id, … }`. Returning the id here would be the one
+    // state where a delivery is correlated for a finding no screen can render — and
+    // `finding === null` implying `findingId === null` is the invariant that makes
+    // the card and the delivery line inseparable.
+    return UNREADABLE;
   }
 
   return { id: record.id, finding: parsed.data, unavailable: false };

@@ -361,7 +361,7 @@ describe("first-run status service — two legs, three tables, one read", () => 
     expect(first).not.toBe(second);
   });
 
-  test("a row that fails the rendered shape reports unavailable, and correlates nothing", async () => {
+  test("a row the repository itself refuses reports unavailable, and correlates nothing", async () => {
     const createService = await loadCreateService();
     const scope = await seedScope(db, "unrenderable");
 
@@ -371,9 +371,8 @@ describe("first-run status service — two legs, three tables, one read", () => 
     expect(facts.finding).toBeNull();
     expect(facts.findingUnavailable).toBe(true);
 
-    // The repository's own DTO boundary refuses this row, so nothing downstream ever
-    // sees an id for it — and correlating a delivery against an id we do not have is
-    // exactly the claim B-038 is about. No card, no id, and the screen says so.
+    // No card, no id: `finding === null` implies `findingId === null`, so a delivery
+    // can never be correlated for a row no screen can render.
     expect(facts.findingId).toBeNull();
   });
 

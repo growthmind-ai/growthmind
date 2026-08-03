@@ -366,6 +366,15 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     // the fault sentence and the delivery line could describe different rows (B-038).
     expect(readRouteSource(STATUS)).not.toContain("listForProject");
 
+    // The THIRD former reader. Re-adding a finding read to the status builder passed
+    // every other row on this branch.
+    const builder = readFileSync(
+      path.join(import.meta.dir, "../../../lib/first-run/status.ts"),
+      "utf8",
+    );
+    expect(builder).not.toContain("listForProject");
+    expect(builder).not.toContain("createFindingsRepo");
+
     const service = readFileSync(
       path.join(
         import.meta.dir,
@@ -414,6 +423,12 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     const body = await bodyOf(response);
 
     expect(body.finding).toBeNull();
+
+    // The flag itself, not merely "the payload differs from the healthy one" — which
+    // would pass for any other differing field, and was the only thing asserting this
+    // wire end to end (B-038).
+    expect(body.findingUnavailable).toBe(true);
+    expect(healthy.findingUnavailable).toBe(false);
 
     expect(body).not.toEqual(healthy);
 
