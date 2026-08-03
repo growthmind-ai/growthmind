@@ -9,9 +9,8 @@ export interface SocialProviderCredentials {
   readonly clientSecret: string;
 }
 
-// Deliberately NOT `WebEnv`: the sign-in screen needs to know which providers exist and
-// nothing else, and demanding the whole web schema for that made it demand DATABASE_URL
-// during the build, where there is no database. `WebEnv` still satisfies this shape.
+// Not `WebEnv`: requiring the whole schema here demanded DATABASE_URL during the
+// build, where there is no database. `WebEnv` still satisfies this shape.
 export type SocialCredentialsSource = {
   readonly [key: string]: string | undefined;
 };
@@ -21,9 +20,8 @@ const CREDENTIAL_KEYS = {
   github: { id: "GITHUB_CLIENT_ID", secret: "GITHUB_CLIENT_SECRET" },
 } as const satisfies Record<SocialProviderId, { id: keyof WebEnv; secret: keyof WebEnv }>;
 
-// `KEY=` on its own line arrives as the empty string, not as absent. The web schema
-// refuses that at boot; this read has to agree, or the button renders for a credential
-// the exchange cannot use.
+// `KEY=` arrives as the empty string, not as absent, and the web schema refuses
+// that at boot — this read has to agree.
 const present = (value: string | undefined): value is string =>
   value !== undefined && value.trim() !== "";
 
@@ -32,9 +30,7 @@ export const SOCIAL_PROVIDER_LABELS = {
   github: "GitHub",
 } as const satisfies Record<SocialProviderId, string>;
 
-// Both or neither, the same rule the Slack app credentials follow: one half alone renders a
-// button that sends someone to a consent screen whose callback cannot complete, and they
-// have already left the product by the time it fails.
+// One half alone renders a button whose consent-screen callback cannot complete.
 export function resolveSocialCredentials(
   env: SocialCredentialsSource,
   provider: SocialProviderId,
@@ -67,9 +63,8 @@ export function socialProvidersConfig(
   return config;
 }
 
-// Better Auth writes "credential" for the email-and-password path; every other value is the
-// provider's own id. Anything unrecognised is reported as unknown rather than guessed at —
-// naming the wrong provider is worse than admitting we could not tell.
+// Better Auth writes "credential" for the email-and-password path; every other
+// value is the provider's own id.
 export function authProviderLabel(providerId: string | null): string {
   if (providerId === null) return "unknown";
   if (providerId === "credential") return "email";
