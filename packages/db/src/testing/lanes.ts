@@ -105,46 +105,54 @@ export interface SeedEventParams {
   urlPathNormalisationVersion?: number | null;
 }
 
+function eventRow(params: SeedEventParams) {
+  return {
+    id: randomUUID(),
+    organizationId: params.organizationId,
+    projectId: params.projectId,
+    connectionId: params.connectionId,
+    sessionId: params.sessionId,
+    sourceEventId: params.sourceEventId,
+    name: params.name ?? "$pageview",
+    occurredAt: params.occurredAt ?? new Date("2026-07-30T10:00:00.000Z"),
+    urlPath: params.urlPath ?? "/pricing",
+
+    urlPathNormalisationVersion:
+      params.urlPathNormalisationVersion === undefined
+        ? URL_PATH_NORMALISATION_VERSION
+        : params.urlPathNormalisationVersion,
+  };
+}
+
+// One statement, so a cohort seeds atomically and at one round trip — the shape the
+// production writer uses.
 export async function seedEvents(
   db: ScopedDb,
   rows: readonly SeedEventParams[],
 ): Promise<SeededEvent[]> {
-  const seeded: SeededEvent[] = [];
-
-  for (const row of rows) {
-    // eslint-disable-next-line no-await-in-loop
-    seeded.push(await seedEvent(db, row));
+  if (rows.length === 0) {
+    return [];
   }
 
-  return seeded;
+  const inserted = await db.insert(schema.events).values(rows.map(eventRow)).returning();
+
+  if (inserted.length !== rows.length) {
+    throw new Error(
+      `seedEvents: inserted ${String(inserted.length)} rows for ${String(rows.length)} inputs`,
+    );
+  }
+
+  return inserted.map((row) => ({ id: row.id, sourceEventId: row.sourceEventId }));
 }
 
 export async function seedEvent(db: ScopedDb, params: SeedEventParams): Promise<SeededEvent> {
-  const [row] = await db
-    .insert(schema.events)
-    .values({
-      id: randomUUID(),
-      organizationId: params.organizationId,
-      projectId: params.projectId,
-      connectionId: params.connectionId,
-      sessionId: params.sessionId,
-      sourceEventId: params.sourceEventId,
-      name: params.name ?? "$pageview",
-      occurredAt: params.occurredAt ?? new Date("2026-07-30T10:00:00.000Z"),
-      urlPath: params.urlPath ?? "/pricing",
-
-      urlPathNormalisationVersion:
-        params.urlPathNormalisationVersion === undefined
-          ? URL_PATH_NORMALISATION_VERSION
-          : params.urlPathNormalisationVersion,
-    })
-    .returning();
+  const [row] = await seedEvents(db, [params]);
 
   if (!row) {
     throw new Error("seedEvent: insert returned no row");
   }
 
-  return { id: row.id, sourceEventId: row.sourceEventId };
+  return row;
 }
 
 export interface SeededPollRun {
