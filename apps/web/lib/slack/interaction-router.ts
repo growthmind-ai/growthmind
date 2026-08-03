@@ -1,8 +1,11 @@
+import { GET_IT_FIXED_ACTION_ID } from "@growthmind/shared";
+
 export type SlackActionResolution = { readonly action: "open_fix" } | { readonly action: "ignore" };
 
-const NOT_IMPLEMENTED = "slack interaction router: resolveSlackAction is not implemented";
+const OPEN_FIX: SlackActionResolution = { action: "open_fix" };
+
+const IGNORE: SlackActionResolution = { action: "ignore" };
 
 export function resolveSlackAction(actionId: string): SlackActionResolution {
-  void actionId;
-  throw new Error(NOT_IMPLEMENTED);
+  return actionId === GET_IT_FIXED_ACTION_ID ? OPEN_FIX : IGNORE;
 }
