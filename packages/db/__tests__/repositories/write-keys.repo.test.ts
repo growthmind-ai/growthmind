@@ -294,6 +294,32 @@ describe("write-keys repository", () => {
     expect(freshRow.revokedAt).toBeNull();
   });
 
+  it("a second revoke keeps the first revocation's timestamp", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "Revoke Twice Org",
+      userName: "Revoke Twice Owner",
+      email: "revoke-twice-owner@example.com",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "Revoke Twice Project",
+    });
+    const seeded = await seedWriteKey(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      kind: "standard",
+      raw: makeRawKeyMaterial(),
+    });
+
+    const repo = createWriteKeysRepo(db, org.ctx);
+
+    const first = await repo.revoke(seeded.id);
+    const second = await repo.revoke(seeded.id);
+
+    expect(first?.revokedAt).not.toBeNull();
+    expect(second?.revokedAt?.getTime()).toBe(first?.revokedAt?.getTime());
+  });
+
   it("key metadata DTO exposes neither key hash nor raw material", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: "DTO Org",
