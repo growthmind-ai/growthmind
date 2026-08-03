@@ -4,6 +4,7 @@ import { Box, Button, Stack, Text } from "@mantine/core";
 
 import {
   COUNTER_LABELS,
+  isDeliveryAddress,
   ONBOARDING_MESSAGES,
   STRIP_COUNTED_TEMPLATE,
   STRIP_LEAD,
@@ -42,10 +43,11 @@ export function Strip(props: StripProps) {
 
   const seen = withCount(STRIP_SEEN_TEMPLATE, rowValue(counter, COUNTER_LABELS.totalReceived));
   const counted = withCount(STRIP_COUNTED_TEMPLATE, rowValue(counter, COUNTER_LABELS.kept));
-  // `== null`, not `=== null`: a rolling deploy answers the poll with the OLD
+  // The predicate, not `=== null`: a rolling deploy answers the poll with the OLD
   // instance shape, which carries no label at all, and `#undefined` is the render.
-  const posting =
-    channelLabel == null ? [] : [withChannel(STRIP_POSTING_TO_TEMPLATE, channelLabel)];
+  const posting = isDeliveryAddress(channelLabel)
+    ? [withChannel(STRIP_POSTING_TO_TEMPLATE, channelLabel)]
+    : [];
 
   const parts = [STRIP_LEAD, seen, counted, ...posting];
 

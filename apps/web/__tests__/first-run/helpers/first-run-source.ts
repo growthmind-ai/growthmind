@@ -21,13 +21,18 @@ export interface FirstRunFile {
 
 const OWNER_7A = "ADD Wave 7a (frontend — the sequence, the forms, the receipt)";
 const OWNER_7B = "ADD Wave 7b (frontend — the client, the strip, the stage, the styles)";
+const OWNER_O024 = "ADD O-024 AD-8 (frontend — the chip machine, the chip row, the soon card)";
 
 const entry = (repoRelativePath: string, ownedBy: string): FirstRunFile => ({
   repoRelativePath,
   ownedBy,
 });
 
-export const STUB_STEP = entry("apps/web/components/first-run/StubStep.tsx", OWNER_7A);
+export const CHIP_STATE = entry("apps/web/components/first-run/chip-state.ts", OWNER_O024);
+
+export const PROVIDER_CHIPS = entry("apps/web/components/first-run/ProviderChips.tsx", OWNER_O024);
+
+export const SOON_CARD = entry("apps/web/components/first-run/SoonCard.tsx", OWNER_O024);
 
 export const STEP_ROW = entry("apps/web/components/first-run/StepRow.tsx", OWNER_7A);
 
@@ -37,11 +42,12 @@ export const STAGE = entry("apps/web/components/first-run/Stage.tsx", OWNER_7B);
 
 export const WAIT_LOG = entry("apps/web/components/first-run/WaitLog.tsx", OWNER_7B);
 
-/** Named because AD-6's wire test reads this one file by name. */
-export const CONNECT_SLACK_FORM = entry(
-  "apps/web/components/first-run/ConnectSlackForm.tsx",
-  OWNER_7A,
-);
+/**
+ * Named because AD-6's wire test reads this one file by name. It sits outside
+ * `components/first-run/` because the settings page mounts it too, and stays in
+ * the scans below because every one of them is about the card, not the surface.
+ */
+export const SLACK_CONNECTION = entry("apps/web/components/slack/SlackConnection.tsx", OWNER_7A);
 
 export const FINDING_CARD = entry("apps/web/components/first-run/FindingCard.tsx", OWNER_7B);
 
@@ -52,13 +58,16 @@ export const FIRST_RUN_PAGE = entry("apps/web/app/(first-run)/first-run/page.tsx
 export const LANDING_PAGE = entry("apps/web/app/page.tsx", OWNER_7A);
 
 export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
-  STUB_STEP,
+  CHIP_STATE,
+  PROVIDER_CHIPS,
+  SOON_CARD,
+  entry("apps/web/components/first-run/Roadmap.tsx", OWNER_7A),
   STEP_ROW,
   entry("apps/web/components/first-run/FieldRow.tsx", OWNER_7A),
   entry("apps/web/components/first-run/ConnectAnalyticsForm.tsx", OWNER_7A),
   COUNTER_GRID,
   entry("apps/web/components/first-run/PrivacyReceipt.tsx", OWNER_7A),
-  CONNECT_SLACK_FORM,
+  SLACK_CONNECTION,
   entry("apps/web/components/first-run/FirstRunClient.tsx", OWNER_7B),
   entry("apps/web/components/first-run/Strip.tsx", OWNER_7B),
   STAGE,

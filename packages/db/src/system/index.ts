@@ -14,6 +14,11 @@ export {
   listOrgsWithActiveSlackConnection,
   type SlackDeliveryOrganization,
 } from "./slack-connections";
+export {
+  claimUnnotifiedProviderInterest,
+  countProviderInterest,
+  type ClaimedProviderInterest,
+} from "./provider-interest";
 export { systemTenantContextFor } from "./system-context";
 export {
   SYSTEM_ACTOR,

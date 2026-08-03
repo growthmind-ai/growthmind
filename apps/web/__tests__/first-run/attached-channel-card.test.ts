@@ -8,26 +8,22 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-import {
-  ONBOARDING_MESSAGES,
-  STEP_DESCRIPTORS,
-  type StepView,
-  type WorkStep,
-} from "@growthmind/shared";
+import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
 import {
   channelAddressLanded,
-  ConnectSlackForm,
+  SlackConnection,
   type SendAnswer,
-} from "../../components/first-run/ConnectSlackForm";
+} from "../../components/slack/SlackConnection";
 
 import {
   blankComments,
-  CONNECT_SLACK_FORM,
+  SLACK_CONNECTION,
   fixture,
   offenders,
   readFirstRun,
 } from "./helpers/first-run-source";
+import { stepCardProps, type SlackCardFacts } from "./helpers/slack-card";
 import { readMarkup, type RenderedCard } from "./helpers/rendered-markup";
 
 const FAKE_ROUTER: AppRouterInstance = {
@@ -50,36 +46,10 @@ const render = (node: ReactElement): string =>
 
 const TYPED_FIELD = /<input\b/;
 
-function slackStep(): WorkStep {
-  const found = STEP_DESCRIPTORS.find((descriptor) => descriptor.id === "slack");
-
-  if (found === undefined || found.kind !== "work") {
-    throw new Error(
-      "STEP_DESCRIPTORS carries no `work` step `slack`. Step 3 is the delivery step and it has " +
-        "a form; a `coming-next` or missing descriptor here means the sequence changed shape.",
-    );
-  }
-
-  return found;
-}
-
-const ACTIVE_VIEW: StepView = {
-  id: "slack",
-  ordinal: 3,
-  state: "active",
-  open: true,
-  interactive: true,
-};
-
-interface CardState {
-  readonly channelId: string | null;
-  readonly slackWorkspaceAttached: boolean;
-  readonly slackWorkspaceName: string | null;
-  readonly slackOAuthAvailable: boolean;
-}
+type CardState = SlackCardFacts;
 
 const cardMarkup = (state: CardState): string =>
-  render(createElement(ConnectSlackForm, { step: slackStep(), view: ACTIVE_VIEW, ...state }));
+  render(createElement(SlackConnection, stepCardProps(state)));
 
 const readCard = (state: CardState): RenderedCard => readMarkup(cardMarkup(state));
 
@@ -187,7 +157,7 @@ describe("the card after the address is stamped — CR-3's dead end", () => {
     expect(offenders([CLEAN_SPLIT], LANDED_BRANCH)).not.toEqual([]);
     expect(offenders([CLEAN_SPLIT], COMBINED_BOOLEAN)).toEqual([]);
 
-    const card = readFirstRun(CONNECT_SLACK_FORM);
+    const card = readFirstRun(SLACK_CONNECTION);
 
     expect(offenders([card], LANDED_BRANCH)).not.toEqual([]);
     expect(offenders([card], COMBINED_BOOLEAN)).toEqual([]);

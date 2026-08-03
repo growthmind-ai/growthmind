@@ -15,8 +15,20 @@
 // Tokens (`{channel}`, `{domain}`, `{page}`, `{count}`, `{project}`, `{when}`,
 // `{workspace}`) are audited text too: keep them one plain lowercase word.
 
-// A third name here is a product decision, and should cost an edit to this list.
-export const ONBOARDING_PROPER_NOUNS = ["PostHog", "Slack"] as const;
+// A new name here is a product decision, and should cost an edit to this list.
+export const ONBOARDING_PROPER_NOUNS = [
+  "PostHog",
+  "Slack",
+  "GitHub",
+  "GitLab",
+  "Claude Code",
+  "Cursor",
+  "Copilot",
+  "Codex",
+  "Windsurf",
+  "Amplitude",
+  "Mixpanel",
+] as const;
 
 export const SET_UP_CTA_LABEL = "Set up Growthmind";
 
@@ -32,8 +44,6 @@ export const STEP_REPO_TITLE = "Connect your code";
 
 export const STEP_REPO_WHAT_IT_WILL_DO =
   "When this is built, Growthmind will read your code — nothing more — so it can point at the right file when it suggests a fix.";
-
-export const STEP_REPO_FILLER = "Not built yet. It arrives with the fix-spec work.";
 
 export const STEP_ANALYTICS_TITLE = "Connect your analytics.";
 
@@ -196,6 +206,18 @@ export const SLACK_MUST_INVITE_THE_BOT =
 export const SLACK_SKIPPED_NOTICE =
   "You can still see the next part on this screen. But nothing will arrive anywhere after that until Slack is connected.";
 
+// The post-setup home for the delivery connection. Setup retires and takes its
+// screen with it (deviation 1), so the sentences that name a missing channel need
+// somewhere permanent to point at.
+export const SETTINGS_TITLE = "Where what we find arrives";
+
+export const SETTINGS_POSTING_TEMPLATE = "What we find is posted to #{channel}.";
+
+export const SETTINGS_NO_DELIVERY_LINE =
+  "No Slack channel is connected, so what we find has nowhere to arrive. Connect one below and it goes where your team already works.";
+
+export const SETTINGS_BACK_LABEL = "Back";
+
 // Not the field it replaces: on this path the list IS the field, no id is typed.
 export const FIELD_CHANNEL_LABEL = "Channel";
 
@@ -229,12 +251,21 @@ export const SLACK_OAUTH_FAILED_NOTICE =
 // "Not built yet" before they met anything that worked — a dead-end entry state.
 export const ROADMAP_LEAD = "Still being built";
 
-export const STEP_AGENT_TITLE = "Install the agent server";
+export const STEP_AGENT_TITLE = "Connect your coding assistant";
 
 export const STEP_AGENT_WHAT_IT_WILL_DO =
   "When this is built, your coding agent will be able to ask Growthmind what is open and pull a fix to work on.";
 
-export const STEP_AGENT_FILLER = "Not built yet. It arrives with the agent-protocol work.";
+export const PROVIDER_SOON_BADGE = "Coming soon";
+
+export const INTEREST_PING_LABEL = "Ping me when it's ready";
+
+export const INTEREST_PENDING_LABEL = "Noting…";
+
+export const INTEREST_NOTED_BADGE = "On the list ✓";
+
+export const INTEREST_NOTED_TEMPLATE =
+  "On the list — we'll let this workspace know when {provider} lands.";
 
 export const STEP_MOMENT_TITLE = "Trigger an issue";
 
@@ -334,7 +365,6 @@ export const ONBOARDING_MESSAGES = {
 
   stepRepoTitle: STEP_REPO_TITLE,
   stepRepoWhatItWillDo: STEP_REPO_WHAT_IT_WILL_DO,
-  stepRepoFiller: STEP_REPO_FILLER,
 
   stepAnalyticsTitle: STEP_ANALYTICS_TITLE,
   stepAnalyticsHelper: STEP_ANALYTICS_HELPER,
@@ -383,10 +413,19 @@ export const ONBOARDING_MESSAGES = {
   tryAgain: TRY_AGAIN_LABEL,
   slackSkippedNotice: SLACK_SKIPPED_NOTICE,
 
+  settingsTitle: SETTINGS_TITLE,
+  settingsPostingTemplate: SETTINGS_POSTING_TEMPLATE,
+  settingsNoDelivery: SETTINGS_NO_DELIVERY_LINE,
+  settingsBack: SETTINGS_BACK_LABEL,
+
   stepAgentTitle: STEP_AGENT_TITLE,
   stepAgentWhatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
-  stepAgentFiller: STEP_AGENT_FILLER,
   roadmapLead: ROADMAP_LEAD,
+  providerSoonBadge: PROVIDER_SOON_BADGE,
+  interestPingLabel: INTEREST_PING_LABEL,
+  interestPendingLabel: INTEREST_PENDING_LABEL,
+  interestNotedBadge: INTEREST_NOTED_BADGE,
+  interestNotedTemplate: INTEREST_NOTED_TEMPLATE,
 
   setupSeeingHeading: SETUP_SEEING_HEADING,
   setupNextAnalytics: SETUP_NEXT_ANALYTICS,
@@ -413,7 +452,6 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   STEP_REPO_TITLE,
   STEP_REPO_WHAT_IT_WILL_DO,
-  STEP_REPO_FILLER,
 
   STEP_ANALYTICS_TITLE,
   STEP_ANALYTICS_HELPER,
@@ -485,10 +523,19 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SLACK_MUST_INVITE_THE_BOT,
   SLACK_SKIPPED_NOTICE,
 
+  SETTINGS_TITLE,
+  SETTINGS_POSTING_TEMPLATE,
+  SETTINGS_NO_DELIVERY_LINE,
+  SETTINGS_BACK_LABEL,
+
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,
-  STEP_AGENT_FILLER,
   ROADMAP_LEAD,
+  PROVIDER_SOON_BADGE,
+  INTEREST_PING_LABEL,
+  INTEREST_PENDING_LABEL,
+  INTEREST_NOTED_BADGE,
+  INTEREST_NOTED_TEMPLATE,
 
   STEP_MOMENT_TITLE,
   START_WATCHING_LABEL,

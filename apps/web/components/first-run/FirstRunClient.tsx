@@ -10,6 +10,7 @@ import {
   displayOrdinal,
   firstRunDeliveryStateSchema,
   isAnalyticsAttached,
+  isDeliveryAddress,
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
@@ -19,6 +20,7 @@ import {
   type StepSequenceFacts,
 } from "@growthmind/shared";
 
+import { ButtonLink } from "@/components/ui/Links";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
@@ -136,7 +138,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const setupFacts: SetupFacts = {
     analyticsAttached: attached,
     workspaceAttached: current.slackWorkspaceAttached,
-    deliveryResolved: current.channelId !== null || current.slackSkippedAt !== null,
+    deliveryResolved: isDeliveryAddress(current.channelId) || current.slackSkippedAt !== null,
     armedAt: facts.armedAt,
   };
 
@@ -258,7 +260,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const sequenceFacts: StepSequenceFacts = {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
-    slackConnected: current.channelId !== null,
+    slackConnected: isDeliveryAddress(current.channelId),
     slackSkipped: current.slackSkippedAt !== null,
 
     slackTestPostFailed: false,
@@ -359,6 +361,21 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
         {terminal ? (
           <Group gap="sm" wrap="wrap">
+            {/* The closure above says "no Slack channel is connected, connect
+              one" whenever there is nowhere to deliver. Until this, that
+              sentence named an action the product offered nowhere (B-035). */}
+            {current.channelId === null ? (
+              <ButtonLink
+                href={ROUTES.settings}
+                variant="default"
+                className={styles.action}
+                style={tapTargetStyle}
+                w={{ base: "100%", xs: "auto" }}
+              >
+                {ONBOARDING_MESSAGES.settingsTitle}
+              </ButtonLink>
+            ) : null}
+
             {kind === "ended" ? (
               <Button
                 variant="default"

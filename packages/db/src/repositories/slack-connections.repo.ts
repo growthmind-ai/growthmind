@@ -1,6 +1,11 @@
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
-import { decryptSecret } from "@growthmind/shared";
-import { eq, isNull } from "drizzle-orm";
+import {
+  decryptSecret,
+  isDeliveryAddress,
+  NON_ADDRESS_VALUES,
+  TRIMMED_WHITESPACE,
+} from "@growthmind/shared";
+import { eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import { orgCrud } from "./crud";
@@ -89,6 +94,17 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
 
 const activeRow = () => eq(slackConnections.isActive, true);
 
+// `isDeliveryAddress` inverted, in SQL, over the shared list — and over the shared
+// TRIM SET, because one-argument `btrim` removes only U+0020 and would disagree with
+// the predicate on a tab, a newline and every Unicode space.
+const noAddressYet = () =>
+  or(
+    isNull(slackConnections.channelId),
+    inArray(sql`lower(btrim(${slackConnections.channelId}, ${TRIMMED_WHITESPACE}))`, [
+      ...NON_ADDRESS_VALUES,
+    ]),
+  );
+
 export function createSlackConnectionsRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
@@ -124,15 +140,15 @@ export function createSlackConnectionsRepo(
       channelId: string,
       channelName: string | null,
     ): Promise<SlackConnectionSummary | null> {
-      // `channel_id IS NULL` makes this a fill, not a re-point: the delivery dedup key is
-      // `(organization_id, finding_id, channel_id)`, so moving the channel would fork every
-      // recorded delivery identity and silently replay the org's backlog. Re-pointing needs
-      // a migration.
-      const row = await c.update(
-        { channelId, channelName },
-        activeRow(),
-        isNull(slackConnections.channelId),
-      );
+      // The guard decides what may be FILLED; this decides what may be WRITTEN.
+      if (!isDeliveryAddress(channelId)) {
+        return null;
+      }
+
+      // A FILL, NEVER A RE-POINT: the delivery dedup key is
+      // `(organization_id, finding_id, channel_id)`, so moving a chosen channel forks every
+      // recorded identity and replays the org backlog. Filling a sentinel forks nothing.
+      const row = await c.update({ channelId, channelName }, activeRow(), noAddressYet());
 
       return row ? toSlackConnectionSummary(row) : null;
     },

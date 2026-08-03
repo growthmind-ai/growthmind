@@ -8,27 +8,23 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-import {
-  ONBOARDING_MESSAGES,
-  STEP_DESCRIPTORS,
-  type StepView,
-  type WorkStep,
-} from "@growthmind/shared";
+import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
 import {
   ChannelPicker,
-  ConnectSlackForm,
+  SlackConnection,
   noChannelsVisible,
-} from "../../components/first-run/ConnectSlackForm";
+} from "../../components/slack/SlackConnection";
 import type { SlackChannelChoice } from "../../components/first-run/api";
 
 import {
   blankComments,
-  CONNECT_SLACK_FORM,
+  SLACK_CONNECTION,
   fixture,
   offenders,
   readFirstRun,
 } from "./helpers/first-run-source";
+import { stepCardProps } from "./helpers/slack-card";
 import { readMarkup, type RenderedCard } from "./helpers/rendered-markup";
 
 const FAKE_ROUTER: AppRouterInstance = {
@@ -74,38 +70,18 @@ const CHANNELS: readonly SlackChannelChoice[] = [
   { id: "C09ZY8XW7VU", name: "engineering" },
 ];
 
-function slackStep(): WorkStep {
-  const found = STEP_DESCRIPTORS.find((descriptor) => descriptor.id === "slack");
-
-  if (found === undefined || found.kind !== "work") {
-    throw new Error(
-      "STEP_DESCRIPTORS carries no `work` step `slack`. Step 3 is the delivery step and it has " +
-        "a form; a `coming-next` or missing descriptor here means the sequence changed shape.",
-    );
-  }
-
-  return found;
-}
-
-const ACTIVE_VIEW: StepView = {
-  id: "slack",
-  ordinal: 3,
-  state: "active",
-  open: true,
-  interactive: true,
-};
-
 const readPickingCard = (): RenderedCard =>
   readMarkup(
     render(
-      createElement(ConnectSlackForm, {
-        step: slackStep(),
-        view: ACTIVE_VIEW,
-        channelId: null,
-        slackWorkspaceAttached: true,
-        slackWorkspaceName: null,
-        slackOAuthAvailable: true,
-      }),
+      createElement(
+        SlackConnection,
+        stepCardProps({
+          channelId: null,
+          slackWorkspaceAttached: true,
+          slackWorkspaceName: null,
+          slackOAuthAvailable: true,
+        }),
+      ),
     ),
   );
 
@@ -196,7 +172,7 @@ describe("the channel list that arrives empty — the sweep's dead end", () => {
     expect(offenders([CLEAN_RELIST_RETRY], RELIST_BRANCH)).not.toEqual([]);
     expect(offenders([CLEAN_RELIST_RETRY], FAILURE_ONLY_BRANCH)).toEqual([]);
 
-    const card = readFirstRun(CONNECT_SLACK_FORM);
+    const card = readFirstRun(SLACK_CONNECTION);
 
     expect(offenders([card], RELIST_BRANCH)).not.toEqual([]);
     expect(offenders([card], FAILURE_ONLY_BRANCH)).toEqual([]);

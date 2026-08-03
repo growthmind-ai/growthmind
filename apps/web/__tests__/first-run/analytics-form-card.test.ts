@@ -66,6 +66,8 @@ function card(view: StepView): RenderedCard {
         step: analyticsStep(),
         view,
         connectionMessage: CONNECTION_SENTENCE,
+        providerInterest: [],
+        interestPingAvailable: true,
       }),
     ),
   );
@@ -104,6 +106,8 @@ describe("the analytics card — one visible field, one earned", () => {
         step: STEP,
         view: ACTIVE_VIEW,
         connectionMessage: CONNECTION_SENTENCE,
+        providerInterest: [],
+        interestPingAvailable: true,
       }),
     );
 
@@ -117,6 +121,8 @@ describe("the analytics card — one visible field, one earned", () => {
         step: STEP,
         view: ACTIVE_VIEW,
         connectionMessage: CONNECTION_SENTENCE,
+        providerInterest: [],
+        interestPingAvailable: true,
       }),
     );
 
@@ -129,6 +135,8 @@ describe("the analytics card — one visible field, one earned", () => {
         step: STEP,
         view: ACTIVE_VIEW,
         connectionMessage: CONNECTION_SENTENCE,
+        providerInterest: [],
+        interestPingAvailable: true,
       }),
     );
 
@@ -144,11 +152,15 @@ describe("the analytics card — one visible field, one earned", () => {
   });
 
   test("a non-interactive card renders no enabled control", () => {
+    // Badge-only chips here: the ping is an org-status affordance, not a step
+    // control, so this row keeps asserting the FORM's controls are disabled.
     const html = render(
       createElement(ConnectAnalyticsForm, {
         step: STEP,
         view: { ...ACTIVE_VIEW, interactive: false },
         connectionMessage: CONNECTION_SENTENCE,
+        providerInterest: [],
+        interestPingAvailable: false,
       }),
     );
 

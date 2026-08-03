@@ -12,6 +12,7 @@ import { useRef, useState, type ReactNode } from "react";
 import {
   ONBOARDING_MESSAGES,
   type FieldDescriptor,
+  type InterestProviderId,
   type StepView,
   type WorkStep,
 } from "@growthmind/shared";
@@ -29,6 +30,7 @@ import {
   type ResponseRefusal,
 } from "./api";
 import { FieldRow } from "./FieldRow";
+import { ProviderChips } from "./ProviderChips";
 import {
   changeField,
   initialValues,
@@ -55,10 +57,13 @@ interface ConnectAnalyticsFormProps {
   readonly view: StepView;
 
   readonly connectionMessage: string;
+
+  readonly providerInterest: readonly InterestProviderId[];
+  readonly interestPingAvailable: boolean;
 }
 
 export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
-  const { step, view, connectionMessage } = props;
+  const { step, view, connectionMessage, providerInterest, interestPingAvailable } = props;
   const router = useRouter();
 
   const [values, setValues] = useState<FieldValues>(() => initialValues(step.fields));
@@ -263,6 +268,14 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
 
   return (
     <Stack gap="sm">
+      {/* A status row, not a selector (UX §1): above the form in DOM order, and
+          the form never moves, closes, or loses focus to a chip tap (FR-12). */}
+      <ProviderChips
+        rail="analytics"
+        providerInterest={providerInterest}
+        interestPingAvailable={interestPingAvailable}
+      />
+
       <Text size="sm" c="dimmed">
         {connectionMessage}
       </Text>

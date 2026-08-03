@@ -7,6 +7,7 @@ import {
   COMING_NEXT_DESCRIPTORS,
   deriveStepStates,
   displayOrdinal,
+  isDeliveryAddress,
   LIVE_STEP_DESCRIPTORS,
   type StepSequenceFacts,
   type StepView,
@@ -14,12 +15,12 @@ import {
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
-import { ConnectSlackForm } from "@/components/first-run/ConnectSlackForm";
 import { CounterGrid } from "@/components/first-run/CounterGrid";
 import { FirstRunClient } from "@/components/first-run/FirstRunClient";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { Roadmap } from "@/components/first-run/Roadmap";
 import { StepRow } from "@/components/first-run/StepRow";
+import { SlackConnection } from "@/components/slack/SlackConnection";
 import { getDb } from "@/lib/db";
 import { echoFirstRunStatus, type FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
@@ -51,9 +52,12 @@ function workBody(input: WorkBodyInput): ReactNode {
     // drives it through the real card, and this attribute is what that test is
     // about.
     return (
-      <ConnectSlackForm
-        step={step}
-        view={view}
+      <SlackConnection
+        fields={step.fields}
+        settled={view.state === "done" || view.state === "skipped"}
+        interactive={view.interactive}
+        skippable={step.skippable}
+        skipped={view.state === "skipped"}
         channelId={status.channelId}
         slackWorkspaceAttached={status.slackWorkspaceAttached}
         slackWorkspaceName={status.slackWorkspaceName}
@@ -68,7 +72,13 @@ function workBody(input: WorkBodyInput): ReactNode {
 
   return (
     <>
-      <ConnectAnalyticsForm step={step} view={view} connectionMessage={status.connectionMessage} />
+      <ConnectAnalyticsForm
+        step={step}
+        view={view}
+        connectionMessage={status.connectionMessage}
+        providerInterest={status.providerInterest}
+        interestPingAvailable={status.interestPingAvailable}
+      />
       {resolved ? <CounterGrid view={status.counter} /> : null}
       {resolved ? (
         <PrivacyReceipt
@@ -101,7 +111,7 @@ export default async function FirstRunPage() {
   const connectionState = status.counter.state;
   const facts: StepSequenceFacts = {
     connectionStatus: connectionState.status === "not_connected" ? null : connectionState.status,
-    slackConnected: status.channelId !== null,
+    slackConnected: isDeliveryAddress(status.channelId),
     slackSkipped: status.slackSkippedAt !== null,
 
     slackTestPostFailed: false,
@@ -146,9 +156,13 @@ export default async function FirstRunPage() {
             },
           )}
 
-          {/* Under the flow, not above it. Same two sentences, same honesty,
-              no longer the first thing anybody reads. */}
-          <Roadmap steps={COMING_NEXT_DESCRIPTORS} />
+          {/* Under the flow, not above it. Same honesty, no longer the first
+              thing anybody reads. */}
+          <Roadmap
+            steps={COMING_NEXT_DESCRIPTORS}
+            providerInterest={status.providerInterest}
+            interestPingAvailable={status.interestPingAvailable}
+          />
         </Stack>
       </FirstRunClient>
     </Container>

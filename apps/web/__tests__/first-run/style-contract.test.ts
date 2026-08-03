@@ -211,7 +211,7 @@ const PLANTED_INLINE_TAP = fixture(
   "PlantedTapTarget",
   `const tapTargetStyle = { minWidth: 44, minHeight: 44, touchAction: "manipulation" as const };
 
-export function ConnectSlackForm() {
+export function SlackConnection() {
   return <Button style={tapTargetStyle}>Send a test message</Button>;
 }
 `,
@@ -221,7 +221,7 @@ const CLEAN_SHARED_TAP = fixture(
   "CleanTapTarget",
   `import { tapTargetStyle } from "@/components/ui/tap-target";
 
-export function ConnectSlackForm() {
+export function SlackConnection() {
   return <Button style={tapTargetStyle}>{ONBOARDING_MESSAGES.sendTestMessage}</Button>;
 }
 `,
