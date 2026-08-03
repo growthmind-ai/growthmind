@@ -1,10 +1,13 @@
 // No body below carries a tenancy key: the project comes from the session.
 // `apps/web` declares no `zod`, so the narrowing here is hand-written.
 
+import { NETWORK_FAILURE_NOTICE, type InterestProviderId } from "@growthmind/shared";
+
 export const FIRST_RUN_API = {
   status: "/api/first-run/status",
   arm: "/api/first-run/arm",
   dismiss: "/api/first-run/dismiss",
+  interest: "/api/first-run/interest",
   analyticsDiscover: "/api/first-run/analytics/discover",
   analyticsConnect: "/api/first-run/analytics/connect",
   analyticsDisconnect: "/api/first-run/analytics/disconnect",
@@ -114,6 +117,12 @@ export async function postForOutcome(
   }
 
   return { ok: true, body: answer.body };
+}
+
+// Any `ok: true` means noted — the body is `{ noted: true }` on first and
+// repeat taps alike, so there is nothing else to read from it (AD-6).
+export async function postInterest(provider: InterestProviderId): Promise<ActionOutcome> {
+  return postForOutcome(FIRST_RUN_API.interest, { provider }, NETWORK_FAILURE_NOTICE);
 }
 
 // A nameless row is a choice nobody can make, so an entry missing either field

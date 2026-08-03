@@ -71,7 +71,13 @@ function workBody(input: WorkBodyInput): ReactNode {
 
   return (
     <>
-      <ConnectAnalyticsForm step={step} view={view} connectionMessage={status.connectionMessage} />
+      <ConnectAnalyticsForm
+        step={step}
+        view={view}
+        connectionMessage={status.connectionMessage}
+        providerInterest={status.providerInterest}
+        interestPingAvailable={status.interestPingAvailable}
+      />
       {resolved ? <CounterGrid view={status.counter} /> : null}
       {resolved ? (
         <PrivacyReceipt
@@ -149,9 +155,13 @@ export default async function FirstRunPage() {
             },
           )}
 
-          {/* Under the flow, not above it. Same two sentences, same honesty,
-              no longer the first thing anybody reads. */}
-          <Roadmap steps={COMING_NEXT_DESCRIPTORS} />
+          {/* Under the flow, not above it. Same honesty, no longer the first
+              thing anybody reads. */}
+          <Roadmap
+            steps={COMING_NEXT_DESCRIPTORS}
+            providerInterest={status.providerInterest}
+            interestPingAvailable={status.interestPingAvailable}
+          />
         </Stack>
       </FirstRunClient>
     </Container>
