@@ -6,14 +6,14 @@ import {
   SLACK_OAUTH_ACCESS_URL,
   SLACK_REQUEST_TIMEOUT_MS,
 } from "@growthmind/adapters";
-import type { ServerEnv } from "@growthmind/shared";
+import type { WebEnv } from "@growthmind/shared";
 
 export interface SlackOAuthCredentials {
   readonly clientId: string;
   readonly clientSecret: string;
 }
 
-export function resolveSlackOAuthCredentials(env: ServerEnv): SlackOAuthCredentials | null {
+export function resolveSlackOAuthCredentials(env: WebEnv): SlackOAuthCredentials | null {
   const { SLACK_CLIENT_ID: clientId, SLACK_CLIENT_SECRET: clientSecret } = env;
 
   if (clientId === undefined || clientSecret === undefined) return null;
@@ -21,7 +21,7 @@ export function resolveSlackOAuthCredentials(env: ServerEnv): SlackOAuthCredenti
   return { clientId, clientSecret };
 }
 
-export function slackOAuthConfigured(env: ServerEnv): boolean {
+export function slackOAuthConfigured(env: WebEnv): boolean {
   return resolveSlackOAuthCredentials(env) !== null;
 }
 
@@ -31,7 +31,7 @@ export const SLACK_OAUTH_CALLBACK_PATH = "/api/first-run/slack/oauth/callback";
 
 // Derived from configuration, never from a request header: `Host` and `X-Forwarded-Host`
 // are caller-controlled, so a header-built redirect uri is an open redirect for the code.
-export function slackOAuthRedirectUri(env: ServerEnv): string {
+export function slackOAuthRedirectUri(env: WebEnv): string {
   return new URL(SLACK_OAUTH_CALLBACK_PATH, env.BETTER_AUTH_URL).href;
 }
 

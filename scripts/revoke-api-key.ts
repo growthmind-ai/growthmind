@@ -6,7 +6,7 @@ import {
   type ResolveOrganizationResult,
 } from "../packages/db/src/admin/index";
 import { createApiKeysRepo, createDb } from "../packages/db/src/index";
-import { parseServerEnv, tenantContextSchema } from "../packages/shared/src/index";
+import { parseBaseEnv, tenantContextSchema } from "../packages/shared/src/index";
 
 const USAGE = [
   "Revoke a read credential, or list the ones you have.",
@@ -124,7 +124,7 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const env = parseServerEnv(process.env);
+  const env = parseBaseEnv(process.env);
   const db = createDb(env.DATABASE_URL);
 
   try {

@@ -1,11 +1,12 @@
 import {
   ensureOrganization,
   findMembershipsByUserId,
+  findNewestAccountProviderId,
   findUserNameById,
   schema,
   type ScopedDb,
 } from "@growthmind/db";
-import { logger, parseServerEnv, resolveActiveOrganization } from "@growthmind/shared";
+import { logger, parseWebEnv, resolveActiveOrganization } from "@growthmind/shared";
 import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -13,6 +14,17 @@ import { organization } from "better-auth/plugins";
 
 import { getDb } from "./db";
 import { getPostHogClient } from "./posthog-server";
+import { authProviderLabel, socialProvidersConfig } from "./social-auth";
+
+// Reported when the account row that names the provider is not readable at the moment the
+// event fires. "email" was hardcoded here, which mislabelled every social sign-up as one.
+async function providerLabelFor(db: ScopedDb, userId: string): Promise<string> {
+  try {
+    return authProviderLabel(await findNewestAccountProviderId(db, userId));
+  } catch {
+    return "unknown";
+  }
+}
 
 type Auth = ReturnType<typeof buildAuth>;
 
@@ -23,7 +35,7 @@ export interface BuildAuthOptions {
 }
 
 export function buildAuth(options: BuildAuthOptions = {}) {
-  const env = parseServerEnv(process.env);
+  const env = parseWebEnv(process.env);
   const db = options.db ?? getDb();
   const secret = options.secret ?? env.BETTER_AUTH_SECRET;
   const baseURL = options.baseURL ?? env.BETTER_AUTH_URL;
@@ -33,6 +45,9 @@ export function buildAuth(options: BuildAuthOptions = {}) {
     secret,
     baseURL,
     emailAndPassword: { enabled: true },
+    // Only the providers whose credentials are BOTH present. Email and password stays
+    // enabled either way, so an installation configuring neither is a full product.
+    socialProviders: socialProvidersConfig(env),
     advanced: {
       useSecureCookies: process.env.NODE_ENV === "production",
     },
@@ -54,7 +69,7 @@ export function buildAuth(options: BuildAuthOptions = {}) {
                 posthog.capture({
                   distinctId: user.id,
                   event: "user_signed_up",
-                  properties: { auth_provider: "email" },
+                  properties: { auth_provider: await providerLabelFor(db, user.id) },
                 });
                 await posthog.flush();
               })().catch((error: unknown) => {
@@ -104,7 +119,7 @@ export function buildAuth(options: BuildAuthOptions = {}) {
               posthog.capture({
                 distinctId: session.userId,
                 event: "user_signed_in",
-                properties: { auth_provider: "email" },
+                properties: { auth_provider: await providerLabelFor(db, session.userId) },
               });
               await posthog.flush();
             } catch (error) {

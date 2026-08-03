@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { DEV_ENCRYPTION_KEY } from "../env";
-import type { ServerEnv } from "../env";
+import type { BaseEnv } from "../env";
 import { CREDENTIAL_KEY_BYTE_LENGTH } from "./secret-box";
 import type { CredentialKey } from "./secret-box";
 
@@ -11,7 +11,7 @@ export type CredentialKeyResolution =
   | { readonly ok: true; readonly key: CredentialKey }
   | { readonly ok: false; readonly reason: CredentialKeyFailureReason };
 
-export function resolveCredentialKey(env: ServerEnv): CredentialKeyResolution {
+export function resolveCredentialKey(env: BaseEnv): CredentialKeyResolution {
   const configured = env.GROWTHMIND_ENCRYPTION_KEY.trim();
 
   if (env.NODE_ENV === "production" && configured === DEV_ENCRYPTION_KEY.trim()) {

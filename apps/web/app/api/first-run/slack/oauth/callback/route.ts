@@ -14,7 +14,7 @@ import {
   firstRunSlackOAuthCallbackInputSchema,
   keyIdOf,
   logger,
-  parseServerEnv,
+  parseWebEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
 
@@ -63,7 +63,7 @@ const land = (outcome: SlackOAuthOutcome): Response =>
   });
 
 export async function handle(request: Request, deps: FirstRunRouteDeps): Promise<Response> {
-  const env = parseServerEnv(process.env);
+  const env = parseWebEnv(process.env);
 
   const ctx = await deps.tenant();
   if (ctx === null) return land("failed");

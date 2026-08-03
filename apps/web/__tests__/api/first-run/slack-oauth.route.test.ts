@@ -1,7 +1,7 @@
 import { eq, schema, slackCredentialAad } from "@growthmind/db";
 import {
   decryptSecret,
-  parseServerEnv,
+  parseWebEnv,
   POST_FAILURE_MESSAGES,
   resolveCredentialKey,
   type CredentialKey,
@@ -75,7 +75,7 @@ const COLD_BOOT_BUDGET_MS = 60_000;
 beforeAll(async () => {
   bed = await createFirstRunTestBed("oauth");
 
-  credentialKey = resolveCredentialKey(parseServerEnv(process.env));
+  credentialKey = resolveCredentialKey(parseWebEnv(process.env));
   if (!credentialKey.ok) {
     throw new Error(
       `this suite cannot seal or open an envelope because the installation key did not resolve ` +

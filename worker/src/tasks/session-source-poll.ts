@@ -16,7 +16,7 @@ import {
 } from "@growthmind/db/system";
 import type {
   CredentialKey,
-  ServerEnv,
+  WorkerEnv,
   SessionSourcePullResult,
   SourceFailureCode,
   TenantContext,
@@ -42,7 +42,7 @@ export type PollLogger = TaskLogger;
 export interface SessionSourcePollDeps {
   db: ScopedDb;
    
-  env: ServerEnv;
+  env: WorkerEnv;
   now: () => Date;
    
   sleep: (ms: number) => Promise<void>;

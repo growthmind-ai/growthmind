@@ -6,7 +6,7 @@ import {
   type ResolveOrganizationResult,
 } from "../packages/db/src/admin/index";
 import { createApiKeysRepo, createDb } from "../packages/db/src/index";
-import { parseServerEnv, tenantContextSchema } from "../packages/shared/src/index";
+import { parseBaseEnv, tenantContextSchema } from "../packages/shared/src/index";
 
 const USAGE = [
   "Mint a read credential for your coding agent.",
@@ -122,7 +122,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const env = parseServerEnv(process.env);
+  const env = parseBaseEnv(process.env);
   const db = createDb(env.DATABASE_URL);
 
   try {

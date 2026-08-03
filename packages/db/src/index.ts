@@ -27,7 +27,11 @@ export {
   type OrganizationRecord,
 } from "./repositories/organizations.repo";
 
-export { findMembershipsByUserId, findUserNameById } from "./tenancy/queries";
+export {
+  findMembershipsByUserId,
+  findNewestAccountProviderId,
+  findUserNameById,
+} from "./tenancy/queries";
 export { ensureOrganization } from "./tenancy/ensure-organization";
 
 export {

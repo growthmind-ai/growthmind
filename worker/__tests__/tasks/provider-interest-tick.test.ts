@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { FetchLike } from "@growthmind/adapters";
 import { sql } from "@growthmind/db";
 import { createTestDb, seedOrgWithOwner, type TestDb } from "@growthmind/db/testing";
-import { parseServerEnv, type ServerEnv } from "@growthmind/shared";
+import { parseWorkerEnv, type WorkerEnv } from "@growthmind/shared";
 
 import {
   loadUnderConstruction,
@@ -38,7 +38,7 @@ type InterestPostText = (input: InterestPostTextInput) => string;
 
 interface ProviderInterestTickDeps {
   readonly db: TestDb;
-  readonly env: ServerEnv;
+  readonly env: WorkerEnv;
   readonly fetch: FetchLike;
   readonly logger: RecordingLogger;
   readonly now: () => Date;
@@ -71,8 +71,8 @@ afterEach(async () => {
   await close();
 });
 
-function envWithWebhook(): ServerEnv {
-  return parseServerEnv({
+function envWithWebhook(): WorkerEnv {
+  return parseWorkerEnv({
     NODE_ENV: "test",
     DATABASE_URL: "postgres://fake:fake@localhost:5432/fake",
     BETTER_AUTH_SECRET: "wk-test-only-secret-not-a-real-one",
@@ -83,7 +83,7 @@ function envWithWebhook(): ServerEnv {
 
 function tickDeps(params: {
   fetch: FetchLike;
-  env?: ServerEnv;
+  env?: WorkerEnv;
   logger?: RecordingLogger;
 }): ProviderInterestTickDeps {
   return {

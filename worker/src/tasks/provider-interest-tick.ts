@@ -2,14 +2,14 @@ import type { FetchLike } from "@growthmind/adapters";
 import type { ScopedDb } from "@growthmind/db";
 import type { ClaimedProviderInterest } from "@growthmind/db/system";
 import { claimUnnotifiedProviderInterest, countProviderInterest } from "@growthmind/db/system";
-import type { InterestProviderId, ServerEnv } from "@growthmind/shared";
+import type { InterestProviderId, WorkerEnv } from "@growthmind/shared";
 import { PROVIDER_CATALOGUE, interestPingConfigured } from "@growthmind/shared";
 
 import { isolated, type TaskLogger } from "../task-logger";
 
 export interface ProviderInterestTickDeps {
   db: ScopedDb;
-  env: ServerEnv;
+  env: WorkerEnv;
   fetch: FetchLike;
   logger: TaskLogger;
   now: () => Date;

@@ -24,7 +24,7 @@ import {
   SLACK_SKIPPED_NOTICE,
   interestPingConfigured,
   logger,
-  parseServerEnv,
+  parseWebEnv,
   toOnboardingCounterView,
 } from "@growthmind/shared";
 
@@ -167,7 +167,7 @@ export async function buildFirstRunStatus(
 
   // Read here so no caller threads it, and parsed per call so an env captured
   // at import time cannot outlive a redeploy. One parse feeds both flags.
-  const env = parseServerEnv(process.env);
+  const env = parseWebEnv(process.env);
 
   // One address feeds both fields, so a sentinel row cannot read as deliverable
   // in the label while reading as undeliverable in the id.

@@ -1,9 +1,15 @@
 export {
-  serverEnvSchema,
-  parseServerEnv,
+  baseEnvSchema,
+  webEnvSchema,
+  workerEnvSchema,
+  parseBaseEnv,
+  parseWebEnv,
+  parseWorkerEnv,
   interestPingConfigured,
   DEV_ENCRYPTION_KEY,
-  type ServerEnv,
+  type BaseEnv,
+  type WebEnv,
+  type WorkerEnv,
 } from "./env";
 
 export { describeError } from "./errors";
