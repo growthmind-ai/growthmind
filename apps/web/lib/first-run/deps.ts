@@ -5,6 +5,7 @@ import type {
   CredentialKey,
   CredentialKeyResolution,
   DeliveryPoster,
+  InterestProviderId,
   ServerEnv,
   TenantContext,
 } from "@growthmind/shared";
@@ -21,6 +22,7 @@ import {
 } from "@growthmind/adapters";
 
 import { getDb } from "@/lib/db";
+import { getPostHogClient } from "@/lib/posthog-server";
 import { listChannels, type SlackChannelChoice } from "@/lib/slack/channels";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -41,6 +43,13 @@ export type FirstRunChannelListing =
 // `posterFor`. The route never sees the bot token and cannot.
 export type FirstRunChannelsFor = (ctx: TenantContext) => Promise<FirstRunChannelListing>;
 
+// AD-6's event seam: the interest route fires it only when the insert claimed.
+export type RecordInterestNoted = (input: {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly provider: InterestProviderId;
+}) => void;
+
 export interface FirstRunRouteDeps {
   readonly db: ScopedDb;
 
@@ -59,6 +68,8 @@ export interface FirstRunRouteDeps {
   readonly posterFor?: FirstRunPosterFor | undefined;
 
   readonly channelsFor?: FirstRunChannelsFor | undefined;
+
+  readonly recordInterestNoted?: RecordInterestNoted | undefined;
 
   // AD-8's one seam: the routes have to be drivable with no network.
   readonly fetch?: typeof globalThis.fetch | undefined;
@@ -198,6 +209,17 @@ export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
     credentialKey,
     posterFor: makePosterFor(db, env),
     channelsFor: makeChannelsFor(db, credentialKey, globalThis.fetch),
+    // Null-safe when unconfigured, and no PII: the one property is the provider
+    // id (growthmind-instrument discipline).
+    recordInterestNoted: ({ userId, provider }) => {
+      const posthog = getPostHogClient();
+      if (!posthog) return;
+      posthog.capture({
+        distinctId: userId,
+        event: "registered interest in a coming-soon connection",
+        properties: { provider },
+      });
+    },
     fetch: globalThis.fetch,
   };
 }

@@ -122,6 +122,8 @@ const unarmedPayload = (counter: OnboardingCounterView): FirstRunStatusPayload =
   slackWorkspaceAttached: true,
   slackWorkspaceName: "Acme",
   slackOAuthAvailable: true,
+  providerInterest: [],
+  interestPingAvailable: false,
 });
 
 const READY_TO_ARM: SetupFacts = {

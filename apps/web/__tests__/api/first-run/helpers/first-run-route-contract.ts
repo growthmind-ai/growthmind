@@ -457,7 +457,15 @@ export function routeRequest(
   });
 }
 
+// Cached per Response because a fetch body is one-shot and several tests assert
+// on the same refusal twice (the leak scan, then a content scan). Each caller
+// still gets its own copy, so no assertion can mutate another's view.
+const PARSED_BODIES = new WeakMap<Response, Record<string, unknown>>();
+
 export async function bodyOf(response: Response): Promise<Record<string, unknown>> {
+  const cached = PARSED_BODIES.get(response);
+  if (cached) return { ...cached };
+
   const text = await response.text();
   let parsed: unknown;
   try {
@@ -470,6 +478,7 @@ export async function bodyOf(response: Response): Promise<Record<string, unknown
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error(`first-run route answered with a non-object body: ${text.slice(0, 400)}`);
   }
+  PARSED_BODIES.set(response, parsed as Record<string, unknown>);
   return { ...(parsed as Record<string, unknown>) };
 }
 
