@@ -1,5 +1,5 @@
 import type { InterestProviderId } from "@growthmind/shared";
-import { count, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, eq, exists, inArray, isNull } from "drizzle-orm";
 
 import type { ScopedDb } from "../repositories/types";
 import { organization } from "../schema/auth";
@@ -15,43 +15,74 @@ export interface ClaimedProviderInterest {
 }
 
 // The stamp IS the claim, set atomically before the send (AD-2): a concurrent
-// sweep finds nothing unclaimed, so no row can ever be posted twice.
+// sweep finds nothing unclaimed, so no row can ever be posted twice. The
+// enrichment shares the claim's transaction, so an infra throw rolls the
+// stamps back and a retry finds the rows unclaimed instead of stamped-and-lost.
+// A row whose organization is already gone is left unclaimed rather than
+// stamped and dropped. The cap paces a backlog; the next tick drains the rest.
 export async function claimUnnotifiedProviderInterest(
   db: ScopedDb,
   now: Date,
+  limit = 25,
 ): Promise<ClaimedProviderInterest[]> {
-  const claimed = await db
-    .update(providerInterest)
-    .set({ notifiedAt: now })
-    .where(isNull(providerInterest.notifiedAt))
-    .returning();
-
-  if (claimed.length === 0) {
+  if (limit <= 0) {
     return [];
   }
 
-  const orgIds = [...new Set(claimed.map((row) => row.organizationId))];
-  const orgRows = await db
-    .select({ id: organization.id, name: organization.name })
-    .from(organization)
-    .where(inArray(organization.id, orgIds));
-  const orgNames = new Map(orgRows.map((row) => [row.id, row.name]));
+  return db.transaction(async (tx) => {
+    const unnotified = tx
+      .select({ id: providerInterest.id })
+      .from(providerInterest)
+      .where(
+        and(
+          isNull(providerInterest.notifiedAt),
+          exists(
+            tx
+              .select({ id: organization.id })
+              .from(organization)
+              .where(eq(organization.id, providerInterest.organizationId)),
+          ),
+        ),
+      )
+      .orderBy(asc(providerInterest.createdAt), asc(providerInterest.id))
+      .limit(limit)
+      .for("update", { skipLocked: true });
 
-  return claimed.map((row) => {
-    const organizationName = orgNames.get(row.organizationId);
-    if (organizationName === undefined) {
-      throw new Error(
-        `claimUnnotifiedProviderInterest: no organization row for claimed interest ${row.id}`,
-      );
+    // The repeated isNull guard is what a lock-wait re-check evaluates, so an
+    // overlapping sweep that loses the race stamps nothing a winner already has.
+    const claimed = await tx
+      .update(providerInterest)
+      .set({ notifiedAt: now })
+      .where(and(isNull(providerInterest.notifiedAt), inArray(providerInterest.id, unnotified)))
+      .returning();
+
+    if (claimed.length === 0) {
+      return [];
     }
 
-    return {
-      id: row.id,
-      organizationId: row.organizationId,
-      organizationName,
-      provider: row.provider,
-      notifiedAt: row.notifiedAt ?? now,
-    };
+    const orgIds = [...new Set(claimed.map((row) => row.organizationId))];
+    const orgRows = await tx
+      .select({ id: organization.id, name: organization.name })
+      .from(organization)
+      .where(inArray(organization.id, orgIds));
+    const orgNames = new Map(orgRows.map((row) => [row.id, row.name]));
+
+    return claimed.map((row) => {
+      const organizationName = orgNames.get(row.organizationId);
+      if (organizationName === undefined) {
+        throw new Error(
+          `claimUnnotifiedProviderInterest: no organization row for claimed interest ${row.id}`,
+        );
+      }
+
+      return {
+        id: row.id,
+        organizationId: row.organizationId,
+        organizationName,
+        provider: row.provider,
+        notifiedAt: row.notifiedAt ?? now,
+      };
+    });
   });
 }
 

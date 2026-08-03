@@ -72,7 +72,8 @@ export interface FirstRunRouteDescriptor {
 const O_008_ROUTES = "ADD Wave 6b (the first-run routes O-008 shipped)";
 const DISCOVER_ROUTE = "ADD Wave 2 (apps/web/app/api/first-run/analytics/discover/route.ts)";
 const SLACK_OAUTH_ROUTES = "ADD Wave 5, tasks 5.2-5.5 (the Slack OAuth and channel routes)";
-const INTEREST_ROUTE = "ADD O-024 AD-6 (apps/web/app/api/first-run/interest/route.ts, the register-interest route)";
+const INTEREST_ROUTE =
+  "ADD O-024 AD-6 (apps/web/app/api/first-run/interest/route.ts, the register-interest route)";
 
 /** Every route on this surface, ordered top-down. One added under
  *  `app/api/first-run/` without an entry here fails the on-disk row. */
@@ -459,12 +460,13 @@ export function routeRequest(
 
 // Cached per Response because a fetch body is one-shot and several tests assert
 // on the same refusal twice (the leak scan, then a content scan). Each caller
-// still gets its own copy, so no assertion can mutate another's view.
+// still gets its own deep copy, so no assertion can mutate another's view at
+// any depth.
 const PARSED_BODIES = new WeakMap<Response, Record<string, unknown>>();
 
 export async function bodyOf(response: Response): Promise<Record<string, unknown>> {
   const cached = PARSED_BODIES.get(response);
-  if (cached) return { ...cached };
+  if (cached) return structuredClone(cached);
 
   const text = await response.text();
   let parsed: unknown;
@@ -479,7 +481,7 @@ export async function bodyOf(response: Response): Promise<Record<string, unknown
     throw new Error(`first-run route answered with a non-object body: ${text.slice(0, 400)}`);
   }
   PARSED_BODIES.set(response, parsed as Record<string, unknown>);
-  return { ...(parsed as Record<string, unknown>) };
+  return structuredClone(parsed as Record<string, unknown>);
 }
 
 export function collectStrings(value: unknown, out: string[] = []): string[] {

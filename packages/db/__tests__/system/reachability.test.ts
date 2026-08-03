@@ -191,7 +191,17 @@ describe("system subpath unreachability", () => {
     expect(systemImportOffenders(scanned)).toEqual([]);
   });
 
-  const ACTOR_VOCABULARY = [/\bsystemContextFor\b/, /\bSYSTEM_ACTOR\b/, /\bSYSTEM_ACTOR_ROLE\b/];
+  // Each pattern names its home module so the containment row below keeps a
+  // live subject: a rename that empties a home fails there, not silently here.
+  const GUARDED_VOCABULARY: readonly { readonly pattern: RegExp; readonly home: string }[] = [
+    { pattern: /\bsystemContextFor\b/, home: "system-actor.ts" },
+    { pattern: /\bSYSTEM_ACTOR\b/, home: "system-actor.ts" },
+    { pattern: /\bSYSTEM_ACTOR_ROLE\b/, home: "system-actor.ts" },
+    { pattern: /\bclaimUnnotifiedProviderInterest\b/, home: "provider-interest.ts" },
+    { pattern: /\bcountProviderInterest\b/, home: "provider-interest.ts" },
+  ];
+
+  const ACTOR_VOCABULARY = GUARDED_VOCABULARY.map((entry) => entry.pattern);
 
   it("names the scheduled-actor vocabulary only under the db system module, the worker, and tests", () => {
     const roots = ["apps", "packages", "worker", "scripts"].map((dir) => path.join(REPO_ROOT, dir));
@@ -218,13 +228,13 @@ describe("system subpath unreachability", () => {
     expect(offenders.map(relative)).toEqual([]);
   });
 
-  it("finds the guarded vocabulary in the module it is meant to contain", () => {
-    const source = readFileSync(
-      path.join(REPO_ROOT, "packages", "db", "src", "system", "system-actor.ts"),
-      "utf8",
-    );
+  it("finds each guarded vocabulary entry in the module it is meant to contain", () => {
+    for (const { pattern, home } of GUARDED_VOCABULARY) {
+      const source = readFileSync(
+        path.join(REPO_ROOT, "packages", "db", "src", "system", home),
+        "utf8",
+      );
 
-    for (const pattern of ACTOR_VOCABULARY) {
       expect(source).toMatch(pattern);
     }
   });

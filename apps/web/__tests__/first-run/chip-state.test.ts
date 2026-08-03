@@ -87,7 +87,9 @@ describe("resolveChipView — the six-state chip machine (W-4, UX §5)", () => {
 
     for (const input of everyInput().filter((candidate) => candidate.live)) {
       const view = resolveChipView(input);
-      expect(`ping=${input.interestPingAvailable} noted=${input.notedOnLoad} tap=${input.tap}: ${view}`).toBe(
+      expect(
+        `ping=${input.interestPingAvailable} noted=${input.notedOnLoad} tap=${input.tap}: ${view}`,
+      ).toBe(
         `ping=${input.interestPingAvailable} noted=${input.notedOnLoad} tap=${input.tap}: live`,
       );
     }

@@ -23,10 +23,7 @@ export function createProviderInterestRepo(
   const crud = orgCrud(db, ctx, providerInterest);
 
   return {
-    async note(
-      provider: InterestProviderId,
-      requestedBy: string,
-    ): Promise<ProviderInterestNote> {
+    async note(provider: InterestProviderId, requestedBy: string): Promise<ProviderInterestNote> {
       // No `set` clause: crud branches to onConflictDoNothing, so a repeat is
       // claimed=false with the existing row untouched (AD-3, D6).
       const result = await crud.claim(

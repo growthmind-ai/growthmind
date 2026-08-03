@@ -100,17 +100,22 @@ export function ProviderChips(props: ProviderChipsProps) {
     <Stack gap="xs">
       <Group gap="sm">{chips.map((provider) => chip(provider))}</Group>
 
-      {notedThisVisit.map((provider) => (
-        <Text key={provider.id} size="sm" c="dimmed">
-          {notedSentence(provider.displayName)}
-        </Text>
-      ))}
+      {/* Mounted before anything arrives, as WaitLog does: a live region added
+          together with its content is not announced, and the tap's own button
+          unmounts, so this is the signal that survives the flip. */}
+      <Stack gap="xs" aria-live="polite">
+        {notedThisVisit.map((provider) => (
+          <Text key={provider.id} size="sm" c="dimmed">
+            {notedSentence(provider.displayName)}
+          </Text>
+        ))}
 
-      {failure === null ? null : (
-        <Text size="sm" c="stamp.4">
-          {failure}
-        </Text>
-      )}
+        {failure === null ? null : (
+          <Text size="sm" c="stamp.4">
+            {failure}
+          </Text>
+        )}
+      </Stack>
     </Stack>
   );
 }

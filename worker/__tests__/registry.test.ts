@@ -194,7 +194,8 @@ test("the onboarding job key is built from the task constant and the project id"
   expect(indexCode()).toContain("jobKey: `${TASK.ANALYSIS_ONBOARDING}:${projectId}`");
 });
 
-const PROVIDER_INTEREST_TICK_OWNER = "O-024 ADD task 4.1 (worker/src/task-names.ts + worker/src/index.ts)";
+const PROVIDER_INTEREST_TICK_OWNER =
+  "O-024 ADD task 4.1 (worker/src/task-names.ts + worker/src/index.ts)";
 
 function providerInterestTickName(): string {
   const name = (TASK as Record<string, string | undefined>)["PROVIDER_INTEREST_TICK"];
@@ -215,9 +216,7 @@ test("the provider interest tick is registered and scheduled every minute with n
   const name = providerInterestTickName();
   expect(taskList[name]).toBeDefined();
 
-  const tickLines = crontab
-    .split("\n")
-    .filter((line) => line.trim().split(/\s+/)[5] === name);
+  const tickLines = crontab.split("\n").filter((line) => line.trim().split(/\s+/)[5] === name);
   expect(tickLines.length).toBe(1);
 
   const fields = (tickLines[0] ?? "").trim().split(/\s+/);

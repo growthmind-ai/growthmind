@@ -180,6 +180,21 @@ test("interestPostText says '3 workspaces have asked' for a running count of thr
   expect(text).not.toContain("!");
 });
 
+test("interestPostText escapes Slack control sequences — an org named <!channel> cannot ping the channel", async () => {
+  const interestPostText = await loadInterestPostText();
+
+  const text = interestPostText({
+    orgName: "<!channel> & Sons",
+    displayName: "Mix<pan>el",
+    count: 1,
+  });
+
+  expect(text).toContain("&lt;!channel&gt; &amp; Sons asked for Mix&lt;pan&gt;el.");
+  expect(text).toContain("1 workspace has asked for Mix&lt;pan&gt;el.");
+  expect(text).not.toContain("<!channel>");
+  expect(text).not.toContain("Mix<pan>el");
+});
+
 test("interestPostText carries the org and provider display names and nothing person-shaped", async () => {
   const interestPostText = await loadInterestPostText();
 

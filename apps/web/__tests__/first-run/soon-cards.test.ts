@@ -37,12 +37,18 @@ import {
 } from "./helpers/first-run-source";
 import { readMarkup, type RenderedCard } from "./helpers/rendered-markup";
 
-const OWNER_ROADMAP = "ADD O-024 AD-8 (apps/web/components/first-run/Roadmap.tsx — gains the two status props)";
-const OWNER_SOON_CARD = "ADD O-024 AD-8 (apps/web/components/first-run/SoonCard.tsx — the single soon-card renderer)";
-const OWNER_CHIPS = "ADD O-024 AD-8 (apps/web/components/first-run/ProviderChips.tsx — one chip renderer for both card kinds)";
-const OWNER_ANALYTICS = "ADD O-024 AD-8 (apps/web/components/first-run/ConnectAnalyticsForm.tsx — hosts the analytics chip row)";
-const OWNER_MESSAGES = "ADD O-024 AD-7.2 (packages/shared/src/onboarding/messages.ts — the five interest constants)";
-const OWNER_CATALOGUE = "ADD O-024 AD-4 (packages/shared/src/onboarding/providers.ts — the provider catalogue)";
+const OWNER_ROADMAP =
+  "ADD O-024 AD-8 (apps/web/components/first-run/Roadmap.tsx — gains the two status props)";
+const OWNER_SOON_CARD =
+  "ADD O-024 AD-8 (apps/web/components/first-run/SoonCard.tsx — the single soon-card renderer)";
+const OWNER_CHIPS =
+  "ADD O-024 AD-8 (apps/web/components/first-run/ProviderChips.tsx — one chip renderer for both card kinds)";
+const OWNER_ANALYTICS =
+  "ADD O-024 AD-8 (apps/web/components/first-run/ConnectAnalyticsForm.tsx — hosts the analytics chip row)";
+const OWNER_MESSAGES =
+  "ADD O-024 AD-7.2 (packages/shared/src/onboarding/messages.ts — the five interest constants)";
+const OWNER_CATALOGUE =
+  "ADD O-024 AD-4 (packages/shared/src/onboarding/providers.ts — the provider catalogue)";
 
 const ROADMAP_SOURCE = "apps/web/components/first-run/Roadmap.tsx";
 const SOON_CARD_SOURCE = "apps/web/components/first-run/SoonCard.tsx";
@@ -163,7 +169,9 @@ async function renderRoadmap(status: InterestStatusProps): Promise<Rendered> {
 function analyticsStep(): WorkStep {
   const found = STEP_DESCRIPTORS.find((descriptor) => descriptor.id === "analytics");
   if (found === undefined || found.kind !== "work") {
-    throw new Error("STEP_DESCRIPTORS carries no `work` step `analytics` — the sequence changed shape.");
+    throw new Error(
+      "STEP_DESCRIPTORS carries no `work` step `analytics` — the sequence changed shape.",
+    );
   }
   return found;
 }
@@ -211,7 +219,10 @@ function leadAfterLiveMarkers(text: string): OrderVerdict {
   if (key === -1) return { ok: false, why: "the personal-key field label is not on the page" };
   if (slack === -1) return { ok: false, why: "the Slack card title is not on the page" };
   if (lead < key) {
-    return { ok: false, why: "the soon section renders before the key field — the 2026-08-01 incident class" };
+    return {
+      ok: false,
+      why: "the soon section renders before the key field — the 2026-08-01 incident class",
+    };
   }
   if (lead < slack) return { ok: false, why: "the soon section renders before the Slack card" };
   return { ok: true, why: "" };
@@ -268,9 +279,9 @@ const NAV_MARKUP = /<a[\s>]|\bhref=|<input/;
 describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
   test("both soon cards render after every live card, and the scanner fails a planted inversion", async () => {
     expect(leadAfterLiveMarkers(readMarkup(PLANTED_INVERSION).text).ok).toBe(false);
-    expect(
-      leadAfterLiveMarkers(readMarkup(PLANTED_INVERSION).text).why,
-    ).toContain("before the key field");
+    expect(leadAfterLiveMarkers(readMarkup(PLANTED_INVERSION).text).why).toContain(
+      "before the key field",
+    );
 
     const clean = leadAfterLiveMarkers(readMarkup(CLEAN_ORDER).text);
     if (!clean.ok) throw new Error(`the clean control failed: ${clean.why}`);
@@ -389,6 +400,17 @@ describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
       expect(label).toContain(pingLabel);
     }
     expect(NAV_MARKUP.test(html)).toBe(false);
+  });
+
+  test("the chip flip's confirmation and error land in a polite live region that exists before they do", async () => {
+    const withPing = await renderRoadmap({ providerInterest: [], interestPingAvailable: true });
+    expect(withPing.html).toContain('aria-live="polite"');
+
+    // Badge-only rendering keeps the region: availability gates the button,
+    // never the announcement path, and the region adds no control.
+    const badgeOnly = await renderRoadmap({ providerInterest: [], interestPingAvailable: false });
+    expect(badgeOnly.html).toContain('aria-live="polite"');
+    expect(badgeOnly.card.controls).toEqual([]);
   });
 
   test("a fresh org renders every chip idle: no noted badge, no ✓, key field present with zero taps", async () => {

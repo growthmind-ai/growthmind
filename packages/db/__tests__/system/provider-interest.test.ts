@@ -34,6 +34,7 @@ interface ClaimedProviderInterest {
 type ClaimUnnotifiedProviderInterest = (
   db: ScopedDb,
   now: Date,
+  limit?: number,
 ) => Promise<ClaimedProviderInterest[]>;
 
 type CountProviderInterest = (db: ScopedDb, provider: string) => Promise<number>;
@@ -57,17 +58,32 @@ const tstz = (value: Date): SQL => sql`${value.toISOString()}::timestamptz`;
 // requested_by is audit-only with no user FK (AD-3), so a synthetic id must persist.
 async function seedInterestRow(
   db: TestDb,
-  row: { organizationId: string; provider: string; notifiedAt?: Date },
+  row: { organizationId: string; provider: string; notifiedAt?: Date; createdAt?: Date },
 ): Promise<string> {
   const id = randomUUID();
+  const createdAt = row.createdAt ?? SEEDED_AT;
   await readRawRows(
     db,
     sql`insert into provider_interest
           (id, organization_id, provider, requested_by, notified_at, created_at, updated_at)
         values (${id}, ${row.organizationId}, ${row.provider}, ${"o24-seed-requester"},
-          ${row.notifiedAt ? tstz(row.notifiedAt) : sql`null`}, ${tstz(SEEDED_AT)}, ${tstz(SEEDED_AT)})`,
+          ${row.notifiedAt ? tstz(row.notifiedAt) : sql`null`}, ${tstz(createdAt)}, ${tstz(createdAt)})`,
   );
   return id;
+}
+
+// FK checks are internal triggers, so the replica role lets a row reference an
+// organization that never existed — the orphan shape the claim must skip.
+async function seedOrphanInterestRow(db: TestDb, provider: string): Promise<string> {
+  await readRawRows(db, sql`set session_replication_role = 'replica'`);
+  try {
+    return await seedInterestRow(db, {
+      organizationId: `gone-org-${randomUUID()}`,
+      provider,
+    });
+  } finally {
+    await readRawRows(db, sql`set session_replication_role = 'origin'`);
+  }
 }
 
 describe("claimUnnotifiedProviderInterest — the notified_at stamp is the claim", () => {
@@ -123,6 +139,63 @@ describe("claimUnnotifiedProviderInterest — the notified_at stamp is the claim
     expect(new Date(keptStamp as string | number | Date).getTime()).toBe(
       NOTIFIED_EARLIER.getTime(),
     );
+  });
+
+  it("never claims a row whose organization row is absent — the others are stamped, the orphan keeps its null stamp", async () => {
+    const claimUnnotifiedProviderInterest = await loadClaim();
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("orphan-peer"),
+      userName: NAMES.userName("orphan-peer"),
+      email: NAMES.email("orphan-peer"),
+    });
+    const healthy = await seedInterestRow(db, {
+      organizationId: org.organizationId,
+      provider: "windsurf",
+    });
+    const orphan = await seedOrphanInterestRow(db, "codex");
+
+    const claimed = await claimUnnotifiedProviderInterest(db, NOW);
+
+    expect(claimed.map((row) => row.id)).toEqual([healthy]);
+    expect(claimed[0]?.organizationName).toBe(NAMES.orgName("orphan-peer"));
+
+    const orphanRows = await readRawRows(
+      db,
+      sql`select notified_at from provider_interest where id = ${orphan}`,
+    );
+    expect(orphanRows[0]?.notified_at).toBeNull();
+  });
+
+  it("takes at most `limit` rows per sweep, oldest first, and the next sweep drains the rest", async () => {
+    const claimUnnotifiedProviderInterest = await loadClaim();
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("paced"),
+      userName: NAMES.userName("paced"),
+      email: NAMES.email("paced"),
+    });
+    const oldest = await seedInterestRow(db, {
+      organizationId: org.organizationId,
+      provider: "copilot",
+      createdAt: new Date("2026-08-01T08:00:00.000Z"),
+    });
+    const middle = await seedInterestRow(db, {
+      organizationId: org.organizationId,
+      provider: "claude-code",
+      createdAt: new Date("2026-08-01T09:00:00.000Z"),
+    });
+    const newest = await seedInterestRow(db, {
+      organizationId: org.organizationId,
+      provider: "growthmind-analytics",
+      createdAt: new Date("2026-08-01T10:00:00.000Z"),
+    });
+
+    // RETURNING order is not the subquery's ORDER BY, so oldest-first is proven
+    // by which rows the capped sweep took, not by the order they came back in.
+    const firstSweep = await claimUnnotifiedProviderInterest(db, NOW, 2);
+    expect(firstSweep.map((row) => row.id).toSorted()).toEqual([oldest, middle].toSorted());
+
+    const secondSweep = await claimUnnotifiedProviderInterest(db, NOW, 2);
+    expect(secondSweep.map((row) => row.id)).toEqual([newest]);
   });
 });
 

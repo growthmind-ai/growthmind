@@ -184,6 +184,10 @@ export async function buildFirstRunStatus(
     channelId: slack?.channelId ?? null,
   });
 
+  // Read here so no caller threads it, and parsed per call so an env captured
+  // at import time cannot outlive a redeploy. One parse feeds both flags.
+  const env = parseServerEnv(process.env);
+
   return {
     finding: facts.finding,
     findingUnavailable: input.findingUnavailable,
@@ -201,10 +205,8 @@ export async function buildFirstRunStatus(
     slackNotice: notice(slack),
     slackWorkspaceAttached: slack !== null,
     slackWorkspaceName: slack?.workspaceName ?? null,
-    // Read here so no caller threads it, and parsed per call so an env captured
-    // at import time cannot outlive a redeploy. Same terms for both flags.
-    slackOAuthAvailable: slackOAuthConfigured(parseServerEnv(process.env)),
-    interestPingAvailable: interestPingConfigured(parseServerEnv(process.env)),
+    slackOAuthAvailable: slackOAuthConfigured(env),
+    interestPingAvailable: interestPingConfigured(env),
     providerInterest,
     deliveryState: delivery.state,
     deliveryFailureReason: delivery.failureReason,

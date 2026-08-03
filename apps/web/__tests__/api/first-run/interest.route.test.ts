@@ -71,8 +71,7 @@ function depsFor(
 
 async function rawRows(query: string): Promise<Record<string, unknown>[]> {
   const result = (await bed.db.execute(query)) as unknown as
-    | { rows?: Record<string, unknown>[] }
-    | Record<string, unknown>[];
+    { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
   return Array.isArray(result) ? result : (result.rows ?? []);
 }
 
@@ -246,10 +245,7 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
     const interest = await loadRouteHandler(INTEREST);
     const status = await loadRouteHandler(STATUS);
 
-    const noted = await interest(
-      routeRequest(INTEREST, { provider: "amplitude" }),
-      depsFor(owner),
-    );
+    const noted = await interest(routeRequest(INTEREST, { provider: "amplitude" }), depsFor(owner));
     expect(noted.status).toBe(200);
 
     const body = await bodyOf(await status(routeRequest(STATUS), depsFor(teammate)));
@@ -294,9 +290,7 @@ const PLANTED_ENQUEUE_ROUTE =
   `}\n`;
 
 const CLEAN_ROUTE =
-  `export async function handle() {\n` +
-  `  return Response.json({ noted: true });\n` +
-  `}\n`;
+  `export async function handle() {\n` + `  return Response.json({ noted: true });\n` + `}\n`;
 
 const WEB_ENQUEUE = /graphile-worker|\baddJob\b/;
 

@@ -210,12 +210,13 @@ export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
     posterFor: makePosterFor(db, env),
     channelsFor: makeChannelsFor(db, credentialKey, globalThis.fetch),
     // Null-safe when unconfigured, and no PII: the one property is the provider
-    // id (growthmind-instrument discipline).
-    recordInterestNoted: ({ userId, provider }) => {
+    // id (growthmind-instrument discipline). The distinct id is the org because
+    // the demand is the org's (AD-3) — no user identifier rides the event.
+    recordInterestNoted: ({ organizationId, provider }) => {
       const posthog = getPostHogClient();
       if (!posthog) return;
       posthog.capture({
-        distinctId: userId,
+        distinctId: organizationId,
         event: "registered interest in a coming-soon connection",
         properties: { provider },
       });

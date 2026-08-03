@@ -3,18 +3,15 @@ import type { ScopedDb } from "@growthmind/db";
 import type { ClaimedProviderInterest } from "@growthmind/db/system";
 import { claimUnnotifiedProviderInterest, countProviderInterest } from "@growthmind/db/system";
 import type { InterestProviderId, ServerEnv } from "@growthmind/shared";
-import { PROVIDER_CATALOGUE, describeError, interestPingConfigured } from "@growthmind/shared";
+import { PROVIDER_CATALOGUE, interestPingConfigured } from "@growthmind/shared";
 
-export interface InterestTickLogger {
-  info(message: string): void;
-  error(message: string): void;
-}
+import { isolated, type TaskLogger } from "../task-logger";
 
 export interface ProviderInterestTickDeps {
   db: ScopedDb;
   env: ServerEnv;
   fetch: FetchLike;
-  logger: InterestTickLogger;
+  logger: TaskLogger;
   now: () => Date;
 }
 
@@ -30,13 +27,20 @@ export interface InterestPostTextInput {
   readonly count: number;
 }
 
+// Slack reads &, < and > as control sequences, so an org named <!channel>
+// must arrive as text rather than ping the channel.
+function escapeSlackText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 export function interestPostText(input: InterestPostTextInput): string {
+  const displayName = escapeSlackText(input.displayName);
   const running =
     input.count === 1
-      ? `1 workspace has asked for ${input.displayName}.`
-      : `${input.count} workspaces have asked for ${input.displayName}.`;
+      ? `1 workspace has asked for ${displayName}.`
+      : `${input.count} workspaces have asked for ${displayName}.`;
 
-  return `${input.orgName} asked for ${input.displayName}. ${running}`;
+  return `${escapeSlackText(input.orgName)} asked for ${displayName}. ${running}`;
 }
 
 export async function runProviderInterestTick(
@@ -59,17 +63,20 @@ export async function runProviderInterestTick(
   summary.rowsClaimed = claimed.length;
 
   for (const row of claimed) {
-    try {
-      await postInterestPing(deps, webhookUrl, row);
+    // The stamp stays on a failed send: a lost ping's information reappears in
+    // the next post's running count, while a cleared stamp would risk a double
+    // post (AD-2).
+    const posted = await isolated(
+      deps.logger,
+      `provider interest tick: the ping for org ${row.organizationId} about ${row.provider} ` +
+        `(interest row ${row.id}) could not be sent`,
+      () => postInterestPing(deps, webhookUrl, row),
+    );
+
+    if (posted) {
       summary.pingsPosted += 1;
-    } catch (error) {
-      // The stamp stays: a lost ping's information reappears in the next post's
-      // running count, while a cleared stamp would risk a double post (AD-2).
+    } else {
       summary.pingsFailed += 1;
-      deps.logger.error(
-        `provider interest tick: the ping for org ${row.organizationId} about ${row.provider} ` +
-          `(interest row ${row.id}) could not be sent — ${describeError(error)}`,
-      );
     }
   }
 
