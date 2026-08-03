@@ -4,6 +4,7 @@ import { Box, Button, Stack, Text } from "@mantine/core";
 
 import {
   COUNTER_LABELS,
+  isDeliveryAddress,
   ONBOARDING_MESSAGES,
   STRIP_COUNTED_TEMPLATE,
   STRIP_LEAD,
@@ -42,7 +43,9 @@ export function Strip(props: StripProps) {
 
   const seen = withCount(STRIP_SEEN_TEMPLATE, rowValue(counter, COUNTER_LABELS.totalReceived));
   const counted = withCount(STRIP_COUNTED_TEMPLATE, rowValue(counter, COUNTER_LABELS.kept));
-  const posting = channelId === null ? [] : [withChannel(STRIP_POSTING_TO_TEMPLATE, channelId)];
+  const posting = isDeliveryAddress(channelId)
+    ? [withChannel(STRIP_POSTING_TO_TEMPLATE, channelId)]
+    : [];
 
   const parts = [STRIP_LEAD, seen, counted, ...posting];
 

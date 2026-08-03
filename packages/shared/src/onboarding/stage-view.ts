@@ -1,3 +1,4 @@
+import { isDeliveryAddress } from "../delivery/address";
 import { ANALYSIS_OUTCOME_MESSAGES, ANALYSIS_RUN_STATUS_MESSAGES } from "../summary/messages";
 import {
   STAGE_DELIVERED_TEMPLATE,
@@ -39,18 +40,15 @@ const DELIVERY_TEMPLATES: Record<Exclude<FirstRunDeliveryState, "none">, string>
   failed: STAGE_DELIVERY_FAILED_TEMPLATE,
 };
 
-const NOT_AN_ADDRESS: ReadonlySet<string> = new Set(["", "null", "undefined"]);
-
 export function renderDeliveryLine(
   state: FirstRunDeliveryState,
   channelId: string | null,
 ): string | null {
-  const address = channelId === null ? "" : channelId.trim();
-  if (state === "none" || NOT_AN_ADDRESS.has(address.toLowerCase())) {
+  if (state === "none" || !isDeliveryAddress(channelId)) {
     return null;
   }
 
-  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", address);
+  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", (channelId ?? "").trim());
 }
 
 // The terminal state always says where this went, and "nowhere" is one of the answers.

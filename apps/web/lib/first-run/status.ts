@@ -20,6 +20,7 @@ import type {
 } from "@growthmind/shared";
 import {
   CONNECTION_STATE_MESSAGES,
+  isDeliveryAddress,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
   interestPingConfigured,
@@ -200,7 +201,7 @@ export async function buildFirstRunStatus(
     runOutcome: facts.runOutcome,
     counter: view,
     connectionMessage: CONNECTION_STATE_MESSAGES[view.state.status],
-    channelId: slack?.channelId ?? null,
+    channelId: isDeliveryAddress(slack?.channelId) ? slack.channelId : null,
     slackSkippedAt: state?.slackSkippedAt ?? null,
     slackNotice: notice(slack),
     slackWorkspaceAttached: slack !== null,
@@ -218,7 +219,9 @@ export async function buildFirstRunStatus(
 function notice(slack: { readonly channelId: string | null } | null): string | null {
   if (slack === null) return SLACK_SKIPPED_NOTICE;
 
-  if (slack.channelId === null) return SLACK_CHANNEL_PICK_PROMPT;
+  // The predicate, not `=== null`: a sentinel row must read as "pick a channel"
+  // rather than suppressing the prompt that tells the founder to.
+  if (!isDeliveryAddress(slack.channelId)) return SLACK_CHANNEL_PICK_PROMPT;
 
   return null;
 }

@@ -10,7 +10,7 @@ import { Button, Collapse, Group, Select, Stack, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { ONBOARDING_MESSAGES, type FieldDescriptor } from "@growthmind/shared";
+import { isDeliveryAddress, ONBOARDING_MESSAGES, type FieldDescriptor } from "@growthmind/shared";
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { slackOAuthOutcomeOf, type SlackOAuthOutcome } from "@/lib/first-run/slack-oauth-outcome";
@@ -150,7 +150,9 @@ export function SlackConnection(props: SlackConnectionProps) {
   const locked = pending || !props.interactive;
 
   const workspaceAttached = props.slackWorkspaceAttached || workspaceNow;
-  const channelAttached = props.channelId !== null || channelNow;
+  // The predicate, not `!== null`: a sentinel address is not somewhere to post, and
+  // treating one as attached hides the picker from exactly the row that needs it.
+  const channelAttached = isDeliveryAddress(props.channelId) || channelNow;
 
   // The window AD-4 opens: consented, nowhere to post yet, reachable on BOTH
   // paths. `offerOAuth` never re-offers "Add to Slack" to an attached org.
