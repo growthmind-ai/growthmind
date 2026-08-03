@@ -1,6 +1,5 @@
-// B-040: two states rendered no exit control at all. One contradicted itself while
-// doing it — a sentence saying there was nothing more to wait for, above a heading
-// saying the screen was still reading and a counter that kept climbing.
+// B-040: two states rendered no exit control, and one contradicted itself — a sentence
+// saying nothing was left to wait for, above a heading still claiming to be reading.
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
