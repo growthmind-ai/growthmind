@@ -11,6 +11,8 @@ import {
   describeError,
 } from "@growthmind/shared";
 
+import type { TaskLogger } from "../task-logger";
+
 const COULD_NOT_POST: string = requireSentence(
   DELIVERY_STATUS_MESSAGES.failed,
   "the delivery status 'failed'",
@@ -23,10 +25,7 @@ function requireSentence(sentence: string | null, subject: string): string {
   return sentence;
 }
 
-export interface DeliveryLogger {
-  info(message: string): void;
-  error(message: string): void;
-}
+export type DeliveryLogger = TaskLogger;
 
 export const DELIVERY_ACTOR_ID = SYSTEM_ACTOR.DELIVERY_TICK;
 
@@ -98,11 +97,19 @@ type PreparedPost =
   | { readonly ok: true; readonly request: PostRequest }
   | { readonly ok: false; readonly reason: string; readonly outcome: LaneOutcome };
 
-export function textPostedFor(request: PostRequest): string | null {
+export interface ScannableText {
+  readonly text: string | null;
+
+  readonly cause: string | null;
+}
+
+export function textPostedFor(request: PostRequest): ScannableText {
   try {
-    return `${request.fallbackText}\n${JSON.stringify(request.blocks)}`;
-  } catch {
-    return null;
+    return { text: `${request.fallbackText}\n${JSON.stringify(request.blocks)}`, cause: null };
+  } catch (error) {
+    // A serialisation throw is a renderer bug, not a PII block. Discarding it made the
+    // two indistinguishable in the logs, and the outcome counts it as blocked_by_pii.
+    return { text: null, cause: describeError(error) };
   }
 }
 
@@ -128,14 +135,14 @@ function prepare(
   }
 
   const scannable = textPostedFor(request);
-  if (scannable === null) {
+  if (scannable.text === null) {
     logger.error(
-      `delivery tick: finding ${finding.findingId} produced a message the residual check could not read, so it was held back`,
+      `delivery tick: finding ${finding.findingId} produced a message the residual check could not read, so it was held back — ${scannable.cause ?? "no cause reported"}`,
     );
     return { ok: false, reason: COULD_NOT_POST, outcome: "blocked_by_pii" };
   }
 
-  const scan = scanResidualPii(scannable);
+  const scan = scanResidualPii(scannable.text);
   const [first] = scan.findings;
   if (!scan.clean && first) {
      

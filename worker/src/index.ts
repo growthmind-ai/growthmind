@@ -24,6 +24,7 @@ import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { createDeliveryLaneSource } from "./delivery-lane-source";
 import { TASK } from "./task-names";
+import { taskLoggerFor } from "./task-logger";
 import type {
   AnalysisLaneSource,
   AnalysisLogger,
@@ -92,14 +93,7 @@ async function resolveDeliveryComposition(): Promise<DeliveryComposition | null>
   }
 
   return {
-    lanes: createDeliveryLaneSource({
-      db,
-
-      logger: {
-        info: (message) => logger.info(message),
-        error: (message) => logger.error(message),
-      },
-    }),
+    lanes: createDeliveryLaneSource({ db, logger: taskLoggerFor(logger) }),
     posterFor: makePosterFor(db, env),
   };
 }
@@ -129,13 +123,7 @@ function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
 
 function resolveAnalysisLanes(): AnalysisLaneSource | null {
   const { db } = resolveResources();
-  return createAnalysisLaneSource({
-    db,
-    logger: {
-      info: (message) => logger.info(message),
-      error: (message) => logger.error(message),
-    },
-  });
+  return createAnalysisLaneSource({ db, logger: taskLoggerFor(logger) });
 }
 
 function resolveAnalysisComposition(): AnalysisComposition | null {

@@ -30,6 +30,7 @@ import {
   resolveCredentialKey,
 } from "@growthmind/shared";
 
+import { isolated, type TaskLogger } from "../task-logger";
 import {
   MAX_CONNECTIONS_PER_RUN,
   MAX_RUN_DURATION_MS,
@@ -37,10 +38,7 @@ import {
   resolvePollPlan,
 } from "./poll-plan";
 
-export interface PollLogger {
-  info(message: string): void;
-  error(message: string): void;
-}
+export type PollLogger = TaskLogger;
 
 export interface SessionSourcePollDeps {
   db: ScopedDb;
@@ -251,14 +249,11 @@ async function pollConnection(
     backfillBefore = passOutcome.backfillBefore;
 
     if (passOutcome.sawEvents && isOnboardingPlan(plan)) {
-      try {
-        await deps.requestAnalysis.requestForProject({ projectId: connection.projectId });
-      } catch (error) {
-         
-        deps.logger.error(
-          `session source poll: connection ${connection.id} persisted new events but the fast analysis could not be requested, so this project waits for the hourly check — ${describeError(error)}`,
-        );
-      }
+      await isolated(
+        deps.logger,
+        `session source poll: connection ${connection.id} persisted new events but the fast analysis could not be requested, so this project waits for the hourly check`,
+        () => deps.requestAnalysis.requestForProject({ projectId: connection.projectId }),
+      );
     }
 
     if (passOutcome.sawEvents) {
@@ -378,18 +373,17 @@ async function runOnePass(input: {
       ...telemetry,
     });
 
-    try {
-      await connections.recordHealth(connection.id, {
-        health: "healthy",
-        reasonCode: null,
-        reasonMessage: null,
-        checkedAt: finishedAt,
-      });
-    } catch (error) {
-      deps.logger.error(
-        `session source poll: connection ${connection.id} polled successfully but its health badge could not be updated — ${describeError(error)}`,
-      );
-    }
+    await isolated(
+      deps.logger,
+      `session source poll: connection ${connection.id} polled successfully but its health badge could not be updated`,
+      () =>
+        connections.recordHealth(connection.id, {
+          health: "healthy",
+          reasonCode: null,
+          reasonMessage: null,
+          checkedAt: finishedAt,
+        }),
+    );
 
     return {
       ok: true,
@@ -465,6 +459,13 @@ async function finishFailed(
   const finishedAt = deps.now();
   const message = input.message ?? CONNECT_REFUSAL_MESSAGES[input.code];
 
+  // Two writes, two catches. Bundled, a health-badge throw was reported as "could not
+  // record its failed run" while the run had in fact been recorded — the terminal state
+  // and the badge fail for different reasons and read differently to whoever is paged.
+  // The badge is attempted either way: the connection is failing whether or not its run
+  // row landed, and a stale "healthy" badge is the worse of the two wrong answers.
+  let recorded = true;
+
   try {
     await input.pollRuns.finish(input.runId, {
       status: "failed",
@@ -473,18 +474,26 @@ async function finishFailed(
       failureMessage: message,
       ...input.counts,
     });
-    await input.connections.recordHealth(input.connection.id, {
-      health: "failing",
-      reasonCode: input.code,
-      reasonMessage: message,
-      checkedAt: finishedAt,
-    });
   } catch (error) {
-     
+    recorded = false;
     deps.logger.error(
       `session source poll: connection ${input.connection.id} could not record its failed run — ${describeError(error)}`,
     );
   }
+
+  await isolated(
+    deps.logger,
+    recorded
+      ? `session source poll: connection ${input.connection.id} recorded its failed run but its health badge could not be updated`
+      : `session source poll: connection ${input.connection.id} could not record its failed run, and its health badge could not be updated either`,
+    () =>
+      input.connections.recordHealth(input.connection.id, {
+        health: "failing",
+        reasonCode: input.code,
+        reasonMessage: message,
+        checkedAt: finishedAt,
+      }),
+  );
 }
 
 async function recordUnattemptedFailure(

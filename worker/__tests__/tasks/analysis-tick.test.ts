@@ -423,6 +423,8 @@ function harness(options: {
   lanes?: readonly AnalysisLane[];
   summariser?: CountingSummariser | null;
   cap?: number;
+
+  ledgerThrows?: boolean;
 }): Harness {
   const findings = createFakeFindings();
   const runs = createFakeRuns();
@@ -443,7 +445,15 @@ function harness(options: {
         summariser === null ? null : { port: summariser.port, resolvedModelId: MODEL_ID },
       findingsFor: findings.repoFor,
       runsFor: runs.repoFor,
-      ledgerFor: ledger.serviceFor,
+      ledgerFor:
+        options.ledgerThrows === true
+          ? (ctx: TenantContext) => ({
+              ...ledger.serviceFor(ctx),
+              recordSignature: () => {
+                throw new Error("o11-ledger-write-refused");
+              },
+            })
+          : ledger.serviceFor,
       projectCap: options.cap === undefined ? 12 : options.cap,
        
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
@@ -1050,6 +1060,27 @@ test("the same candidate derives the same signature across two ticks with differ
   for (const run of runs) {
     expect(TERMINAL).toContain(String(run.status));
   }
+});
+
+test("a ledger that throws still leaves the finding persisted and the run completed", async () => {
+  const h = harness({ ledgerThrows: true });
+
+  const summary = await runAnalysisTick(h.deps);
+
+  // The finding is the load-bearing record; the signature is a dedup cache written
+  // after it. A cache write must never cost the run its terminal state.
+  expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeDefined();
+  expect(summary.lanesErrored).toBe(0);
+
+  // Not TERMINAL: `failed` is terminal too, so this would pass on a run the ledger
+  // throw had aborted — which is the regression the test is named for.
+  const closed = h.runs.rows().filter((row) => row.status === "completed");
+  expect(closed.length).toBeGreaterThan(0);
+
+  expect(
+    h.logs().some((line) => line.includes("its identity could not be filed")),
+  ).toBe(true);
+  expect(h.logs().some((line) => line.includes("o11-ledger-write-refused"))).toBe(true);
 });
 
 test("a candidate whose surface cannot enter a permanent identity is refused without aborting the run", async () => {

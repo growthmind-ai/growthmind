@@ -34,6 +34,7 @@ import {
 } from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "../src/analysis-cap";
 import { createAnalysisLaneSource } from "../src/analysis-lane-source";
+import { isolated } from "../src/task-logger";
 import type {
   AnalysisLane,
   AnalysisLaneSource,
@@ -46,10 +47,8 @@ import { seedPollableWorkspace } from "./helpers/wire-fixtures";
 const OWNER_TRIGGER = "ADD Wave 3 (worker/src/tasks/onboarding-analysis.ts, AD-11)";
 const OWNER_LANE = "ADD Wave 3 (worker/src/tasks/analysis-tick.ts — export runAnalysisLane, AD-9)";
 const OWNER_SOURCE = "ADD Wave 3 (worker/src/analysis-lane-source.ts — laneForProject, AD-10)";
-const OWNER_POLL = "ADD Wave 3 (worker/src/tasks/session-source-poll.ts — the trigger call, AD-11)";
 
 const TRIGGER_SOURCE_PATH = "worker/src/tasks/onboarding-analysis.ts";
-const POLL_SOURCE_PATH = "worker/src/tasks/session-source-poll.ts";
 
 type MirrorLaneOutcome = "completed" | "failed" | "already_running";
 
@@ -928,39 +927,44 @@ test("the trigger writes no marker that suppresses or reschedules the hourly run
   expect(suppressionMarkersIn(source)).toEqual([]);
 });
 
-test("a trigger that throws leaves the poll successful", () => {
-  const withGuard = `
-    try {
-      await deps.requestAnalysis.requestForProject({ projectId: connection.projectId });
-    } catch (error) {
-      deps.logger.error("could not request analysis");
-    }
-  `;
-  const withoutGuard = `
-    await deps.requestAnalysis.requestForProject({ projectId: connection.projectId });
-  `;
+// The guard this replaces was a source scan: it found the FIRST `requestForProject`
+// — the interface declaration — then matched any `try {` before it and any `catch`
+// after it anywhere in the file. Unrelated blocks satisfied both, so it passed
+// whatever the call site did. The behaviour it meant to pin is asserted for real in
+// onboarding-trigger-wire.test.ts ("a failing trigger leaves the poll run completed
+// and the watermark advanced"); this covers the mechanism that now carries it.
+test("a side effect that throws is logged with its cause and does not reach the caller", async () => {
+  const lines: string[] = [];
+  const logger = {
+    info: () => undefined,
+    error: (message: string) => void lines.push(message),
+  };
 
-  expect(callIsGuarded(withGuard)).toBe(true);
-  expect(callIsGuarded(withoutGuard)).toBe(false);
-
-  const source = readSourceUnderConstruction({
-    repoRelativePath: POLL_SOURCE_PATH,
-    ownedBy: OWNER_POLL,
+  const survived = await isolated(logger, "session source poll: the badge did not update", () => {
+    throw new Error("o13-badge-write-refused");
   });
 
-  assertUnderConstruction(source.includes("requestForProject"), {
-    contract:
-      "SessionSourcePollDeps.requestAnalysis — the AnalysisTrigger port, called from pollConnection",
-    ownedBy: OWNER_POLL,
-  });
+  expect(survived).toBe(false);
+  expect(lines.length).toBe(1);
 
-  expect(callIsGuarded(source)).toBe(true);
+  // The sentence a person reads, and the cause an engineer needs, in one line.
+  expect(lines[0]).toContain("the badge did not update");
+  expect(lines[0]).toContain("o13-badge-write-refused");
 });
 
-function callIsGuarded(source: string): boolean {
-  const at = source.indexOf("requestForProject");
-  if (at < 0) return false;
-  const before = source.slice(0, at);
-  const after = source.slice(at);
-  return /\btry\b\s*\{/.test(before) && /\bcatch\b/.test(after);
-}
+test("a side effect that succeeds logs nothing and reports success", async () => {
+  const lines: string[] = [];
+  const logger = {
+    info: () => undefined,
+    error: (message: string) => void lines.push(message),
+  };
+
+  let ran = false;
+  const survived = await isolated(logger, "session source poll: unused sentence", async () => {
+    ran = true;
+  });
+
+  expect(survived).toBe(true);
+  expect(ran).toBe(true);
+  expect(lines).toEqual([]);
+});

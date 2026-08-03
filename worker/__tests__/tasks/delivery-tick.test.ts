@@ -503,23 +503,30 @@ test("the residual gate scans the exact text the poster is handed", async () => 
   expect(request).toBeDefined();
 
   const scanned = textPostedFor(request as PostRequest);
-  expect(scanned).not.toBeNull();
-  expect(scanned).toContain((request as PostRequest).fallbackText);
-   
+  expect(scanned.text).not.toBeNull();
+  expect(scanned.text).toContain((request as PostRequest).fallbackText);
+
   for (const block of (request as PostRequest).blocks) {
     const text = (block as { text: string }).text;
-    expect(scanned).toContain(JSON.stringify(text).slice(1, -1));
+    expect(scanned.text).toContain(JSON.stringify(text).slice(1, -1));
   }
 });
 
 test("a message the residual gate cannot read is refused rather than cleared", async () => {
-   
+
   const circular: { text: string; self?: unknown } = { text: "hello" };
   circular.self = circular;
 
-  expect(
-    textPostedFor({ channelId: CHANNEL, blocks: [circular], fallbackText: "hello" }),
-  ).toBeNull();
+  const scanned = textPostedFor({ channelId: CHANNEL, blocks: [circular], fallbackText: "hello" });
+
+  expect(scanned.text).toBeNull();
+
+  // The cause travels with the refusal: a serialisation bug and a real PII block
+  // both end as blocked_by_pii, so the log line is the only thing telling them apart.
+  // Not pinned to the engine's wording — runtimes phrase a cyclic-structure throw
+  // differently — only to the cause being carried rather than discarded.
+  expect(scanned.cause).not.toBeNull();
+  expect((scanned.cause ?? "").length).toBeGreaterThan(0);
 });
 
 test("nothing_today is logged with its reason, posts nothing, and writes no delivery row", async () => {

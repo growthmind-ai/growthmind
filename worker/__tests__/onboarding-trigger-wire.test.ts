@@ -16,11 +16,15 @@ import {
   type PollPlan,
 } from "../src/tasks/poll-plan";
 import { runSessionSourcePoll } from "../src/tasks/session-source-poll";
-import type { SessionSourcePollDeps } from "../src/tasks/session-source-poll";
+import type {
+  SessionSourcePollDeps,
+  SessionSourcePollSummary,
+} from "../src/tasks/session-source-poll";
 import {
   createFakeClock,
   createFakePostHog,
   createPollDeps,
+  createRecordingLogger,
   encryptTestCredential,
   fakeEvent,
   seedPollableWorkspace,
@@ -28,6 +32,7 @@ import {
   testServerEnv,
   type FakeEventsPage,
   type FakePostHog,
+  type RecordingLogger,
   type SeededConnection,
   type SeededWorkspace,
 } from "./helpers/wire-fixtures";
@@ -138,9 +143,15 @@ const emptyPage: FakeEventsPage = { results: [], next: null };
 async function invokeTheHandler(params: {
   posthog: FakePostHog;
   trigger: RecordingTrigger;
-}): Promise<void> {
+  logger?: RecordingLogger;
+}): Promise<SessionSourcePollSummary> {
   const clock = createFakeClock(NOW);
-  const base = createPollDeps({ db, fetch: params.posthog.fetch, clock });
+  const base = createPollDeps({
+    db,
+    fetch: params.posthog.fetch,
+    clock,
+    ...(params.logger ? { logger: params.logger } : {}),
+  });
 
   assertUnderConstruction(pollDepsDeclareTrigger(), {
     contract:
@@ -150,7 +161,7 @@ async function invokeTheHandler(params: {
   });
 
   const deps: MirrorPollDepsWithTrigger = { ...base, requestAnalysis: params.trigger };
-  await runSessionSourcePoll(deps);
+  return runSessionSourcePoll(deps);
 }
 
 function pollDepsDeclareTrigger(): boolean {
@@ -229,8 +240,9 @@ test("a failing trigger leaves the poll run completed and the watermark advanced
   const seeded = await seedConnected({ connectedAt: INSIDE_WINDOW });
   const trigger = createRecordingTrigger({ throws: true });
   const posthog = createFakePostHog({ events: () => pageWithEvents("d8") });
+  const logger = createRecordingLogger();
 
-  await invokeTheHandler({ posthog, trigger });
+  const summary = await invokeTheHandler({ posthog, trigger, logger });
 
   expect(trigger.requested).toEqual([seeded.projectId]);
 
@@ -240,6 +252,15 @@ test("a failing trigger leaves the poll run completed and the watermark advanced
 
   const connection = await connectionRow(seeded.connectionId);
   expect(connection?.watermarkAt).not.toBeNull();
+
+  // The run row and the watermark are both written BEFORE the trigger fires, so they
+  // stay true even unguarded. These two are what actually pin the guard: an escaping
+  // throw is caught one frame up as a failed connection, and says so.
+  expect(summary.connectionsFailed).toBe(0);
+  expect(summary.connectionsPolled).toBeGreaterThan(0);
+  expect(
+    logger.errors.some((line) => line.includes("the fast analysis could not be requested")),
+  ).toBe(true);
 });
 
 test("isOnboardingPlan is true for the four-pass plan and false for the one-pass plan", async () => {
