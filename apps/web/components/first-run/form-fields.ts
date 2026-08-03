@@ -1,6 +1,18 @@
+import type { ChangeEvent, Dispatch, SetStateAction } from "react";
+
 import type { FieldDescriptor } from "@growthmind/shared";
 
 export type FieldValues = Record<string, string>;
+
+export function changeField(
+  setValues: Dispatch<SetStateAction<FieldValues>>,
+  id: string,
+): (event: ChangeEvent<HTMLInputElement>) => void {
+  return (event) => {
+    const next = event.currentTarget.value;
+    setValues((current) => ({ ...current, [id]: next }));
+  };
+}
 
 export function initialValues(fields: readonly FieldDescriptor[]): FieldValues {
   const values: FieldValues = {};

@@ -54,6 +54,7 @@ export const LANDING_PAGE = entry("apps/web/app/page.tsx", OWNER_7A);
 export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
   STUB_STEP,
   STEP_ROW,
+  entry("apps/web/components/first-run/FieldRow.tsx", OWNER_7A),
   entry("apps/web/components/first-run/ConnectAnalyticsForm.tsx", OWNER_7A),
   COUNTER_GRID,
   entry("apps/web/components/first-run/PrivacyReceipt.tsx", OWNER_7A),
