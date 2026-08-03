@@ -39,6 +39,15 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # Growthmind's own analytics, forwarded to the BUILD and not to the runtime
+      # environment below: Next.js inlines NEXT_PUBLIC_* when it compiles. Valueless
+      # for the same reason as the Slack pair — unset is the supported self-host
+      # state, and it disables analytics rather than failing.
+      args:
+        NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN:
+        NEXT_PUBLIC_POSTHOG_HOST:
+        NEXT_PUBLIC_POSTHOG_ASSETS_HOST:
+        NEXT_PUBLIC_POSTHOG_UI_HOST:
     ports:
       - "3000:3000"
     environment:
