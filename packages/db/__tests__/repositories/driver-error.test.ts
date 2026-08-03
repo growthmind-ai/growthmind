@@ -1,6 +1,5 @@
-// The one safe way to put a failed query in a log — and, until this file, the only
-// function in the package with no direct test at all, while eight call sites across
-// `apps/web` and `worker` depended on it (B-039).
+// B-039: the one safe way to put a failed query in a log, and until this file the only
+// function in the package with no direct test while eight call sites depended on it.
 import { describe, expect, test } from "bun:test";
 
 import { describeDriverError } from "../../src/repositories/driver-error";
@@ -20,9 +19,8 @@ const queryFailure = (driverMessage = DRIVER_SAID) =>
 
 describe("describeDriverError", () => {
   test("CONTROL: the real driver error carries the statement and its parameters in `message`", () => {
-    // The premise every row below rests on. A fixture hand-built from
-    // `Object.assign(new Error(safe), { query })` asserts against a shape the runtime
-    // never produces, and passes while the real error leaks.
+    // The premise every row below rests on: a hand-built fixture asserts against a
+    // shape the runtime never produces, and passes while the real error leaks.
     const failure = queryFailure();
 
     expect(failure.message).toContain(STATEMENT);
@@ -40,9 +38,7 @@ describe("describeDriverError", () => {
   });
 
   test("a query failure WRAPPED one level down is refused too", () => {
-    // Reading only the top level, `carriesStatement` was false here and the fallback
-    // preferred the cause's message — handing back the whole statement through the
-    // function whose job is to withhold it.
+    // Reading only the top level, the fallback preferred the cause message here.
     const wrapped = new Error("could not persist what it fetched", { cause: queryFailure() });
     const described = describeDriverError(wrapped);
 
@@ -52,8 +48,7 @@ describe("describeDriverError", () => {
   });
 
   test("a query failure with no readable cause still names its code", () => {
-    // "the database refused the query" alone is a sentence an operator can do nothing
-    // with, and the code names no bound value.
+    // The bare refusal is a sentence an operator can do nothing with.
     const blind = queryFailure("");
     Object.assign(blind.cause as object, { code: "40P01" });
 
@@ -85,7 +80,6 @@ describe("describeDriverError", () => {
   });
 
   test("no shape in the corpus ever yields an empty description", () => {
-    // An empty log line is the same failure as a leaked one: nobody can act on it.
     const corpus: readonly unknown[] = [
       queryFailure(),
       queryFailure(""),
