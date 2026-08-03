@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { isDeliveryAddress, ONBOARDING_MESSAGES, type FieldDescriptor } from "@growthmind/shared";
 
+import { CopyableCommand } from "@/components/ui/CopyableCommand";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { slackOAuthOutcomeOf, type SlackOAuthOutcome } from "@/lib/first-run/slack-oauth-outcome";
 
@@ -75,6 +76,7 @@ interface ChannelPickerProps {
   readonly channels: readonly SlackChannelChoice[] | null;
   readonly value: string | null;
   readonly onChange: (value: string | null) => void;
+  readonly onRefresh: () => void;
   readonly disabled: boolean;
 
   // A list still in flight. Without it the wait renders as a greyed dropdown
@@ -82,28 +84,54 @@ interface ChannelPickerProps {
   readonly loading: boolean;
 }
 
-// An empty picker is not a picker: the empty answer replaces the control.
+// An empty picker is not a picker: the empty answer replaces the control. The
+// invite line renders under BOTH, because a list with channels in it is just as
+// likely to be missing the private one the founder came here to choose.
 export function ChannelPicker(props: ChannelPickerProps): ReactNode {
-  if (noChannelsVisible(props.channels)) {
-    return (
-      <Text size="sm" c="dimmed">
-        {ONBOARDING_MESSAGES.slackNoChannelsVisible}
-      </Text>
-    );
-  }
-
   return (
-    <Select
-      label={ONBOARDING_MESSAGES.channelLabel}
-      description={ONBOARDING_MESSAGES.slackChannelPickPrompt}
-      placeholder={ONBOARDING_MESSAGES.channelPlaceholder}
-      data={(props.channels ?? []).map((channel) => ({ value: channel.id, label: channel.name }))}
-      value={props.value}
-      onChange={props.onChange}
-      disabled={props.disabled || props.channels === null}
-      rightSection={props.loading ? <Loader size="xs" /> : null}
-      searchable
-    />
+    <Stack gap="xs">
+      {noChannelsVisible(props.channels) ? (
+        <Text size="sm" c="dimmed">
+          {ONBOARDING_MESSAGES.slackNoChannelsVisible}
+        </Text>
+      ) : (
+        <Select
+          label={ONBOARDING_MESSAGES.channelLabel}
+          description={ONBOARDING_MESSAGES.slackChannelPickPrompt}
+          placeholder={ONBOARDING_MESSAGES.channelPlaceholder}
+          data={(props.channels ?? []).map((channel) => ({
+            value: channel.id,
+            label: channel.name,
+          }))}
+          value={props.value}
+          onChange={props.onChange}
+          disabled={props.disabled || props.channels === null}
+          rightSection={props.loading ? <Loader size="xs" /> : null}
+          searchable
+        />
+      )}
+
+      <Text size="sm" c="dimmed">
+        {ONBOARDING_MESSAGES.slackPrivateChannelHint}
+      </Text>
+
+      <CopyableCommand command={ONBOARDING_MESSAGES.slackInviteCommand} />
+
+      {/* The list is fetched once on mount, so an invite made after that is
+          invisible until something asks Slack again. Offered in every picking
+          state, not only the broken ones: a healthy list goes stale the same way. */}
+      <Group justify="flex-start">
+        <Button
+          variant="default"
+          size="compact-sm"
+          onClick={props.onRefresh}
+          disabled={props.disabled}
+          style={tapTargetStyle}
+        >
+          {ONBOARDING_MESSAGES.refreshChannels}
+        </Button>
+      </Group>
+    </Stack>
   );
 }
 
@@ -167,12 +195,9 @@ export function SlackConnection(props: SlackConnectionProps) {
   const named = props.slackWorkspaceName;
   const workspaceName = typeof named === "string" && named.trim() !== "" ? named : null;
 
-  const listUnavailable = picking && channels === null && failure !== null;
-  const listEmpty = picking && noChannelsVisible(channels);
-
-  // Two list states, one mechanism and two sentences: asking again is the fix.
-  const relistable = listUnavailable || listEmpty;
-  const retryable = relistable || (outcome !== null && !outcome.ok && outcome.retryable);
+  // Re-listing is the picker's own control now, offered in every picking state
+  // rather than only the two broken ones, so this button means the post alone.
+  const retryable = postFailed && outcome?.retryable === true;
 
   // AD-7: nothing is cached — a founder told to pick very often makes one first.
   useEffect(() => {
@@ -307,17 +332,17 @@ export function SlackConnection(props: SlackConnectionProps) {
     setFailure(null);
     setOutcome(null);
 
-    // The old answer goes back to "we do not know" first, so a failed re-list
-    // leaves no stale claim on screen.
-    if (relistable) {
-      setChannels(null);
-      setListingAttempt((attempt) => attempt + 1);
-      return;
-    }
-
     setPending(true);
     await post();
     setPending(false);
+  }
+
+  // The old answer goes back to "we do not know" first, so a failed re-list
+  // leaves no stale claim on screen.
+  function relist(): void {
+    setFailure(null);
+    setChannels(null);
+    setListingAttempt((attempt) => attempt + 1);
   }
 
   async function skip(): Promise<void> {
@@ -369,6 +394,7 @@ export function SlackConnection(props: SlackConnectionProps) {
           channels={channels}
           value={choice}
           onChange={setChoice}
+          onRefresh={relist}
           disabled={locked}
           loading={channels === null && failure === null}
         />

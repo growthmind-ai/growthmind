@@ -171,7 +171,20 @@ export const SLACK_CHANNEL_PICK_PROMPT =
 // A list that arrived empty is not a list that did not arrive: the next action for
 // one is "press again", for this one it is "invite the bot in Slack".
 export const SLACK_NO_CHANNELS_VISIBLE =
-  "Your Slack workspace has no channels the bot can see yet. Invite the bot to the channel you want us to post in, then try again.";
+  "The bot has not been invited to any channel in your workspace yet.";
+
+// Slack shows a bot only the private channels it has been invited to, and no scope
+// changes that — so the picker's own absence is the thing that needs explaining.
+export const SLACK_PRIVATE_CHANNEL_HINT =
+  "This list only shows channels the bot has been invited to. To use a private channel, paste this into it in Slack, then refresh the list.";
+
+export const SLACK_INVITE_COMMAND = "/invite @Growthmind";
+
+export const REFRESH_CHANNELS_LABEL = "Refresh channels";
+
+export const COPY_LABEL = "Copy";
+
+export const COPIED_LABEL = "Copied";
 
 export const FIELD_BOT_TOKEN_LABEL = "Bot token";
 
@@ -415,6 +428,11 @@ export const ONBOARDING_MESSAGES = {
   slackWorkspaceConnectedTemplate: SLACK_WORKSPACE_CONNECTED_TEMPLATE,
   slackChannelPickPrompt: SLACK_CHANNEL_PICK_PROMPT,
   slackNoChannelsVisible: SLACK_NO_CHANNELS_VISIBLE,
+  slackPrivateChannelHint: SLACK_PRIVATE_CHANNEL_HINT,
+  slackInviteCommand: SLACK_INVITE_COMMAND,
+  refreshChannels: REFRESH_CHANNELS_LABEL,
+  copy: COPY_LABEL,
+  copied: COPIED_LABEL,
   botTokenLabel: FIELD_BOT_TOKEN_LABEL,
   botTokenPlaceholder: FIELD_BOT_TOKEN_PLACEHOLDER,
   channelIdLabel: FIELD_CHANNEL_ID_LABEL,
@@ -525,6 +543,11 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SLACK_WORKSPACE_CONNECTED_TEMPLATE,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_NO_CHANNELS_VISIBLE,
+  SLACK_PRIVATE_CHANNEL_HINT,
+  SLACK_INVITE_COMMAND,
+  REFRESH_CHANNELS_LABEL,
+  COPY_LABEL,
+  COPIED_LABEL,
   FIELD_BOT_TOKEN_LABEL,
   FIELD_BOT_TOKEN_PLACEHOLDER,
   FIELD_CHANNEL_ID_LABEL,
