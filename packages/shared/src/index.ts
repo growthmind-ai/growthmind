@@ -242,6 +242,7 @@ export {
   type DeliveryStatus,
   type ResidualPiiKind,
 } from "./delivery/types";
+export { isDeliveryAddress, NON_ADDRESS_SENTINELS, NON_ADDRESS_VALUES } from "./delivery/address";
 export {
   NOTHING_TODAY_LEAD,
   DELIVERY_DECISION_MESSAGES,

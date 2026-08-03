@@ -1,6 +1,6 @@
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
-import { decryptSecret } from "@growthmind/shared";
-import { eq, isNull } from "drizzle-orm";
+import { decryptSecret, NON_ADDRESS_VALUES } from "@growthmind/shared";
+import { eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import { orgCrud } from "./crud";
@@ -81,6 +81,13 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
 
 const activeRow = () => eq(slackConnections.isActive, true);
 
+// `isDeliveryAddress` inverted, in SQL, over the shared list.
+const noAddressYet = () =>
+  or(
+    isNull(slackConnections.channelId),
+    inArray(sql`lower(btrim(${slackConnections.channelId}))`, [...NON_ADDRESS_VALUES]),
+  );
+
 export function createSlackConnectionsRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
@@ -113,11 +120,12 @@ export function createSlackConnectionsRepo(
     },
 
     async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
-      // `channel_id IS NULL` makes this a fill, not a re-point: the delivery dedup key is
-      // `(organization_id, finding_id, channel_id)`, so moving the channel would fork every
-      // recorded delivery identity and silently replay the org's backlog. Re-pointing needs
-      // a migration.
-      const row = await c.update({ channelId }, activeRow(), isNull(slackConnections.channelId));
+      // A FILL, NEVER A RE-POINT: the delivery dedup key is
+      // `(organization_id, finding_id, channel_id)`, so moving a chosen channel forks every
+      // recorded identity and replays the org's backlog. Filling a sentinel forks nothing —
+      // it was never an identity — and matching NULL alone left such a row unfillable for
+      // good, with no disconnect control anywhere.
+      const row = await c.update({ channelId }, activeRow(), noAddressYet());
 
       return row ? toSlackConnectionSummary(row) : null;
     },
