@@ -17,7 +17,7 @@ import {
   type MeasuredCountRow,
   type ScopedDb,
 } from "@growthmind/db";
-import { driverQueryError } from "@growthmind/db/testing";
+import { driverQueryError, seedAnalysisRun } from "@growthmind/db/testing";
 import {
   DELIVERY_LANE_FAILURE_CLAUSE,
   deliveryFailureSentence,
@@ -46,7 +46,6 @@ import {
   toFirstRunDeliveryState,
 } from "../../lib/first-run/status";
 
-import { seedAnalysisRun } from "../../../../packages/db/__tests__/helpers/fixtures";
 import {
   bodyOf,
   clockAt,

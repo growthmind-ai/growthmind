@@ -1,4 +1,11 @@
-export { createTestDb, createBareTestDb, type TestDb, type TestDbHandle } from "./db";
+export {
+  createTestDb,
+  createBareTestDb,
+  driverQueryError,
+  type DriverQueryFailure,
+  type TestDb,
+  type TestDbHandle,
+} from "./db";
 
 export {
   makeTenantContext,
