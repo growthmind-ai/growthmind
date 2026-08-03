@@ -72,9 +72,9 @@ const CLAIMS: readonly {
   },
   {
     file: "README.md",
-    claim: /experiments from \$20\/mo/i,
+    claim: /\$120|\$950|Activation & Retention|The Full Shift|one active experiment/i,
     holdsWhen: () => false,
-    because: "$20/mo buys hosting, not experiments; one active experiment is free",
+    because: "retired pricing: finding is free, $20/mo includes $20 of usage, custom above that",
   },
   {
     file: "README.md",

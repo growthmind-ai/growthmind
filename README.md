@@ -21,9 +21,9 @@
 
 ---
 
-Anyone can ship a product now. A coding agent will build whatever you describe. What it won't tell you is why nobody finishes your onboarding, why they never come back, or what your ICP actually needed instead, and no dashboard tells you either, because dashboards only describe users you already lost, to whoever remembers to check them.
+Your coding assistant can build anything in an afternoon. What it can't tell you is why nobody finishes your onboarding, why they never come back, or what your ICP actually needed instead, and no dashboard tells you either, because dashboards only describe users you already lost, to whoever remembers to check them.
 
-Growthmind is an open-source growth engine that closes that gap. It watches real people use your product, finds where they get stuck, and tells you. One finding at a time, in Slack, with the session recording and the numbers attached. Then it finishes the job: the fix gets specced for the coding agent you already use, verified once it ships, measured against a criterion set in advance, and closed with a straight answer, **keep, kill, or inconclusive**.
+Growthmind is an open-source growth engine that closes that gap. It challenges the brief and simulates your audience before anyone writes code, then watches real people use your product, finds where they get stuck, and tells you. One finding at a time, in Slack, with the session recording and the numbers attached. Then it finishes the job: the fix gets specced for the coding agent you already use, verified once it ships, measured against a criterion set in advance, and closed with a straight answer, **keep, kill, or inconclusive**.
 
 > **Status: pre-release, and the loop below does not close yet.**
 >
@@ -160,9 +160,10 @@ what publishing them is for.
   keys, Postgres, and somewhere to run a container. It sends us nothing. No
   usage counters, no version pings, no opt-in switch to find.
   [How to verify that yourself](docs/telemetry.md).
-- **Cloud**: the same thing, run for you. Findings and one active experiment are
-  free forever; $20/mo is what running it for you costs beyond that. You are
-  paying for the hosting, never for a feature we withheld,
+- **Cloud**: the same thing, run for you. Finding is free forever. Closing is
+  $20/mo with $20 of usage included each month; going past that is off until
+  you switch it on. Custom plans exist for portfolios and enterprises. You are
+  paying for usage, never for a feature we withheld,
   [growthmind.ai/pricing](https://growthmind.ai/pricing)
 
 ## License
