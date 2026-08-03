@@ -135,6 +135,7 @@ export {
 
 export {
   COUNT_ROLES,
+  IMPACT_ROLE,
   resolveCounts,
   type CountRole,
   type ResolvedCounts,
@@ -195,8 +196,12 @@ export {
   type DeliveredExplanation,
   type SlackMessageInput,
   type SlackBlock,
+  type SlackTextBlock,
+  type SlackActionsBlock,
+  type SlackAction,
   type SlackMessage,
 } from "./delivery/slack-message";
+export { toBlockKit } from "./delivery/block-kit";
 
 export {
   renderFixSpec,
@@ -214,3 +219,13 @@ export {
   type FixSpecInput,
   type CodeShapedMarker,
 } from "./fixes/fix-spec";
+
+export {
+  FIX_SPEC_PAYLOAD_VERSION,
+  UnknownFixSpecPayloadVersionError,
+  serialiseFixSpecInput,
+  rehydrateFixSpecInput,
+  toMeasuredCount,
+  type FixSpecPayload,
+} from "./fixes/rehydrate";
+export { toFindingEvidence } from "./fixes/finding-evidence";

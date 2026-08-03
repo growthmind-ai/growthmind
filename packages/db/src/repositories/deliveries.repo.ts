@@ -4,7 +4,7 @@ import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { deliveries } from "../schema/deliveries";
 import { orgCrud } from "./crud";
 import type { SignatureHex } from "../signatures/hex";
-import type { ScopedExecutor } from "./types";
+import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type DeliveryRecord = typeof deliveries.$inferSelect;
 
@@ -156,4 +156,23 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
       });
     },
   };
+}
+
+export interface InteractionPrincipal {
+  readonly context: TenantContext;
+  readonly findingId: string;
+  readonly projectId: string;
+  readonly deliveryId: string;
+}
+
+const INTERACTION_NOT_IMPLEMENTED =
+  "deliveries.repo: resolveDeliveryForInteraction is not implemented";
+
+export function resolveDeliveryForInteraction(
+  db: ScopedDb,
+  args: { channelId: string; messageRef: string },
+): Promise<InteractionPrincipal | null> {
+  void db;
+  void args;
+  throw new Error(INTERACTION_NOT_IMPLEMENTED);
 }

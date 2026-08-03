@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import type { BaseEnv } from "../src/env";
-import { parseBaseEnv, parseWebEnv, parseWorkerEnv } from "../src/env";
+import {
+  parseBaseEnv,
+  parseWebEnv,
+  parseWorkerEnv,
+  webEnvSchema,
+  workerEnvSchema,
+} from "../src/env";
 import { loadUnderConstruction } from "./onboarding/module-under-construction";
 
 const PROD_COMPLETE = {
@@ -244,6 +250,31 @@ describe("parseWorkerEnv", () => {
   // the split cannot pass by having made the variable optional everywhere.
   test("the same environment is still refused by the web process", () => {
     expect(() => parseWebEnv(WORKER_PROD_COMPLETE)).toThrow(/BETTER_AUTH_URL/);
+  });
+
+  // The BETTER_AUTH_URL split above, before the incident rather than after it.
+  test("requires the Slack signing secret of the web process only", () => {
+    const SECRET = "slack-signing-secret-never-real";
+
+    expect(Object.keys(workerEnvSchema.shape)).not.toContain("SLACK_SIGNING_SECRET");
+    expect(Object.keys(webEnvSchema.shape)).toContain("SLACK_SIGNING_SECRET");
+
+    expect(WORKER_PROD_COMPLETE).not.toHaveProperty("SLACK_SIGNING_SECRET");
+    expect(parseWorkerEnv(WORKER_PROD_COMPLETE).NODE_ENV).toBe("production");
+
+    // Optional on the web process too — self-host is first-class, and the route refuses in
+    // plain English rather than the process refusing to boot.
+    expect(() => parseWebEnv(PROD_COMPLETE)).not.toThrow();
+
+    const set = parseWebEnv({
+      ...PROD_COMPLETE,
+      SLACK_SIGNING_SECRET: SECRET,
+    }) as unknown as Record<string, unknown>;
+    expect(set.SLACK_SIGNING_SECRET).toBe(SECRET);
+
+    expect(() => parseWebEnv({ ...PROD_COMPLETE, SLACK_SIGNING_SECRET: "" })).toThrow(
+      /SLACK_SIGNING_SECRET/,
+    );
   });
 
   test("production still has no fallbacks for what the worker does read", () => {

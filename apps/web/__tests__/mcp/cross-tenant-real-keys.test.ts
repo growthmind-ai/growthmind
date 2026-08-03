@@ -1,10 +1,26 @@
-import { createApiKeysRepo, resolveApiKeyForRead } from "@growthmind/db";
-import { createTestDb, type TestDbHandle } from "@growthmind/db/testing";
+import { createHmac } from "node:crypto";
+
+import { serialiseFixSpecInput } from "@growthmind/core";
+import {
+  createApiKeysRepo,
+  createFindingPayloadsRepo,
+  createFindingsRepo,
+  createFixesService,
+  resolveApiKeyForRead,
+} from "@growthmind/db";
+import {
+  createTestDb,
+  seedAnalysisRun,
+  seedMember,
+  seedProject,
+  type TestDbHandle,
+} from "@growthmind/db/testing";
 import { MCP_TOOL, type TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { POST } from "../../app/api/mcp/route";
 import { createApiKeyMcpCredentials } from "../../lib/mcp/credentials";
-import { NOT_FOUND } from "../../lib/mcp/refusals";
+import { NOT_FOUND, UNAVAILABLE } from "../../lib/mcp/refusals";
 import { handleMcpRequest, type McpServerDeps } from "../../lib/mcp/server";
 import {
   buildTestTenantContext,
@@ -13,11 +29,14 @@ import {
   signUpTestUser,
 } from "../tenancy/helpers/auth-fixture";
 import {
+  candidateFor,
   fakeReadPort,
   findingRecordFor,
   fingerprint,
   fixRecordFor,
+  mintRealApiKey,
   openFixRowFor,
+  sseDataLine,
   toolCallRequest,
 } from "./helpers/mcp-fixture";
 
@@ -54,8 +73,11 @@ let ctxB: TenantContext;
 let keyA: string;
 let keyB: string;
 
+const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
+
 beforeAll(async () => {
   dbHandle = await createTestDb();
+  globalForDb.__growthmindDb = dbHandle.db;
   const auth = createTestAuth(dbHandle.db);
 
   const ownerA = await signUpTestUser(auth, {
@@ -94,6 +116,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  delete globalForDb.__growthmindDb;
   await dbHandle.close();
 });
 
@@ -290,5 +313,129 @@ describe("two real organizations, two real credentials, and no way from one to t
 
     expect(resolvedA?.organizationId).not.toBe(ctxB.organizationId);
     expect(resolvedB?.organizationId).not.toBe(ctxA.organizationId);
+  });
+});
+
+const LIVE_SURFACE = "/mcpxk/pricing";
+
+interface LiveFixture {
+  readonly findingId: string;
+  readonly fixId: string;
+}
+
+async function seedLiveFixInOrgB(): Promise<LiveFixture> {
+  const project = await seedProject(dbHandle.db, {
+    organizationId: ctxB.organizationId,
+    name: "Mcpxk Live",
+  });
+  const run = await seedAnalysisRun(dbHandle.db, { ctx: ctxB, projectId: project.id });
+
+  const finding = await createFindingsRepo(dbHandle.db, ctxB).persist({
+    projectId: project.id,
+    runId: run.id,
+    signature: createHmac("sha256", "mcpxk").update(LIVE_SURFACE).digest("hex"),
+    signatureVersion: 1,
+    summarySource: "model_rendered",
+    headline: "People are leaving the pricing page without going any further.",
+    context: ["We saw sessions reach the pricing page and stop there."],
+    finalClass: "confusing",
+    surface: LIVE_SURFACE,
+    surfaceNormalisationVersion: 1,
+    counts: [],
+    confidenceBasis: "threshold_met",
+    windowStart: new Date("2026-06-01T00:00:00.000Z"),
+    windowEnd: new Date("2026-06-08T00:00:00.000Z"),
+    evidenceShape: "mcpxk-live-evidence",
+    evidenceShapeVersion: 1,
+    resolvedModelId: null,
+  });
+
+  await createFindingPayloadsRepo(dbHandle.db, ctxB).upsertFor({
+    findingId: finding.id,
+    payload: serialiseFixSpecInput({ candidate: candidateFor(LIVE_SURFACE), signals: [] }),
+  });
+
+  const opened = await createFixesService(dbHandle.db, ctxB).openFor(finding.id);
+  if (opened.outcome !== "opened" && opened.outcome !== "already_open") {
+    throw new Error(`cross-tenant fixture: openFor answered "${opened.outcome}"`);
+  }
+
+  return { findingId: finding.id, fixId: opened.fix.id };
+}
+
+// WIRE-R10 bans parsed comparison in this suite: a partial match here is how a
+// refusal's byte identity quietly drifts. The frame is returned unparsed and every
+// assertion below reads it as bytes.
+async function liveCall(key: string, tool: string, input: unknown) {
+  const response = await POST(toolCallRequest({ tool, input, key }));
+  const body = await response.text();
+
+  return {
+    status: response.status,
+    body,
+    frame: body.startsWith("event: message") ? sseDataLine(body) : body,
+  };
+}
+
+describe("the mounted route reading real rows for two real organizations", () => {
+  test("refuses org B's fix to org A's key on every tool", async () => {
+    const live = await seedLiveFixInOrgB();
+
+    // The control: without it every assertion below passes on a port that answers nothing.
+    const owned = await liveCall(keyB, MCP_TOOL.GET_FIX, { fixId: live.fixId });
+    expect(owned.frame).toContain(live.fixId);
+    expect(owned.frame).not.toContain(NOT_FOUND.message);
+
+    const ownedList = await liveCall(keyB, MCP_TOOL.LIST_OPEN_FIXES, {});
+    expect(ownedList.body).toContain(live.fixId);
+
+    const foreignList = await liveCall(keyA, MCP_TOOL.LIST_OPEN_FIXES, {});
+    expect(foreignList.body).not.toContain(live.fixId);
+    expect(foreignList.body).toContain('"totalOpen":0');
+
+    for (const [tool, foreignInput, absentInput] of [
+      [MCP_TOOL.GET_FIX, { fixId: live.fixId }, { fixId: NEVER_ISSUED_FIX }],
+      [MCP_TOOL.GET_FINDING, { findingId: live.findingId }, { findingId: NEVER_ISSUED_FINDING }],
+    ] as const) {
+      const foreign = await fingerprint(
+        await POST(toolCallRequest({ tool, input: foreignInput, key: keyA })),
+      );
+      const absent = await fingerprint(
+        await POST(toolCallRequest({ tool, input: absentInput, key: keyA })),
+      );
+
+      expect(foreign).toEqual(absent);
+      expect(foreign.body).toContain(NOT_FOUND.message);
+      expect(foreign.body).not.toContain(UNAVAILABLE.message);
+    }
+  });
+
+  test("reads the same fix through a teammate's own key in the same organization", async () => {
+    const live = await seedLiveFixInOrgB();
+
+    const teammate = await signUpTestUser(createTestAuth(dbHandle.db), {
+      name: "Teammate Mcpxk B",
+      email: "teammate-b-mcpxk@example.com",
+      password: TEST_PASSWORD,
+    });
+    await seedMember(dbHandle.db, {
+      organizationId: ctxB.organizationId,
+      userId: teammate.id,
+      role: "member",
+    });
+    const teammateCtx = await buildTestTenantContext(dbHandle.db, {
+      userId: teammate.id,
+      organizationId: ctxB.organizationId,
+    });
+    const teammateKey = (await mintRealApiKey(dbHandle.db, teammateCtx, "agent-mcpxk-mate")).raw;
+
+    expect(teammateCtx.userId).not.toBe(ctxB.userId);
+    expect(teammateKey).not.toBe(keyB);
+
+    const byOwner = await liveCall(keyB, MCP_TOOL.GET_FIX, { fixId: live.fixId });
+    const byTeammate = await liveCall(teammateKey, MCP_TOOL.GET_FIX, { fixId: live.fixId });
+
+    expect(byTeammate.frame).toContain(live.fixId);
+    expect(byTeammate.frame).toBe(byOwner.frame);
   });
 });

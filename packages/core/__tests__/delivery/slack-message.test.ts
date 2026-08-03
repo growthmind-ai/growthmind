@@ -1,4 +1,8 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
+import { FINDING_BLOCK_ID_PREFIX, GET_IT_FIXED_ACTION_ID } from "@growthmind/shared";
 import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
 import type { ExclusionReason, NothingTodayReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -19,6 +23,8 @@ import {
 import type {
   DeliveryVocabulary,
   Observation,
+  SlackActionsBlock,
+  SlackBlock,
   SlackMessageInput,
 } from "../../src/delivery/slack-message";
 
@@ -419,5 +425,53 @@ describe("describesPeople — the gate on prose that would re-label a session", 
     expect(
       renderSlackMessage(deliver({ surfacePath: "/users/profile" }), VOCABULARY).text,
     ).toContain("/users/profile");
+  });
+});
+
+const ACTION_FINDING_ID = "fnd-t1sm-get-it-fixed";
+
+const DELIVERY_SRC_DIR = join(import.meta.dir, "..", "..", "src", "delivery");
+
+// Wave 2 widens the deliver arm with `findingId`; the assertion is the seam until it does.
+function deliverWithFinding(): SlackMessageInput {
+  return { ...deliver({}), findingId: ACTION_FINDING_ID } as SlackMessageInput;
+}
+
+function actionsBlockOf(blocks: readonly SlackBlock[]): SlackActionsBlock | undefined {
+  return blocks.find((block): block is SlackActionsBlock => block.kind === "actions");
+}
+
+function deliverySources(): readonly { readonly file: string; readonly source: string }[] {
+  return readdirSync(DELIVERY_SRC_DIR)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => ({
+      file: name,
+      source: readFileSync(join(DELIVERY_SRC_DIR, name), "utf8"),
+    }));
+}
+
+describe("renderSlackMessage — the affordance that turns a finding into a fix", () => {
+  test("names the interactivity action id from an exported constant", () => {
+    const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
+
+    expect(actions).toBeDefined();
+    expect(actions?.actions.map((action) => action.actionId)).toEqual([GET_IT_FIXED_ACTION_ID]);
+
+    const sources = deliverySources();
+    expect(sources.length).toBeGreaterThan(1);
+    expect(sources.some((entry) => entry.source.includes("GET_IT_FIXED_ACTION_ID"))).toBe(true);
+
+    const inlined = sources
+      .filter((entry) => entry.source.includes(GET_IT_FIXED_ACTION_ID))
+      .map((entry) => entry.file);
+    expect(inlined).toEqual([]);
+  });
+
+  test("carries the finding identity in the rendered action block", () => {
+    const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
+
+    expect(actions).toBeDefined();
+    expect(actions?.blockId).toBe(`${FINDING_BLOCK_ID_PREFIX}${ACTION_FINDING_ID}`);
+    expect(actions?.actions.map((action) => action.value)).toEqual([ACTION_FINDING_ID]);
   });
 });

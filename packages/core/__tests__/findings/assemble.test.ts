@@ -11,7 +11,9 @@ import type {
   SessionTimeline,
   TimelineEvent,
 } from "../../src/detect/types";
+import type { EvidenceSignal } from "../../src/evidence/signals";
 import { assembleCandidates } from "../../src/findings/assemble";
+import { candidateFindingSchema } from "../../src/findings/candidate";
 import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
@@ -161,6 +163,12 @@ function funnelCorpus(input: { strugglers: number; struggleVisits: number }): De
   return corpusOf([...struggleSessions, ...dropped, ...converted]);
 }
 
+// Wave 2 adds `signals` to CandidateFinding; this reads the key the ADD's R-1 names.
+function signalsOf(candidate: unknown): readonly EvidenceSignal[] | undefined {
+  const record = candidate as Record<string, unknown>;
+  return record["signals"] as readonly EvidenceSignal[] | undefined;
+}
+
 describe("assembleCandidates", () => {
   test("assembles a gate-passed funnel candidate into a schema-accepted CandidateFinding", () => {
     const rules = ruleSet();
@@ -303,6 +311,79 @@ describe("assembleCandidates", () => {
     expect(candidate.trace.length).toBe(2);
     expect(candidate.trace[0]?.satisfied).toBe(false);
     expect(candidate.trace.at(-1)?.satisfied).toBe(true);
+  });
+
+  test("carries signals forward from the detector candidate", () => {
+    const rules = ruleSet();
+    const basis: CountBasis = { totalInWindow: 5, kept: 5, setAside: [] };
+    const count = (numerator: number) =>
+      measuredCount({ numerator, denominator: 5, unit: "sessions", timeframe: WINDOW, basis });
+
+    const signals: readonly EvidenceSignal[] = [
+      {
+        kind: "failure_correlated",
+        eventName: rules.exceptionEventName,
+        occurredAt: EXCEPTION_AT,
+        precedingActionName: ACTION_NAME,
+        correlationWindowMs: rules.errorCorrelationWindowMs,
+        correlatedSessions: count(rules.errorMinAffectedSessions - 1),
+      },
+      {
+        kind: "struggle",
+        subkind: "repeated_attempt",
+        surface: ORIGIN,
+        attempts: rules.struggleRepeatedAttemptMin + 2,
+        strugglingSessions: count(rules.struggleMinStrugglingSessions + 2),
+      },
+    ];
+
+    const constructed: DetectorResult = {
+      detector: "error_event",
+      connectionState: connectionState(),
+      coverage: { truncated: false, eventsWithoutUrlPath: 0 },
+      candidates: [
+        {
+          detector: "error_event",
+          claimedClass: "broken",
+          claimSubject: "surface",
+          surface: ORIGIN,
+          surfaceNormalisationVersion: NORMALISATION_VERSION,
+          signals,
+          counts: [count(5), count(4)],
+          timeframe: WINDOW,
+          coverage: { truncated: false, eventsWithoutUrlPath: 0 },
+        },
+      ],
+    };
+
+    const candidate = assembleCandidates([constructed], rules).candidates[0];
+    if (candidate === undefined)
+      throw new Error("the constructed result must assemble a candidate");
+
+    expect(signalsOf(candidate)).toHaveLength(2);
+    expect(signalsOf(candidate)?.map((signal) => signal.kind)).toEqual([
+      "failure_correlated",
+      "struggle",
+    ]);
+
+    const withoutTheKey = candidateFindingSchema.parse({
+      detector: candidate.detector,
+      claimedClass: candidate.claimedClass,
+      finalClass: candidate.finalClass,
+      trace: candidate.trace,
+      counts: candidate.counts,
+      timeframe: candidate.timeframe,
+      claimSubject: candidate.claimSubject,
+      surface: candidate.surface,
+      surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
+      evidenceShape: candidate.evidenceShape,
+      evidenceShapeVersion: candidate.evidenceShapeVersion,
+      thresholdRuleSetVersion: candidate.thresholdRuleSetVersion,
+      ranking: candidate.ranking,
+      coverage: candidate.coverage,
+    });
+
+    expect(signalsOf(withoutTheKey)).toEqual([]);
   });
 
   test("empty detector results assemble to nothing, loudly typed rather than crashed", () => {

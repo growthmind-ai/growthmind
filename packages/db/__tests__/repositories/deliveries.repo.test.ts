@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import {
   createDeliveriesRepo,
+  resolveDeliveryForInteraction,
   type ClaimDeliveryInput,
 } from "../../src/repositories/deliveries.repo";
 import type { SignatureHex } from "../../src/signatures/hex";
@@ -492,5 +493,151 @@ describe("deliveries repository", () => {
       claimed.delivery.id,
     );
     expect((await repo.listPendingForProject(project.id))[0]?.id).toBe(claimed.delivery.id);
+  });
+
+  it("resolves one delivery when two organizations post into the same channel", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: "acme-shared-channel-a",
+      userName: "Owner Shared Channel A",
+      email: "owner-shared-channel-a@acme.example",
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: "acme-shared-channel-b",
+      userName: "Owner Shared Channel B",
+      email: "owner-shared-channel-b@acme.example",
+    });
+    const projectA = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "checkout-shared-channel-a",
+    });
+    const projectB = await seedProject(db, {
+      organizationId: orgB.organizationId,
+      name: "checkout-shared-channel-b",
+    });
+    const repoA = createDeliveriesRepo(db, orgA.ctx);
+    const repoB = createDeliveriesRepo(db, orgB.ctx);
+    const refA = "1785481299.100001";
+    const refB = "1785481299.100002";
+
+    const claimedA = await repoA.claimForPost(
+      makeClaimInput(projectA.id, { findingId: "finding-shared-channel-a" }),
+    );
+    const claimedB = await repoB.claimForPost(
+      makeClaimInput(projectB.id, { findingId: "finding-shared-channel-b" }),
+    );
+    await repoA.markPosted({
+      findingId: "finding-shared-channel-a",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T10:00:00.000Z"),
+      messageRef: refA,
+    });
+    await repoB.markPosted({
+      findingId: "finding-shared-channel-b",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T10:00:01.000Z"),
+      messageRef: refB,
+    });
+
+    const fromA = await resolveDeliveryForInteraction(db, {
+      channelId: CHANNEL,
+      messageRef: refA,
+    });
+    const fromB = await resolveDeliveryForInteraction(db, {
+      channelId: CHANNEL,
+      messageRef: refB,
+    });
+
+    expect(fromA?.context.organizationId).toBe(orgA.organizationId);
+    expect(fromA?.context.organizationName).toBe(orgA.organizationName);
+    expect(fromA?.findingId).toBe("finding-shared-channel-a");
+    expect(fromA?.projectId).toBe(projectA.id);
+    expect(fromA?.deliveryId).toBe(claimedA.delivery?.id);
+
+    expect(fromB?.context.organizationId).toBe(orgB.organizationId);
+    expect(fromB?.findingId).toBe("finding-shared-channel-b");
+    expect(fromB?.projectId).toBe(projectB.id);
+    expect(fromB?.deliveryId).toBe(claimedB.delivery?.id);
+  });
+
+  it("resolves no delivery for a message Growthmind did not write", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-unknown-message",
+      userName: "Owner Unknown Message",
+      email: "owner-unknown-message@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "checkout-unknown-message",
+    });
+    const repo = createDeliveriesRepo(db, org.ctx);
+
+    await repo.claimForPost(
+      makeClaimInput(project.id, {
+        findingId: "finding-never-posted",
+        channelId: OTHER_CHANNEL,
+      }),
+    );
+
+    expect(
+      await resolveDeliveryForInteraction(db, {
+        channelId: "C0NEVERUSED",
+        messageRef: "1785481299.900001",
+      }),
+    ).toBeNull();
+
+    // The delivery exists but was never posted, so its message_ref is still null and no
+    // Slack timestamp can name it.
+    expect(
+      await resolveDeliveryForInteraction(db, {
+        channelId: OTHER_CHANNEL,
+        messageRef: "1785481299.900002",
+      }),
+    ).toBeNull();
+    expect(
+      await resolveDeliveryForInteraction(db, { channelId: OTHER_CHANNEL, messageRef: "" }),
+    ).toBeNull();
+  });
+
+  it("refuses a second delivery row for one channel and message", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: "acme-duplicate-ref-a",
+      userName: "Owner Duplicate Ref A",
+      email: "owner-duplicate-ref-a@acme.example",
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: "acme-duplicate-ref-b",
+      userName: "Owner Duplicate Ref B",
+      email: "owner-duplicate-ref-b@acme.example",
+    });
+    const projectA = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "checkout-duplicate-ref-a",
+    });
+    const projectB = await seedProject(db, {
+      organizationId: orgB.organizationId,
+      name: "checkout-duplicate-ref-b",
+    });
+    const repoA = createDeliveriesRepo(db, orgA.ctx);
+    const repoB = createDeliveriesRepo(db, orgB.ctx);
+    const sharedRef = "1785481299.777777";
+
+    await repoA.claimForPost(makeClaimInput(projectA.id, { findingId: "finding-duplicate-ref-a" }));
+    await repoB.claimForPost(makeClaimInput(projectB.id, { findingId: "finding-duplicate-ref-b" }));
+
+    await repoA.markPosted({
+      findingId: "finding-duplicate-ref-a",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T10:00:00.000Z"),
+      messageRef: sharedRef,
+    });
+
+    await expect(
+      repoB.markPosted({
+        findingId: "finding-duplicate-ref-b",
+        channelId: CHANNEL,
+        postedAt: new Date("2026-07-31T10:00:01.000Z"),
+        messageRef: sharedRef,
+      }),
+    ).rejects.toThrow();
   });
 });

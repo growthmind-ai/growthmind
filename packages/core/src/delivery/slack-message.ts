@@ -86,14 +86,27 @@ export type SlackMessageInput =
       readonly reason: NothingTodayReason;
     };
 
-export type SlackBlock = {
-  readonly kind: "section" | "context";
-
-  readonly text: string;
+export type SlackAction = {
+  readonly actionId: string;
+  readonly label: string;
+  readonly value: string;
+  readonly style: "primary" | null;
 };
 
+export type SlackTextBlock =
+  | { readonly kind: "section"; readonly text: string }
+  | { readonly kind: "context"; readonly text: string };
+
+export type SlackActionsBlock = {
+  readonly kind: "actions";
+  readonly blockId: string;
+  readonly actions: readonly SlackAction[];
+};
+
+export type SlackBlock = SlackTextBlock | SlackActionsBlock;
+
 export type SlackMessage = {
-  readonly blocks: readonly SlackBlock[];
+  readonly blocks: readonly SlackTextBlock[];
 
   readonly text: string;
 
@@ -228,9 +241,9 @@ type MessageParts = {
   readonly window: string | null;
 };
 
-function blocksOf(parts: MessageParts): SlackBlock[] {
+function blocksOf(parts: MessageParts): SlackTextBlock[] {
   const lead = parts.headline === null ? parts.heading : `${parts.heading}\n${parts.headline}`;
-  const blocks: SlackBlock[] = [{ kind: "section", text: lead }];
+  const blocks: SlackTextBlock[] = [{ kind: "section", text: lead }];
 
   const bullet = parts.observations.length > 1 ? "• " : "";
   blocks.push({
@@ -250,14 +263,14 @@ function blocksOf(parts: MessageParts): SlackBlock[] {
   return blocks;
 }
 
-function plainTextOf(blocks: readonly SlackBlock[]): string {
+function plainTextOf(blocks: readonly SlackTextBlock[]): string {
   return blocks
     .map((block) => block.text)
     .join("\n")
     .replaceAll("*", "");
 }
 
-function fits(blocks: readonly SlackBlock[]): boolean {
+function fits(blocks: readonly SlackTextBlock[]): boolean {
   const text = plainTextOf(blocks);
   return (
     text.length <= SLACK_MESSAGE_CHARACTER_BUDGET &&
@@ -265,8 +278,8 @@ function fits(blocks: readonly SlackBlock[]): boolean {
   );
 }
 
-function clampToBudget(blocks: readonly SlackBlock[]): SlackBlock[] {
-  const kept: SlackBlock[] = [...blocks];
+function clampToBudget(blocks: readonly SlackTextBlock[]): SlackTextBlock[] {
+  const kept: SlackTextBlock[] = [...blocks];
 
   while (kept.length > 1 && !fits(kept)) {
     kept.pop();
@@ -283,7 +296,7 @@ function clampToBudget(blocks: readonly SlackBlock[]): SlackBlock[] {
   return kept;
 }
 
-function messageOf(blocks: readonly SlackBlock[]): SlackMessage {
+function messageOf(blocks: readonly SlackTextBlock[]): SlackMessage {
   const text = plainTextOf(blocks);
   return {
     blocks,

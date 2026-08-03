@@ -285,6 +285,24 @@ export {
   DELIVERY_LANE_FAILURE_CLAUSE,
   deliveryFailureSentence,
 } from "./delivery/messages";
+export {
+  GET_IT_FIXED_ACTION_ID,
+  FINDING_BLOCK_ID_PREFIX,
+  SLACK_INTERACTION_ACTOR,
+  SLACK_INTERACTION_ROLE,
+  SLACK_TIMESTAMP_TOLERANCE_MS,
+  FIX_RESULTS_WINDOW_DAYS,
+  FIX_RESULTS_RULE_VERSION,
+  FIX_CONFLICT_TARGET,
+  type FixConflictColumn,
+} from "./delivery/interaction-ids";
+
+export {
+  slackInteractionActionSchema,
+  slackInteractionPayloadSchema,
+  type SlackInteractionAction,
+  type SlackInteractionPayload,
+} from "./slack/interaction-payload";
 
 export {
   MCP_TOOL,

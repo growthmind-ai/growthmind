@@ -11,7 +11,13 @@ import {
   isWriteKeyFormat,
 } from "@growthmind/shared";
 
-import { createApiKeysRepo, resolveApiKeyForRead } from "../../src/repositories/api-keys.repo";
+import {
+  createApiKeysRepo,
+  resolveApiKeyForRead,
+  resolveApiKeyPrincipal,
+  API_KEY_ACTOR_PREFIX,
+  API_KEY_ACTOR_ROLE,
+} from "../../src/repositories/api-keys.repo";
 import {
   createWriteKeysRepo,
   resolveWriteKeyForIngest,
@@ -317,5 +323,29 @@ describe("api-keys repository and resolver", () => {
     }
     expect(JSON.stringify(listed)).not.toContain(live.raw);
     expect(JSON.stringify(listed)).not.toContain(dead.raw);
+  });
+
+  it("answers no principal for a key that no row hashes to", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("principal"),
+      userName: NAMES.userName("principal"),
+      email: NAMES.email("principal"),
+    });
+    const repo = createApiKeysRepo(db, org.ctx);
+
+    expect(await resolveApiKeyPrincipal(db, "not-a-key")).toBeNull();
+    expect(await resolveApiKeyPrincipal(db, `${API_KEY_PREFIX}${"a".repeat(43)}`)).toBeNull();
+
+    const live = await repo.mint({ name: "principal agent" });
+    const principal = await resolveApiKeyPrincipal(db, live.raw);
+
+    expect(principal?.organizationId).toBe(org.organizationId);
+    expect(principal?.organizationName).toBe(org.organizationName);
+    expect(principal?.userId).toBe(`${API_KEY_ACTOR_PREFIX}${live.key.id}`);
+    expect(principal?.role).toBe(API_KEY_ACTOR_ROLE);
+
+    const revoked = await repo.mint({ name: "principal agent revoked" });
+    await repo.revoke(revoked.key.id);
+    expect(await resolveApiKeyPrincipal(db, revoked.raw)).toBeNull();
   });
 });

@@ -19,7 +19,7 @@ import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 import { detectorNameSchema } from "../../src/rules/types";
-import { COUNT_ROLES, resolveCounts } from "../../src/summary/count-roles";
+import { COUNT_ROLES, IMPACT_ROLE, resolveCounts } from "../../src/summary/count-roles";
 
 const FIXTURE_WINDOW: AnalysisWindow = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -388,5 +388,23 @@ describe("count roles", () => {
       expect(roles.length).toBeGreaterThan(0);
       expect(new Set(roles).size).toBe(roles.length);
     }
+  });
+
+  test("names an impact role for every detector", () => {
+    const impacted: readonly string[] = Object.keys(IMPACT_ROLE).toSorted();
+    const declared: readonly string[] = Object.keys(COUNT_ROLES).toSorted();
+
+    expect(impacted.length).toBeGreaterThan(0);
+    expect(impacted).toEqual([...declared]);
+
+    const unrepresented: string[] = [];
+    for (const detector of detectorNameSchema.options) {
+      const roles: readonly string[] = COUNT_ROLES[detector];
+      if (!roles.includes(IMPACT_ROLE[detector])) {
+        unrepresented.push(`${detector} names ${IMPACT_ROLE[detector]}, which it never measures`);
+      }
+    }
+
+    expect(unrepresented).toEqual([]);
   });
 });

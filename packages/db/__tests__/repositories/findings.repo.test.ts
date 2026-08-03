@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { summarySourceSchema } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
@@ -5,6 +9,15 @@ import { createFindingsRepo, type PersistFindingInput } from "../../src/reposito
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
+
+const FINDINGS_REPO_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "src",
+  "repositories",
+  "findings.repo.ts",
+);
 
 const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
@@ -189,5 +202,26 @@ describe("findings repository", () => {
     expect(zeroReadBack?.surfaceNormalisationVersion).not.toBe(
       readBack?.surfaceNormalisationVersion,
     );
+  });
+
+  // R-1 lets a fix reference its finding instead of copying it, and that is only safe while
+  // a persisted finding cannot change under the reference.
+  it("declares no method that updates a persisted finding", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-findings-immutable",
+      userName: "Owner Findings Immutable",
+      email: "owner-findings-immutable@acme.example",
+    });
+
+    const methods = Object.keys(createFindingsRepo(db, org.ctx)).toSorted();
+    expect(methods).toEqual(["findBySignature", "listForProject", "persist"]);
+
+    const source = readFileSync(FINDINGS_REPO_PATH, "utf8");
+    const declared = /export interface FindingsRepo\s*\{([\s\S]*?)\n\}/.exec(source);
+    expect(declared).not.toBeNull();
+
+    const body = declared?.[1] ?? "";
+    expect(body).toMatch(/\bpersist\s*\(/);
+    expect(body).not.toMatch(/\b(?:update|patch|edit|mutate|rewrite|set)\w*\s*\(/i);
   });
 });

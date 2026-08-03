@@ -1,3 +1,7 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   createApiKeysRepo,
   createProjectsRepo,
@@ -139,5 +143,118 @@ describe("the mounted route answers the credential store this sprint built", () 
       organizationId: ownerCtx.organizationId,
     });
     expect(await deps.credentials.resolve(writeKeyRaw)).toBeNull();
+  });
+});
+
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
+const SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".turbo", "coverage"]);
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx"];
+
+const TEST_FILE_SUFFIXES = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"];
+
+interface ScannedSource {
+  readonly path: string;
+  readonly source: string;
+}
+
+function listSourceFiles(dir: string): string[] {
+  const found: string[] = [];
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return found;
+  }
+
+  for (const entry of entries) {
+    if (SKIP_DIRS.has(entry)) continue;
+    const full = path.join(dir, entry);
+    let stats;
+    try {
+      stats = statSync(full);
+    } catch {
+      continue;
+    }
+    if (stats.isDirectory()) {
+      found.push(...listSourceFiles(full));
+    } else if (SOURCE_EXTENSIONS.some((ext) => entry.endsWith(ext))) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+function relative(file: string): string {
+  return path.relative(REPO_ROOT, file).split(path.sep).join("/");
+}
+
+function isTestPath(rel: string): boolean {
+  const segments = rel.split("/");
+  const name = segments.pop() ?? "";
+  return (
+    segments.includes("__tests__") || TEST_FILE_SUFFIXES.some((suffix) => name.endsWith(suffix))
+  );
+}
+
+const DECLARATION = /\bfunction\s+createAbsentReadPort\s*\(/g;
+
+const CALL = /(^|[^\w.])createAbsentReadPort\s*\(/;
+
+const callsAbsentReadPort = (source: string): boolean =>
+  CALL.test(source.replace(DECLARATION, "function __declaration__("));
+
+const absentPortCallers = (files: readonly ScannedSource[]): readonly string[] =>
+  files
+    .filter((file) => !isTestPath(file.path) && callsAbsentReadPort(file.source))
+    .map((file) => file.path);
+
+const fixture = (filePath: string, source: string): ScannedSource => ({
+  path: filePath,
+  source,
+});
+
+const PLANTED_PRODUCTION_CALL = fixture(
+  "apps/web/app/api/mcp/route.ts",
+  `import { createAbsentReadPort } from "@/lib/mcp/read-port";
+
+const absentReads = createAbsentReadPort((message) => logger.warn(message));
+`,
+);
+
+const CLEAN_DECLARATION = fixture(
+  "apps/web/lib/mcp/read-port.ts",
+  `export function createAbsentReadPort(log: (message: string) => void): McpReadPort {
+  return { listOpenFixes: () => Promise.resolve({ fixes: [], totalOpen: 0 }) };
+}
+`,
+);
+
+const CLEAN_TEST_CALL = fixture(
+  "apps/web/__tests__/mcp/read-port.test.ts",
+  `const port = createAbsentReadPort(() => {});
+`,
+);
+
+describe("the production route binds the live read port", () => {
+  test("binds no absent read port in the production route", () => {
+    expect(absentPortCallers([PLANTED_PRODUCTION_CALL])).toEqual(["apps/web/app/api/mcp/route.ts"]);
+
+    expect(absentPortCallers([CLEAN_DECLARATION])).toEqual([]);
+    expect(absentPortCallers([CLEAN_TEST_CALL])).toEqual([]);
+
+    const scanned: ScannedSource[] = listSourceFiles(path.join(REPO_ROOT, "apps")).map((file) => ({
+      path: relative(file),
+      source: readFileSync(file, "utf8"),
+    }));
+
+    expect(scanned.length).toBeGreaterThan(0);
+
+    const production = scanned.filter((file) => !isTestPath(file.path));
+    expect(production.length).toBeGreaterThan(0);
+    expect(production.length).toBeLessThan(scanned.length);
+
+    expect(absentPortCallers(scanned)).toEqual([]);
   });
 });

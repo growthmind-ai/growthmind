@@ -12,7 +12,7 @@ import type {
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
-import { deliveryFailureSentence } from "@growthmind/shared";
+import { GET_IT_FIXED_ACTION_ID, deliveryFailureSentence } from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../../src/task-names";
@@ -344,6 +344,34 @@ test("a deliverable finding with clean text is claimed, posted, and recorded pos
   expect(row?.messageRef).toBe("1753952400.000100");
   expect(row?.attempts).toBe(1);
   expect(row?.failureReason).toBeNull();
+});
+
+// `PostRequest.blocks` is `readonly unknown[]`, so the intermediate model reaching Slack
+// verbatim typechecks. Only an assertion on the posted shape can see it.
+test("carries the delivered blocks through the Block Kit converter", async () => {
+  const scene = harness({ lanes: [lane()] });
+
+  await scene.run();
+
+  expect(scene.posted).toHaveLength(1);
+
+  const blocks = scene.posted[0]?.blocks ?? [];
+  expect(blocks.length).toBeGreaterThan(0);
+
+  for (const block of blocks) {
+    const type = (block as { type?: unknown }).type;
+    expect({ block, typeOfType: typeof type }).toEqual({ block, typeOfType: "string" });
+    expect(block).not.toHaveProperty("kind");
+  }
+
+  const actions = blocks.find((block) => (block as { type?: unknown }).type === "actions") as
+    | { readonly block_id?: unknown; readonly elements?: readonly { action_id?: unknown }[] }
+    | undefined;
+
+  expect(actions).toBeDefined();
+  expect((actions?.elements ?? []).map((element) => element.action_id)).toContain(
+    GET_IT_FIXED_ACTION_ID,
+  );
 });
 
 test("a second tick over an already-posted finding posts nothing and leaves the row untouched", async () => {

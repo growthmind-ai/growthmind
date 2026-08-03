@@ -102,3 +102,18 @@ export async function resolveApiKeyForRead(
 
   return { organizationId: row.organizationId };
 }
+
+export const API_KEY_ACTOR_PREFIX = "api-key:";
+
+export const API_KEY_ACTOR_ROLE = "api_key";
+
+const PRINCIPAL_NOT_IMPLEMENTED = "api-keys.repo: resolveApiKeyPrincipal is not implemented";
+
+export function resolveApiKeyPrincipal(
+  db: ScopedDb,
+  presented: string,
+): Promise<TenantContext | null> {
+  void db;
+  void presented;
+  throw new Error(PRINCIPAL_NOT_IMPLEMENTED);
+}
