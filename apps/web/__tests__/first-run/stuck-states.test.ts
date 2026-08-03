@@ -8,6 +8,7 @@ import {
   ONBOARDING_MESSAGES,
   STAGE_FINDING_UNAVAILABLE,
   STAGE_READING_HEADING,
+  STAGE_NO_DELIVERY_LINE,
   STAGE_READING_HINT,
   STAGE_UNREADABLE_HEADING,
   type StagePersistedFacts,
@@ -126,5 +127,76 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
 
     // One handler: a second control would be a second way to leave.
     expect([...group.matchAll(/void finish\(\)/g)]).toHaveLength(1);
+  });
+});
+
+describe("B-042 — the fault state says where the finding went, and the exit says what it costs", () => {
+  const CHANNEL = "C01AB2CD3EF";
+
+  const withChannel = (channelId: string | null, channelLabel: string | null): string =>
+    renderToStaticMarkup(
+      createElement(
+        MantineProvider,
+        null,
+        createElement(Stage, {
+          facts: READING,
+          nowMs: NOW,
+          channelId,
+          channelLabel,
+          findingUnavailable: true,
+          delivery: "none" as const,
+          deliveryReason: null,
+        }),
+      ),
+    );
+
+  test("a connected channel is named, so the state has a next action", () => {
+    const rendered = readMarkup(withChannel(CHANNEL, "growth"));
+
+    expect(rendered.text).toContain("#growth");
+    expect(rendered.text).not.toContain(STAGE_NO_DELIVERY_LINE);
+  });
+
+  test("no channel says nowhere rather than naming one", () => {
+    // `renderDeliveryClosure` cannot serve this state: the row correlates no delivery,
+    // so `delivery` is always "none" and it would answer "nowhere" for a real channel.
+    const rendered = readMarkup(withChannel(CHANNEL, null));
+    expect(rendered.text).toContain(`#${CHANNEL}`);
+
+    for (const absent of [null, "", "null"]) {
+      expect(readMarkup(withChannel(absent, null)).text).toContain(STAGE_NO_DELIVERY_LINE);
+    }
+  });
+
+  test("the closure only renders for the fault, never beside a healthy wait", () => {
+    const healthy = readMarkup(
+      renderToStaticMarkup(
+        createElement(
+          MantineProvider,
+          null,
+          createElement(Stage, {
+            facts: READING,
+            nowMs: NOW,
+            channelId: CHANNEL,
+            channelLabel: "growth",
+            findingUnavailable: false,
+            delivery: "none" as const,
+            deliveryReason: null,
+          }),
+        ),
+      ),
+    );
+
+    expect(healthy.text).not.toContain("#growth");
+    expect(healthy.text).not.toContain(STAGE_NO_DELIVERY_LINE);
+  });
+
+  test("the exit warns what it costs while still waiting, and is not the dominant control", () => {
+    const code = clientCode();
+
+    // Dismissal has no undo route anywhere, and the warning already existed — it
+    // rendered only under the finding, after the payoff, where it matters least.
+    expect(code).toMatch(/\{armed && !terminal \? \([\s\S]{0,200}?STAGE_RETIRE_CLOSURE/);
+    expect(code).toMatch(/variant=\{terminal \? "filled" : "default"\}/);
   });
 });

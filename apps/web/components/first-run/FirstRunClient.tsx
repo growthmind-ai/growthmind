@@ -14,6 +14,7 @@ import {
   LIVE_STEP_DESCRIPTORS,
   ONBOARDING_MESSAGES,
   reduceStage,
+  STAGE_RETIRE_CLOSURE,
   type OnboardingCounterView,
   type SetupFacts,
   type StagePersistedFacts,
@@ -370,6 +371,16 @@ export function FirstRunClient(props: FirstRunClientProps) {
           climbing counter with no way off the screen at all (B-040). The press is the
           same one Done makes; only the label differs, because "Done" over a screen
           still counting would be answering a question nobody asked. */}
+        {/* What pressing it costs, said BEFORE it is pressed. `STAGE_RETIRE_CLOSURE`
+          existed already and rendered only under the finding — after the payoff,
+          where it matters least — while the founder still waiting for one had an
+          unwarned one-way door: dismissal has no undo route anywhere (B-042). */}
+        {armed && !terminal ? (
+          <Text size="sm" c="dimmed">
+            {STAGE_RETIRE_CLOSURE}
+          </Text>
+        ) : null}
+
         {armed ? (
           <Group gap="sm" wrap="wrap">
             {/* The closure above says "no Slack channel is connected, connect
@@ -400,7 +411,11 @@ export function FirstRunClient(props: FirstRunClientProps) {
               </Button>
             ) : null}
 
+            {/* `default` while waiting, filled once there is nothing left to wait for.
+              The dominant control on a watching screen was the one that ends the
+              watch, beside a hint telling the founder to go and come back (B-042). */}
             <Button
+              variant={terminal ? "filled" : "default"}
               onClick={() => void finish()}
               loading={pending}
               className={styles.action}

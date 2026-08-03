@@ -304,6 +304,10 @@ export const STAGE_UNREADABLE_HEADING = "We found something and could not show i
 export const STAGE_FINDING_UNAVAILABLE =
   "Nothing you did caused this, and there is nothing more to wait for on this screen.";
 
+// The screen could not render it; the channel still received it. Without this the
+// state named no next action at all and "Done" claimed a completion nobody saw.
+export const STAGE_UNREADABLE_DELIVERED_TEMPLATE = "It went to #{channel} — read it there.";
+
 export const STAGE_WATCHING_HINT =
   "Go and cause something to fail in your own product — a save that errors, a button that does nothing. Then come back to this tab. We are watching from here.";
 
@@ -566,6 +570,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STAGE_ENDED_HINT,
   STAGE_FINDING_UNAVAILABLE,
   STAGE_UNREADABLE_HEADING,
+  STAGE_UNREADABLE_DELIVERED_TEMPLATE,
   STAGE_LOG_ARMED,
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,
