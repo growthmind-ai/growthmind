@@ -275,6 +275,10 @@ export const WATCH_AGAIN_LABEL = "Watch again";
 
 export const DONE_LABEL = "Done";
 
+// The same press, from a screen that is still waiting: leg 1 never ends on its own,
+// so a founder who breaks nothing had no way off it at all.
+export const FINISH_SETUP_LABEL = "Finish setup";
+
 export const STAGE_UNARMED_HEADING = "Nothing is being watched yet.";
 
 export const STAGE_UNARMED_HINT =
@@ -293,8 +297,12 @@ export const STAGE_WATCHING_HEADING = "Watching for what you just did.";
 
 export const STAGE_READING_HEADING = "Reading what came back.";
 
+// Split in two: the heading states the fact, so the screen stops claiming it is
+// still reading above a sentence saying there is nothing left to wait for.
+export const STAGE_UNREADABLE_HEADING = "We found something and could not show it here.";
+
 export const STAGE_FINDING_UNAVAILABLE =
-  "We found something and could not show it here. Nothing you did caused this, and there is nothing more to wait for on this screen.";
+  "Nothing you did caused this, and there is nothing more to wait for on this screen.";
 
 export const STAGE_WATCHING_HINT =
   "Go and cause something to fail in your own product — a save that errors, a button that does nothing. Then come back to this tab. We are watching from here.";
@@ -436,6 +444,7 @@ export const ONBOARDING_MESSAGES = {
   startWatching: START_WATCHING_LABEL,
   watchAgain: WATCH_AGAIN_LABEL,
   done: DONE_LABEL,
+  finishSetup: FINISH_SETUP_LABEL,
   stripLead: STRIP_LEAD,
   stripReopen: STRIP_REOPEN_LABEL,
   offlineNotice: STAGE_OFFLINE_NOTICE,
@@ -541,6 +550,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   START_WATCHING_LABEL,
   WATCH_AGAIN_LABEL,
   DONE_LABEL,
+  FINISH_SETUP_LABEL,
   STAGE_UNARMED_HEADING,
   STAGE_UNARMED_HINT,
   SETUP_SEEING_HEADING,
@@ -555,6 +565,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   STAGE_FOUND_HINT,
   STAGE_ENDED_HINT,
   STAGE_FINDING_UNAVAILABLE,
+  STAGE_UNREADABLE_HEADING,
   STAGE_LOG_ARMED,
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,

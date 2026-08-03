@@ -120,7 +120,12 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const armed = facts.armedAt !== null;
   const kind = reduceStage(facts, nowMs).kind;
-  const terminal = kind === "finding" || kind === "ended";
+
+  // A found-but-unrenderable row IS a terminal state: its own sentence says there is
+  // nothing more to wait for, and leaving it out left the counter climbing and the
+  // poll running under that sentence, with no button to press (B-040).
+  const findingUnavailable = current.findingUnavailable === true;
+  const terminal = kind === "finding" || kind === "ended" || findingUnavailable;
 
   const connectionState = current.counter.state;
   const attached = isAnalyticsAttached(
@@ -278,15 +283,16 @@ export function FirstRunClient(props: FirstRunClientProps) {
       <Stack gap="md">
         {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.
-          `findingUnavailable` rides the poll rather than a client flag, so a
-          row that becomes readable clears the sentence on its own. */}
+          `findingUnavailable` comes off the payload, and it makes the stage
+          terminal: the poll and the counter stop, because the sentence it
+          renders says there is nothing left to wait for. */}
         <Box ref={lead}>
           {armed ? (
             <Stage
               facts={facts}
               nowMs={nowMs}
               channelId={current.channelId}
-              findingUnavailable={current.findingUnavailable === true}
+              findingUnavailable={findingUnavailable}
               delivery={current.deliveryState}
               deliveryReason={current.deliveryFailureReason ?? null}
             />
@@ -358,12 +364,17 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Text>
         )}
 
-        {terminal ? (
+        {/* ARMED, not terminal. Leg 1 never ends on its own — nothing breaks unless the
+          founder breaks it — so a founder who armed and then broke nothing sat at a
+          climbing counter with no way off the screen at all (B-040). The press is the
+          same one Done makes; only the label differs, because "Done" over a screen
+          still counting would be answering a question nobody asked. */}
+        {armed ? (
           <Group gap="sm" wrap="wrap">
             {/* The closure above says "no Slack channel is connected, connect
               one" whenever there is nowhere to deliver. Until this, that
               sentence named an action the product offered nowhere (B-035). */}
-            {current.channelId === null ? (
+            {terminal && current.channelId === null ? (
               <ButtonLink
                 href={ROUTES.settings}
                 variant="default"
@@ -395,7 +406,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
               style={tapTargetStyle}
               w={{ base: "100%", xs: "auto" }}
             >
-              {ONBOARDING_MESSAGES.done}
+              {terminal ? ONBOARDING_MESSAGES.done : ONBOARDING_MESSAGES.finishSetup}
             </Button>
           </Group>
         ) : null}
