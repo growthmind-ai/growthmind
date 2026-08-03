@@ -199,11 +199,11 @@ describe("parseServerEnv", () => {
   test("production boots with the interest webhook absent or set, and the configured flag follows", async () => {
     const interestPingConfigured = await loadInterestPingConfigured();
 
-    expect(PROD_COMPLETE).not.toHaveProperty("GROWTHMIND_INTEREST_SLACK_WEBHOOK");
+    expect(PROD_COMPLETE).not.toHaveProperty("INTEREST_SLACK_WEBHOOK");
 
     for (const [label, patch, configured] of [
       ["absent", {}, false],
-      ["set", { GROWTHMIND_INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }, true],
+      ["set", { INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }, true],
     ] as const) {
       const env = parseServerEnv({ ...PROD_COMPLETE, ...patch });
 
@@ -214,13 +214,13 @@ describe("parseServerEnv", () => {
 
   test("a malformed interest webhook fails the parse at boot, never each send", () => {
     expect(() =>
-      parseServerEnv({ ...PROD_COMPLETE, GROWTHMIND_INTEREST_SLACK_WEBHOOK: "not-a-webhook-url" }),
-    ).toThrow(/GROWTHMIND_INTEREST_SLACK_WEBHOOK/);
+      parseServerEnv({ ...PROD_COMPLETE, INTEREST_SLACK_WEBHOOK: "not-a-webhook-url" }),
+    ).toThrow(/INTEREST_SLACK_WEBHOOK/);
 
     // THE CONTROL: the well-formed value still boots, so the row above cannot pass by the
     // variable being refused outright.
     expect(() =>
-      parseServerEnv({ ...PROD_COMPLETE, GROWTHMIND_INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }),
+      parseServerEnv({ ...PROD_COMPLETE, INTEREST_SLACK_WEBHOOK: INTEREST_WEBHOOK }),
     ).not.toThrow();
   });
 });

@@ -28,7 +28,7 @@ const CLOCK = clockAt(new Date("2026-08-03T10:00:00.000Z"));
 
 const LIVE_PROVIDER = "posthog";
 const UNKNOWN_PROVIDER = "jira";
-const WEBHOOK_ENV = "GROWTHMIND_INTEREST_SLACK_WEBHOOK";
+const WEBHOOK_ENV = "INTEREST_SLACK_WEBHOOK";
 
 // AD-6's event seam: the route calls it only when the insert claimed, inside
 // try/catch, so its failure never touches the 200 (D8).

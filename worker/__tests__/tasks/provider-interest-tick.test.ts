@@ -77,7 +77,7 @@ function envWithWebhook(): ServerEnv {
     DATABASE_URL: "postgres://fake:fake@localhost:5432/fake",
     BETTER_AUTH_SECRET: "wk-test-only-secret-not-a-real-one",
     GROWTHMIND_ENCRYPTION_KEY: TEST_ENCRYPTION_KEY,
-    GROWTHMIND_INTEREST_SLACK_WEBHOOK: WEBHOOK_URL,
+    INTEREST_SLACK_WEBHOOK: WEBHOOK_URL,
   });
 }
 

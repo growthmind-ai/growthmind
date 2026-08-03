@@ -51,7 +51,7 @@ export async function runProviderInterestTick(
   // Same predicate twice: interestPingConfigured is the shared gate (AD-1), the
   // direct check narrows the URL for the compiler. The gate runs before the
   // claim, so an unconfigured installation accumulates unnotified rows (AD-2).
-  const webhookUrl = deps.env.GROWTHMIND_INTEREST_SLACK_WEBHOOK;
+  const webhookUrl = deps.env.INTEREST_SLACK_WEBHOOK;
   if (!interestPingConfigured(deps.env) || webhookUrl === undefined) {
     deps.logger.info(
       "provider interest tick: no internal Slack webhook is configured on this installation, so there is nothing to post",

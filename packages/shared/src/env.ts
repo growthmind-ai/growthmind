@@ -26,13 +26,13 @@ export const serverEnvSchema = z.object({
   SLACK_CLIENT_ID: z.string().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
   // A URL, unlike the pair above: a typo'd webhook must fail at boot, not per send.
-  GROWTHMIND_INTEREST_SLACK_WEBHOOK: z.url().optional(),
+  INTEREST_SLACK_WEBHOOK: z.url().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export function interestPingConfigured(env: ServerEnv): boolean {
-  return env.GROWTHMIND_INTEREST_SLACK_WEBHOOK !== undefined;
+  return env.INTEREST_SLACK_WEBHOOK !== undefined;
 }
 
 // The ONLY place a fallback belongs: production withholds this object and the
