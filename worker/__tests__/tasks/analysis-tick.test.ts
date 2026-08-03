@@ -1072,7 +1072,9 @@ test("a ledger that throws still leaves the finding persisted and the run comple
   expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeDefined();
   expect(summary.lanesErrored).toBe(0);
 
-  const closed = h.runs.rows().filter((row) => TERMINAL.includes(row.status));
+  // Not TERMINAL: `failed` is terminal too, so this would pass on a run the ledger
+  // throw had aborted — which is the regression the test is named for.
+  const closed = h.runs.rows().filter((row) => row.status === "completed");
   expect(closed.length).toBeGreaterThan(0);
 
   expect(
