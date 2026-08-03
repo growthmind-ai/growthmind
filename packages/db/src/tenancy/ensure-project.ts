@@ -22,7 +22,7 @@ function isUniqueViolation(error: unknown): boolean {
   return cause?.code === "23505";
 }
 
-async function findFirstProjectForOrg(
+export async function findFirstProjectForOrg(
   db: ScopedDb,
   ctx: TenantContext,
 ): Promise<{ id: string } | undefined> {

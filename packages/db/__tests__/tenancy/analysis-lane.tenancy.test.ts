@@ -110,6 +110,37 @@ function countOf(code: string, pattern: RegExp): number {
   return (code.match(pattern) ?? []).length;
 }
 
+// A where clause is scoped when it comes from the scope helper, or from a local predicate this
+// suite separately proves is built from it.
+const SCOPE_DERIVED = /^(s\.(owned|org)\(|and\(\s*(s\.(owned|org)\(|bySignature\()|bySignature\()/;
+
+function whereArguments(code: string): string[] {
+  const clauses: string[] = [];
+  const head = /\.where\(/g;
+
+  let match: RegExpExecArray | null = head.exec(code);
+  while (match !== null) {
+    const openIndex = match.index + match[0].length - 1;
+    let depth = 0;
+
+    for (let i = openIndex; i < code.length; i += 1) {
+      if (code[i] === "(") {
+        depth += 1;
+      } else if (code[i] === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          clauses.push(code.slice(openIndex + 1, i));
+          break;
+        }
+      }
+    }
+
+    match = head.exec(code);
+  }
+
+  return clauses;
+}
+
 async function allClaimRows(
   db: TestDb,
 ): Promise<(typeof schema.analysisModelCalls.$inferSelect)[]> {
@@ -392,46 +423,61 @@ describe("no bypass context is reachable from the analysis lane", () => {
     }
   });
 
-  it("names ctx.organizationId on every query in both analysis repositories", () => {
-    const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
-    const findingReads = countOf(findingsCode, /\.from\(\s*findings\s*\)/g);
-    expect(findingReads).toBeGreaterThan(0);
-    expect(
-      countOf(findingsCode, /eq\(\s*findings\.organizationId\s*,\s*ctx\.organizationId\s*\)/g),
-    ).toBe(findingReads);
+  it("scopes every where clause in both analysis repositories through the scope helper", () => {
+    for (const file of LANE_SOURCES) {
+      const code = stripSourceComments(readFileSync(file, "utf8"));
 
+      expect(code).toMatch(/const s = scoped\(db, ctx\)/);
+
+      const clauses = whereArguments(code);
+      expect(clauses.length).toBeGreaterThan(0);
+
+      for (const clause of clauses) {
+        expect({ file: path.basename(file), clause: clause.trim() }).toMatchObject({
+          clause: expect.stringMatching(SCOPE_DERIVED),
+        });
+      }
+
+      // Nothing may reconstruct the filter by hand beside the helper.
+      expect(code).not.toMatch(/eq\(\s*\w+\.organizationId\s*,\s*ctx\.organizationId\s*\)/);
+    }
+  });
+
+  it("defines each local where-clause helper from the scope helper, not from a bare eq", () => {
+    const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
+
+    expect(findingsCode).toMatch(/function bySignature\([^)]*\)\s*\{\s*return s\.owned\(/);
+  });
+
+  it("stamps the organization on every insert in both analysis repositories", () => {
+    const findingsCode = stripSourceComments(readFileSync(LANE_SOURCES[0] as string, "utf8"));
     const findingWrites = countOf(findingsCode, /\.insert\(\s*findings\s*\)/g);
     expect(findingWrites).toBeGreaterThan(0);
-    expect(countOf(findingsCode, /organizationId:\s*ctx\.organizationId/g)).toBe(findingWrites);
+    expect(countOf(findingsCode, /\.\.\.s\.stamp\b/g)).toBe(findingWrites);
 
     const runsCode = stripSourceComments(readFileSync(LANE_SOURCES[1] as string, "utf8"));
-
-    const runStatements =
-      countOf(runsCode, /\.from\(\s*analysisRuns\s*\)/g) +
-      countOf(runsCode, /\.update\(\s*analysisRuns\s*\)/g);
-    expect(runStatements).toBeGreaterThan(0);
-    expect(countOf(runsCode, /ownedByCallerOrg\(\)/g)).toBe(runStatements);
-
     const runWrites = countOf(runsCode, /\.insert\(\s*analysisRuns\s*\)/g);
     expect(runWrites).toBeGreaterThan(0);
-    expect(countOf(runsCode, /organizationId:\s*ctx\.organizationId/g)).toBe(runWrites);
+    expect(countOf(runsCode, /\.\.\.s\.stamp\b/g)).toBe(runWrites);
+  });
 
-    const claimReads = countOf(runsCode, /\.from\(\s*analysisModelCalls\s*\)/g);
-    expect(claimReads).toBeGreaterThan(0);
-    expect(
-      countOf(
-        runsCode,
-        /eq\(\s*analysisModelCalls\.organizationId\s*,\s*ctx\.organizationId\s*\)/g,
-      ),
-    ).toBe(claimReads);
-
-    for (const code of [findingsCode, runsCode]) {
-      const projectReads = countOf(code, /\.from\(\s*projects\s*\)/g);
-      expect(projectReads).toBeGreaterThan(0);
-      expect(countOf(code, /eq\(\s*projects\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
-        projectReads,
-      );
+  it("proves the project-ownership guard both lanes rely on is itself org-scoped", () => {
+    for (const file of LANE_SOURCES) {
+      const code = stripSourceComments(readFileSync(file, "utf8"));
+      expect(code).toMatch(/s\.assertProjectOwned\(/);
     }
+
+    const scopeCode = stripSourceComments(
+      readFileSync(path.join(DB_SRC, "repositories", "scope.ts"), "utf8"),
+    );
+
+    const projectReads = countOf(scopeCode, /\.from\(\s*projects\s*\)/g);
+    expect(projectReads).toBeGreaterThan(0);
+    expect(countOf(scopeCode, /and\(\s*org\(projects\)/g)).toBe(projectReads);
+  });
+
+  it("names ctx.organizationId in the hand-written claim aggregation, which no helper covers", () => {
+    const runsCode = stripSourceComments(readFileSync(LANE_SOURCES[1] as string, "utf8"));
 
     const claimAggregations = countOf(runsCode, /from\s+analysis_model_calls\s+c\b/g);
     expect(claimAggregations).toBeGreaterThan(0);

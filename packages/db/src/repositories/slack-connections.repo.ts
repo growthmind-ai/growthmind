@@ -3,9 +3,11 @@
 // returns a credential column; `openCredentialForOrg` is the one door, composition root only.
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
 import { decryptSecret } from "@growthmind/shared";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
+import { rethrowScrubbed } from "./driver-error";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type SlackConnectionRow = typeof slackConnections.$inferSelect;
@@ -70,40 +72,11 @@ export class SlackConnectionWriteError extends Error {
   }
 }
 
-interface DriverErrorFields {
-  message?: unknown;
-  code?: unknown;
-  constraint?: unknown;
-}
-
-function readDriverFields(error: unknown): DriverErrorFields {
-  const cause = (error as { cause?: unknown } | null | undefined)?.cause;
-  const candidate = (cause ?? error) as DriverErrorFields | null | undefined;
-  return candidate ?? {};
-}
-
-function asStringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
-  const fields = readDriverFields(error);
-  const driverMessage =
-    asStringOrNull(fields.message) ??
-    (error instanceof Error ? error.message : String(error)) ??
-    "database write refused";
-
-  let scrubbed = driverMessage;
-  for (const secret of secrets) {
-    if (secret.length > 0) {
-      scrubbed = scrubbed.split(secret).join("[redacted]");
-    }
-  }
-
-  throw new SlackConnectionWriteError(
-    scrubbed,
-    asStringOrNull(fields.code),
-    asStringOrNull(fields.constraint),
+  rethrowScrubbed(
+    error,
+    secrets,
+    (message, code, constraint) => new SlackConnectionWriteError(message, code, constraint),
   );
 }
 
@@ -120,18 +93,13 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
 }
 
 export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): SlackConnectionsRepo {
+  const s = scoped(db, ctx);
+
+  const ourActiveRow = () => s.owned(slackConnections, eq(slackConnections.isActive, true));
+
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
-      const [row] = await db
-        .select()
-        .from(slackConnections)
-        .where(
-          and(
-            eq(slackConnections.organizationId, ctx.organizationId),
-            eq(slackConnections.isActive, true),
-          ),
-        )
-        .limit(1);
+      const row = s.maybe(await db.select().from(slackConnections).where(ourActiveRow()).limit(1));
 
       return row ? toSlackConnectionSummary(row) : null;
     },
@@ -141,7 +109,7 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
         const [row] = await db
           .insert(slackConnections)
           .values({
-            organizationId: ctx.organizationId,
+            ...s.stamp,
             channelId: input.channelId,
             // `?? null` so an absent key and an explicit null persist as the same value.
             workspaceName: input.workspaceName ?? null,
@@ -174,47 +142,46 @@ export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): Sl
       // channel forks every delivery identity already recorded — every sent finding reads as
       // never sent and the weekly budget resets, silently. No index can refuse an UPDATE, so
       // this clause is the only thing holding that line. Re-pointing needs a migration.
-      const [row] = await db
-        .update(slackConnections)
-        .set({ channelId })
-        .where(
-          and(
-            eq(slackConnections.organizationId, ctx.organizationId),
-            eq(slackConnections.isActive, true),
-            isNull(slackConnections.channelId),
-          ),
-        )
-        .returning();
+      const row = s.maybe(
+        await db
+          .update(slackConnections)
+          .set({ channelId })
+          .where(
+            s.owned(
+              slackConnections,
+              eq(slackConnections.isActive, true),
+              isNull(slackConnections.channelId),
+            ),
+          )
+          .returning(),
+      );
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {
-      const [row] = await db
-        .update(slackConnections)
-        .set({ isActive: false, health: "disconnected" })
-        .where(
-          and(eq(slackConnections.organizationId, ctx.organizationId), eq(slackConnections.id, id)),
-        )
-        .returning();
+      const row = s.maybe(
+        await db
+          .update(slackConnections)
+          .set({ isActive: false, health: "disconnected" })
+          .where(s.owned(slackConnections, eq(slackConnections.id, id)))
+          .returning(),
+      );
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null> {
-      const [row] = await db
-        .select({
-          ciphertext: slackConnections.credentialCiphertext,
-          keyId: slackConnections.credentialKeyId,
-        })
-        .from(slackConnections)
-        .where(
-          and(
-            eq(slackConnections.organizationId, ctx.organizationId),
-            eq(slackConnections.isActive, true),
-          ),
-        )
-        .limit(1);
+      const row = s.maybe(
+        await db
+          .select({
+            ciphertext: slackConnections.credentialCiphertext,
+            keyId: slackConnections.credentialKeyId,
+          })
+          .from(slackConnections)
+          .where(ourActiveRow())
+          .limit(1),
+      );
 
       if (!row) {
         return null;

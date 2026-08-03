@@ -6,10 +6,12 @@ import type {
   SourceFailureCode,
   TenantContext,
 } from "@growthmind/shared";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
 import { projectConnections } from "../schema/project-connections";
-import { projects } from "../schema/projects";
+import { rethrowScrubbed } from "./driver-error";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type ProjectConnectionRow = typeof projectConnections.$inferSelect;
@@ -78,40 +80,11 @@ export class ConnectionWriteError extends Error {
   }
 }
 
-interface DriverErrorFields {
-  message?: unknown;
-  code?: unknown;
-  constraint?: unknown;
-}
-
-function readDriverFields(error: unknown): DriverErrorFields {
-  const cause = (error as { cause?: unknown } | null | undefined)?.cause;
-  const candidate = (cause ?? error) as DriverErrorFields | null | undefined;
-  return candidate ?? {};
-}
-
-function asStringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
-  const fields = readDriverFields(error);
-  const driverMessage =
-    asStringOrNull(fields.message) ??
-    (error instanceof Error ? error.message : String(error)) ??
-    "database write refused";
-
-  let scrubbed = driverMessage;
-  for (const secret of secrets) {
-    if (secret.length > 0) {
-      scrubbed = scrubbed.split(secret).join("[redacted]");
-    }
-  }
-
-  throw new ConnectionWriteError(
-    scrubbed,
-    asStringOrNull(fields.code),
-    asStringOrNull(fields.constraint),
+  rethrowScrubbed(
+    error,
+    secrets,
+    (message, code, constraint) => new ConnectionWriteError(message, code, constraint),
   );
 }
 
@@ -141,43 +114,51 @@ export function createProjectConnectionsRepo(
   db: ScopedDb,
   ctx: TenantContext,
 ): ProjectConnectionsRepo {
-  async function assertProjectIsOurs(projectId: string): Promise<void> {
-    const [owned] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.organizationId, ctx.organizationId), eq(projects.id, projectId)))
-      .limit(1);
+  const s = scoped(db, ctx);
 
-    if (!owned) {
-      throw new ConnectionWriteError("project not found in this organization", null, null);
-    }
+  const notOurProject = () =>
+    new ConnectionWriteError("project not found in this organization", null, null);
+
+  function byId(id: string) {
+    return s.owned(projectConnections, eq(projectConnections.id, id));
+  }
+
+  async function updateById(
+    id: string,
+    set: PgUpdateSetSource<typeof projectConnections>,
+  ): Promise<ConnectionSummary | null> {
+    const row = s.maybe(await db.update(projectConnections).set(set).where(byId(id)).returning());
+
+    return row ? toConnectionSummary(row) : null;
   }
 
   return {
     async getActiveForProject(projectId: string): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .select()
-        .from(projectConnections)
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.projectId, projectId),
-            eq(projectConnections.isActive, true),
-          ),
-        )
-        .limit(1);
+      const row = s.maybe(
+        await db
+          .select()
+          .from(projectConnections)
+          .where(
+            s.owned(
+              projectConnections,
+              eq(projectConnections.projectId, projectId),
+              eq(projectConnections.isActive, true),
+            ),
+          )
+          .limit(1),
+      );
 
       return row ? toConnectionSummary(row) : null;
     },
 
     async insertActive(input: InsertActiveConnectionInput): Promise<ConnectionSummary> {
-      await assertProjectIsOurs(input.projectId);
+      await s.assertProjectOwned(input.projectId, notOurProject);
 
       try {
         const [row] = await db
           .insert(projectConnections)
           .values({
-            organizationId: ctx.organizationId,
+            ...s.stamp,
             projectId: input.projectId,
             sourceKind: input.sourceKind,
             host: input.host,
@@ -209,19 +190,16 @@ export function createProjectConnectionsRepo(
       input: { credentialCiphertext: string; credentialKeyId: string },
     ): Promise<ConnectionSummary | null> {
       try {
-        const [row] = await db
-          .update(projectConnections)
-          .set({
-            credentialCiphertext: input.credentialCiphertext,
-            credentialKeyId: input.credentialKeyId,
-          })
-          .where(
-            and(
-              eq(projectConnections.organizationId, ctx.organizationId),
-              eq(projectConnections.id, id),
-            ),
-          )
-          .returning();
+        const row = s.maybe(
+          await db
+            .update(projectConnections)
+            .set({
+              credentialCiphertext: input.credentialCiphertext,
+              credentialKeyId: input.credentialKeyId,
+            })
+            .where(byId(id))
+            .returning(),
+        );
 
         return row ? toConnectionSummary(row) : null;
       } catch (error) {
@@ -230,98 +208,43 @@ export function createProjectConnectionsRepo(
     },
 
     async deactivate(id: string): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .update(projectConnections)
-        .set({ isActive: false, health: "disconnected" })
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.id, id),
-          ),
-        )
-        .returning();
-
-      return row ? toConnectionSummary(row) : null;
+      return updateById(id, { isActive: false, health: "disconnected" });
     },
 
     async recordHealth(id: string, input: RecordHealthInput): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .update(projectConnections)
-        .set({
-          health: input.health,
-          healthReasonCode: input.reasonCode,
-          healthReasonMessage: input.reasonMessage,
-          healthCheckedAt: input.checkedAt,
-        })
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.id, id),
-          ),
-        )
-        .returning();
-
-      return row ? toConnectionSummary(row) : null;
+      return updateById(id, {
+        health: input.health,
+        healthReasonCode: input.reasonCode,
+        healthReasonMessage: input.reasonMessage,
+        healthCheckedAt: input.checkedAt,
+      });
     },
 
     async advanceWatermark(
       id: string,
       input: AdvanceWatermarkInput,
     ): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .update(projectConnections)
-        .set({
-          watermarkAt: sql`greatest(${projectConnections.watermarkAt}, ${input.watermarkAt}::timestamptz)`,
-          backfillBefore: input.backfillBefore,
-        })
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.id, id),
-          ),
-        )
-        .returning();
-
-      return row ? toConnectionSummary(row) : null;
+      return updateById(id, {
+        watermarkAt: sql`greatest(${projectConnections.watermarkAt}, ${input.watermarkAt}::timestamptz)`,
+        backfillBefore: input.backfillBefore,
+      });
     },
 
     async setBackfillCursor(
       id: string,
       backfillBefore: string | null,
     ): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .update(projectConnections)
-        .set({ backfillBefore })
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.id, id),
-          ),
-        )
-        .returning();
-
-      return row ? toConnectionSummary(row) : null;
+      return updateById(id, { backfillBefore });
     },
 
     async setInferredInternalDomain(
       id: string,
       input: SetInferredInternalDomainInput,
     ): Promise<ConnectionSummary | null> {
-      const [row] = await db
-        .update(projectConnections)
-        .set({
-          inferredInternalDomain: input.domain,
-          internalDomainProvenance: input.provenance,
-        })
-        .where(
-          and(
-            eq(projectConnections.organizationId, ctx.organizationId),
-            eq(projectConnections.id, id),
-          ),
-        )
-        .returning();
-
-      return row ? toConnectionSummary(row) : null;
+      return updateById(id, {
+        inferredInternalDomain: input.domain,
+        internalDomainProvenance: input.provenance,
+      });
     },
   };
 }

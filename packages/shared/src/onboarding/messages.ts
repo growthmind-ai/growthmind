@@ -77,6 +77,36 @@ export const COUNTER_AS_OF_TEMPLATE = "As of {when}.";
 
 export const COUNTER_AS_OF_NEVER = "We have not completed a check yet.";
 
+export const SINCE_MOMENTS_AGO = "moments ago";
+
+export const SINCE_UNIT_LABELS = {
+  minute: "minute",
+  hour: "hour",
+  day: "day",
+} as const;
+
+export const SINCE_TEMPLATE = "{count} {unit} ago";
+
+export const LANDING_LIVENESS_RECEIVING_TEMPLATE =
+  "{kept} of {total} events counted as real people. Last checked {when}.";
+
+export const LANDING_LIVENESS_NOTHING_YET_TEMPLATE =
+  "Nothing has come through yet, which is what a quiet product looks like. Last checked {when}.";
+
+export const LANDING_LIVENESS_FIRST_CHECK_PENDING =
+  "Attached. We have not fetched anything yet — the first check is on its way.";
+
+export const LANDING_LIVENESS_VALIDATING = "We are checking the key you gave us.";
+
+export const LANDING_LIVENESS_FAILING =
+  "We could not reach your analytics account on the last try. Everything we already collected is still here.";
+
+export const LANDING_LIVENESS_DISCONNECTED =
+  "This project is no longer attached. Everything we already collected is still here.";
+
+export const LANDING_LIVENESS_NOT_CONNECTED =
+  "No analytics account is attached to this project yet.";
+
 export const RECEIPT_PATHS_LINE =
   "We keep the address of each page as a tidied-up pattern, never the raw address with your customers' own details in it.";
 
@@ -378,6 +408,18 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   COUNTER_AS_OF_TEMPLATE,
   COUNTER_AS_OF_NEVER,
+
+  SINCE_MOMENTS_AGO,
+  SINCE_TEMPLATE,
+  ...Object.values(SINCE_UNIT_LABELS),
+
+  LANDING_LIVENESS_RECEIVING_TEMPLATE,
+  LANDING_LIVENESS_NOTHING_YET_TEMPLATE,
+  LANDING_LIVENESS_FIRST_CHECK_PENDING,
+  LANDING_LIVENESS_VALIDATING,
+  LANDING_LIVENESS_FAILING,
+  LANDING_LIVENESS_DISCONNECTED,
+  LANDING_LIVENESS_NOT_CONNECTED,
 
   RECEIPT_PATHS_LINE,
   RECEIPT_INTERNAL_DOMAIN_TEMPLATE,

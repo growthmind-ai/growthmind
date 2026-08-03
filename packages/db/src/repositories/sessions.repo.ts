@@ -4,10 +4,10 @@ import type {
   Origin,
   TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
-import { projects } from "../schema/projects";
 import { sessions } from "../schema/sessions";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type SessionRecord = typeof sessions.$inferSelect;
@@ -76,23 +76,15 @@ function mergeSessionRows(rows: readonly SessionUpsertRow[]): SessionUpsertRow[]
 }
 
 export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRepo {
+  const s = scoped(db, ctx);
+
   return {
     async upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]> {
       if (rows.length === 0) {
         return [];
       }
 
-      const requestedProjectIds = [...new Set(rows.map((row) => row.projectId))];
-      const ownedProjects = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(
-          and(
-            eq(projects.organizationId, ctx.organizationId),
-            inArray(projects.id, requestedProjectIds),
-          ),
-        );
-      const ownedProjectIds = new Set(ownedProjects.map((project) => project.id));
+      const ownedProjectIds = await s.ownedProjectIds(rows.map((row) => row.projectId));
 
       const ourRows = mergeSessionRows(rows.filter((row) => ownedProjectIds.has(row.projectId)));
       if (ourRows.length === 0) {
@@ -108,7 +100,7 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
         .insert(sessions)
         .values(
           ourRows.map((row) => ({
-            organizationId: ctx.organizationId,
+            organizationId: s.stamp.organizationId,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionKey: row.sessionKey,
@@ -147,7 +139,7 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
             updatedAt: sql`now()`,
           },
 
-          setWhere: eq(sessions.organizationId, ctx.organizationId),
+          setWhere: s.org(sessions),
         })
         .returning();
     },
@@ -156,27 +148,25 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
       return db
         .select()
         .from(sessions)
-        .where(
-          and(eq(sessions.organizationId, ctx.organizationId), eq(sessions.projectId, projectId)),
-        )
+        .where(s.owned(sessions, eq(sessions.projectId, projectId)))
         .orderBy(desc(sessions.startedAt))
         .limit(options.limit);
     },
 
     async findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null> {
-      const [row] = await db
-        .select()
-        .from(sessions)
-        .where(
-          and(
-            eq(sessions.organizationId, ctx.organizationId),
-            eq(sessions.projectId, projectId),
-            eq(sessions.sessionKey, sessionKey),
-          ),
-        )
-        .limit(1);
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .select()
+          .from(sessions)
+          .where(
+            s.owned(
+              sessions,
+              eq(sessions.projectId, projectId),
+              eq(sessions.sessionKey, sessionKey),
+            ),
+          )
+          .limit(1),
+      );
     },
   };
 }
