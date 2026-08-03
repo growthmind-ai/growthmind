@@ -211,9 +211,7 @@ export const SLACK_SKIPPED_NOTICE =
 // somewhere permanent to point at.
 export const SETTINGS_TITLE = "Where what we find arrives";
 
-// "goes to", not "is posted to": the address is what is stored, and the last post
-// having failed does not unstamp it. A perfect-tense claim here contradicted the
-// failure sentence rendered directly beneath it.
+// "goes to", not "is posted to": a failed last post does not unstamp the address.
 export const SETTINGS_POSTING_TEMPLATE = "What we find goes to #{channel}.";
 
 // The success moment, which is otherwise a confirmation with no next action.

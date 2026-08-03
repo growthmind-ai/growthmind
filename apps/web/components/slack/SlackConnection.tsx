@@ -1,11 +1,7 @@
 "use client";
 
-// The Slack connection. Four card states in one component, branching on the
-// server-computed `slackOAuthAvailable`: the one-click button with the token
-// form folded behind it, the token form as the card, the channel picker, and no
-// body at all once a channel is chosen. Mounted as setup's step 3 and as the
-// settings page that outlives it; "Skip for now" is in every unsettled state of
-// the former and none of the latter.
+// Four card states branching on `slackOAuthAvailable`, mounted both as setup's
+// step 3 and as the settings page that outlives it.
 import { Button, Collapse, Group, Loader, Select, Stack, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -220,9 +216,8 @@ export function SlackConnection(props: SlackConnectionProps) {
     );
   }
 
-  // POST, render whatever came back, and report WHAT it was rather than whether
-  // it went well. No refresh of its own: the two callers refresh on different
-  // facts.
+  // Reports what came back rather than whether it went well, and refreshes
+  // nothing: the two callers refresh on different facts.
   async function sendTo(path: string, body: unknown): Promise<SendAnswer> {
     const answer = await postJson(path, body);
 
@@ -274,9 +269,8 @@ export function SlackConnection(props: SlackConnectionProps) {
       return;
     }
 
-    // A workspace and no address: one call attaches and posts. THE ADDRESS
-    // LANDING MOVES THIS CARD ON, NOT THE POST SUCCEEDING — without the refresh
-    // every later press meets the once-only guard's 409.
+    // The address landing moves this card on, not the post succeeding: without the
+    // refresh every later press meets the once-only guard's 409.
     if (workspaceAttached) {
       const answer = await sendTo(FIRST_RUN_API.slackChannel, { channelId: choice ?? "" });
 
@@ -313,9 +307,8 @@ export function SlackConnection(props: SlackConnectionProps) {
     setFailure(null);
     setOutcome(null);
 
-    // The list never arrived, or arrived empty and the bot has since been
-    // invited: asking again is the whole retry. The old answer goes back to "we
-    // do not know" first, so a failed re-list leaves no stale claim on screen.
+    // The old answer goes back to "we do not know" first, so a failed re-list
+    // leaves no stale claim on screen.
     if (relistable) {
       setChannels(null);
       setListingAttempt((attempt) => attempt + 1);
@@ -363,10 +356,8 @@ export function SlackConnection(props: SlackConnectionProps) {
     return <Stack gap="sm">{props.fields.map((field) => renderField(field))}</Stack>;
   }
 
-  // THE INVARIANT: the pasted-token form may never render on an organization
-  // that already has a workspace attached. An attached org with a channel gets
-  // no card body and no re-pick control (`attachChannel` never moves a chosen
-  // address, D12); send and skip live outside this function.
+  // The pasted-token form may never render on an org that already has a workspace,
+  // and a chosen address gets no re-pick control (`attachChannel` never moves one, D12).
   function card(): ReactNode {
     if (settled) {
       return null;
