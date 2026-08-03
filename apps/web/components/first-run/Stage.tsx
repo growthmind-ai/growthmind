@@ -29,19 +29,10 @@ interface StageProps {
   readonly delivery: FirstRunDeliveryState;
 }
 
-const NOT_AN_ADDRESS: ReadonlySet<string> = new Set(["", "null", "undefined"]);
-
-// `isDeliveryTarget` owns this question but lives in `@growthmind/db`, whose
-// barrel cannot enter a client bundle.
-function addressOf(channelId: string | null): string | null {
-  const trimmed = channelId === null ? "" : channelId.trim();
-  return NOT_AN_ADDRESS.has(trimmed.toLowerCase()) ? null : trimmed;
-}
-
 export function Stage(props: StageProps) {
   const state = reduceStage(props.facts, props.nowMs);
   const view = renderStageView(state);
-  const deliveryLine = renderDeliveryLine(props.delivery, addressOf(props.channelId));
+  const deliveryLine = renderDeliveryLine(props.delivery, props.channelId);
 
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;

@@ -38,15 +38,18 @@ const DELIVERY_TEMPLATES: Record<Exclude<FirstRunDeliveryState, "none">, string>
   failed: STAGE_DELIVERY_FAILED_TEMPLATE,
 };
 
+const NOT_AN_ADDRESS: ReadonlySet<string> = new Set(["", "null", "undefined"]);
+
 export function renderDeliveryLine(
   state: FirstRunDeliveryState,
   channelId: string | null,
 ): string | null {
-  if (state === "none" || channelId === null) {
+  const address = channelId === null ? "" : channelId.trim();
+  if (state === "none" || NOT_AN_ADDRESS.has(address.toLowerCase())) {
     return null;
   }
 
-  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", channelId);
+  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", address);
 }
 
 const ENDED_HEADINGS: Record<EndedReason, string> = {
