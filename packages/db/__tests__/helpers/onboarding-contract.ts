@@ -77,8 +77,14 @@ export interface FirstRunRepo {
 
 export type CreateFirstRunRepo = (db: ScopedDb, ctx: TenantContext) => FirstRunRepo;
 
+// The id and the unavailable flag ride WITH the finding, from one read (B-038).
+export interface FirstRunStatusFacts extends StagePersistedFacts {
+  readonly findingId: string | null;
+  readonly findingUnavailable: boolean;
+}
+
 export interface FirstRunStatusService {
-  read(projectId: string): Promise<StagePersistedFacts>;
+  read(projectId: string): Promise<FirstRunStatusFacts>;
 }
 
 export type CreateFirstRunStatusService = (

@@ -9,8 +9,20 @@ import { analysisRuns } from "../schema/analysis-runs";
 import { firstRunState } from "../schema/first-run-state";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 
+// Three facts about ONE row, from ONE read. The card, the delivery line and the fault
+// sentence each used to run a bounded finding read of their own; during onboarding the
+// analysis lane persists findings in a sequential loop, so a newer row landing between
+// two of them gave one finding card the next finding delivery state (B-038).
+export interface FirstRunStatusFacts extends StagePersistedFacts {
+  readonly findingId: string | null;
+
+  // A row is there and did not satisfy the rendered shape — which is why this is
+  // not simply `finding === null`.
+  readonly findingUnavailable: boolean;
+}
+
 export interface FirstRunStatusService {
-  read(projectId: string): Promise<StagePersistedFacts>;
+  read(projectId: string): Promise<FirstRunStatusFacts>;
 }
 
 const NO_FACTS = {
@@ -22,11 +34,21 @@ const NO_FACTS = {
   runOutcome: null,
 } as const;
 
+interface NewestFinding {
+  readonly id: string | null;
+  readonly finding: OnboardingFinding | null;
+  readonly unavailable: boolean;
+}
+
+// Absent and unreadable are different answers, and the screen says different things.
+const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false };
+const UNREADABLE: NewestFinding = { id: null, finding: null, unavailable: true };
+
 async function readNewestFinding(
   db: ScopedDb,
   ctx: TenantContext,
   projectId: string,
-): Promise<OnboardingFinding | null> {
+): Promise<NewestFinding> {
   let record;
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
@@ -36,11 +58,11 @@ async function readNewestFinding(
       projectId,
       error,
     });
-    return null;
+    return UNREADABLE;
   }
 
   if (!record) {
-    return null;
+    return NO_FINDING;
   }
 
   const parsed = onboardingFindingSchema.safeParse({
@@ -67,10 +89,10 @@ async function readNewestFinding(
       findingId: record.id,
       issues: parsed.error.issues,
     });
-    return null;
+    return { id: record.id, finding: null, unavailable: true };
   }
 
-  return parsed.data;
+  return { id: record.id, finding: parsed.data, unavailable: false };
 }
 
 export function createFirstRunStatusService(
@@ -80,7 +102,7 @@ export function createFirstRunStatusService(
   const s = scoped(db, ctx);
 
   return {
-    async read(projectId: string): Promise<StagePersistedFacts> {
+    async read(projectId: string): Promise<FirstRunStatusFacts> {
       const [state] = await db
         .select({ armedAt: firstRunState.armedAt })
         .from(firstRunState)
@@ -88,10 +110,15 @@ export function createFirstRunStatusService(
         .limit(1);
 
       const armedAt = state?.armedAt ?? null;
-      const finding = await readNewestFinding(db, ctx, projectId);
+      const newest = await readNewestFinding(db, ctx, projectId);
+      const found = {
+        finding: newest.finding,
+        findingId: newest.id,
+        findingUnavailable: newest.unavailable,
+      };
 
       if (armedAt === null) {
-        return { ...NO_FACTS, finding };
+        return { ...NO_FACTS, ...found };
       }
 
       const [retrieved] = await db
@@ -135,7 +162,7 @@ export function createFirstRunStatusService(
         endedAt: run?.finishedAt ?? null,
         runStatus: run?.status ?? null,
         runOutcome: run?.outcome ?? null,
-        finding,
+        ...found,
       };
     },
   };

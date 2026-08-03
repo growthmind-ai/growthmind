@@ -3,7 +3,7 @@ import { CONNECTION_STATE_MESSAGES } from "@growthmind/shared";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -360,9 +360,23 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     expect(JSON.stringify(body.finding)).toContain("Newest finding");
     expect(JSON.stringify(body.finding)).not.toContain("Older finding");
 
-    const source = readRouteSource(STATUS);
-    expect(source).toContain("listForProject");
-    expect(source).toMatch(/limit:\s*1\b/);
+    // The read moved into the status service, which is now its only home: the route
+    // ran a SECOND `listForProject(limit 1)` of its own to decide `findingUnavailable`,
+    // and a third ran in the status builder to correlate the delivery, so the card,
+    // the fault sentence and the delivery line could describe different rows (B-038).
+    expect(readRouteSource(STATUS)).not.toContain("listForProject");
+
+    const service = readFileSync(
+      path.join(
+        import.meta.dir,
+        "../../../../../packages/db/src/services/first-run-status.service.ts",
+      ),
+      "utf8",
+    );
+
+    expect(service).toContain("listForProject");
+    expect(service).toMatch(/limit:\s*1\b/);
+    expect([...service.matchAll(/listForProject/g)]).toHaveLength(1);
   });
 
   test("a finding row whose jsonb fails the boundary parse yields a named degraded render, never a 500", async () => {

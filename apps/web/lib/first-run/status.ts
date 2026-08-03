@@ -1,8 +1,7 @@
-import type { ScopedDb } from "@growthmind/db";
+import type { FirstRunStatusFacts, ScopedDb } from "@growthmind/db";
 import {
   createDeliveriesRepo,
   createEventsCounterService,
-  createFindingsRepo,
   createFirstRunRepo,
   createFirstRunStatusService,
   createProviderInterestRepo,
@@ -15,7 +14,6 @@ import type {
   FirstRunDeliveryState,
   FirstRunStatus,
   InterestProviderId,
-  StagePersistedFacts,
   TenantContext,
 } from "@growthmind/shared";
 import {
@@ -69,9 +67,9 @@ export interface BuildFirstRunStatusInput {
   readonly ctx: TenantContext;
   readonly projectId: string;
 
-  readonly facts: StagePersistedFacts;
-
-  readonly findingUnavailable: boolean;
+  // Carries the rendered finding AND its id, from one read. A second query here is
+  // how the card and the delivery line came to describe different rows (B-038).
+  readonly facts: FirstRunStatusFacts;
 }
 
 export function toFirstRunDeliveryState(input: {
@@ -113,24 +111,6 @@ export interface ResolvedDelivery {
 
 const NO_DELIVERY: ResolvedDelivery = { state: "none", failureReason: null };
 
-async function readNewestFindingId(
-  db: ScopedDb,
-  ctx: TenantContext,
-  projectId: string,
-): Promise<string | null> {
-  try {
-    const [row] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
-    return row?.id ?? null;
-  } catch (error) {
-    logger.error("onboarding status: the finding on screen could not be matched to a Slack post", {
-      organizationId: ctx.organizationId,
-      projectId,
-      reason: describeDriverError(error),
-    });
-    return null;
-  }
-}
-
 async function resolveDelivery(input: {
   readonly db: ScopedDb;
   readonly ctx: TenantContext;
@@ -168,11 +148,10 @@ export async function buildFirstRunStatus(
 ): Promise<FirstRunStatusPayload> {
   const { db, ctx, projectId, facts } = input;
 
-  const [counter, slack, state, findingId, providerInterest] = await Promise.all([
+  const [counter, slack, state, providerInterest] = await Promise.all([
     createEventsCounterService(db, ctx).read(projectId),
     createSlackConnectionsRepo(db, ctx).getActiveForOrg(),
     createFirstRunRepo(db, ctx).readState(projectId),
-    facts.finding === null ? Promise.resolve(null) : readNewestFindingId(db, ctx, projectId),
     createProviderInterestRepo(db, ctx).listNotedProviders(),
   ]);
 
@@ -181,7 +160,7 @@ export async function buildFirstRunStatus(
   const delivery = await resolveDelivery({
     db,
     ctx,
-    findingId,
+    findingId: facts.findingId,
     channelId: slack?.channelId ?? null,
   });
 
@@ -191,7 +170,7 @@ export async function buildFirstRunStatus(
 
   return {
     finding: facts.finding,
-    findingUnavailable: input.findingUnavailable,
+    findingUnavailable: facts.findingUnavailable,
     armedAt: facts.armedAt,
 
     retrievedAt: facts.retrievedAt,
@@ -232,5 +211,5 @@ export async function echoFirstRunStatus(
   projectId: string,
 ): Promise<FirstRunStatusPayload> {
   const facts = await createFirstRunStatusService(db, ctx).read(projectId);
-  return buildFirstRunStatus({ db, ctx, projectId, facts, findingUnavailable: false });
+  return buildFirstRunStatus({ db, ctx, projectId, facts });
 }
