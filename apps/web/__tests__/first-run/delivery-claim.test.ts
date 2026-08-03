@@ -780,8 +780,7 @@ describe("the delivery read may never cost the screen", () => {
         db: blind,
         ctx: orgA.scope.ctx,
         projectId: orgA.projectId,
-        facts: FOUND,
-        findingUnavailable: false,
+        facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
       });
     } finally {
       restore();
@@ -828,6 +827,8 @@ describe("the delivery read may never cost the screen", () => {
       ctx: orgA.scope.ctx,
       projectId: orgA.projectId,
       facts: {
+        findingId: null,
+        findingUnavailable: false,
         armedAt: null,
         retrievedAt: null,
         readingAt: null,
@@ -836,7 +837,6 @@ describe("the delivery read may never cost the screen", () => {
         runOutcome: null,
         finding: null,
       },
-      findingUnavailable: false,
     });
 
     expect(counted.reads).toEqual([]);

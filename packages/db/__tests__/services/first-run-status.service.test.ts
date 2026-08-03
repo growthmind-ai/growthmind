@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+
+import { sql } from "drizzle-orm";
 
 import {
   loadUnderConstruction,
@@ -6,10 +9,12 @@ import {
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.repo";
+import { createFindingsRepo } from "../../src/repositories/findings.repo";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { seedAnalysisRun, seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { readRawRows } from "../helpers/onboarding-contract";
 import {
   type CreateFirstRunRepo,
   type CreateFirstRunStatusService,
@@ -68,6 +73,58 @@ async function seedScope(db: TestDb, label: string): Promise<Scope> {
     connectionId: connection.id,
     ctx: org.ctx,
   };
+}
+
+const headlineFor = (label: string): string => `Checkout drops after the ${label} step`;
+
+async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<string> {
+  const run = await seedAnalysisRun(db, { ctx: scope.ctx, projectId: scope.projectId });
+  const repo = createFindingsRepo(db, scope.ctx);
+
+  await repo.persist({
+    projectId: scope.projectId,
+    runId: run.id,
+    signature: randomUUID(),
+    signatureVersion: 1,
+    summarySource: "model_rendered",
+    headline: headlineFor(label),
+    context: ["One line of context, never a blob."],
+    finalClass: "funnel_dropoff",
+    surface: "/checkout",
+    surfaceNormalisationVersion: 1,
+    counts: [
+      {
+        numerator: 3,
+        denominator: 10,
+        unit: "sessions",
+        timeframe: {
+          start: new Date("2026-07-30T00:00:00.000Z"),
+          end: new Date("2026-08-01T00:00:00.000Z"),
+        },
+        basis: { totalInWindow: 10, kept: 10, setAside: [] },
+      },
+    ],
+    confidenceBasis: "few_sessions",
+    windowStart: new Date("2026-07-30T00:00:00.000Z"),
+    windowEnd: new Date("2026-08-01T00:00:00.000Z"),
+    evidenceShape: `shape-${label}`,
+    evidenceShapeVersion: 1,
+    resolvedModelId: "model-fixture",
+  });
+
+  const [row] = await repo.listForProject(scope.projectId, { limit: 1 });
+  if (row === undefined) throw new Error("the seeded finding could not be read back");
+  return row.id;
+}
+
+// `counts` is jsonb, so a shape the render schema refuses can be written straight in —
+// which is the production case: prod holds every shape ever written, not the declared one.
+async function seedUnrenderableFindingRow(db: TestDb, scope: Scope): Promise<string> {
+  const id = await seedFindingRow(db, scope, "unrenderable");
+
+  await readRawRows(db, sql`UPDATE findings SET counts = ${'"not-an-array"'} WHERE id = ${id}`);
+
+  return id;
 }
 
 async function completePollRun(
@@ -269,7 +326,65 @@ describe("first-run status service — two legs, three tables, one read", () => 
       runStatus: null,
       runOutcome: null,
       finding: null,
+      findingId: null,
+      findingUnavailable: false,
     });
+  });
+
+  // B-038: the card, the fault sentence and the delivery line each ran their own
+  // `listForProject(limit 1)`. During onboarding the analysis lane persists findings
+  // in a sequential loop, so a row landing between two of those reads gave one
+  // finding's card the next finding's delivery state. These rows pin that the id and
+  // the rendered finding come from ONE row.
+  test("the returned id is the id of the finding it returned, not of whatever is newest now", async () => {
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "one-row");
+
+    const first = await seedFindingRow(db, scope, "first");
+    const before = await createService(db, scope.ctx).read(scope.projectId);
+
+    expect(before.findingId).toBe(first);
+    expect(before.finding?.headline).toBe(headlineFor("first"));
+
+    // A newer finding lands, exactly as the sequential loop produces.
+    const second = await seedFindingRow(db, scope, "second");
+    const after = await createService(db, scope.ctx).read(scope.projectId);
+
+    expect(after.findingId).toBe(second);
+    expect(after.finding?.headline).toBe(headlineFor("second"));
+
+    // The pairing, which is the whole bug: never the first card with the second id.
+    expect({ id: after.findingId, headline: after.finding?.headline }).toEqual({
+      id: second,
+      headline: headlineFor("second"),
+    });
+    expect(first).not.toBe(second);
+  });
+
+  test("a row the repository itself refuses reports unavailable, and correlates nothing", async () => {
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "unrenderable");
+
+    await seedUnrenderableFindingRow(db, scope);
+    const facts = await createService(db, scope.ctx).read(scope.projectId);
+
+    expect(facts.finding).toBeNull();
+    expect(facts.findingUnavailable).toBe(true);
+
+    // No card, no id: `finding === null` implies `findingId === null`, so a delivery
+    // can never be correlated for a row no screen can render.
+    expect(facts.findingId).toBeNull();
+  });
+
+  test("no row at all is not the same answer as a row that cannot be rendered", async () => {
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "no-finding");
+
+    const facts = await createService(db, scope.ctx).read(scope.projectId);
+
+    expect(facts.finding).toBeNull();
+    expect(facts.findingUnavailable).toBe(false);
+    expect(facts.findingId).toBeNull();
   });
 });
 

@@ -204,6 +204,7 @@ export {
 } from "./repositories/provider-interest.repo";
 export {
   createFirstRunStatusService,
+  type FirstRunStatusFacts,
   type FirstRunStatusService,
 } from "./services/first-run-status.service";
 export { ensureProject, findFirstProjectForOrg } from "./tenancy/ensure-project";

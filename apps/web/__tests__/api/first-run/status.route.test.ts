@@ -3,7 +3,7 @@ import { CONNECTION_STATE_MESSAGES } from "@growthmind/shared";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -360,9 +360,32 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     expect(JSON.stringify(body.finding)).toContain("Newest finding");
     expect(JSON.stringify(body.finding)).not.toContain("Older finding");
 
-    const source = readRouteSource(STATUS);
-    expect(source).toContain("listForProject");
-    expect(source).toMatch(/limit:\s*1\b/);
+    // The read moved into the status service, which is now its only home: the route
+    // ran a SECOND `listForProject(limit 1)` of its own to decide `findingUnavailable`,
+    // and a third ran in the status builder to correlate the delivery, so the card,
+    // the fault sentence and the delivery line could describe different rows (B-038).
+    expect(readRouteSource(STATUS)).not.toContain("listForProject");
+
+    // The THIRD former reader. Re-adding a finding read to the status builder passed
+    // every other row on this branch.
+    const builder = readFileSync(
+      path.join(import.meta.dir, "../../../lib/first-run/status.ts"),
+      "utf8",
+    );
+    expect(builder).not.toContain("listForProject");
+    expect(builder).not.toContain("createFindingsRepo");
+
+    const service = readFileSync(
+      path.join(
+        import.meta.dir,
+        "../../../../../packages/db/src/services/first-run-status.service.ts",
+      ),
+      "utf8",
+    );
+
+    expect(service).toContain("listForProject");
+    expect(service).toMatch(/limit:\s*1\b/);
+    expect([...service.matchAll(/listForProject/g)]).toHaveLength(1);
   });
 
   test("a finding row whose jsonb fails the boundary parse yields a named degraded render, never a 500", async () => {
@@ -400,6 +423,12 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     const body = await bodyOf(response);
 
     expect(body.finding).toBeNull();
+
+    // The flag itself, not merely "the payload differs from the healthy one" — which
+    // would pass for any other differing field, and was the only thing asserting this
+    // wire end to end (B-038).
+    expect(body.findingUnavailable).toBe(true);
+    expect(healthy.findingUnavailable).toBe(false);
 
     expect(body).not.toEqual(healthy);
 
