@@ -5,7 +5,11 @@ import { vector } from "@electric-sql/pglite-pgvector";
 import { drizzle } from "drizzle-orm/pglite";
 
 import journal from "../../drizzle/meta/_journal.json";
-import { compareMigrationCounts, describeSchemaStatus, getSchemaStatus } from "../../src/schema-status";
+import {
+  compareMigrationCounts,
+  describeSchemaStatus,
+  getSchemaStatus,
+} from "../../src/schema-status";
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
 

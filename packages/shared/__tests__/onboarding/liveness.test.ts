@@ -84,7 +84,11 @@ describe("describeLandingLiveness", () => {
   });
 
   test("a quiet product says so rather than reporting zero counted", () => {
-    const counter = counterOf({ state: stateOf("connected_no_events_yet"), kept: 0, totalReceived: 0 });
+    const counter = counterOf({
+      state: stateOf("connected_no_events_yet"),
+      kept: 0,
+      totalReceived: 0,
+    });
     const line = describeLandingLiveness({ counter, nowMs: NOW_MS });
 
     expect(line).toContain("Nothing has come through yet");
