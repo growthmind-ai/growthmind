@@ -17,8 +17,8 @@ import {
   createSlackConnectionsRepo,
 } from "@growthmind/db";
 import { existsAnyActiveSlackConnection } from "@growthmind/db/system";
-import type { ServerEnv } from "@growthmind/shared";
-import { logger, parseServerEnv, resolveCredentialKey } from "@growthmind/shared";
+import type { WorkerEnv } from "@growthmind/shared";
+import { logger, parseWorkerEnv, resolveCredentialKey } from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
@@ -39,11 +39,11 @@ import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
 import { runProviderInterestTick } from "./tasks/provider-interest-tick";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
-let resources: { db: ScopedDb; env: ServerEnv } | null = null;
+let resources: { db: ScopedDb; env: WorkerEnv } | null = null;
 
-function resolveResources(): { db: ScopedDb; env: ServerEnv } {
+function resolveResources(): { db: ScopedDb; env: WorkerEnv } {
   if (resources === null) {
-    const env = parseServerEnv(process.env);
+    const env = parseWorkerEnv(process.env);
     resources = { env, db: createDb(env.DATABASE_URL) };
   }
   return resources;
@@ -54,7 +54,7 @@ type DeliveryComposition = {
   lanes: DeliveryLaneSource;
 };
 
-export function makePosterFor(db: ScopedDb, env: ServerEnv): DeliveryPosterFor {
+export function makePosterFor(db: ScopedDb, env: WorkerEnv): DeliveryPosterFor {
   const resolution = resolveCredentialKey(env);
 
   if (!resolution.ok) {
@@ -104,7 +104,7 @@ type AnalysisComposition = {
   lanes: AnalysisLaneSource;
 };
 
-function resolveSummariser(env: ServerEnv): ConfiguredSummariser | null {
+function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined) {
     return null;

@@ -3,7 +3,7 @@
 // an open redirect, and the code it captures seals a bot token into this org.
 // AD-6: an installation with no Slack app is refused here, in our own words,
 // rather than redirected into a consent screen built with no client id.
-import { firstRunSlackOAuthStartInputSchema, parseServerEnv } from "@growthmind/shared";
+import { firstRunSlackOAuthStartInputSchema, parseWebEnv } from "@growthmind/shared";
 import { randomUUID } from "node:crypto";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
@@ -29,7 +29,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   const parsed = inputSchema.safeParse(await readRequestBody(request));
   if (!parsed.success) return refuseBody(parsed.error);
 
-  const env = parseServerEnv(process.env);
+  const env = parseWebEnv(process.env);
 
   const credentials = resolveSlackOAuthCredentials(env);
   if (credentials === null) return refusalResponse(SLACK_APP_UNAVAILABLE);

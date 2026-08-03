@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { resolveCredentialKey } from "../../src/crypto/credential-key";
 import { CREDENTIAL_KEY_BYTE_LENGTH } from "../../src/crypto/secret-box";
-import { DEV_ENCRYPTION_KEY, parseServerEnv } from "../../src/env";
+import { DEV_ENCRYPTION_KEY, parseBaseEnv } from "../../src/env";
 
 const PROD_BASE = {
   NODE_ENV: "production",
@@ -13,7 +13,7 @@ const PROD_BASE = {
 
 describe("resolveCredentialKey", () => {
   test("refuses the published dev default in production even when GROWTHMIND_ALLOW_INSECURE_DEFAULTS is set", () => {
-    const env = parseServerEnv({
+    const env = parseBaseEnv({
       ...PROD_BASE,
       GROWTHMIND_ENCRYPTION_KEY: DEV_ENCRYPTION_KEY,
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1",
@@ -29,7 +29,7 @@ describe("resolveCredentialKey", () => {
   });
 
   test("accepts the dev default outside production", () => {
-    const env = parseServerEnv({ NODE_ENV: "development" });
+    const env = parseBaseEnv({ NODE_ENV: "development" });
     expect(env.GROWTHMIND_ENCRYPTION_KEY).toBe(DEV_ENCRYPTION_KEY);
 
     const result = resolveCredentialKey(env);
@@ -40,7 +40,7 @@ describe("resolveCredentialKey", () => {
   });
 
   test("accepts a real production key", () => {
-    const env = parseServerEnv({
+    const env = parseBaseEnv({
       ...PROD_BASE,
 
       GROWTHMIND_ENCRYPTION_KEY: "czAtZml4dHVyZS1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzIQ==",
@@ -61,7 +61,7 @@ describe("resolveCredentialKey", () => {
       "base64",
     );
 
-    const env = parseServerEnv({
+    const env = parseBaseEnv({
       ...PROD_BASE,
       GROWTHMIND_ENCRYPTION_KEY: overLength,
     });
@@ -75,7 +75,7 @@ describe("resolveCredentialKey", () => {
   });
 
   test("refuses a value that is long enough to pass the schema but is not a 32-byte key", () => {
-    const env = parseServerEnv({
+    const env = parseBaseEnv({
       ...PROD_BASE,
       GROWTHMIND_ENCRYPTION_KEY: "!".repeat(44),
     });

@@ -6,13 +6,13 @@ import type {
   CredentialKeyResolution,
   DeliveryPoster,
   InterestProviderId,
-  ServerEnv,
+  WebEnv,
   TenantContext,
 } from "@growthmind/shared";
 import {
   deriveIdentityHmacKey,
   logger,
-  parseServerEnv,
+  parseWebEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
 import {
@@ -108,7 +108,7 @@ function discoverProjectsWith(key: CredentialKey): FirstRunDiscoverProjects {
 // A poster per organization, keyed by the context and nothing else (D7). This
 // file is the composition root: no route, page or service may open a credential
 // itself (AD-20). Fails closed, and never names the ciphertext.
-function makePosterFor(db: ScopedDb, env: ServerEnv): FirstRunPosterFor {
+function makePosterFor(db: ScopedDb, env: WebEnv): FirstRunPosterFor {
   const resolution = resolveCredentialKey(env);
 
   if (!resolution.ok) {
@@ -188,7 +188,7 @@ export function resolveChannelsFor(deps: FirstRunRouteDeps): FirstRunChannelsFor
     deps.channelsFor ??
     makeChannelsFor(
       deps.db,
-      deps.credentialKey ?? resolveCredentialKey(parseServerEnv(process.env)),
+      deps.credentialKey ?? resolveCredentialKey(parseWebEnv(process.env)),
       deps.fetch ?? globalThis.fetch,
     )
   );
@@ -197,7 +197,7 @@ export function resolveChannelsFor(deps: FirstRunRouteDeps): FirstRunChannelsFor
 // The wire, in one function, so every route composes identically. The env is
 // read per request rather than at module load.
 export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
-  const env = parseServerEnv(process.env);
+  const env = parseWebEnv(process.env);
   const credentialKey = resolveCredentialKey(env);
 
   return {

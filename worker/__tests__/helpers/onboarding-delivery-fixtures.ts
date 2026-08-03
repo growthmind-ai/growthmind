@@ -9,7 +9,7 @@ import {
   credentialAad,
   encryptSecret,
   keyIdOf,
-  parseServerEnv,
+  parseWorkerEnv,
   type CredentialKey,
 } from "@growthmind/shared";
 import type {
@@ -17,7 +17,7 @@ import type {
   PostFailureCode,
   PostRequest,
   PostResult,
-  ServerEnv,
+  WorkerEnv,
   TenantContext,
 } from "@growthmind/shared";
 
@@ -66,8 +66,8 @@ export const SLACK_TEST_KEY: CredentialKey = {
 
 export const FAKE_BOT_TOKEN = "xoxb-fixture-only-never-a-real-token";
 
-export function slackTestServerEnv(): ServerEnv {
-  return parseServerEnv({
+export function slackTestServerEnv(): WorkerEnv {
+  return parseWorkerEnv({
     NODE_ENV: "test",
     DATABASE_URL: "postgres://fake:fake@localhost:5432/fake",
     BETTER_AUTH_SECRET: "o008-fixture-only-secret-not-a-real-one",

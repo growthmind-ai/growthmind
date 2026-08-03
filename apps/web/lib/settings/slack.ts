@@ -1,7 +1,7 @@
 import type { ScopedDb } from "@growthmind/db";
 import { createSlackConnectionsRepo, isDeliveryTarget } from "@growthmind/db";
 import type { TenantContext } from "@growthmind/shared";
-import { parseServerEnv } from "@growthmind/shared";
+import { parseWebEnv } from "@growthmind/shared";
 
 import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
@@ -28,6 +28,6 @@ export async function readSlackSettings(
     workspaceAttached: slack !== null,
     workspaceName: slack?.workspaceName ?? null,
     // Parsed per call so an env captured at import time cannot outlive a redeploy.
-    oauthAvailable: slackOAuthConfigured(parseServerEnv(process.env)),
+    oauthAvailable: slackOAuthConfigured(parseWebEnv(process.env)),
   };
 }

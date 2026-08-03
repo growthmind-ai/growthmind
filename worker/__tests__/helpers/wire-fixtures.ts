@@ -14,10 +14,10 @@ import {
   credentialAad,
   encryptSecret,
   keyIdOf,
-  parseServerEnv,
+  parseWorkerEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
-import type { ServerEnv, TenantContext } from "@growthmind/shared";
+import type { WorkerEnv, TenantContext } from "@growthmind/shared";
 
 import type {
   AnalysisTrigger,
@@ -31,8 +31,8 @@ export const FAKE_HOST = "https://posthog.invalid";
 
 export const FAKE_PERSONAL_API_KEY = "phx_fakefakefakefakefakefake0000";
 
-export function testServerEnv(): ServerEnv {
-  return parseServerEnv({
+export function testServerEnv(): WorkerEnv {
+  return parseWorkerEnv({
     NODE_ENV: "test",
     DATABASE_URL: "postgres://fake:fake@localhost:5432/fake",
     BETTER_AUTH_SECRET: "wk-test-only-secret-not-a-real-one",
@@ -41,7 +41,7 @@ export function testServerEnv(): ServerEnv {
 }
 
 export function encryptTestCredential(params: {
-  env: ServerEnv;
+  env: WorkerEnv;
   organizationId: string;
   projectId: string;
   personalApiKey?: string;
@@ -396,7 +396,7 @@ export function createPollDeps(params: {
   db: ScopedDb;
   fetch: FetchLike;
   clock: FakeClock;
-  env?: ServerEnv;
+  env?: WorkerEnv;
   random?: () => number;
   logger?: PollLogger;
 

@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import * as schema from "../../src/schema";
 import {
   findMembershipsByUserId,
+  findNewestAccountProviderId,
   findOrganizationBySlug,
   findUserNameById,
 } from "../../src/tenancy/queries";
@@ -165,5 +167,63 @@ describe("findUserNameById", () => {
 
   test("returns null for an unknown user id", async () => {
     expect(await findUserNameById(db, "user-does-not-exist")).toBeNull();
+  });
+});
+
+describe("findNewestAccountProviderId", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  const seedAccount = async (userId: string, providerId: string, createdAt: Date) => {
+    await db.insert(schema.account).values({
+      id: crypto.randomUUID(),
+      accountId: `${providerId}-${crypto.randomUUID()}`,
+      providerId,
+      userId,
+      createdAt,
+      updatedAt: createdAt,
+    });
+  };
+
+  const newUser = () =>
+    seedUser(db, { name: "Ada", email: `ada-${crypto.randomUUID()}@example.com` });
+
+  test("a user with no account row reports no provider, rather than throwing", async () => {
+    const user = await newUser();
+
+    expect(await findNewestAccountProviderId(db, user.id)).toBeNull();
+  });
+
+  test("the email-and-password path is reported as Better Auth stores it", async () => {
+    const user = await newUser();
+    await seedAccount(user.id, "credential", new Date("2026-01-01T00:00:00Z"));
+
+    expect(await findNewestAccountProviderId(db, user.id)).toBe("credential");
+  });
+
+  // A user who links a second provider signs in through the one they just used, so the
+  // sign-in event must name that rather than whichever account was created first.
+  test("with two linked accounts the newest wins, not the first", async () => {
+    const user = await newUser();
+    await seedAccount(user.id, "credential", new Date("2026-01-01T00:00:00Z"));
+    await seedAccount(user.id, "google", new Date("2026-02-01T00:00:00Z"));
+
+    expect(await findNewestAccountProviderId(db, user.id)).toBe("google");
+  });
+
+  test("another user's account is never returned", async () => {
+    const mine = await newUser();
+    const theirs = await newUser();
+    await seedAccount(theirs.id, "github", new Date("2026-03-01T00:00:00Z"));
+
+    expect(await findNewestAccountProviderId(db, mine.id)).toBeNull();
   });
 });

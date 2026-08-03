@@ -75,6 +75,15 @@ services:
       # self-host contract: no Slack app, no OAuth path, product still works.
       SLACK_CLIENT_ID:
       SLACK_CLIENT_SECRET:
+      # Social sign-in, same valueless both-or-neither shape as the pair above: one half
+      # alone renders a button whose callback cannot complete.
+      GOOGLE_CLIENT_ID:
+      GOOGLE_CLIENT_SECRET:
+      GITHUB_CLIENT_ID:
+      GITHUB_CLIENT_SECRET:
+      # Read here to answer "is the interest note configured" on the first-run screen; the
+      # worker holds the same value to do the posting.
+      INTEREST_SLACK_WEBHOOK:
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,7 +109,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: "postgres://growthmind:${POSTGRES_PASSWORD:-growthmind}@postgres:5432/growthmind"
-      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:-dev-only-secret-change-me-32-chars!}"
+      # No BETTER_AUTH_* here: this process never reads them, and requiring them of it
+      # crash-looped a deployment that had set them on web alone.
       # Explicit opt-in to the demo secrets above. The app refuses to start in
       # production on the public example values unless this is set, so a real
       # deployment fails loudly instead of signing sessions with a secret
@@ -111,9 +121,10 @@ services:
       # blast radius is a customer PostHog account, not just this deployment.
       GROWTHMIND_ENCRYPTION_KEY: "${GROWTHMIND_ENCRYPTION_KEY:-Z3Jvd3RobWluZC1kZXYtb25seS1lbmNyeXB0aW9uISE=}"
       GROWTHMIND_ALLOW_INSECURE_DEFAULTS: "1"
-      # `parseServerEnv` withholds the dev defaults under NODE_ENV=production, so
-      # every var the schema requires has to be forwarded here as well as to web.
-      BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
+      # The interest note's webhook, read by this process's minutely tick. Valueless
+      # pass-through: the variable is `z.url().optional()`, so an empty string is a
+      # validation failure where absence is the supported state.
+      INTEREST_SLACK_WEBHOOK:
       # The analysis lane's model key, and which model it asks. Forwarded ONLY
       # here: the worker is where the lane runs, and a key set in .env that
       # never crossed into this container was a wire that looked connected and

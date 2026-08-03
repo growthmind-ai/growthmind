@@ -9,7 +9,7 @@ import {
   encryptSecret,
   firstRunSlackConnectInputSchema,
   keyIdOf,
-  parseServerEnv,
+  parseWebEnv,
   resolveCredentialKey,
 } from "@growthmind/shared";
 
@@ -42,7 +42,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
 
   await ensureProject(deps.db, gate.ctx);
 
-  const resolution = deps.credentialKey ?? resolveCredentialKey(parseServerEnv(process.env));
+  const resolution = deps.credentialKey ?? resolveCredentialKey(parseWebEnv(process.env));
   if (!resolution.ok) {
     return Response.json(
       {

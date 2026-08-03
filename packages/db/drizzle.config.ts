@@ -1,8 +1,8 @@
 import { defineConfig } from "drizzle-kit";
 
-import { parseServerEnv } from "@growthmind/shared";
+import { parseBaseEnv } from "@growthmind/shared";
 
-const env = parseServerEnv(process.env);
+const env = parseBaseEnv(process.env);
 
 export default defineConfig({
   schema: "./src/schema/index.ts",

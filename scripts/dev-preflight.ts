@@ -5,7 +5,7 @@ import { existsSync } from "fs";
 import { Socket } from "net";
 import { join } from "path";
 
-import { parseServerEnv } from "../packages/shared/src/index";
+import { parseBaseEnv } from "../packages/shared/src/index";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 
@@ -126,7 +126,7 @@ function runMigrations(): void {
   }
 }
 
-const env = parseServerEnv(process.env);
+const env = parseBaseEnv(process.env);
 const url = new URL(env.DATABASE_URL);
 const host = url.hostname;
 const port = Number(url.port || "5432");
