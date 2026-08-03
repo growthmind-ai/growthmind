@@ -4,12 +4,12 @@
 // all of them — because a browser lands here, not a script.
 import {
   createSlackConnectionsRepo,
+  describeDriverError,
   ensureProject,
   SlackConnectionWriteError,
   slackCredentialAad,
 } from "@growthmind/db";
 import {
-  describeError,
   encryptSecret,
   firstRunSlackOAuthCallbackInputSchema,
   keyIdOf,
@@ -131,7 +131,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     // Not a catch-all: a re-throw would exit without `land()`, after the code is burned.
     logger.error("first-run slack oauth callback: the connection row could not be written", {
       organizationId: ctx.organizationId,
-      reason: describeError(error),
+      reason: describeDriverError(error),
     });
 
     return land("failed");

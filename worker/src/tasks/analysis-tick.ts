@@ -1,6 +1,7 @@
 import type { AnalysisRunRecord, AnalysisRunsRepo, SignatureLedgerService } from "@growthmind/db";
+import { describeDriverError } from "@growthmind/db";
 import type { AnalysisStopReason } from "@growthmind/shared";
-import { ANALYSIS_RUN_STATUS_MESSAGES, describeError } from "@growthmind/shared";
+import { ANALYSIS_RUN_STATUS_MESSAGES } from "@growthmind/shared";
 import type { CandidateFinding } from "@growthmind/core";
 
 import { isolated } from "../task-logger";
@@ -107,7 +108,7 @@ async function closeRun(
   } catch (error) {
      
     deps.logger.error(
-      `analysis tick: project ${lane.projectId} finished but its run could not be closed, so this check's own record of what it did is lost and a later check will reclaim the run as abandoned — ${describeError(error)}`,
+      `analysis tick: project ${lane.projectId} finished but its run could not be closed, so this check's own record of what it did is lost and a later check will reclaim the run as abandoned — ${describeDriverError(error)}`,
     );
   }
 }
@@ -204,7 +205,7 @@ export async function runAnalysisLane(
   } catch (error) {
      
     deps.logger.error(
-      `analysis tick: project ${lane.projectId} could not finish its check — ${describeError(error)}`,
+      `analysis tick: project ${lane.projectId} could not finish its check — ${describeDriverError(error)}`,
     );
     await closeRun(deps, runs, lane, run, tally, "failed", "fatal_error");
      
@@ -262,7 +263,7 @@ export async function runAnalysisTick(deps: AnalysisTickDeps): Promise<AnalysisT
     } catch (error) {
        
       deps.logger.error(
-        `analysis tick: project ${lane.projectId} could not be processed — ${describeError(error)}`,
+        `analysis tick: project ${lane.projectId} could not be processed — ${describeDriverError(error)}`,
       );
       summary.lanesErrored += 1;
     }
