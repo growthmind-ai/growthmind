@@ -70,7 +70,7 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   const outcome = describeTestPostOutcome({
     result,
     channelId: connection.channelId,
-    channelLabel: channelLabel(connection) ?? connection.channelId,
+    channelLabel: channelLabel(connection),
   });
 
   return Response.json({

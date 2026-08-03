@@ -47,6 +47,7 @@ const CHANNEL_ID = "C01AB2CD3EF";
 // Distinct from CHANNEL_ID and from each other, so every "did not change" assertion is
 // about a value that never landed rather than about two names that happen to match.
 const PICKED_CHANNEL = "C07PICKED01";
+const PICKED_CHANNEL_NAME = "growth";
 
 const MOVED_CHANNEL = "C08MOVED002";
 
@@ -397,7 +398,10 @@ describe("slack_connections — the org's credential, and the teammate who set n
       connectedAt: CONNECTED_AT,
     });
 
-    const attached = await createSlackConnectionsRepo(db, org.owner).attachChannel(PICKED_CHANNEL);
+    const attached = await createSlackConnectionsRepo(db, org.owner).attachChannel(
+      PICKED_CHANNEL,
+      PICKED_CHANNEL_NAME,
+    );
 
     // The SAME row, not a second one.
     expect(attached?.id).toBe(inserted.id);
@@ -406,6 +410,11 @@ describe("slack_connections — the org's credential, and the teammate who set n
     // ORG-SCOPED, like every other read on this table (D1).
     const served = await createSlackConnectionsRepo(db, org.teammate).getActiveForOrg();
     expect(served?.channelId).toBe(PICKED_CHANNEL);
+
+    // The NAME is stamped beside the address and served with it, so the teammate's
+    // screens name the channel the owner picked rather than its id (B-037).
+    expect(attached?.channelName).toBe(PICKED_CHANNEL_NAME);
+    expect(served?.channelName).toBe(PICKED_CHANNEL_NAME);
 
     // THE WORKSPACE NAME SURVIVED THE ATTACH: a `.set(summary)` would silently blank it.
     expect(served?.workspaceName).toBe(WORKSPACE_NAME);
@@ -428,7 +437,10 @@ describe("slack_connections — the org's credential, and the teammate who set n
     // D7, AND THE REASON THE SIGNATURE TAKES NO CONNECTION ID: there is no parameter
     // through which org B could name org A's row.
     expect(
-      await createSlackConnectionsRepo(db, orgB.owner).attachChannel(PICKED_CHANNEL),
+      await createSlackConnectionsRepo(db, orgB.owner).attachChannel(
+        PICKED_CHANNEL,
+        PICKED_CHANNEL_NAME,
+      ),
     ).toBeNull();
 
     // Org A's row is untouched. Without this line the row above would pass against an
@@ -463,7 +475,7 @@ describe("slack_connections — the org's credential, and the teammate who set n
       connectedAt: CONNECTED_AT,
     });
 
-    const attached = await repo.attachChannel(PICKED_CHANNEL);
+    const attached = await repo.attachChannel(PICKED_CHANNEL, PICKED_CHANNEL_NAME);
     expect(attached?.id).toBe(second.id);
 
     // THE DEACTIVATED ROW STAYS AS IT WAS. `is_active` is half of this update's WHERE
@@ -503,12 +515,12 @@ describe("slack_connections — the org's credential, and the teammate who set n
 
     // THE FILL SUCCEEDS. Without this leg the refusal below would pass against a method
     // that attached nothing, ever.
-    const first = await repo.attachChannel(PICKED_CHANNEL);
+    const first = await repo.attachChannel(PICKED_CHANNEL, PICKED_CHANNEL_NAME);
     expect(first?.id).toBe(inserted.id);
     expect(first?.channelId).toBe(PICKED_CHANNEL);
 
     // THE SECOND ATTACH MATCHES ZERO ROWS.
-    expect(await repo.attachChannel(MOVED_CHANNEL)).toBeNull();
+    expect(await repo.attachChannel(MOVED_CHANNEL, "moved")).toBeNull();
 
     // AND THE STORED VALUE DID NOT MOVE — this catches a partial fix (a guard applied to
     // the result rather than to the WHERE clause) that has already forked every delivery.
@@ -551,7 +563,7 @@ describe("slack_connections — the org's credential, and the teammate who set n
       connectedAt: CONNECTED_AT,
     });
 
-    const attached = await repo.attachChannel(PICKED_CHANNEL);
+    const attached = await repo.attachChannel(PICKED_CHANNEL, PICKED_CHANNEL_NAME);
     expect(attached?.id).toBe(second.id);
     expect(attached?.channelId).toBe(PICKED_CHANNEL);
 

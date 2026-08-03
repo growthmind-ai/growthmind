@@ -25,6 +25,7 @@ export type SlackConnectionSummary = {
 
   // `null` since AD-4: a workspace is attached and nothing can be delivered.
   readonly channelId: string | null;
+  readonly channelName: string | null;
   readonly workspaceName: string | null;
 
   readonly isActive: boolean;
@@ -52,7 +53,10 @@ export interface SlackConnectionsRepo {
 
   // Takes a channel and no connection id: the row is chosen by the repository's own filter,
   // so a payload cannot name another org's connection (D7).
-  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
+  attachChannel(
+    channelId: string,
+    channelName: string | null,
+  ): Promise<SlackConnectionSummary | null>;
 
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
 }
