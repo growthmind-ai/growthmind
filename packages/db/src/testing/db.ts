@@ -4,9 +4,25 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite-pgvector";
 import { drizzle } from "drizzle-orm/pglite";
+import { DrizzleQueryError } from "drizzle-orm/errors";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
 import * as schema from "../schema";
+
+export interface DriverQueryFailure {
+  readonly sql: string;
+  readonly params: readonly unknown[];
+
+  readonly driverMessage: string;
+}
+
+// What a query failure really looks like: the statement and its bound parameters are in
+// `message`, and the driver's own message is only reachable through `cause`. A fixture
+// hand-built from `Object.assign(new Error(safe), { query })` asserts against a shape the
+// runtime never produces, and passes while the real error leaks.
+export function driverQueryError(failure: DriverQueryFailure): DrizzleQueryError {
+  return new DrizzleQueryError(failure.sql, [...failure.params], new Error(failure.driverMessage));
+}
 
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 

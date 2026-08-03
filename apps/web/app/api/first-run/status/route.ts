@@ -1,6 +1,11 @@
-import { createFindingsRepo, createFirstRunStatusService, ensureProject } from "@growthmind/db";
+import {
+  createFindingsRepo,
+  createFirstRunStatusService,
+  describeDriverError,
+  ensureProject,
+} from "@growthmind/db";
 import type { ScopedDb } from "@growthmind/db";
-import { describeError, firstRunStatusInputSchema, logger } from "@growthmind/shared";
+import { firstRunStatusInputSchema, logger } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
@@ -20,12 +25,13 @@ async function findingRowExists(
     const [row] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
     return row !== undefined;
   } catch (error) {
-    // `describeError`, never the caught value: a `pg` error carries `.query` and
-    // `.parameters`, so logging it whole writes bound tenancy ids into the log.
+    // `describeDriverError`, never the caught value and never `describeError`: a failed
+    // query's own message IS the statement and its bound parameters, so both of those
+    // write tenancy ids into the log. Only the driver's cause names no value.
     logger.error("onboarding status: a finding row exists for this project but cannot be read", {
       organizationId: ctx.organizationId,
       projectId,
-      reason: describeError(error),
+      reason: describeDriverError(error),
     });
     return true;
   }

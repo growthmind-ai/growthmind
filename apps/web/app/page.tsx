@@ -2,7 +2,7 @@ import { Box, Container, Group, Stack, Text } from "@mantine/core";
 import { redirect } from "next/navigation";
 
 import { createFirstRunRepo } from "@growthmind/db";
-import { LANDING_SETTLED_LINE, SET_UP_CTA_LABEL } from "@growthmind/shared";
+import { SET_UP_CTA_LABEL } from "@growthmind/shared";
 
 import { SignOutButton } from "../components/landing/sign-out-button";
 import { WorkspaceName } from "../components/landing/workspace-name";
@@ -11,6 +11,7 @@ import { AnchorLink, ButtonLink } from "../components/ui/Links";
 import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { tapTargetStyle } from "../components/ui/tap-target";
 import { getDb } from "../lib/db";
+import { landingSettledLine, readLandingDeliveryTarget } from "../lib/landing/delivery";
 import { readLandingLiveness } from "../lib/landing/liveness";
 import { ROUTES } from "../lib/routes";
 import { getTenantContext } from "../lib/tenant";
@@ -31,6 +32,12 @@ export default async function HomePage() {
   // of nothing competes with it.
   const liveness = dismissed
     ? await readLandingLiveness({ db, ctx: tenantContext, nowMs: Date.now() })
+    : null;
+
+  // "What we find arrives in your Slack" is false for a founder who skipped Slack, so the
+  // sentence is chosen from whether a channel to deliver to actually exists.
+  const settled = dismissed
+    ? landingSettledLine(await readLandingDeliveryTarget({ db, ctx: tenantContext }))
     : null;
 
   return (
@@ -97,12 +104,14 @@ export default async function HomePage() {
                   </Group>
                 )}
 
-                <Group wrap="nowrap" align="flex-start" gap="sm">
-                  <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
-                    ·
-                  </Text>
-                  <Text c="dimmed">{LANDING_SETTLED_LINE}</Text>
-                </Group>
+                {settled === null ? null : (
+                  <Group wrap="nowrap" align="flex-start" gap="sm">
+                    <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                      ·
+                    </Text>
+                    <Text c="dimmed">{settled}</Text>
+                  </Group>
+                )}
               </>
             ) : (
               <>

@@ -1,7 +1,11 @@
+"use client";
+
 import { SimpleGrid, Stack, Text } from "@mantine/core";
 import { Fragment } from "react";
 
 import { COUNTER_LABELS, type CounterRow, type OnboardingCounterView } from "@growthmind/shared";
+
+import { useLiveCounter } from "./FirstRunClient";
 
 const TABULAR = { fontVariantNumeric: "tabular-nums" };
 
@@ -29,9 +33,11 @@ interface CounterGridProps {
 }
 
 export function CounterGrid({ view }: CounterGridProps) {
+  const live = useLiveCounter(view);
+
   return (
     <Stack gap={6}>
-      {view.rows.map((row) => (
+      {live.rows.map((row) => (
         <Fragment key={row.label}>
           <CounterLine row={row} />
           {/* The breakdown belongs UNDER its own aggregate, and the aggregate is
@@ -40,22 +46,22 @@ export function CounterGrid({ view }: CounterGridProps) {
               a row is added. The identity row follows at the top level. */}
           {row.label === COUNTER_LABELS.setAside ? (
             <>
-              {view.setAside.map((entry) => (
+              {live.setAside.map((entry) => (
                 <CounterLine key={entry.label} row={entry} indent />
               ))}
-              <CounterLine row={view.identityUnverified} />
+              <CounterLine row={live.identityUnverified} />
             </>
           ) : null}
         </Fragment>
       ))}
       <Text size="xs" c="dimmed">
-        {view.asOfStatement}
+        {live.asOfStatement}
       </Text>
       <Text size="xs" c="dimmed">
-        {view.windowStatement}
+        {live.windowStatement}
       </Text>
       <Text size="xs" c="dimmed">
-        {view.completenessStatement}
+        {live.completenessStatement}
       </Text>
     </Stack>
   );

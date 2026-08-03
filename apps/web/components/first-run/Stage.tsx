@@ -5,9 +5,11 @@ import { useRef } from "react";
 
 import {
   reduceStage,
+  renderDeliveryClosure,
   renderStageView,
   STAGE_FINDING_UNAVAILABLE,
-  STAGE_RETIRE_TEMPLATE,
+  STAGE_RETIRE_CLOSURE,
+  type FirstRunDeliveryState,
   type StagePersistedFacts,
 } from "@growthmind/shared";
 
@@ -23,11 +25,18 @@ interface StageProps {
   readonly channelId: string | null;
 
   readonly findingUnavailable: boolean;
+
+  readonly delivery: FirstRunDeliveryState;
+
+  // Written by the delivery lane when the post failed, so the repair is the sentence
+  // that already exists rather than a second one composed on this screen.
+  readonly deliveryReason: string | null;
 }
 
 export function Stage(props: StageProps) {
   const state = reduceStage(props.facts, props.nowMs);
   const view = renderStageView(state);
+  const deliveryLine = renderDeliveryClosure(props.delivery, props.channelId);
 
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;
@@ -62,13 +71,22 @@ export function Stage(props: StageProps) {
         <FindingCard finding={state.finding} arriving={arriving} />
       ) : null}
 
-      {/* The retire line names where the same thing already is, so it is only
-          true once a channel exists. A workspace that walked past Slack is told
-          the other half of that story by the strip's degraded notice. */}
-      {state.kind === "finding" && props.channelId !== null ? (
-        <Text size="sm" c="dimmed">
-          {STAGE_RETIRE_TEMPLATE.replaceAll("{channel}", props.channelId)}
-        </Text>
+      {state.kind === "finding" ? (
+        <>
+          <Text size="sm" c="dimmed">
+            {deliveryLine}
+          </Text>
+
+          {props.deliveryReason === null ? null : (
+            <Text size="sm" c="dimmed">
+              {props.deliveryReason}
+            </Text>
+          )}
+
+          <Text size="sm" c="dimmed">
+            {STAGE_RETIRE_CLOSURE}
+          </Text>
+        </>
       ) : null}
     </Stack>
   );

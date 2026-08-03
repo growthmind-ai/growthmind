@@ -326,9 +326,11 @@ export {
 export {
   onboardingCountSchema,
   onboardingFindingSchema,
+  firstRunDeliveryStateSchema,
   endedReasonSchema,
   type OnboardingCount,
   type OnboardingFinding,
+  type FirstRunDeliveryState,
   type EndedReason,
   type CounterRow,
   type OnboardingCounterView,
@@ -338,6 +340,7 @@ export {
   ONBOARDING_PROPER_NOUNS,
   SET_UP_CTA_LABEL,
   LANDING_SETTLED_LINE,
+  LANDING_SETTLED_NO_DELIVERY_LINE,
   FIRST_RUN_TITLE,
   STEP_REPO_TITLE,
   STEP_REPO_WHAT_IT_WILL_DO,
@@ -420,7 +423,12 @@ export {
   STAGE_LOG_RETRIEVED,
   STAGE_LOG_READING,
   STAGE_OFFLINE_NOTICE,
-  STAGE_RETIRE_TEMPLATE,
+  STAGE_OFFLINE_SETUP_NOTICE,
+  STAGE_DELIVERED_TEMPLATE,
+  STAGE_DELIVERY_PENDING_TEMPLATE,
+  STAGE_DELIVERY_FAILED_TEMPLATE,
+  STAGE_NO_DELIVERY_LINE,
+  STAGE_RETIRE_CLOSURE,
   STRIP_LEAD,
   STRIP_SEEN_TEMPLATE,
   STRIP_COUNTED_TEMPLATE,
@@ -474,7 +482,13 @@ export {
   type PrivacyReceiptInput,
 } from "./onboarding/privacy-receipt";
 export { reduceStage, type StagePersistedFacts, type RenderedStageState } from "./onboarding/stage";
-export { renderStageView, type StageLogLine, type StageView } from "./onboarding/stage-view";
+export {
+  renderStageView,
+  renderDeliveryLine,
+  renderDeliveryClosure,
+  type StageLogLine,
+  type StageView,
+} from "./onboarding/stage-view";
 export { toFindingView, type FindingCountLine, type FindingView } from "./onboarding/finding-view";
 export {
   describeTestPostOutcome,

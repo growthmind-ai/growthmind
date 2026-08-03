@@ -26,6 +26,9 @@ export const onboardingFindingSchema = z.object({
 });
 export type OnboardingFinding = z.infer<typeof onboardingFindingSchema>;
 
+export const firstRunDeliveryStateSchema = z.enum(["none", "unposted", "posted", "failed"]);
+export type FirstRunDeliveryState = z.infer<typeof firstRunDeliveryStateSchema>;
+
 export const endedReasonSchema = z.enum([
   "failed",
   "no_candidates_passed_gate",
