@@ -14,8 +14,8 @@ import {
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import type { ScopedDb } from "../../src/repositories/types";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedOrgWithOwner } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedOrgWithOwner } from "../../src/testing";
 import type { CreateSlackConnectionsRepo } from "../helpers/onboarding-contract";
 
 const NAMES = laneNames("o008g");

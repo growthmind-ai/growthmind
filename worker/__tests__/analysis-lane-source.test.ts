@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { candidateFindingSchema } from "@growthmind/core";
-import { schema } from "@growthmind/db";
-import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { createTestDb, seedEvents, seedSession, type TestDb } from "@growthmind/db/testing";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { ANALYSIS_WINDOW_MS, createAnalysisLaneSource } from "../src/analysis-lane-source";
@@ -48,35 +47,25 @@ async function persistPathSession(
   paths: readonly string[],
   startedAt: Date,
 ): Promise<void> {
-  const sessionId = randomUUID();
-  await db.insert(schema.sessions).values({
-    id: sessionId,
+  const key = randomUUID();
+  const session = await seedSession(db, {
     organizationId: workspace.organizationId,
     projectId: workspace.projectId,
     connectionId: workspace.connectionId,
-    sessionKey: `ph:o012-${sessionId}`,
-    identityKey: null,
-    identityEmailDomain: null,
-    identityResolution: "unresolved",
-    userAgent: null,
+    sessionKey: `ph:o012-${key}`,
     entryUrlPath: paths[0] ?? null,
     startedAt,
     lastEventAt: new Date(startedAt.getTime() + (paths.length - 1) * EVENT_STRIDE_MS),
-    origin: "real",
-    exclusionReason: "none",
-    internalDomainAtStamp: null,
-    exclusionRuleSetVersion: 1,
-    groupingVersion: 1,
   });
 
-  await db.insert(schema.events).values(
+  await seedEvents(
+    db,
     paths.map((urlPath, index) => ({
-      id: randomUUID(),
       organizationId: workspace.organizationId,
       projectId: workspace.projectId,
       connectionId: workspace.connectionId,
-      sessionId,
-      sourceEventId: `o012-${sessionId}-e${String(index).padStart(3, "0")}`,
+      sessionId: session.id,
+      sourceEventId: `o012-${key}-e${String(index).padStart(3, "0")}`,
       name: `step_${String(index)}`,
       occurredAt: new Date(startedAt.getTime() + index * EVENT_STRIDE_MS),
       urlPath,

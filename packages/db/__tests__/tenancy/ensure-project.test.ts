@@ -7,8 +7,8 @@ import {
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedOrgWithOwner, seedProject } from "../../src/testing";
 import {
   captureRejection,
   provisioningKeyFor,

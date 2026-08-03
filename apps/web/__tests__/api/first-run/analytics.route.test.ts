@@ -15,11 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { randomUUID } from "node:crypto";
 
-import {
-  seedEvent,
-  seedPollRun,
-  seedSession,
-} from "../../../../../packages/db/__tests__/helpers/db-lane-fixtures";
+import { seedConnection, seedEvent, seedPollRun, seedSession } from "@growthmind/db/testing";
 import {
   bodyOf,
   clockAt,
@@ -173,23 +169,14 @@ async function seedConnectionRow(
   health: "validating" | "healthy" | "failing" | "disconnected",
   isActive = true,
 ): Promise<string> {
-  const id = randomUUID();
-  await bed.db.insert(schema.projectConnections).values({
-    id,
+  const connection = await seedConnection(bed.db, {
     organizationId: scope.organizationId,
     projectId,
-    sourceKind: "posthog",
-    host: "https://eu.posthog.example.invalid",
-    sourceProjectId: "00000",
-    credentialCiphertext: "v1.00000000.aaaa.bbbb.cccc",
-    credentialKeyId: "00000000",
     isActive,
     health,
-    watermarkAt: null,
-    nextPollAt: new Date(),
-    pollIntervalSeconds: 60,
   });
-  return id;
+
+  return connection.id;
 }
 
 async function connectionStatusFor(scope: SeededMemberScope): Promise<ConnectionStateStatus> {

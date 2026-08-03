@@ -16,9 +16,9 @@ import { createPollRunsRepo, type PollRunCounts } from "../../src/repositories/p
 import { createEventsCounterService } from "../../src/services/events-counter.service";
 import { persistPullResult, type IntakeConnection } from "../../src/services/intake.service";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedConnection } from "../helpers/fixtures";
+import { seedConnection } from "../../src/testing";
 import { sourceEvent, sourceSession, successfulPull } from "./fake-source";
-import { seedWorkspace, type SeededWorkspace } from "./seed";
+import { seedWorkspace, type SeededWorkspace } from "../../src/testing";
 
 const INTERNAL_DOMAIN = "acme-internal-example.test";
 const OUTSIDE_DOMAIN = "outside-example.test";

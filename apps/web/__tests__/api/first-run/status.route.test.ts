@@ -13,7 +13,7 @@ import {
   dotStrictControl,
   CONTROL_VALID_BODY,
 } from "../../../../../packages/shared/__tests__/onboarding/probes/strict-zod-fixtures";
-import { seedAnalysisRun } from "../../../../../packages/db/__tests__/helpers/fixtures";
+import { seedAnalysisRun, seedConnection } from "@growthmind/db/testing";
 import {
   FIRST_RUN_API_DIR,
   FIRST_RUN_ROUTES,
@@ -116,23 +116,14 @@ async function seedConnectionWithSecret(
   organizationId: string,
   projectId: string,
 ): Promise<string> {
-  const id = randomUUID();
-  await bed.db.insert(schema.projectConnections).values({
-    id,
+  const connection = await seedConnection(bed.db, {
     organizationId,
     projectId,
-    sourceKind: "posthog",
-    host: "https://eu.posthog.example.invalid",
-    sourceProjectId: "00000",
     credentialCiphertext: `v1.deadbeef.aaaa.bbbb.${SEEDED_CIPHERTEXT_SECRET}`,
     credentialKeyId: "deadbeef",
-    isActive: true,
-    health: "healthy",
-    watermarkAt: null,
-    nextPollAt: new Date(),
-    pollIntervalSeconds: 60,
   });
-  return id;
+
+  return connection.id;
 }
 
 const MEASURED_COUNT: MeasuredCountRow = {

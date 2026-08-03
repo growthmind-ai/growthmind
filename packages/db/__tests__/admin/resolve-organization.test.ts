@@ -8,8 +8,8 @@ import {
 } from "../../src/admin";
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedMember, seedOrganization, seedOrgWithOwner, seedUser } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedMember, seedOrganization, seedOrgWithOwner, seedUser } from "../../src/testing";
 
 const NAMES = laneNames("admorg");
 

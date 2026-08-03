@@ -27,7 +27,7 @@ import {
 import { createDetectorCorpusService } from "../../src/services/detector-corpus.service";
 import { createEventsCounterService } from "../../src/services/events-counter.service";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedEvent, seedPollRun, seedSession } from "../helpers/db-lane-fixtures";
+import { laneNames, seedEvent, seedPollRun, seedSession } from "../../src/testing";
 import {
   makeTenantContext,
   seedConnection,
@@ -35,7 +35,7 @@ import {
   seedOrgWithOwner,
   seedProject,
   seedUser,
-} from "../helpers/fixtures";
+} from "../../src/testing";
 
 import { createHash } from "node:crypto";
 

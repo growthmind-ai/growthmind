@@ -8,7 +8,7 @@ import {
 import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { seedOrgWithOwner, seedProject } from "../../src/testing";
 
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;

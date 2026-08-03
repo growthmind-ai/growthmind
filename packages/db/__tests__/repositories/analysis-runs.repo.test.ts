@@ -14,7 +14,7 @@ import { analysisModelCalls } from "../../src/schema/analysis-model-calls";
 import { analysisRuns } from "../../src/schema/analysis-runs";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const TICK_AT = new Date("2026-07-31T09:00:00.000Z");
 const FINISHED_AT = new Date("2026-07-31T09:04:00.000Z");

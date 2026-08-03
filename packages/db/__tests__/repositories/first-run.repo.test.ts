@@ -7,14 +7,14 @@ import {
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
+import { laneNames } from "../../src/testing";
 import {
   makeTenantContext,
   seedMember,
   seedOrgWithOwner,
   seedProject,
   seedUser,
-} from "../helpers/fixtures";
+} from "../../src/testing";
 import { readRawRows, type CreateFirstRunRepo } from "../helpers/onboarding-contract";
 
 const NAMES = laneNames("first-run");

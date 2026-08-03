@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { createEventsRepo, type EventInsertRow } from "../../src/repositories/events.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedSession } from "../helpers/db-lane-fixtures";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames, seedSession } from "../../src/testing";
+import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("ev");
 

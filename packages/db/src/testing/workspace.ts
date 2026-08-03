@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { TenantContext } from "@growthmind/shared";
 
-import type { TestDb } from "../../src/testing";
+import type { ScopedDb } from "../repositories/types";
 import {
   makeTenantContext,
   seedMember,
@@ -11,7 +11,7 @@ import {
   seedProject,
   seedUser,
   type SeededProject,
-} from "../helpers/fixtures";
+} from "./fixtures";
 
 export const SEED_PREFIX = "db-svc-";
 
@@ -39,7 +39,7 @@ export interface SeededWorkspace {
   project: SeededProject;
 }
 
-export async function seedWorkspace(db: TestDb, label: string): Promise<SeededWorkspace> {
+export async function seedWorkspace(db: ScopedDb, label: string): Promise<SeededWorkspace> {
   const names = seedNames(label);
   const org = await seedOrgWithOwner(db, {
     orgName: names.orgName,
@@ -60,7 +60,7 @@ export async function seedWorkspace(db: TestDb, label: string): Promise<SeededWo
 }
 
 export async function seedWorkspaceWithoutOwner(
-  db: TestDb,
+  db: ScopedDb,
   label: string,
 ): Promise<SeededWorkspace> {
   const names = seedNames(label);

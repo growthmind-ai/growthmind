@@ -6,7 +6,7 @@ import {
   findUserNameById,
 } from "../../src/tenancy/queries";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedMember, seedOrgWithOwner, seedOrganization, seedUser } from "../helpers/fixtures";
+import { seedMember, seedOrgWithOwner, seedOrganization, seedUser } from "../../src/testing";
 
 describe("findMembershipsByUserId", () => {
   let db: TestDb;

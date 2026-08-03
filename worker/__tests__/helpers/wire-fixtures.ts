@@ -1,15 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import type { FetchLike } from "@growthmind/adapters";
-import { schema } from "@growthmind/db";
 import type { ScopedDb } from "@growthmind/db";
+import {
+  makeTenantContext,
+  seedConnection,
+  seedMember,
+  seedOrgWithOwner,
+  seedProject,
+  seedUser,
+} from "@growthmind/db/testing";
 import {
   credentialAad,
   encryptSecret,
   keyIdOf,
   parseServerEnv,
   resolveCredentialKey,
-  tenantContextSchema,
 } from "@growthmind/shared";
 import type { ServerEnv, TenantContext } from "@growthmind/shared";
 
@@ -91,46 +97,23 @@ export async function seedPollableWorkspace(
   params: SeedWorkspaceParams,
 ): Promise<SeededWorkspace> {
   const suffix = randomUUID();
-  const organizationId = randomUUID();
-  const organizationName = `${params.prefix}org-${suffix}`;
-
-  await db.insert(schema.organization).values({
-    id: organizationId,
-    name: organizationName,
-    slug: `${params.prefix}slug-${suffix}`,
-    createdAt: new Date(),
-  });
-
-  const ownerUserId = randomUUID();
-  await db.insert(schema.user).values({
-    id: ownerUserId,
-    name: `${params.prefix}owner-${suffix}`,
+  const org = await seedOrgWithOwner(db, {
+    orgName: `${params.prefix}org-${suffix}`,
+    userName: `${params.prefix}owner-${suffix}`,
     email: `${params.prefix}owner-${suffix}@fixtures.invalid`,
-    emailVerified: false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-  await db.insert(schema.member).values({
-    id: randomUUID(),
-    organizationId,
-    userId: ownerUserId,
-    role: "owner",
-    createdAt: new Date(),
   });
 
-  const connection = await seedProjectWithConnection(db, { ...params, organizationId });
+  const connection = await seedProjectWithConnection(db, {
+    ...params,
+    organizationId: org.organizationId,
+  });
 
   return {
     ...connection,
-    organizationId,
-    organizationName,
-    ownerUserId,
-    ownerCtx: tenantContextSchema.parse({
-      userId: ownerUserId,
-      organizationId,
-      organizationName,
-      role: "owner",
-    }),
+    organizationId: org.organizationId,
+    organizationName: org.organizationName,
+    ownerUserId: org.userId,
+    ownerCtx: org.ctx,
   };
 }
 
@@ -139,43 +122,37 @@ export async function seedProjectWithConnection(
   params: SeedWorkspaceParams & { organizationId: string },
 ): Promise<SeededConnection> {
   const suffix = randomUUID();
-  const projectId = randomUUID();
-
-  await db.insert(schema.projects).values({
-    id: projectId,
+  const project = await seedProject(db, {
     organizationId: params.organizationId,
     name: `${params.prefix}project-${suffix}`,
   });
 
   const host = params.host ?? FAKE_HOST;
   const sourceProjectId = params.sourceProjectId ?? `${params.prefix}src-${suffix}`;
-  const connectionId = randomUUID();
   const credential = params.credentialFor?.({
     organizationId: params.organizationId,
-    projectId,
+    projectId: project.id,
   });
+  const anHourBefore = new Date(params.now.getTime() - 60 * 60_000);
 
-  await db.insert(schema.projectConnections).values({
-    id: connectionId,
+  const connection = await seedConnection(db, {
     organizationId: params.organizationId,
-    projectId,
-    sourceKind: "posthog",
+    projectId: project.id,
     host,
     sourceProjectId,
-    credentialCiphertext: credential?.ciphertext ?? "v1.00000000.aaaa.bbbb.cccc",
-    credentialKeyId: credential?.keyId ?? "00000000",
+    ...(credential
+      ? { credentialCiphertext: credential.ciphertext, credentialKeyId: credential.keyId }
+      : {}),
     isActive: params.isActive ?? true,
-    health: "healthy",
     watermarkAt: params.watermarkAt ?? null,
     backfillBefore: params.backfillBefore ?? null,
-
-    nextPollAt: params.nextPollAt ?? new Date(params.now.getTime() - 60 * 60_000),
+    nextPollAt: params.nextPollAt ?? anHourBefore,
     pollIntervalSeconds: params.pollIntervalSeconds ?? 60,
-    connectedAt: params.connectedAt ?? new Date(params.now.getTime() - 60 * 60_000),
+    connectedAt: params.connectedAt ?? anHourBefore,
     inferredInternalDomain: params.inferredInternalDomain ?? null,
   });
 
-  return { projectId, connectionId, sourceProjectId, host };
+  return { projectId: project.id, connectionId: connection.id, sourceProjectId, host };
 }
 
 export async function seedTeammateContext(
@@ -183,26 +160,19 @@ export async function seedTeammateContext(
   params: { prefix: string; organizationId: string; organizationName: string },
 ): Promise<TenantContext> {
   const suffix = randomUUID();
-  const userId = randomUUID();
-
-  await db.insert(schema.user).values({
-    id: userId,
+  const user = await seedUser(db, {
     name: `${params.prefix}mate-${suffix}`,
     email: `${params.prefix}mate-${suffix}@fixtures.invalid`,
-    emailVerified: false,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-  await db.insert(schema.member).values({
-    id: randomUUID(),
-    organizationId: params.organizationId,
-    userId,
-    role: "member",
-    createdAt: new Date(),
   });
 
-  return tenantContextSchema.parse({
-    userId,
+  await seedMember(db, {
+    organizationId: params.organizationId,
+    userId: user.id,
+    role: "member",
+  });
+
+  return makeTenantContext({
+    userId: user.id,
     organizationId: params.organizationId,
     organizationName: params.organizationName,
     role: "member",

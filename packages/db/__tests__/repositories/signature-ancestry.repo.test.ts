@@ -19,7 +19,7 @@ import * as schema from "../../src/schema";
 import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { seedOrgWithOwner, seedProject } from "../../src/testing";
 
 function testSignature(n: number): SignatureHex {
   const byte = n.toString(16).padStart(2, "0");

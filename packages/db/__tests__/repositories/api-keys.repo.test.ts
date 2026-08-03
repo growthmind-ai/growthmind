@@ -18,8 +18,8 @@ import {
 } from "../../src/repositories/write-keys.repo";
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../helpers/db-lane-fixtures";
-import { seedOrgWithOwner, seedProject } from "../helpers/fixtures";
+import { laneNames } from "../../src/testing";
+import { seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("apikey");
 

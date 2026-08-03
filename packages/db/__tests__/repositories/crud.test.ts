@@ -6,7 +6,7 @@ import { orgCrud } from "../../src/repositories/crud";
 import { firstRunState } from "../../src/schema/first-run-state";
 import { projects } from "../../src/schema/projects";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner, seedProject, type SeededOrgWithOwner } from "../helpers/fixtures";
+import { seedOrgWithOwner, seedProject, type SeededOrgWithOwner } from "../../src/testing";
 
 describe("orgCrud", () => {
   let db: TestDb;
