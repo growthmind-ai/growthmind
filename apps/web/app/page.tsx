@@ -11,8 +11,11 @@ import { AnchorLink, ButtonLink } from "../components/ui/Links";
 import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { tapTargetStyle } from "../components/ui/tap-target";
 import { getDb } from "../lib/db";
+import { readLandingLiveness } from "../lib/landing/liveness";
 import { ROUTES } from "../lib/routes";
 import { getTenantContext } from "../lib/tenant";
+
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const tenantContext = await getTenantContext();
@@ -21,9 +24,14 @@ export default async function HomePage() {
     redirect(ROUTES.signIn);
   }
 
-  const dismissed = await createFirstRunRepo(getDb(), tenantContext).isDismissed(
-    tenantContext.userId,
-  );
+  const db = getDb();
+  const dismissed = await createFirstRunRepo(db, tenantContext).isDismissed(tenantContext.userId);
+
+  // Only after setup: before it, the button is the one next action and a count
+  // of nothing competes with it.
+  const liveness = dismissed
+    ? await readLandingLiveness({ db, ctx: tenantContext, nowMs: Date.now() })
+    : null;
 
   return (
     <>
@@ -79,12 +87,23 @@ export default async function HomePage() {
                 (FR-O21): once this user has finished setup, `/` offers no way
                 back and no link to it exists anywhere in the app. */}
             {dismissed ? (
-              <Group wrap="nowrap" align="flex-start" gap="sm">
-                <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
-                  ·
-                </Text>
-                <Text c="dimmed">{LANDING_SETTLED_LINE}</Text>
-              </Group>
+              <>
+                {liveness === null ? null : (
+                  <Group wrap="nowrap" align="flex-start" gap="sm">
+                    <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                      ·
+                    </Text>
+                    <Text>{liveness}</Text>
+                  </Group>
+                )}
+
+                <Group wrap="nowrap" align="flex-start" gap="sm">
+                  <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
+                    ·
+                  </Text>
+                  <Text c="dimmed">{LANDING_SETTLED_LINE}</Text>
+                </Group>
+              </>
             ) : (
               <>
                 <ButtonLink

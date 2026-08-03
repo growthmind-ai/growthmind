@@ -43,3 +43,13 @@ export async function createTestDb(): Promise<TestDbHandle> {
     close: () => client.close(),
   };
 }
+
+// No migrations applied: for tests exercising the never-migrated / schema-behind paths.
+export async function createBareTestDb(): Promise<TestDbHandle> {
+  const client = new PGlite({ extensions: { vector } });
+
+  return {
+    db: drizzleFor(client),
+    close: () => client.close(),
+  };
+}

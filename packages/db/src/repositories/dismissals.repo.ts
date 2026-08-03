@@ -1,7 +1,8 @@
 import type { DismissalAction, TenantContext } from "@growthmind/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { dismissals } from "../schema/dismissals";
+import { scoped } from "./scope";
 import type { SignatureHex } from "../signatures/hex";
 import type { ScopedDb } from "./types";
 
@@ -17,40 +18,38 @@ export interface DismissalsRepo {
 }
 
 export function createDismissalsRepo(db: ScopedDb, ctx: TenantContext): DismissalsRepo {
+  const s = scoped(db, ctx);
+
   return {
     async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {
-      const [row] = await db
-        .select()
-        .from(dismissals)
-        .where(
-          and(
-            eq(dismissals.organizationId, ctx.organizationId),
-            eq(dismissals.findingId, findingId),
-            eq(dismissals.action, action),
+      return s.maybe(
+        await db
+          .select()
+          .from(dismissals)
+          .where(
+            s.owned(dismissals, eq(dismissals.findingId, findingId), eq(dismissals.action, action)),
           ),
-        );
-
-      return row ?? null;
+      );
     },
 
     async findLatestForSignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<DismissalRecord | null> {
-      const [row] = await db
-        .select()
-        .from(dismissals)
-        .where(
-          and(
-            eq(dismissals.organizationId, ctx.organizationId),
-            eq(dismissals.projectId, projectId),
-            eq(dismissals.signature, signature),
-          ),
-        )
-        .orderBy(desc(dismissals.dismissedAt))
-        .limit(1);
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .select()
+          .from(dismissals)
+          .where(
+            s.owned(
+              dismissals,
+              eq(dismissals.projectId, projectId),
+              eq(dismissals.signature, signature),
+            ),
+          )
+          .orderBy(desc(dismissals.dismissedAt))
+          .limit(1),
+      );
     },
   };
 }

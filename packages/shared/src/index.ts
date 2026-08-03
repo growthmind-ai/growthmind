@@ -464,6 +464,11 @@ export {
 } from "./onboarding/blockers";
 export { toOnboardingCounterView } from "./onboarding/counter-view";
 export {
+  describeLandingLiveness,
+  describeSince,
+  type LandingLivenessInput,
+} from "./onboarding/liveness";
+export {
   buildPrivacyReceipt,
   type ReceiptLine,
   type PrivacyReceiptInput,

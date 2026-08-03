@@ -1,9 +1,9 @@
 import { summarySourceSchema, type SummarySource, type TenantContext } from "@growthmind/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { findings } from "../schema/findings";
-import { projects } from "../schema/projects";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export const measuredCountRowSchema = z.object({
@@ -81,6 +81,9 @@ export const FINDING_CONFLICT_TARGET = [
   findings.signature,
 ];
 
+const notOurProject = (): Error =>
+  new Error("findings: the project named is not this organization's");
+
 function toRecord(row: FindingRow): FindingRecord {
   return {
     ...row,
@@ -90,16 +93,10 @@ function toRecord(row: FindingRow): FindingRecord {
 }
 
 export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRepo {
-  async function assertProjectIsOurs(projectId: string): Promise<void> {
-    const [owned] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.organizationId, ctx.organizationId), eq(projects.id, projectId)))
-      .limit(1);
+  const s = scoped(db, ctx);
 
-    if (!owned) {
-      throw new Error("findings: the project named is not this organization's");
-    }
+  function bySignature(projectId: string, signature: string) {
+    return s.owned(findings, eq(findings.projectId, projectId), eq(findings.signature, signature));
   }
 
   return {
@@ -107,12 +104,12 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
       const summarySource = summarySourceSchema.parse(input.summarySource);
       const context = findingContextSchema.parse(input.context);
       const counts = countsSchema.parse(input.counts);
-      await assertProjectIsOurs(input.projectId);
+      await s.assertProjectOwned(input.projectId, notOurProject);
 
       const [inserted] = await db
         .insert(findings)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           projectId: input.projectId,
           runId: input.runId,
           signature: input.signature,
@@ -141,17 +138,13 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
         return toRecord(inserted);
       }
 
-      const [existing] = await db
-        .select()
-        .from(findings)
-        .where(
-          and(
-            eq(findings.organizationId, ctx.organizationId),
-            eq(findings.projectId, input.projectId),
-            eq(findings.signature, input.signature),
-          ),
-        )
-        .limit(1);
+      const existing = s.maybe(
+        await db
+          .select()
+          .from(findings)
+          .where(bySignature(input.projectId, input.signature))
+          .limit(1),
+      );
 
       if (!existing) {
         throw new Error("findings: persist conflicted but no row was found to return");
@@ -161,17 +154,9 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
     },
 
     async findBySignature(projectId: string, signature: string): Promise<FindingRecord | null> {
-      const [row] = await db
-        .select()
-        .from(findings)
-        .where(
-          and(
-            eq(findings.organizationId, ctx.organizationId),
-            eq(findings.projectId, projectId),
-            eq(findings.signature, signature),
-          ),
-        )
-        .limit(1);
+      const row = s.maybe(
+        await db.select().from(findings).where(bySignature(projectId, signature)).limit(1),
+      );
 
       return row ? toRecord(row) : null;
     },
@@ -183,9 +168,7 @@ export function createFindingsRepo(db: ScopedDb, ctx: TenantContext): FindingsRe
       const rows = await db
         .select()
         .from(findings)
-        .where(
-          and(eq(findings.organizationId, ctx.organizationId), eq(findings.projectId, projectId)),
-        )
+        .where(s.owned(findings, eq(findings.projectId, projectId)))
         .orderBy(desc(findings.createdAt))
         .limit(options.limit);
 

@@ -1,8 +1,8 @@
 import type { TenantContext } from "@growthmind/shared";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { events } from "../schema/events";
-import { projects } from "../schema/projects";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type EventRecord = typeof events.$inferSelect;
@@ -29,23 +29,15 @@ export interface EventsRepo {
 }
 
 export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
+  const s = scoped(db, ctx);
+
   return {
     async insertManyIgnoringDuplicates(rows: readonly EventInsertRow[]): Promise<number> {
       if (rows.length === 0) {
         return 0;
       }
 
-      const requestedProjectIds = [...new Set(rows.map((row) => row.projectId))];
-      const ownedProjects = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(
-          and(
-            eq(projects.organizationId, ctx.organizationId),
-            inArray(projects.id, requestedProjectIds),
-          ),
-        );
-      const ownedProjectIds = new Set(ownedProjects.map((project) => project.id));
+      const ownedProjectIds = await s.ownedProjectIds(rows.map((row) => row.projectId));
 
       const ourRows = rows.filter((row) => ownedProjectIds.has(row.projectId));
       if (ourRows.length === 0) {
@@ -56,7 +48,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
         .insert(events)
         .values(
           ourRows.map((row) => ({
-            organizationId: ctx.organizationId,
+            organizationId: s.stamp.organizationId,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionId: row.sessionId,
@@ -80,7 +72,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
       return db
         .select()
         .from(events)
-        .where(and(eq(events.organizationId, ctx.organizationId), eq(events.projectId, projectId)))
+        .where(s.owned(events, eq(events.projectId, projectId)))
         .orderBy(desc(events.occurredAt))
         .limit(options.limit);
     },
@@ -89,7 +81,7 @@ export function createEventsRepo(db: ScopedDb, ctx: TenantContext): EventsRepo {
       return db
         .select()
         .from(events)
-        .where(and(eq(events.organizationId, ctx.organizationId), eq(events.sessionId, sessionId)))
+        .where(s.owned(events, eq(events.sessionId, sessionId)))
         .orderBy(desc(events.occurredAt))
         .limit(options.limit);
     },

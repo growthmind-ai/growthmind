@@ -1,7 +1,8 @@
 import type { PollRunOutcome, SourceFailureCode, TenantContext } from "@growthmind/shared";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type PollRunRecord = typeof sessionSourcePollRuns.$inferSelect;
@@ -64,13 +65,15 @@ function toCount(value: unknown): number {
 }
 
 export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRepo {
+  const s = scoped(db, ctx);
+
   function completedForConnection(connectionId: string) {
     return db
       .select()
       .from(sessionSourcePollRuns)
       .where(
-        and(
-          eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+        s.owned(
+          sessionSourcePollRuns,
           eq(sessionSourcePollRuns.connectionId, connectionId),
           eq(sessionSourcePollRuns.status, "completed"),
         ),
@@ -81,10 +84,10 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
 
   return {
     async start(input: StartPollRunInput): Promise<PollRunRecord> {
-      const [row] = await db
+      const rows = await db
         .insert(sessionSourcePollRuns)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           projectId: input.projectId,
           connectionId: input.connectionId,
           startedAt: input.startedAt,
@@ -93,11 +96,7 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
         })
         .returning();
 
-      if (!row) {
-        throw new Error("createPollRunsRepo.start: insert returned no row");
-      }
-
-      return row;
+      return s.one(rows, "createPollRunsRepo.start");
     },
 
     async finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null> {
@@ -120,33 +119,32 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
               failureMessage: terminal.failureMessage,
             };
 
-      const [row] = await db
-        .update(sessionSourcePollRuns)
-        .set({
-          ...columns,
-          eventsReceived: terminal.eventsReceived,
-          eventsPersisted: terminal.eventsPersisted,
-          eventsDroppedMalformed: terminal.eventsDroppedMalformed,
-          sessionsTouched: terminal.sessionsTouched,
-          pagesFetched: terminal.pagesFetched,
-          identityLookupsUsed: terminal.identityLookupsUsed,
-        })
-        .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
-            eq(sessionSourcePollRuns.id, id),
+      return s.maybe(
+        await db
+          .update(sessionSourcePollRuns)
+          .set({
+            ...columns,
+            eventsReceived: terminal.eventsReceived,
+            eventsPersisted: terminal.eventsPersisted,
+            eventsDroppedMalformed: terminal.eventsDroppedMalformed,
+            sessionsTouched: terminal.sessionsTouched,
+            pagesFetched: terminal.pagesFetched,
+            identityLookupsUsed: terminal.identityLookupsUsed,
+          })
+          .where(
+            s.owned(
+              sessionSourcePollRuns,
+              eq(sessionSourcePollRuns.id, id),
 
-            eq(sessionSourcePollRuns.status, "running"),
-          ),
-        )
-        .returning();
-
-      return row ?? null;
+              eq(sessionSourcePollRuns.status, "running"),
+            ),
+          )
+          .returning(),
+      );
     },
 
     async latestCompletedFor(connectionId: string): Promise<PollRunRecord | null> {
-      const [row] = await completedForConnection(connectionId);
-      return row ?? null;
+      return s.maybe(await completedForConnection(connectionId));
     },
 
     async aggregateFor(connectionId: string): Promise<PollRunAggregate> {
@@ -160,13 +158,10 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
         })
         .from(sessionSourcePollRuns)
         .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
-            eq(sessionSourcePollRuns.connectionId, connectionId),
-          ),
+          s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.connectionId, connectionId)),
         );
 
-      const [latest] = await completedForConnection(connectionId);
+      const latest = s.maybe(await completedForConnection(connectionId));
 
       return {
         runsCompleted: toCount(totals?.runsCompleted),

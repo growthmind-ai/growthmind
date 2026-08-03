@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { TenantContext } from "@growthmind/shared";
 
 import { projects } from "../schema/projects";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type ProjectRecord = typeof projects.$inferSelect;
@@ -18,44 +19,39 @@ export interface ProjectsRepo {
 }
 
 export function createProjectsRepo(db: ScopedDb, ctx: TenantContext): ProjectsRepo {
+  const s = scoped(db, ctx);
+
   return {
     async create(input: { name: string }): Promise<ProjectRecord> {
-      const [row] = await db
+      const rows = await db
         .insert(projects)
-        .values({
-          organizationId: ctx.organizationId,
-          name: input.name,
-        })
+        .values({ ...s.stamp, name: input.name })
         .returning();
 
-      if (!row) {
-        throw new Error("createProjectsRepo.create: insert returned no row");
-      }
-
-      return row;
+      return s.one(rows, "createProjectsRepo.create");
     },
 
     async list(): Promise<ProjectRecord[]> {
-      return db.select().from(projects).where(eq(projects.organizationId, ctx.organizationId));
+      return db.select().from(projects).where(s.org(projects));
     },
 
     async findById(id: string): Promise<ProjectRecord | null> {
-      const [row] = await db
-        .select()
-        .from(projects)
-        .where(and(eq(projects.organizationId, ctx.organizationId), eq(projects.id, id)));
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .select()
+          .from(projects)
+          .where(s.owned(projects, eq(projects.id, id))),
+      );
     },
 
     async rename(id: string, name: string): Promise<ProjectRecord | null> {
-      const [row] = await db
-        .update(projects)
-        .set({ name })
-        .where(and(eq(projects.organizationId, ctx.organizationId), eq(projects.id, id)))
-        .returning();
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .update(projects)
+          .set({ name })
+          .where(s.owned(projects, eq(projects.id, id)))
+          .returning(),
+      );
     },
   };
 }

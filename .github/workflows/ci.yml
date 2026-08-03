@@ -66,6 +66,21 @@ jobs:
       - name: Dependency hygiene
         run: bun test __tests__/undeclared-dependencies.test.ts
 
+      # A schema edit with no generated migration typechecks, lints and passes
+      # every test — the code and the migrations only disagree at runtime,
+      # against a real database, as a failed query naming a column that does not
+      # exist. `db:generate` needs no database and writes nothing when the two
+      # already agree, so a dirty tree here means the migration was never
+      # generated. The runner's tree is disposable; this never runs locally.
+      - name: Schema matches its migrations
+        run: |
+          bun run db:generate
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "::error::A schema change has no migration. Run: bun run db:generate"
+            git status --porcelain packages/db/drizzle
+            exit 1
+          fi
+
       - name: Typecheck
         run: bun run typecheck
 

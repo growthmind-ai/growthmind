@@ -1,4 +1,10 @@
 export { createDb, ping, type Db } from "./client";
+export {
+  getSchemaStatus,
+  compareMigrationCounts,
+  describeSchemaStatus,
+  type SchemaStatus,
+} from "./schema-status";
 export * as schema from "./schema";
 
 export type { ScopedDb } from "./repositories/types";
@@ -191,6 +197,6 @@ export {
   createFirstRunStatusService,
   type FirstRunStatusService,
 } from "./services/first-run-status.service";
-export { ensureProject } from "./tenancy/ensure-project";
+export { ensureProject, findFirstProjectForOrg } from "./tenancy/ensure-project";
 
 export { and, eq, sql } from "drizzle-orm";

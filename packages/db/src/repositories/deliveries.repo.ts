@@ -2,6 +2,7 @@ import type { DeliveryStatus, TenantContext } from "@growthmind/shared";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
 import { deliveries } from "../schema/deliveries";
+import { scoped } from "./scope";
 import type { SignatureHex } from "../signatures/hex";
 import type { ScopedDb } from "./types";
 
@@ -63,9 +64,11 @@ export const DELIVERY_CONFLICT_TARGET = [
 const RE_CLAIMABLE_STATUS: DeliveryStatus = "failed";
 
 export function createDeliveriesRepo(db: ScopedDb, ctx: TenantContext): DeliveriesRepo {
+  const s = scoped(db, ctx);
+
   function byTuple(findingId: string, channelId: string) {
-    return and(
-      eq(deliveries.organizationId, ctx.organizationId),
+    return s.owned(
+      deliveries,
       eq(deliveries.findingId, findingId),
       eq(deliveries.channelId, channelId),
     );
@@ -76,7 +79,7 @@ export function createDeliveriesRepo(db: ScopedDb, ctx: TenantContext): Deliveri
       const [claimed] = await db
         .insert(deliveries)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           projectId: input.projectId,
           findingId: input.findingId,
           signature: input.signature,
@@ -105,75 +108,73 @@ export function createDeliveriesRepo(db: ScopedDb, ctx: TenantContext): Deliveri
         return { claimed: true, delivery: claimed };
       }
 
-      const [existing] = await db
-        .select()
-        .from(deliveries)
-        .where(byTuple(input.findingId, input.channelId))
-        .limit(1);
+      const existing = s.maybe(
+        await db
+          .select()
+          .from(deliveries)
+          .where(byTuple(input.findingId, input.channelId))
+          .limit(1),
+      );
 
-      return { claimed: false, delivery: existing ?? null };
+      return { claimed: false, delivery: existing };
     },
 
     async markPosted(input: MarkPostedInput): Promise<DeliveryRecord | null> {
-      const [row] = await db
-        .update(deliveries)
-        .set({
-          status: "posted",
+      return s.maybe(
+        await db
+          .update(deliveries)
+          .set({
+            status: "posted",
 
-          postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
-          messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
+            postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
+            messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
 
-          failedAt: null,
-          failureReason: null,
-        })
-        .where(byTuple(input.findingId, input.channelId))
-        .returning();
-
-      return row ?? null;
+            failedAt: null,
+            failureReason: null,
+          })
+          .where(byTuple(input.findingId, input.channelId))
+          .returning(),
+      );
     },
 
     async markFailed(input: MarkFailedInput): Promise<DeliveryRecord | null> {
-      const [row] = await db
-        .update(deliveries)
-        .set({
-          status: "failed",
-          failedAt: input.failedAt,
-          failureReason: input.reason,
-        })
-        .where(and(byTuple(input.findingId, input.channelId), ne(deliveries.status, "posted")))
-        .returning();
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .update(deliveries)
+          .set({
+            status: "failed",
+            failedAt: input.failedAt,
+            failureReason: input.reason,
+          })
+          .where(and(byTuple(input.findingId, input.channelId), ne(deliveries.status, "posted")))
+          .returning(),
+      );
     },
 
     async findFor(findingId: string, channelId: string): Promise<DeliveryRecord | null> {
-      const [row] = await db
-        .select()
-        .from(deliveries)
-        .where(byTuple(findingId, channelId))
-        .limit(1);
-
-      return row ?? null;
+      return s.maybe(
+        await db.select().from(deliveries).where(byTuple(findingId, channelId)).limit(1),
+      );
     },
 
     async findLatestForSignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<DeliveryRecord | null> {
-      const [row] = await db
-        .select()
-        .from(deliveries)
-        .where(
-          and(
-            eq(deliveries.organizationId, ctx.organizationId),
-            eq(deliveries.projectId, projectId),
-            eq(deliveries.signature, signature),
-          ),
-        )
-        .orderBy(desc(deliveries.claimedAt))
-        .limit(1);
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .select()
+          .from(deliveries)
+          .where(
+            s.owned(
+              deliveries,
+              eq(deliveries.projectId, projectId),
+              eq(deliveries.signature, signature),
+            ),
+          )
+          .orderBy(desc(deliveries.claimedAt))
+          .limit(1),
+      );
     },
 
     async listPendingForProject(projectId: string): Promise<DeliveryRecord[]> {
@@ -181,8 +182,8 @@ export function createDeliveriesRepo(db: ScopedDb, ctx: TenantContext): Deliveri
         .select()
         .from(deliveries)
         .where(
-          and(
-            eq(deliveries.organizationId, ctx.organizationId),
+          s.owned(
+            deliveries,
             eq(deliveries.projectId, projectId),
             eq(deliveries.status, "pending"),
           ),

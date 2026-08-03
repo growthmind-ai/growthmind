@@ -10,11 +10,11 @@ import {
   type AnalysisStopReason,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { eq, lt, sql } from "drizzle-orm";
 
 import { analysisModelCalls } from "../schema/analysis-model-calls";
 import { analysisRuns } from "../schema/analysis-runs";
-import { projects } from "../schema/projects";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type AnalysisRunRecord = typeof analysisRuns.$inferSelect;
@@ -86,26 +86,17 @@ type RawExecutor = {
   execute(query: ReturnType<typeof sql>): Promise<{ rows: unknown[] }>;
 };
 
+const notOurProject = (): Error =>
+  new Error("analysis_runs: the project named is not this organization's");
+
 export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): AnalysisRunsRepo {
-  const ownedByCallerOrg = () => eq(analysisRuns.organizationId, ctx.organizationId);
-
-  async function assertProjectIsOurs(projectId: string): Promise<void> {
-    const [owned] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.organizationId, ctx.organizationId), eq(projects.id, projectId)))
-      .limit(1);
-
-    if (!owned) {
-      throw new Error("analysis_runs: the project named is not this organization's");
-    }
-  }
+  const s = scoped(db, ctx);
 
   async function insertRunningRun(input: OpenRunInput): Promise<AnalysisRunRecord | undefined> {
     const [inserted] = await db
       .insert(analysisRuns)
       .values({
-        organizationId: ctx.organizationId,
+        ...s.stamp,
         projectId: input.projectId,
         status: "running",
         startedAt: input.tickAt,
@@ -136,8 +127,8 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
         failureReason: ABANDONED_RUN_FAILURE_REASON,
       })
       .where(
-        and(
-          ownedByCallerOrg(),
+        s.owned(
+          analysisRuns,
           eq(analysisRuns.projectId, input.projectId),
 
           eq(analysisRuns.status, "running"),
@@ -155,7 +146,7 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
 
   return {
     async open(input: OpenRunInput): Promise<OpenRunResult> {
-      await assertProjectIsOurs(input.projectId);
+      await s.assertProjectOwned(input.projectId, notOurProject);
 
       const inserted = await insertRunningRun(input);
 
@@ -171,17 +162,19 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
         }
       }
 
-      const [existing] = await db
-        .select()
-        .from(analysisRuns)
-        .where(
-          and(
-            ownedByCallerOrg(),
-            eq(analysisRuns.projectId, input.projectId),
-            eq(analysisRuns.status, "running"),
-          ),
-        )
-        .limit(1);
+      const existing = s.maybe(
+        await db
+          .select()
+          .from(analysisRuns)
+          .where(
+            s.owned(
+              analysisRuns,
+              eq(analysisRuns.projectId, input.projectId),
+              eq(analysisRuns.status, "running"),
+            ),
+          )
+          .limit(1),
+      );
 
       if (!existing) {
         const afterRivalReclaim = await insertRunningRun(input);
@@ -201,33 +194,35 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
       const outcome = analysisOutcomeSchema.parse(input.outcome);
       const stopReason = analysisStopReasonSchema.parse(input.stopReason);
 
-      const [row] = await db
-        .update(analysisRuns)
-        .set({
-          status,
-          outcome,
-          stopReason,
-          finishedAt: input.finishedAt,
-          modelCallsAttempted: input.modelCallsAttempted,
+      const row = s.maybe(
+        await db
+          .update(analysisRuns)
+          .set({
+            status,
+            outcome,
+            stopReason,
+            finishedAt: input.finishedAt,
+            modelCallsAttempted: input.modelCallsAttempted,
 
-          candidatesUnrenderable: input.candidatesUnrenderable,
-          candidatesRefused: input.candidatesRefused,
-          resolvedModelId: input.resolvedModelId,
+            candidatesUnrenderable: input.candidatesUnrenderable,
+            candidatesRefused: input.candidatesRefused,
+            resolvedModelId: input.resolvedModelId,
 
-          tokensIn: input.tokensIn,
-          tokensOut: input.tokensOut,
-          failureReason: input.failureReason,
-        })
-        .where(
-          and(
-            ownedByCallerOrg(),
-            eq(analysisRuns.projectId, input.projectId),
-            eq(analysisRuns.id, input.runId),
+            tokensIn: input.tokensIn,
+            tokensOut: input.tokensOut,
+            failureReason: input.failureReason,
+          })
+          .where(
+            s.owned(
+              analysisRuns,
+              eq(analysisRuns.projectId, input.projectId),
+              eq(analysisRuns.id, input.runId),
 
-            eq(analysisRuns.status, "running"),
-          ),
-        )
-        .returning();
+              eq(analysisRuns.status, "running"),
+            ),
+          )
+          .returning(),
+      );
 
       if (!row) {
         throw new Error(
@@ -290,17 +285,19 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
         return { claimed: true };
       }
 
-      const [existing] = await db
-        .select({ id: analysisModelCalls.id })
-        .from(analysisModelCalls)
-        .where(
-          and(
-            eq(analysisModelCalls.organizationId, ctx.organizationId),
-            eq(analysisModelCalls.projectId, input.projectId),
-            eq(analysisModelCalls.signature, input.signature),
-          ),
-        )
-        .limit(1);
+      const existing = s.maybe(
+        await db
+          .select({ id: analysisModelCalls.id })
+          .from(analysisModelCalls)
+          .where(
+            s.owned(
+              analysisModelCalls,
+              eq(analysisModelCalls.projectId, input.projectId),
+              eq(analysisModelCalls.signature, input.signature),
+            ),
+          )
+          .limit(1),
+      );
 
       return existing
         ? { claimed: false, reason: "already_claimed" }

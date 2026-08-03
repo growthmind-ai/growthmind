@@ -1,8 +1,9 @@
 import type { TenantContext } from "@growthmind/shared";
 import type { FindingClass } from "@growthmind/core";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { findingSignatures } from "../schema/finding-signatures";
+import { scoped } from "./scope";
 import type { SignatureHex } from "../signatures/hex";
 import type { ScopedDb } from "./types";
 
@@ -84,9 +85,11 @@ export function createFindingSignaturesRepo(
   db: ScopedDb,
   ctx: TenantContext,
 ): FindingSignaturesRepo {
+  const s = scoped(db, ctx);
+
   function byTuple(projectId: string, signature: SignatureHex) {
-    return and(
-      eq(findingSignatures.organizationId, ctx.organizationId),
+    return s.owned(
+      findingSignatures,
       eq(findingSignatures.projectId, projectId),
       eq(findingSignatures.signature, signature),
     );
@@ -94,10 +97,10 @@ export function createFindingSignaturesRepo(
 
   return {
     async upsertSeen(input: UpsertSeenInput): Promise<FindingSignatureRecord> {
-      const [row] = await db
+      const rows = await db
         .insert(findingSignatures)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           projectId: input.projectId,
           signature: input.signature,
           symptomClass: input.symptomClass,
@@ -122,20 +125,16 @@ export function createFindingSignaturesRepo(
         })
         .returning();
 
-      if (!row) {
-        throw new Error("createFindingSignaturesRepo.upsertSeen: upsert returned no row");
-      }
-
-      return row;
+      return s.one(rows, "createFindingSignaturesRepo.upsertSeen");
     },
 
     async findBySignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<FindingSignatureRecord | null> {
-      const [row] = await db.select().from(findingSignatures).where(byTuple(projectId, signature));
-
-      return row ?? null;
+      return s.maybe(
+        await db.select().from(findingSignatures).where(byTuple(projectId, signature)),
+      );
     },
 
     async markDelivered(
@@ -143,29 +142,31 @@ export function createFindingSignaturesRepo(
       signature: SignatureHex,
       at: Date,
     ): Promise<FindingSignatureRecord | null> {
-      const [row] = await db
-        .update(findingSignatures)
-        .set({ deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, ${at})` })
-        .where(byTuple(projectId, signature))
-        .returning();
-
-      return row ?? null;
+      return s.maybe(
+        await db
+          .update(findingSignatures)
+          .set({ deliveredAt: sql`coalesce(${findingSignatures.deliveredAt}, ${at})` })
+          .where(byTuple(projectId, signature))
+          .returning(),
+      );
     },
 
     async carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null> {
-      const [oldRow] = await db
-        .select()
-        .from(findingSignatures)
-        .where(byTuple(input.projectId, input.oldSignature));
+      const oldRow = s.maybe(
+        await db
+          .select()
+          .from(findingSignatures)
+          .where(byTuple(input.projectId, input.oldSignature)),
+      );
 
       if (!oldRow) {
         return null;
       }
 
-      const [row] = await db
+      const rows = await db
         .insert(findingSignatures)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           ...carryForwardValues({
             projectId: input.projectId,
             newSignature: input.newSignature,
@@ -178,11 +179,7 @@ export function createFindingSignaturesRepo(
         })
         .returning();
 
-      if (!row) {
-        throw new Error("createFindingSignaturesRepo.carryForward: upsert returned no row");
-      }
-
-      return row;
+      return s.one(rows, "createFindingSignaturesRepo.carryForward");
     },
   };
 }

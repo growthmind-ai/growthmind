@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  canArm,
   deriveStepStates,
   displayOrdinal,
   isAnalyticsAttached,
@@ -17,6 +18,7 @@ import {
 } from "@growthmind/shared";
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
+import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
@@ -115,9 +117,37 @@ export function FirstRunClient(props: FirstRunClientProps) {
     armedAt: facts.armedAt,
   };
 
+  const offered = !armed && canArm(setupFacts);
+
   const armedOnArrival = useRef(armed);
+  const wasOffered = useRef(offered);
+  const lead = useRef<HTMLDivElement>(null);
   const handle = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const busy = useRef(false);
+
+  // The one control that ends setup is above the steps; the press that completes the
+  // last step is at the bottom of the page.
+  useEffect(() => {
+    const node = lead.current;
+
+    const reveal = shouldRevealLead({
+      offeredBefore: wasOffered.current,
+      offeredNow: offered,
+      box: node === null ? null : node.getBoundingClientRect(),
+      viewportHeight: window.innerHeight,
+    });
+
+    wasOffered.current = offered;
+
+    if (!reveal || node === null) {
+      return undefined;
+    }
+
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+
+    return undefined;
+  }, [offered]);
 
   useEffect(() => {
     if (!armed || terminal) {
@@ -211,22 +241,24 @@ export function FirstRunClient(props: FirstRunClientProps) {
           next thing before there is anything to watch, the stage after arming.
           `findingUnavailable` rides the poll rather than a client flag, so a
           row that becomes readable clears the sentence on its own. */}
-      {armed ? (
-        <Stage
-          facts={facts}
-          nowMs={nowMs}
-          channelId={current.channelId}
-          findingUnavailable={current.findingUnavailable === true}
-        />
-      ) : (
-        <SetupStage
-          facts={setupFacts}
-          counter={current.counter}
-          attached={attached}
-          pending={pending}
-          onArm={() => void startWatching()}
-        />
-      )}
+      <Box ref={lead}>
+        {armed ? (
+          <Stage
+            facts={facts}
+            nowMs={nowMs}
+            channelId={current.channelId}
+            findingUnavailable={current.findingUnavailable === true}
+          />
+        ) : (
+          <SetupStage
+            facts={setupFacts}
+            counter={current.counter}
+            attached={attached}
+            pending={pending}
+            onArm={() => void startWatching()}
+          />
+        )}
+      </Box>
 
       {armed ? (
         <Box className={armedOnArrival.current ? undefined : styles.foldIn}>

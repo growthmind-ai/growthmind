@@ -12,8 +12,9 @@
     "worker"
   ],
   "scripts": {
-    "dev": "bun run --cwd apps/web dev",
-    "dev:worker": "bun run --filter @growthmind/worker dev",
+    "dev": "bun scripts/dev-preflight.ts && bun run --cwd apps/web dev",
+    "dev:worker": "bun scripts/dev-preflight.ts && bun run --filter @growthmind/worker dev",
+    "preflight": "bun scripts/dev-preflight.ts",
     "build": "bun run --filter @growthmind/web build",
     "start": "bun run --filter @growthmind/web start",
     "typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p tsconfig.scripts.json",

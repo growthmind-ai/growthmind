@@ -10,8 +10,8 @@ import {
 } from "@growthmind/shared";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { projects } from "../schema/projects";
 import { writeKeys } from "../schema/write-keys";
+import { scoped } from "./scope";
 import type { ScopedDb } from "./types";
 
 export type WriteKeyRow = typeof writeKeys.$inferSelect;
@@ -46,28 +46,23 @@ export interface WriteKeysRepo {
 }
 
 export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeysRepo {
+  const s = scoped(db, ctx);
+
   return {
     async mint(input: { projectId: string; kind: WriteKeyKind }): Promise<MintedWriteKey> {
-      const [ownedProject] = await db
-        .select({ id: projects.id })
-        .from(projects)
-        .where(
-          and(eq(projects.id, input.projectId), eq(projects.organizationId, ctx.organizationId)),
-        )
-        .limit(1);
-
-      if (!ownedProject) {
-        throw new Error("project not found in this organization");
-      }
+      await s.assertProjectOwned(
+        input.projectId,
+        () => new Error("project not found in this organization"),
+      );
 
       const raw = generateRawKeyMaterial();
       const keyHash = hashWriteKeyMaterial(raw);
       const keyPrefix = raw.slice(0, 12);
 
-      const [row] = await db
+      const rows = await db
         .insert(writeKeys)
         .values({
-          organizationId: ctx.organizationId,
+          ...s.stamp,
           projectId: input.projectId,
           kind: input.kind,
           keyHash,
@@ -76,30 +71,26 @@ export function createWriteKeysRepo(db: ScopedDb, ctx: TenantContext): WriteKeys
         })
         .returning();
 
-      if (!row) {
-        throw new Error("mint: insert returned no row");
-      }
-
-      return { raw, key: toMetadata(row) };
+      return { raw, key: toMetadata(s.one(rows, "createWriteKeysRepo.mint")) };
     },
 
     async listByProject(projectId: string): Promise<WriteKeyMetadata[]> {
       const rows = await db
         .select()
         .from(writeKeys)
-        .where(
-          and(eq(writeKeys.organizationId, ctx.organizationId), eq(writeKeys.projectId, projectId)),
-        );
+        .where(s.owned(writeKeys, eq(writeKeys.projectId, projectId)));
 
       return rows.map(toMetadata);
     },
 
     async revoke(id: string): Promise<WriteKeyMetadata | null> {
-      const [row] = await db
-        .update(writeKeys)
-        .set({ revokedAt: new Date() })
-        .where(and(eq(writeKeys.organizationId, ctx.organizationId), eq(writeKeys.id, id)))
-        .returning();
+      const row = s.maybe(
+        await db
+          .update(writeKeys)
+          .set({ revokedAt: new Date() })
+          .where(s.owned(writeKeys, eq(writeKeys.id, id)))
+          .returning(),
+      );
 
       return row ? toMetadata(row) : null;
     },
