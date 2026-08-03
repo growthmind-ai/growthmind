@@ -84,6 +84,9 @@ services:
       # self-host contract: no Slack app, no OAuth path, product still works.
       SLACK_CLIENT_ID:
       SLACK_CLIENT_SECRET:
+      # The same valueless form for the same reason. Read only here: the worker never
+      # answers a Slack button press, and requiring it of that process would buy nothing.
+      SLACK_SIGNING_SECRET:
       # Social sign-in, same valueless both-or-neither shape as the pair above: one half
       # alone renders a button whose callback cannot complete.
       GOOGLE_CLIENT_ID:

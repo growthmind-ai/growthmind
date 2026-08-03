@@ -17,6 +17,7 @@ import {
 } from "@growthmind/db/testing";
 import {
   FINDING_BLOCK_ID_PREFIX,
+  FIX_QUEUED_ACKNOWLEDGEMENT,
   GET_IT_FIXED_ACTION_ID,
   LIST_OPEN_FIXES_MAX_ITEMS,
   SLACK_INTERACTION_ACTOR,
@@ -35,11 +36,6 @@ const INTERACTIVITY_URL = "http://localhost:3000/api/slack/interactivity";
 const SIGNING_SECRET = "slack-fixture-signing-secret-never-real";
 
 const SIGNATURE_VERSION = "v0";
-
-// TODO(Wave 1): import from `packages/shared/src/delivery/messages.ts` once it exports the
-// interaction copy. Byte-stable here because this file is the contract that copy must meet.
-const FIX_QUEUED_ACKNOWLEDGEMENT =
-  "Right — this one is queued for your coding agent. Ask it to work on your open fixes.";
 
 const ROUTE_SPECIFIER = underConstructionSpecifier("apps/web/app/api/slack/interactivity/route.ts");
 

@@ -1,5 +1,10 @@
 export const GET_IT_FIXED_ACTION_ID = "growthmind.get_it_fixed.v1";
 
+// Here rather than in `messages.ts`, whose audit requires every registered string to be a
+// whole sentence. A control's name is not one, and the renderer wants both halves of the
+// button from one import anyway.
+export const GET_IT_FIXED_LABEL = "Get it fixed";
+
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
 
 export const SLACK_INTERACTION_ACTOR = "slack:interaction";

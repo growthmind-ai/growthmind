@@ -31,6 +31,7 @@ const webShape = {
   // composition root, never here — half a credential pair must not stop a boot.
   SLACK_CLIENT_ID: z.string().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
+  SLACK_SIGNING_SECRET: z.string().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   GITHUB_CLIENT_ID: z.string().min(1).optional(),
