@@ -87,18 +87,18 @@ export interface FindingSignaturesRepo {
   carryForward(input: CarryForwardInput): Promise<FindingSignatureRecord | null>;
 }
 
+function byTuple(projectId: string, signature: SignatureHex) {
+  return and(
+    eq(findingSignatures.projectId, projectId),
+    eq(findingSignatures.signature, signature),
+  );
+}
+
 export function createFindingSignaturesRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
 ): FindingSignaturesRepo {
   const c = orgCrud(db, ctx, findingSignatures);
-
-  function byTuple(projectId: string, signature: SignatureHex) {
-    return and(
-      eq(findingSignatures.projectId, projectId),
-      eq(findingSignatures.signature, signature),
-    );
-  }
 
   return {
     async upsertSeen(input: UpsertSeenInput): Promise<FindingSignatureRecord> {

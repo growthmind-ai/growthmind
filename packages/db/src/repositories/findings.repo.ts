@@ -93,13 +93,13 @@ function toRecord(row: FindingRow): FindingRecord {
   };
 }
 
+function bySignature(projectId: string, signature: string) {
+  return and(eq(findings.projectId, projectId), eq(findings.signature, signature));
+}
+
 export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): FindingsRepo {
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, findings);
-
-  function bySignature(projectId: string, signature: string) {
-    return and(eq(findings.projectId, projectId), eq(findings.signature, signature));
-  }
 
   return {
     async persist(input: PersistFindingInput): Promise<FindingRecord> {

@@ -63,12 +63,12 @@ export const DELIVERY_CONFLICT_TARGET = [
 
 const RE_CLAIMABLE_STATUS: DeliveryStatus = "failed";
 
+function byTuple(findingId: string, channelId: string) {
+  return and(eq(deliveries.findingId, findingId), eq(deliveries.channelId, channelId));
+}
+
 export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): DeliveriesRepo {
   const c = orgCrud(db, ctx, deliveries);
-
-  function byTuple(findingId: string, channelId: string) {
-    return and(eq(deliveries.findingId, findingId), eq(deliveries.channelId, channelId));
-  }
 
   return {
     async claimForPost(input: ClaimDeliveryInput): Promise<ClaimDeliveryResult> {

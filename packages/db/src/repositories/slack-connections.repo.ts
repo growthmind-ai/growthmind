@@ -1,6 +1,3 @@
-// Org-scoped by construction: the factory takes a `TenantContext`, no method accepts an
-// organization id, and every read and mutation filters on `ctx.organizationId`. No method
-// returns a credential column; `openCredentialForOrg` is the one door, composition root only.
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
 import { decryptSecret } from "@growthmind/shared";
 import { eq, isNull } from "drizzle-orm";
@@ -82,13 +79,13 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
   };
 }
 
+const activeRow = () => eq(slackConnections.isActive, true);
+
 export function createSlackConnectionsRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
 ): SlackConnectionsRepo {
   const c = orgCrud(db, ctx, slackConnections);
-
-  const activeRow = () => eq(slackConnections.isActive, true);
 
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
@@ -101,7 +98,6 @@ export function createSlackConnectionsRepo(
       try {
         const row = await c.insert({
           channelId: input.channelId,
-          // `?? null` so an absent key and an explicit null persist as the same value.
           workspaceName: input.workspaceName ?? null,
           credentialCiphertext: input.credentialCiphertext,
           credentialKeyId: input.credentialKeyId,
@@ -117,18 +113,11 @@ export function createSlackConnectionsRepo(
     },
 
     async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
-      // The row is found by this context, never by anything on the request (D7), in one
-      // `UPDATE … RETURNING` rather than a read-then-write (D6). `channel_id IS NULL` MAKES
-      // THIS A FILL, NOT A RE-POINT, AND DELETING IT REPLAYS THE ORG'S WHOLE BACKLOG: the
-      // delivery dedup key is `(organization_id, finding_id, channel_id)`, so moving the
-      // channel forks every delivery identity already recorded — every sent finding reads as
-      // never sent and the weekly budget resets, silently. No index can refuse an UPDATE, so
-      // this clause is the only thing holding that line. Re-pointing needs a migration.
-      const row = await c.update(
-        { channelId },
-        activeRow(),
-        isNull(slackConnections.channelId),
-      );
+      // `channel_id IS NULL` makes this a fill, not a re-point: the delivery dedup key is
+      // `(organization_id, finding_id, channel_id)`, so moving the channel would fork every
+      // recorded delivery identity and silently replay the org's backlog. Re-pointing needs
+      // a migration.
+      const row = await c.update({ channelId }, activeRow(), isNull(slackConnections.channelId));
 
       return row ? toSlackConnectionSummary(row) : null;
     },

@@ -9,5 +9,4 @@ export type ScopedDb = NodePgDatabase<typeof schema> | PgliteDatabase<typeof sch
 // PgTransaction extends PgDatabase, so this admits both databases and their
 // transactions — repositories built over a tx take part in the caller's atomicity.
 export type ScopedExecutor =
-  | PgDatabase<NodePgQueryResultHKT, typeof schema>
-  | PgDatabase<PgliteQueryResultHKT, typeof schema>;
+  PgDatabase<NodePgQueryResultHKT, typeof schema> | PgDatabase<PgliteQueryResultHKT, typeof schema>;

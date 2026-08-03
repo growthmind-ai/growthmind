@@ -6,10 +6,7 @@ import { describe, expect, it } from "bun:test";
 
 const SRC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "src");
 
-const SCANNED_DIRS = [
-  path.join(SRC_DIR, "repositories"),
-  path.join(SRC_DIR, "services"),
-] as const;
+const SCANNED_DIRS = [path.join(SRC_DIR, "repositories"), path.join(SRC_DIR, "services")] as const;
 
 // scope.ts is the one home of the tenant predicate and the stamp; everything else
 // takes both from it (directly or through crud.ts).

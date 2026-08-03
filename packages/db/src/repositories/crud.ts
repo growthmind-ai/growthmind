@@ -56,7 +56,10 @@ export interface OrgCrud<T extends OrgScopedTable> {
 
   list(options?: ListOptions): Promise<T["$inferSelect"][]>;
 
-  update(set: PgUpdateSetSource<T>, ...conds: (SQL | undefined)[]): Promise<T["$inferSelect"] | null>;
+  update(
+    set: PgUpdateSetSource<T>,
+    ...conds: (SQL | undefined)[]
+  ): Promise<T["$inferSelect"] | null>;
 }
 
 // Both drivers expose the byte-identical PgDatabase builder API; chains are checked
