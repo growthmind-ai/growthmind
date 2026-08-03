@@ -10,10 +10,17 @@ import {
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.repo";
 import { createFindingsRepo } from "../../src/repositories/findings.repo";
+import { findings } from "../../src/schema/findings";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
-import { seedAnalysisRun, seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import {
+  driverQueryError,
+  seedAnalysisRun,
+  seedConnection,
+  seedOrgWithOwner,
+  seedProject,
+} from "../../src/testing";
 import { readRawRows } from "../helpers/onboarding-contract";
 import {
   type CreateFirstRunRepo,
@@ -483,5 +490,97 @@ describe("planted-offender control — proving row 6 bites", () => {
     });
     expect(stripComments(precedent)).toContain(".innerJoin(");
     expect(findUnscopedTableReads(precedent)).toEqual([]);
+  });
+});
+
+// B-042: B-040 made `findingUnavailable` terminal, which stops the poll — and the flag
+// was raised for a caught driver error too. One pool timeout mid-watch therefore ended
+// the watch for good, because only a poll could ever have cleared it.
+const failFindingReads = (realDb: TestDb, thrown: Error): TestDb =>
+  new Proxy(realDb, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop !== "select") {
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      }
+      return (...args: unknown[]) => {
+        const builder = (value as (...a: unknown[]) => unknown).apply(target, args) as Record<
+          string,
+          unknown
+        >;
+        return new Proxy(builder, {
+          get(bt, bp, br) {
+            const member = Reflect.get(bt, bp, br);
+            if (bp !== "from") {
+              return typeof member === "function"
+                ? (member as (...a: unknown[]) => unknown).bind(bt)
+                : member;
+            }
+            return (table: unknown) => {
+              if (table === findings) throw thrown;
+              return (member as (t: unknown) => unknown).call(bt, table);
+            };
+          },
+        });
+      };
+    },
+  });
+
+describe("a driver failure does not end the watch", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  test("a caught driver error reports no finding rather than an unrenderable one", async () => {
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "driver-blip");
+    await seedFindingRow(db, scope, "readable");
+
+    const blind = failFindingReads(
+      db,
+      driverQueryError({
+        sql: "select * from findings where project_id = $1",
+        params: [scope.projectId],
+        driverMessage: "sorry, too many clients already",
+      }),
+    );
+
+    const facts = await createService(blind, scope.ctx).read(scope.projectId);
+
+    // NOT terminal: the screen keeps watching and the next poll resolves it.
+    expect(facts.findingUnavailable).toBe(false);
+    expect(facts.finding).toBeNull();
+    expect(facts.findingId).toBeNull();
+  });
+
+  test("CONTROL: the same read succeeds without the failing proxy", async () => {
+    // Without this the row above passes against a project that has no finding at all.
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "driver-blip-control");
+    await seedFindingRow(db, scope, "readable");
+
+    expect((await createService(db, scope.ctx).read(scope.projectId)).finding).not.toBeNull();
+  });
+
+  test("a shape the repository refuses is still permanent, and still terminal", async () => {
+    // The two arrive at the same catch and mean opposite things: a ZodError never
+    // resolves, a pool timeout resolves on the next poll.
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "shape-refused");
+
+    await seedUnrenderableFindingRow(db, scope);
+
+    expect((await createService(db, scope.ctx).read(scope.projectId)).findingUnavailable).toBe(
+      true,
+    );
   });
 });

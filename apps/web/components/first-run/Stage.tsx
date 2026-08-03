@@ -4,10 +4,13 @@ import { Stack, Text, Title } from "@mantine/core";
 import { useRef } from "react";
 
 import {
+  isDeliveryAddress,
   reduceStage,
   renderDeliveryClosure,
   renderStageView,
   STAGE_FINDING_UNAVAILABLE,
+  STAGE_NO_DELIVERY_LINE,
+  STAGE_UNREADABLE_DELIVERED_TEMPLATE,
   STAGE_UNREADABLE_HEADING,
   STAGE_RETIRE_CLOSURE,
   type FirstRunDeliveryState,
@@ -46,6 +49,18 @@ export function Stage(props: StageProps) {
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;
 
+  // Where it went, for the one state that cannot show it. NOT `renderDeliveryClosure`:
+  // an unrenderable row correlates no delivery, so `delivery` is always "none" here and
+  // that helper would answer "nowhere" for a channel that did receive it (B-042).
+  const unreadableClosure = !props.findingUnavailable
+    ? null
+    : isDeliveryAddress(props.channelId)
+      ? STAGE_UNREADABLE_DELIVERED_TEMPLATE.replaceAll(
+          "{channel}",
+          props.channelLabel?.trim() || props.channelId,
+        )
+      : STAGE_NO_DELIVERY_LINE;
+
   return (
     <Stack gap="sm">
       {/* The fault owns the heading when there is one. "Reading what came back."
@@ -62,6 +77,12 @@ export function Stage(props: StageProps) {
       <Text size="sm" c={props.findingUnavailable ? "stamp.4" : "dimmed"}>
         {props.findingUnavailable ? STAGE_FINDING_UNAVAILABLE : view.hint}
       </Text>
+
+      {unreadableClosure === null ? null : (
+        <Text size="sm" c="dimmed">
+          {unreadableClosure}
+        </Text>
+      )}
 
       <WaitLog lines={view.lines} />
 

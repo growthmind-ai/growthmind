@@ -10,15 +10,13 @@ import { analysisRuns } from "../schema/analysis-runs";
 import { firstRunState } from "../schema/first-run-state";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 
-// Three facts about ONE row, from ONE read. The card, the delivery line and the fault
-// sentence each used to run a bounded finding read of their own; during onboarding the
-// analysis lane persists findings in a sequential loop, so a newer row landing between
-// two of them gave one finding card the next finding delivery state (B-038).
+// Three facts about ONE row, from ONE read: the card, the delivery line and the fault
+// sentence each ran a bounded finding read of their own, and a row landing between two
+// of them gave one finding card the next finding delivery state (B-038).
 export interface FirstRunStatusFacts extends StagePersistedFacts {
   readonly findingId: string | null;
 
-  // A row is there and did not satisfy the rendered shape — which is why this is
-  // not simply `finding === null`.
+  // A row is there and will not render — not simply `finding === null`.
   readonly findingUnavailable: boolean;
 }
 
@@ -41,28 +39,42 @@ interface NewestFinding {
   readonly unavailable: boolean;
 }
 
-// Absent and unreadable are different answers, and the screen says different things.
+// Absent, and could-not-read-it-just-now. `findingUnavailable` stops the poll, so a pool
+// timeout that reported one ended the watch for good (B-042).
 const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false };
-const UNREADABLE: NewestFinding = { id: null, finding: null, unavailable: true };
+
+// A row IS there and will not render; re-reading changes nothing.
+const UNRENDERABLE: NewestFinding = { id: null, finding: null, unavailable: true };
+
+// A malformed row arrives as a `ZodError` from the repository DTO boundary; a pool
+// timeout arrives as a driver error. Same catch, opposite meanings.
+function isShapeFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { name?: unknown }).name === "ZodError"
+  );
+}
 
 async function readNewestFinding(
   db: ScopedDb,
   ctx: TenantContext,
   projectId: string,
+  armedAt: Date | null,
 ): Promise<NewestFinding> {
   let record;
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
   } catch (error) {
-    // `describeDriverError`, never the caught value: a failed query's own message IS
-    // the statement and its bound parameters. Both deleted readers said so; this is
-    // now the only one left, so it has to.
+    // `describeDriverError`, never the caught value: a failed query message IS the
+    // statement and its bound parameters.
     logger.error("first-run status: could not read the newest finding for the project", {
       organizationId: ctx.organizationId,
       projectId,
       reason: describeDriverError(error),
     });
-    return UNREADABLE;
+
+    // A driver failure is not a fault the screen may claim, and going terminal on one
+    // ends the watch for good.
+    return isShapeFailure(error) ? UNRENDERABLE : NO_FINDING;
   }
 
   if (!record) {
@@ -94,11 +106,12 @@ async function readNewestFinding(
       issues: parsed.error.issues,
     });
 
-    // UNREADABLE, not `{ id: record.id, … }`. Returning the id here would be the one
-    // state where a delivery is correlated for a finding no screen can render — and
-    // `finding === null` implying `findingId === null` is the invariant that makes
-    // the card and the delivery line inseparable.
-    return UNREADABLE;
+    // No id, so `finding === null` implies `findingId === null` (B-038). And only a row
+    // from THIS watch is a fault this watch may report: a project already holding an
+    // unrenderable row made a fresh "Start watching" terminal on arrival (B-042).
+    const fromThisWatch = armedAt !== null && record.createdAt > armedAt;
+
+    return fromThisWatch ? UNRENDERABLE : NO_FINDING;
   }
 
   return { id: record.id, finding: parsed.data, unavailable: false };
@@ -119,7 +132,7 @@ export function createFirstRunStatusService(
         .limit(1);
 
       const armedAt = state?.armedAt ?? null;
-      const newest = await readNewestFinding(db, ctx, projectId);
+      const newest = await readNewestFinding(db, ctx, projectId, armedAt);
       const found = {
         finding: newest.finding,
         findingId: newest.id,
