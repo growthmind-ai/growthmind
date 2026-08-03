@@ -26,7 +26,6 @@ import {
   credentialAad,
   decryptSecret,
   deriveIdentityHmacKey,
-  describeError,
   resolveCredentialKey,
 } from "@growthmind/shared";
 
@@ -135,7 +134,7 @@ export async function runSessionSourcePoll(
     } catch (error) {
        
       deps.logger.error(
-        `session source poll: connection ${connection.id} could not be processed — ${describeError(error)}`,
+        `session source poll: connection ${connection.id} could not be processed — ${describeDriverError(error)}`,
       );
       summary.connectionsFailed += 1;
       continue;
@@ -315,7 +314,7 @@ async function runOnePass(input: {
   } catch (error) {
      
     deps.logger.error(
-      `session source poll: connection ${connection.id} threw while fetching — ${describeError(error)}`,
+      `session source poll: connection ${connection.id} threw while fetching — ${describeDriverError(error)}`,
     );
     await finishFailed(deps, {
       pollRuns,
@@ -394,7 +393,7 @@ async function runOnePass(input: {
   } catch (error) {
      
     deps.logger.error(
-      `session source poll: connection ${connection.id} could not store what it fetched — ${describeError(error)}`,
+      `session source poll: connection ${connection.id} could not store what it fetched — ${describeDriverError(error)}`,
     );
     await finishFailed(deps, {
       pollRuns,
@@ -477,7 +476,7 @@ async function finishFailed(
   } catch (error) {
     recorded = false;
     deps.logger.error(
-      `session source poll: connection ${input.connection.id} could not record its failed run — ${describeError(error)}`,
+      `session source poll: connection ${input.connection.id} could not record its failed run — ${describeDriverError(error)}`,
     );
   }
 
