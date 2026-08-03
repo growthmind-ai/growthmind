@@ -5,6 +5,7 @@ import {
   createFindingsRepo,
   createFirstRunRepo,
   createFirstRunStatusService,
+  createProviderInterestRepo,
   createSlackConnectionsRepo,
   describeDriverError,
   isDeliveryTarget,
@@ -13,6 +14,7 @@ import type {
   DeliveryStatus,
   FirstRunDeliveryState,
   FirstRunStatus,
+  InterestProviderId,
   StagePersistedFacts,
   TenantContext,
 } from "@growthmind/shared";
@@ -20,6 +22,7 @@ import {
   CONNECTION_STATE_MESSAGES,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
+  interestPingConfigured,
   logger,
   parseServerEnv,
   toOnboardingCounterView,
@@ -52,6 +55,12 @@ export type FirstRunStatusPayload = FirstRunStatus & {
   // The delivery lane's own next action, already written when the post failed. Non-null
   // only in the failed state, so no screen can pair it with a claim that contradicts it.
   readonly deliveryFailureReason: string | null;
+
+  // AD-5, both REQUIRED: an optional field here is the always-absent D11 shape,
+  // and every consumer that fails to compile is a consumer found.
+  readonly providerInterest: readonly InterestProviderId[];
+
+  readonly interestPingAvailable: boolean;
 };
 
 export interface BuildFirstRunStatusInput {
@@ -158,11 +167,12 @@ export async function buildFirstRunStatus(
 ): Promise<FirstRunStatusPayload> {
   const { db, ctx, projectId, facts } = input;
 
-  const [counter, slack, state, findingId] = await Promise.all([
+  const [counter, slack, state, findingId, providerInterest] = await Promise.all([
     createEventsCounterService(db, ctx).read(projectId),
     createSlackConnectionsRepo(db, ctx).getActiveForOrg(),
     createFirstRunRepo(db, ctx).readState(projectId),
     facts.finding === null ? Promise.resolve(null) : readNewestFindingId(db, ctx, projectId),
+    createProviderInterestRepo(db, ctx).listNotedProviders(),
   ]);
 
   const view = toOnboardingCounterView(counter);
@@ -173,6 +183,10 @@ export async function buildFirstRunStatus(
     findingId,
     channelId: slack?.channelId ?? null,
   });
+
+  // Read here so no caller threads it, and parsed per call so an env captured
+  // at import time cannot outlive a redeploy. One parse feeds both flags.
+  const env = parseServerEnv(process.env);
 
   return {
     finding: facts.finding,
@@ -191,9 +205,9 @@ export async function buildFirstRunStatus(
     slackNotice: notice(slack),
     slackWorkspaceAttached: slack !== null,
     slackWorkspaceName: slack?.workspaceName ?? null,
-    // Read here so no caller threads it, and parsed per call so an env captured
-    // at import time cannot outlive a redeploy.
-    slackOAuthAvailable: slackOAuthConfigured(parseServerEnv(process.env)),
+    slackOAuthAvailable: slackOAuthConfigured(env),
+    interestPingAvailable: interestPingConfigured(env),
+    providerInterest,
     deliveryState: delivery.state,
     deliveryFailureReason: delivery.failureReason,
   };

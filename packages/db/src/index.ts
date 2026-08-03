@@ -198,6 +198,11 @@ export {
   type FirstRunState,
 } from "./repositories/first-run.repo";
 export {
+  createProviderInterestRepo,
+  type ProviderInterestRepo,
+  type ProviderInterestNote,
+} from "./repositories/provider-interest.repo";
+export {
   createFirstRunStatusService,
   type FirstRunStatusService,
 } from "./services/first-run-status.service";

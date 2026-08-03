@@ -1,4 +1,10 @@
-export { serverEnvSchema, parseServerEnv, DEV_ENCRYPTION_KEY, type ServerEnv } from "./env";
+export {
+  serverEnvSchema,
+  parseServerEnv,
+  interestPingConfigured,
+  DEV_ENCRYPTION_KEY,
+  type ServerEnv,
+} from "./env";
 
 export { describeError } from "./errors";
 
@@ -344,7 +350,6 @@ export {
   FIRST_RUN_TITLE,
   STEP_REPO_TITLE,
   STEP_REPO_WHAT_IT_WILL_DO,
-  STEP_REPO_FILLER,
   STEP_ANALYTICS_TITLE,
   STEP_ANALYTICS_HELPER,
   FIELD_PERSONAL_KEY_LABEL,
@@ -403,8 +408,12 @@ export {
   SETTINGS_BACK_LABEL,
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,
-  STEP_AGENT_FILLER,
   ROADMAP_LEAD,
+  PROVIDER_SOON_BADGE,
+  INTEREST_PING_LABEL,
+  INTEREST_PENDING_LABEL,
+  INTEREST_NOTED_BADGE,
+  INTEREST_NOTED_TEMPLATE,
   SETUP_SEEING_HEADING,
   SETUP_NEXT_ANALYTICS,
   SETUP_NEXT_DELIVERY,
@@ -500,6 +509,19 @@ export {
   type TestPostInput,
   type TestPostOutcome,
 } from "./onboarding/slack-test";
+
+export {
+  PROVIDER_RAILS,
+  PROVIDER_CATALOGUE,
+  INTEREST_PROVIDER_IDS,
+  interestProviderIdSchema,
+  firstRunInterestInputSchema,
+  type ProviderRail,
+  type ProviderId,
+  type InterestProviderId,
+  type ProviderDescriptor,
+  type FirstRunInterestInput,
+} from "./onboarding/providers";
 
 export {
   firstRunAnalyticsConnectInputSchema,

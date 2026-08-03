@@ -1,16 +1,18 @@
 import { Box, Stack, Text } from "@mantine/core";
 
-import { ROADMAP_LEAD, type ComingNextStep } from "@growthmind/shared";
+import { ROADMAP_LEAD, type ComingNextStep, type InterestProviderId } from "@growthmind/shared";
 
-import { StubStep } from "./StubStep";
+import { SoonCard } from "./SoonCard";
 
 const MARGIN_RULE = { borderLeft: "1px dashed var(--mantine-color-default-border)" };
 
 interface RoadmapProps {
   readonly steps: readonly ComingNextStep[];
+  readonly providerInterest: readonly InterestProviderId[];
+  readonly interestPingAvailable: boolean;
 }
 
-export function Roadmap({ steps }: RoadmapProps) {
+export function Roadmap({ steps, providerInterest, interestPingAvailable }: RoadmapProps) {
   if (steps.length === 0) {
     return null;
   }
@@ -22,11 +24,16 @@ export function Roadmap({ steps }: RoadmapProps) {
           {ROADMAP_LEAD}
         </Text>
 
-        {/* ONE RENDERER, STILL. `StubStep` draws both stubs and the shared stub
-            contract still scans that one file; this component is the section
-            around it, never a second way to draw a stub. */}
+        {/* ONE RENDERER, STILL. `SoonCard` draws both soon cards and the
+            soon-card contract scans that one file; this component is the
+            section around it, never a second way to draw a card. */}
         {steps.map((step) => (
-          <StubStep key={step.id} step={step} />
+          <SoonCard
+            key={step.id}
+            step={step}
+            providerInterest={providerInterest}
+            interestPingAvailable={interestPingAvailable}
+          />
         ))}
       </Stack>
     </Box>

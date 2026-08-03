@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "bun:test";
 
+import { assertUnderConstruction } from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { crontab, taskList } from "../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../src/task-names";
 
@@ -191,6 +192,46 @@ test("the onboarding trigger queues under preserve_run_at, never replace and nev
 
 test("the onboarding job key is built from the task constant and the project id", () => {
   expect(indexCode()).toContain("jobKey: `${TASK.ANALYSIS_ONBOARDING}:${projectId}`");
+});
+
+const PROVIDER_INTEREST_TICK_OWNER =
+  "O-024 ADD task 4.1 (worker/src/task-names.ts + worker/src/index.ts)";
+
+function providerInterestTickName(): string {
+  const name = (TASK as Record<string, string | undefined>)["PROVIDER_INTEREST_TICK"];
+  assertUnderConstruction(name !== undefined, {
+    contract: "TASK.PROVIDER_INTEREST_TICK",
+    ownedBy: PROVIDER_INTEREST_TICK_OWNER,
+  });
+  return name;
+}
+
+test("the provider interest tick name is the exported constant and a valid Graphile identifier", () => {
+  const name = providerInterestTickName();
+  expect(name).toBe("provider-interest:tick");
+  expect(GRAPHILE_TASK_NAME_PATTERN.test(name)).toBe(true);
+});
+
+test("the provider interest tick is registered and scheduled every minute with no fill", () => {
+  const name = providerInterestTickName();
+  expect(taskList[name]).toBeDefined();
+
+  const tickLines = crontab.split("\n").filter((line) => line.trim().split(/\s+/)[5] === name);
+  expect(tickLines.length).toBe(1);
+
+  const fields = (tickLines[0] ?? "").trim().split(/\s+/);
+  expect(fields.slice(0, 5)).toEqual(["*", "*", "*", "*", "*"]);
+  expect(fields.length).toBe(6);
+});
+
+test("the raw task-name scan sweeps the provider interest task file", () => {
+  const expected = path.resolve(WORKER_ROOT, "src", "tasks", "provider-interest-tick.ts");
+  const walked = typeScriptFilesUnder(WORKER_ROOT).map((file) => path.resolve(file));
+  assertUnderConstruction(walked.includes(expected), {
+    contract: "worker/src/tasks/provider-interest-tick.ts is walked by the raw task-name scan",
+    ownedBy: "O-024 ADD task 4.2 (worker/src/tasks/provider-interest-tick.ts)",
+  });
+  expect(walked).toContain(expected);
 });
 
 test("every crontab line's command is a registered, well-formed task name", () => {
