@@ -1,0 +1,1 @@
+ALTER TABLE "slack_connections" ADD COLUMN "channel_name" text;

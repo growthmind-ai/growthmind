@@ -242,6 +242,7 @@ export {
   type DeliveryStatus,
   type ResidualPiiKind,
 } from "./delivery/types";
+export { channelLabel, type ChannelIdentity } from "./delivery/channel-label";
 export {
   NOTHING_TODAY_LEAD,
   DELIVERY_DECISION_MESSAGES,

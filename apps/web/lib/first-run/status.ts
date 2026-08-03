@@ -17,6 +17,7 @@ import type {
   TenantContext,
 } from "@growthmind/shared";
 import {
+  channelLabel,
   CONNECTION_STATE_MESSAGES,
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
@@ -187,6 +188,8 @@ export async function buildFirstRunStatus(
     counter: view,
     connectionMessage: CONNECTION_STATE_MESSAGES[view.state.status],
     channelId: slack?.channelId ?? null,
+    // Derived here and nowhere else, so no screen can forget the fallback to the id.
+    channelLabel: slack === null ? null : channelLabel(slack),
     slackSkippedAt: state?.slackSkippedAt ?? null,
     slackNotice: notice(slack),
     slackWorkspaceAttached: slack !== null,

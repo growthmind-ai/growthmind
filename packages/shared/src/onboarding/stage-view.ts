@@ -41,16 +41,21 @@ const DELIVERY_TEMPLATES: Record<Exclude<FirstRunDeliveryState, "none">, string>
 
 const NOT_AN_ADDRESS: ReadonlySet<string> = new Set(["", "null", "undefined"]);
 
+// The ADDRESS decides whether there is anything to claim; the LABEL is what the
+// sentence names. They are different values — a row can hold a deliverable id and
+// no name at all — and collapsing them renders a Slack id at a founder who cannot
+// recognise it. The label is derived once, server-side, by `channelLabel`.
 export function renderDeliveryLine(
   state: FirstRunDeliveryState,
   channelId: string | null,
+  label: string | null = null,
 ): string | null {
   const address = channelId === null ? "" : channelId.trim();
   if (state === "none" || NOT_AN_ADDRESS.has(address.toLowerCase())) {
     return null;
   }
 
-  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", address);
+  return DELIVERY_TEMPLATES[state].replaceAll("{channel}", label?.trim() || address);
 }
 
 // The terminal state always says where this went, and "nowhere" is one of the answers.
@@ -58,8 +63,9 @@ export function renderDeliveryLine(
 export function renderDeliveryClosure(
   state: FirstRunDeliveryState,
   channelId: string | null,
+  label: string | null = null,
 ): string {
-  return renderDeliveryLine(state, channelId) ?? STAGE_NO_DELIVERY_LINE;
+  return renderDeliveryLine(state, channelId, label) ?? STAGE_NO_DELIVERY_LINE;
 }
 
 const ENDED_HEADINGS: Record<EndedReason, string> = {

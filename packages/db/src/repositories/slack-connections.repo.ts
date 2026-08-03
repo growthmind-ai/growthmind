@@ -18,6 +18,10 @@ export interface SlackConnectionSummary {
   // which is this whole summary being `null`. Consumers needing an address use `isDeliveryTarget`.
   readonly channelId: string | null;
 
+  // What a founder is shown in place of the id, which they cannot recognise. `null`
+  // on the pasted-token path and on rows written before the column existed.
+  readonly channelName: string | null;
+
   // Not a credential, so it may ride in a summary. `null` on the pasted-token path.
   readonly workspaceName: string | null;
 
@@ -49,7 +53,10 @@ export interface SlackConnectionsRepo {
 
   // Fills the org's own active row: no connection id parameter exists, so one organization
   // cannot name another's. Once-only (see the guard below); `null` means nothing was updated.
-  attachChannel(channelId: string): Promise<SlackConnectionSummary | null>;
+  attachChannel(
+    channelId: string,
+    channelName: string | null,
+  ): Promise<SlackConnectionSummary | null>;
 
   // Org-wide revocation, never a DELETE: the row survives so history outlives a reconnect.
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
@@ -72,6 +79,7 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
     id: row.id,
     organizationId: row.organizationId,
     channelId: row.channelId,
+    channelName: row.channelName,
     workspaceName: row.workspaceName,
     isActive: row.isActive,
     connectedByUserId: row.connectedByUserId,
@@ -112,12 +120,19 @@ export function createSlackConnectionsRepo(
       }
     },
 
-    async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
+    async attachChannel(
+      channelId: string,
+      channelName: string | null,
+    ): Promise<SlackConnectionSummary | null> {
       // `channel_id IS NULL` makes this a fill, not a re-point: the delivery dedup key is
       // `(organization_id, finding_id, channel_id)`, so moving the channel would fork every
       // recorded delivery identity and silently replay the org's backlog. Re-pointing needs
       // a migration.
-      const row = await c.update({ channelId }, activeRow(), isNull(slackConnections.channelId));
+      const row = await c.update(
+        { channelId, channelName },
+        activeRow(),
+        isNull(slackConnections.channelId),
+      );
 
       return row ? toSlackConnectionSummary(row) : null;
     },

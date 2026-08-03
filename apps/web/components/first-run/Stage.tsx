@@ -24,6 +24,10 @@ interface StageProps {
 
   readonly channelId: string | null;
 
+  // The address decides whether there is a claim to make; the label is what the
+  // sentence names. A row can hold a deliverable id and no name at all.
+  readonly channelLabel: string | null;
+
   readonly findingUnavailable: boolean;
 
   readonly delivery: FirstRunDeliveryState;
@@ -36,7 +40,7 @@ interface StageProps {
 export function Stage(props: StageProps) {
   const state = reduceStage(props.facts, props.nowMs);
   const view = renderStageView(state);
-  const deliveryLine = renderDeliveryClosure(props.delivery, props.channelId);
+  const deliveryLine = renderDeliveryClosure(props.delivery, props.channelId, props.channelLabel);
 
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;

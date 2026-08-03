@@ -202,6 +202,9 @@ export type TestPostInput = {
   readonly result: PostResult;
 
   readonly channelId: string;
+
+  // What the founder is shown, which is not the address (B-037).
+  readonly channelLabel: string | null;
 };
 
 export type TestPostOutcome = {

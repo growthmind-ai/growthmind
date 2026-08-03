@@ -10,8 +10,12 @@ import {
 export type TestPostInput = {
   readonly result: PostResult;
 
-  // `PostResult` carries no channel; this comes from the stored row, not a payload.
+  // `PostResult` carries no channel; these come from the stored row, not a payload.
   readonly channelId: string;
+
+  // What the founder is shown, which is not the address. Required so a TS caller
+  // cannot omit it; defaulted below because props erase at runtime.
+  readonly channelLabel: string | null;
 };
 
 export type TestPostOutcome = {
@@ -40,7 +44,10 @@ function failureSentence(code: PostFailureCode): string {
 export function describeTestPostOutcome(input: TestPostInput): TestPostOutcome {
   if (input.result.ok) {
     return {
-      sentence: SLACK_TEST_SUCCESS_TEMPLATE.replaceAll("{channel}", input.channelId),
+      sentence: SLACK_TEST_SUCCESS_TEMPLATE.replaceAll(
+        "{channel}",
+        input.channelLabel?.trim() || input.channelId,
+      ),
       retryable: false,
       marksStepDone: true,
     };

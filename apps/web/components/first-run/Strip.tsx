@@ -30,7 +30,7 @@ const rowValue = (counter: OnboardingCounterView, label: string): number =>
 interface StripProps {
   readonly counter: OnboardingCounterView;
 
-  readonly channelId: string | null;
+  readonly channelLabel: string | null;
 
   readonly notice: string | null;
   readonly reopened: boolean;
@@ -38,11 +38,12 @@ interface StripProps {
 }
 
 export function Strip(props: StripProps) {
-  const { counter, channelId, notice } = props;
+  const { counter, channelLabel, notice } = props;
 
   const seen = withCount(STRIP_SEEN_TEMPLATE, rowValue(counter, COUNTER_LABELS.totalReceived));
   const counted = withCount(STRIP_COUNTED_TEMPLATE, rowValue(counter, COUNTER_LABELS.kept));
-  const posting = channelId === null ? [] : [withChannel(STRIP_POSTING_TO_TEMPLATE, channelId)];
+  const posting =
+    channelLabel === null ? [] : [withChannel(STRIP_POSTING_TO_TEMPLATE, channelLabel)];
 
   const parts = [STRIP_LEAD, seen, counted, ...posting];
 
