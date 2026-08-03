@@ -645,7 +645,7 @@ describe("detector-corpus.service — the T1 corpus read", () => {
     expect(JSON.stringify(bReadingA)).not.toContain(sessionIdOf(idsA, "ph:db-dc-foreign-a-1"));
   });
 
-  it("detector-corpus.service names organization_id on both sides of the events↔sessions join", () => {
+  it("detector-corpus.service scopes every sessions and events read through the scope helper", () => {
     const source = readFileSync(CORPUS_SERVICE_SOURCE_PATH, "utf8");
     const code = stripSourceComments(source);
 
@@ -660,12 +660,11 @@ describe("detector-corpus.service — the T1 corpus read", () => {
     expect(sessionReads).toBeGreaterThan(0);
     expect(eventReads).toBeGreaterThan(0);
 
-    expect(countOf(/eq\(\s*sessions\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
-      sessionReads,
-    );
-    expect(countOf(/eq\(\s*events\.organizationId\s*,\s*ctx\.organizationId\s*\)/g)).toBe(
-      eventReads,
-    );
+    expect(countOf(/s\.(owned|org)\(\s*sessions\b/g)).toBe(sessionReads);
+    expect(countOf(/s\.(owned|org)\(\s*events\b/g)).toBe(eventReads);
+
+    // Nothing may reconstruct the filter by hand beside the helper.
+    expect(code).not.toMatch(/eq\(\s*\w+\.organizationId\s*,\s*ctx\.organizationId\s*\)/);
   });
 
   describe("the session cap", () => {

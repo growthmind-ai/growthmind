@@ -1,8 +1,9 @@
 import type { OnboardingFinding, StagePersistedFacts, TenantContext } from "@growthmind/shared";
 import { logger, onboardingFindingSchema } from "@growthmind/shared";
-import { and, asc, eq, gt, gte } from "drizzle-orm";
+import { asc, eq, gt, gte } from "drizzle-orm";
 
 import { createFindingsRepo } from "../repositories/findings.repo";
+import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { analysisRuns } from "../schema/analysis-runs";
 import { firstRunState } from "../schema/first-run-state";
@@ -76,17 +77,14 @@ export function createFirstRunStatusService(
   db: ScopedDb,
   ctx: TenantContext,
 ): FirstRunStatusService {
+  const s = scoped(db, ctx);
+
   return {
     async read(projectId: string): Promise<StagePersistedFacts> {
       const [state] = await db
         .select({ armedAt: firstRunState.armedAt })
         .from(firstRunState)
-        .where(
-          and(
-            eq(firstRunState.organizationId, ctx.organizationId),
-            eq(firstRunState.projectId, projectId),
-          ),
-        )
+        .where(s.owned(firstRunState, eq(firstRunState.projectId, projectId)))
         .limit(1);
 
       const armedAt = state?.armedAt ?? null;
@@ -100,8 +98,8 @@ export function createFirstRunStatusService(
         .select({ finishedAt: sessionSourcePollRuns.finishedAt })
         .from(sessionSourcePollRuns)
         .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+          s.owned(
+            sessionSourcePollRuns,
             eq(sessionSourcePollRuns.projectId, projectId),
             eq(sessionSourcePollRuns.status, "completed"),
             gt(sessionSourcePollRuns.eventsPersisted, 0),
@@ -120,8 +118,8 @@ export function createFirstRunStatusService(
         })
         .from(analysisRuns)
         .where(
-          and(
-            eq(analysisRuns.organizationId, ctx.organizationId),
+          s.owned(
+            analysisRuns,
             eq(analysisRuns.projectId, projectId),
             gte(analysisRuns.startedAt, armedAt),
           ),

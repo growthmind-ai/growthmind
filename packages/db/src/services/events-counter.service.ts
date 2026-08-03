@@ -6,6 +6,7 @@ import {
 } from "@growthmind/shared";
 import { and, eq, sql } from "drizzle-orm";
 
+import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { events } from "../schema/events";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
@@ -25,6 +26,8 @@ function toCount(value: unknown): number {
 }
 
 export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): EventsCounterService {
+  const s = scoped(db, ctx);
+
   return {
     async read(projectId: string): Promise<EventsSeenCounter> {
       const connection = await findLatestConnection(db, ctx, projectId);
@@ -37,11 +40,9 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
         .from(events)
         .innerJoin(sessions, eq(events.sessionId, sessions.id))
         .where(
-          and(
-            eq(events.organizationId, ctx.organizationId),
-            eq(events.projectId, projectId),
-            eq(sessions.organizationId, ctx.organizationId),
-          ),
+          // Both joined tables carry their own org predicate — the join key alone
+          // does not scope the right-hand side.
+          and(s.org(events), eq(events.projectId, projectId), s.org(sessions)),
         )
         .groupBy(sessions.exclusionReason);
 
@@ -49,8 +50,8 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
         .select({ count: sql<number>`count(*)::int` })
         .from(sessions)
         .where(
-          and(
-            eq(sessions.organizationId, ctx.organizationId),
+          s.owned(
+            sessions,
             eq(sessions.projectId, projectId),
             eq(sessions.exclusionReason, "none"),
             eq(sessions.identityResolution, "unresolved"),
@@ -63,19 +64,14 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
           droppedUnreadable: sql<number>`coalesce(sum(${sessionSourcePollRuns.eventsDroppedMalformed}), 0)::int`,
         })
         .from(sessionSourcePollRuns)
-        .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
-            eq(sessionSourcePollRuns.projectId, projectId),
-          ),
-        );
+        .where(s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.projectId, projectId)));
 
       const [lastSuccessful] = await db
         .select({ finishedAt: sessionSourcePollRuns.finishedAt })
         .from(sessionSourcePollRuns)
         .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+          s.owned(
+            sessionSourcePollRuns,
             eq(sessionSourcePollRuns.projectId, projectId),
             eq(sessionSourcePollRuns.status, "completed"),
           ),

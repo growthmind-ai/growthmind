@@ -293,8 +293,11 @@ function findUnscopedTableReads(source: string): string[] {
     }
 
     for (const table of tables) {
+      // A read is scoped when the statement hand-names the org predicate for the
+      // table, or takes it from the scope helper (`s.org` / `s.owned`).
       const scoped = new RegExp(
-        String.raw`eq\(\s*${table}\.organizationId\s*,\s*ctx\.organizationId\s*\)`,
+        String.raw`eq\(\s*${table}\.organizationId\s*,\s*ctx\.organizationId\s*\)` +
+          String.raw`|s\.(org|owned)\(\s*${table}\b`,
       );
       if (!scoped.test(statement)) {
         offenders.push(table);
@@ -332,9 +335,26 @@ const OFFENDER_FIXTURE = `
     );
 `;
 
+const SCOPE_HELPER_FIXTURE = `
+  const rows = await db
+    .select({ finishedAt: pollRuns.finishedAt })
+    .from(pollRuns)
+    .innerJoin(firstRunState, eq(pollRuns.projectId, firstRunState.projectId))
+    .where(
+      and(
+        s.owned(pollRuns, eq(pollRuns.projectId, projectId)),
+        s.org(firstRunState),
+      ),
+    );
+`;
+
 describe("planted-offender control — proving row 6 bites", () => {
   test("the scanner passes a statement that names organization_id on both sides", () => {
     expect(findUnscopedTableReads(CLEAN_FIXTURE)).toEqual([]);
+  });
+
+  test("the scanner passes a statement scoped through the scope helper on both sides", () => {
+    expect(findUnscopedTableReads(SCOPE_HELPER_FIXTURE)).toEqual([]);
   });
 
   test("the scanner flags the joined table that carries no organization predicate", () => {

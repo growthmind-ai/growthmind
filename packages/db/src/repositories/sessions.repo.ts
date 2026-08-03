@@ -7,8 +7,9 @@ import type {
 import { desc, eq, sql } from "drizzle-orm";
 
 import { sessions } from "../schema/sessions";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type SessionRecord = typeof sessions.$inferSelect;
 
@@ -75,8 +76,9 @@ function mergeSessionRows(rows: readonly SessionUpsertRow[]): SessionUpsertRow[]
   return [...merged.values()];
 }
 
-export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRepo {
+export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): SessionsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, sessions);
 
   return {
     async upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]> {
@@ -100,7 +102,7 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
         .insert(sessions)
         .values(
           ourRows.map((row) => ({
-            organizationId: s.stamp.organizationId,
+            ...s.stamp,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionKey: row.sessionKey,
@@ -145,28 +147,15 @@ export function createSessionsRepo(db: ScopedDb, ctx: TenantContext): SessionsRe
     },
 
     async listForProject(projectId: string, options: { limit: number }): Promise<SessionRecord[]> {
-      return db
-        .select()
-        .from(sessions)
-        .where(s.owned(sessions, eq(sessions.projectId, projectId)))
-        .orderBy(desc(sessions.startedAt))
-        .limit(options.limit);
+      return c.list({
+        where: eq(sessions.projectId, projectId),
+        orderBy: [desc(sessions.startedAt)],
+        limit: options.limit,
+      });
     },
 
     async findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null> {
-      return s.maybe(
-        await db
-          .select()
-          .from(sessions)
-          .where(
-            s.owned(
-              sessions,
-              eq(sessions.projectId, projectId),
-              eq(sessions.sessionKey, sessionKey),
-            ),
-          )
-          .limit(1),
-      );
+      return c.maybe(eq(sessions.projectId, projectId), eq(sessions.sessionKey, sessionKey));
     },
   };
 }

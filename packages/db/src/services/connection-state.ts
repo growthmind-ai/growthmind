@@ -1,7 +1,8 @@
 import type { ConnectionState, ConnectionSummary, TenantContext } from "@growthmind/shared";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { toConnectionSummary } from "../repositories/project-connections.repo";
+import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { projectConnections } from "../schema/project-connections";
 
@@ -45,15 +46,12 @@ export async function findLatestConnection(
   ctx: TenantContext,
   projectId: string,
 ): Promise<ConnectionSummary | null> {
+  const s = scoped(db, ctx);
+
   const [row] = await db
     .select()
     .from(projectConnections)
-    .where(
-      and(
-        eq(projectConnections.organizationId, ctx.organizationId),
-        eq(projectConnections.projectId, projectId),
-      ),
-    )
+    .where(s.owned(projectConnections, eq(projectConnections.projectId, projectId)))
     .orderBy(desc(projectConnections.isActive), desc(projectConnections.connectedAt))
     .limit(1);
 

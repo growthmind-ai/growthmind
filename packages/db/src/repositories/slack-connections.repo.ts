@@ -1,14 +1,11 @@
-// Org-scoped by construction: the factory takes a `TenantContext`, no method accepts an
-// organization id, and every read and mutation filters on `ctx.organizationId`. No method
-// returns a credential column; `openCredentialForOrg` is the one door, composition root only.
 import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
 import { decryptSecret } from "@growthmind/shared";
 import { eq, isNull } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
-import { rethrowScrubbed } from "./driver-error";
-import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import { orgCrud } from "./crud";
+import { RepoWriteError, rethrowScrubbed } from "./driver-error";
+import type { ScopedExecutor } from "./types";
 
 export type SlackConnectionRow = typeof slackConnections.$inferSelect;
 
@@ -60,17 +57,7 @@ export interface SlackConnectionsRepo {
   openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null>;
 }
 
-export class SlackConnectionWriteError extends Error {
-  readonly code: string | null;
-  readonly constraint: string | null;
-
-  constructor(message: string, code: string | null, constraint: string | null) {
-    super(message);
-    this.name = "SlackConnectionWriteError";
-    this.code = code;
-    this.constraint = constraint;
-  }
-}
+export class SlackConnectionWriteError extends RepoWriteError {}
 
 function rethrowWithoutParameters(error: unknown, secrets: readonly string[]): never {
   rethrowScrubbed(
@@ -92,102 +79,66 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
   };
 }
 
-export function createSlackConnectionsRepo(db: ScopedDb, ctx: TenantContext): SlackConnectionsRepo {
-  const s = scoped(db, ctx);
+const activeRow = () => eq(slackConnections.isActive, true);
 
-  const ourActiveRow = () => s.owned(slackConnections, eq(slackConnections.isActive, true));
+export function createSlackConnectionsRepo(
+  db: ScopedExecutor,
+  ctx: TenantContext,
+): SlackConnectionsRepo {
+  const c = orgCrud(db, ctx, slackConnections);
 
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
-      const row = s.maybe(await db.select().from(slackConnections).where(ourActiveRow()).limit(1));
+      const row = await c.maybe(activeRow());
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary> {
       try {
-        const [row] = await db
-          .insert(slackConnections)
-          .values({
-            ...s.stamp,
-            channelId: input.channelId,
-            // `?? null` so an absent key and an explicit null persist as the same value.
-            workspaceName: input.workspaceName ?? null,
-            credentialCiphertext: input.credentialCiphertext,
-            credentialKeyId: input.credentialKeyId,
-            isActive: true,
-            connectedByUserId: input.connectedByUserId,
-            connectedAt: input.connectedAt,
-          })
-          .returning();
-
-        if (!row) {
-          throw new SlackConnectionWriteError("insertActive: insert returned no row", null, null);
-        }
+        const row = await c.insert({
+          channelId: input.channelId,
+          workspaceName: input.workspaceName ?? null,
+          credentialCiphertext: input.credentialCiphertext,
+          credentialKeyId: input.credentialKeyId,
+          isActive: true,
+          connectedByUserId: input.connectedByUserId,
+          connectedAt: input.connectedAt,
+        });
 
         return toSlackConnectionSummary(row);
       } catch (error) {
-        if (error instanceof SlackConnectionWriteError) {
-          throw error;
-        }
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }
     },
 
     async attachChannel(channelId: string): Promise<SlackConnectionSummary | null> {
-      // The row is found by this context, never by anything on the request (D7), in one
-      // `UPDATE … RETURNING` rather than a read-then-write (D6). `channel_id IS NULL` MAKES
-      // THIS A FILL, NOT A RE-POINT, AND DELETING IT REPLAYS THE ORG'S WHOLE BACKLOG: the
-      // delivery dedup key is `(organization_id, finding_id, channel_id)`, so moving the
-      // channel forks every delivery identity already recorded — every sent finding reads as
-      // never sent and the weekly budget resets, silently. No index can refuse an UPDATE, so
-      // this clause is the only thing holding that line. Re-pointing needs a migration.
-      const row = s.maybe(
-        await db
-          .update(slackConnections)
-          .set({ channelId })
-          .where(
-            s.owned(
-              slackConnections,
-              eq(slackConnections.isActive, true),
-              isNull(slackConnections.channelId),
-            ),
-          )
-          .returning(),
-      );
+      // `channel_id IS NULL` makes this a fill, not a re-point: the delivery dedup key is
+      // `(organization_id, finding_id, channel_id)`, so moving the channel would fork every
+      // recorded delivery identity and silently replay the org's backlog. Re-pointing needs
+      // a migration.
+      const row = await c.update({ channelId }, activeRow(), isNull(slackConnections.channelId));
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {
-      const row = s.maybe(
-        await db
-          .update(slackConnections)
-          .set({ isActive: false, health: "disconnected" })
-          .where(s.owned(slackConnections, eq(slackConnections.id, id)))
-          .returning(),
+      const row = await c.update(
+        { isActive: false, health: "disconnected" },
+        eq(slackConnections.id, id),
       );
 
       return row ? toSlackConnectionSummary(row) : null;
     },
 
     async openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null> {
-      const row = s.maybe(
-        await db
-          .select({
-            ciphertext: slackConnections.credentialCiphertext,
-            keyId: slackConnections.credentialKeyId,
-          })
-          .from(slackConnections)
-          .where(ourActiveRow())
-          .limit(1),
-      );
+      const row = await c.maybe(activeRow());
 
       if (!row) {
         return null;
       }
 
-      return decryptSecret(row.ciphertext, key, slackCredentialAad(ctx));
+      return decryptSecret(row.credentialCiphertext, key, slackCredentialAad(ctx));
     },
   };
 }

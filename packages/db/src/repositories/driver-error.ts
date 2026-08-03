@@ -20,6 +20,18 @@ export type WriteErrorFactory<E extends Error> = (
   constraint: string | null,
 ) => E;
 
+export class RepoWriteError extends Error {
+  readonly code: string | null;
+  readonly constraint: string | null;
+
+  constructor(message: string, code: string | null, constraint: string | null) {
+    super(message);
+    this.name = new.target.name;
+    this.code = code;
+    this.constraint = constraint;
+  }
+}
+
 // The driver puts bound parameters in the message, so a ciphertext or key id reaches the
 // caller unless it is scrubbed here first.
 export function rethrowScrubbed<E extends Error>(

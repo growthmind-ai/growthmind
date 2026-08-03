@@ -1,14 +1,26 @@
 import type { DismissalAction, TenantContext } from "@growthmind/shared";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { dismissals } from "../schema/dismissals";
-import { scoped } from "./scope";
+import { orgCrud } from "./crud";
 import type { SignatureHex } from "../signatures/hex";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type DismissalRecord = typeof dismissals.$inferSelect;
 
+export interface RecordDismissalRowInput {
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly signature: SignatureHex;
+  readonly action: DismissalAction;
+
+  readonly dismissedByUserId: string | null;
+  readonly dismissedAt: Date;
+}
+
 export interface DismissalsRepo {
+  record(input: RecordDismissalRowInput): Promise<DismissalRecord>;
+
   findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null>;
 
   findLatestForSignature(
@@ -17,39 +29,42 @@ export interface DismissalsRepo {
   ): Promise<DismissalRecord | null>;
 }
 
-export function createDismissalsRepo(db: ScopedDb, ctx: TenantContext): DismissalsRepo {
-  const s = scoped(db, ctx);
+export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): DismissalsRepo {
+  const c = orgCrud(db, ctx, dismissals);
 
   return {
-    async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {
-      return s.maybe(
-        await db
-          .select()
-          .from(dismissals)
-          .where(
-            s.owned(dismissals, eq(dismissals.findingId, findingId), eq(dismissals.action, action)),
-          ),
+    async record(input: RecordDismissalRowInput): Promise<DismissalRecord> {
+      return c.insertOrFetch(
+        {
+          projectId: input.projectId,
+          findingId: input.findingId,
+          signature: input.signature,
+          action: input.action,
+          dismissedByUserId: input.dismissedByUserId,
+          dismissedAt: input.dismissedAt,
+        },
+        {
+          target: [dismissals.organizationId, dismissals.findingId, dismissals.action],
+          fetch: [eq(dismissals.findingId, input.findingId), eq(dismissals.action, input.action)],
+        },
       );
+    },
+
+    async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {
+      return c.maybe(eq(dismissals.findingId, findingId), eq(dismissals.action, action));
     },
 
     async findLatestForSignature(
       projectId: string,
       signature: SignatureHex,
     ): Promise<DismissalRecord | null> {
-      return s.maybe(
-        await db
-          .select()
-          .from(dismissals)
-          .where(
-            s.owned(
-              dismissals,
-              eq(dismissals.projectId, projectId),
-              eq(dismissals.signature, signature),
-            ),
-          )
-          .orderBy(desc(dismissals.dismissedAt))
-          .limit(1),
-      );
+      const rows = await c.list({
+        where: and(eq(dismissals.projectId, projectId), eq(dismissals.signature, signature)),
+        orderBy: [desc(dismissals.dismissedAt)],
+        limit: 1,
+      });
+
+      return rows[0] ?? null;
     },
   };
 }

@@ -454,7 +454,7 @@ describe("createEventsCounterService", () => {
     }
   });
 
-  test("the aggregation names the organization itself rather than relying on auto-injection", () => {
+  test("the aggregation scopes both sides of the join through the scope helper", () => {
     const source = readFileSync(
       path.join(
         path.dirname(fileURLToPath(import.meta.url)),
@@ -467,7 +467,9 @@ describe("createEventsCounterService", () => {
       "utf8",
     );
 
-    expect(source).toContain("ctx.organizationId");
+    expect(source).toContain("scoped(db, ctx)");
+    expect(source).toMatch(/s\.org\(events\)/);
+    expect(source).toMatch(/s\.org\(sessions\)/);
   });
 
   test("a second organization reading the same project id gets nothing, never the first org's numbers", async () => {

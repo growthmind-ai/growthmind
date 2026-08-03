@@ -1,9 +1,10 @@
 import type { PollRunOutcome, SourceFailureCode, TenantContext } from "@growthmind/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type PollRunRecord = typeof sessionSourcePollRuns.$inferSelect;
 
@@ -64,39 +65,32 @@ function toCount(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRepo {
+export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): PollRunsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, sessionSourcePollRuns);
 
-  function completedForConnection(connectionId: string) {
-    return db
-      .select()
-      .from(sessionSourcePollRuns)
-      .where(
-        s.owned(
-          sessionSourcePollRuns,
-          eq(sessionSourcePollRuns.connectionId, connectionId),
-          eq(sessionSourcePollRuns.status, "completed"),
-        ),
-      )
-      .orderBy(sql`${sessionSourcePollRuns.finishedAt} desc nulls last`)
-      .limit(1);
+  async function completedForConnection(connectionId: string): Promise<PollRunRecord | null> {
+    const rows = await c.list({
+      where: and(
+        eq(sessionSourcePollRuns.connectionId, connectionId),
+        eq(sessionSourcePollRuns.status, "completed"),
+      ),
+      orderBy: [sql`${sessionSourcePollRuns.finishedAt} desc nulls last`],
+      limit: 1,
+    });
+
+    return rows[0] ?? null;
   }
 
   return {
     async start(input: StartPollRunInput): Promise<PollRunRecord> {
-      const rows = await db
-        .insert(sessionSourcePollRuns)
-        .values({
-          ...s.stamp,
-          projectId: input.projectId,
-          connectionId: input.connectionId,
-          startedAt: input.startedAt,
-          status: "running",
-          outcome: null,
-        })
-        .returning();
-
-      return s.one(rows, "createPollRunsRepo.start");
+      return c.insert({
+        projectId: input.projectId,
+        connectionId: input.connectionId,
+        startedAt: input.startedAt,
+        status: "running",
+        outcome: null,
+      });
     },
 
     async finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null> {
@@ -119,32 +113,23 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
               failureMessage: terminal.failureMessage,
             };
 
-      return s.maybe(
-        await db
-          .update(sessionSourcePollRuns)
-          .set({
-            ...columns,
-            eventsReceived: terminal.eventsReceived,
-            eventsPersisted: terminal.eventsPersisted,
-            eventsDroppedMalformed: terminal.eventsDroppedMalformed,
-            sessionsTouched: terminal.sessionsTouched,
-            pagesFetched: terminal.pagesFetched,
-            identityLookupsUsed: terminal.identityLookupsUsed,
-          })
-          .where(
-            s.owned(
-              sessionSourcePollRuns,
-              eq(sessionSourcePollRuns.id, id),
-
-              eq(sessionSourcePollRuns.status, "running"),
-            ),
-          )
-          .returning(),
+      return c.update(
+        {
+          ...columns,
+          eventsReceived: terminal.eventsReceived,
+          eventsPersisted: terminal.eventsPersisted,
+          eventsDroppedMalformed: terminal.eventsDroppedMalformed,
+          sessionsTouched: terminal.sessionsTouched,
+          pagesFetched: terminal.pagesFetched,
+          identityLookupsUsed: terminal.identityLookupsUsed,
+        },
+        eq(sessionSourcePollRuns.id, id),
+        eq(sessionSourcePollRuns.status, "running"),
       );
     },
 
     async latestCompletedFor(connectionId: string): Promise<PollRunRecord | null> {
-      return s.maybe(await completedForConnection(connectionId));
+      return completedForConnection(connectionId);
     },
 
     async aggregateFor(connectionId: string): Promise<PollRunAggregate> {
@@ -161,7 +146,7 @@ export function createPollRunsRepo(db: ScopedDb, ctx: TenantContext): PollRunsRe
           s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.connectionId, connectionId)),
         );
 
-      const latest = s.maybe(await completedForConnection(connectionId));
+      const latest = await completedForConnection(connectionId);
 
       return {
         runsCompleted: toCount(totals?.runsCompleted),

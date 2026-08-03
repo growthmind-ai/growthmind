@@ -3,7 +3,7 @@ import { and, eq, inArray, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import { projects } from "../schema/projects";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 // A table without an `organization_id` column fails to compile at `org`/`owned` rather than
 // silently matching every row, which is what a hand-written filter on a missing column does.
@@ -29,7 +29,7 @@ export interface Scope {
   ownedProjectIds(candidates: readonly string[]): Promise<Set<string>>;
 }
 
-export function scoped(db: ScopedDb, ctx: TenantContext): Scope {
+export function scoped(db: ScopedExecutor, ctx: TenantContext): Scope {
   function org(table: OrgScopedTable): SQL {
     return eq(table.organizationId, ctx.organizationId);
   }

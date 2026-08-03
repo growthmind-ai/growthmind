@@ -14,8 +14,9 @@ import { eq, lt, sql } from "drizzle-orm";
 
 import { analysisModelCalls } from "../schema/analysis-model-calls";
 import { analysisRuns } from "../schema/analysis-runs";
+import { orgCrud } from "./crud";
 import { scoped } from "./scope";
-import type { ScopedDb } from "./types";
+import type { ScopedExecutor } from "./types";
 
 export type AnalysisRunRecord = typeof analysisRuns.$inferSelect;
 
@@ -89,8 +90,9 @@ type RawExecutor = {
 const notOurProject = (): Error =>
   new Error("analysis_runs: the project named is not this organization's");
 
-export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): AnalysisRunsRepo {
+export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): AnalysisRunsRepo {
   const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, analysisRuns);
 
   async function insertRunningRun(input: OpenRunInput): Promise<AnalysisRunRecord | undefined> {
     const [inserted] = await db
@@ -117,31 +119,20 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
     const status = analysisRunStatusSchema.parse("failed");
     const stopReason = analysisStopReasonSchema.parse("fatal_error");
 
-    const [reclaimed] = await db
-      .update(analysisRuns)
-      .set({
+    const reclaimed = await c.update(
+      {
         status,
         stopReason,
 
         finishedAt: input.tickAt,
         failureReason: ABANDONED_RUN_FAILURE_REASON,
-      })
-      .where(
-        s.owned(
-          analysisRuns,
-          eq(analysisRuns.projectId, input.projectId),
+      },
+      eq(analysisRuns.projectId, input.projectId),
+      eq(analysisRuns.status, "running"),
+      lt(analysisRuns.startedAt, cutoff),
+    );
 
-          eq(analysisRuns.status, "running"),
-          lt(analysisRuns.startedAt, cutoff),
-        ),
-      )
-      // Bare, not a projection: `ScopedDb` is a union of two drivers whose `returning`
-      // overloads are parameterized on different query-result HKTs, so the column-list
-      // form is not callable through the union. `close` and the insert above take the
-      // same shape for the same reason.
-      .returning();
-
-    return reclaimed !== undefined;
+    return reclaimed !== null;
   }
 
   return {
@@ -162,18 +153,9 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
         }
       }
 
-      const existing = s.maybe(
-        await db
-          .select()
-          .from(analysisRuns)
-          .where(
-            s.owned(
-              analysisRuns,
-              eq(analysisRuns.projectId, input.projectId),
-              eq(analysisRuns.status, "running"),
-            ),
-          )
-          .limit(1),
+      const existing = await c.maybe(
+        eq(analysisRuns.projectId, input.projectId),
+        eq(analysisRuns.status, "running"),
       );
 
       if (!existing) {
@@ -194,34 +176,25 @@ export function createAnalysisRunsRepo(db: ScopedDb, ctx: TenantContext): Analys
       const outcome = analysisOutcomeSchema.parse(input.outcome);
       const stopReason = analysisStopReasonSchema.parse(input.stopReason);
 
-      const row = s.maybe(
-        await db
-          .update(analysisRuns)
-          .set({
-            status,
-            outcome,
-            stopReason,
-            finishedAt: input.finishedAt,
-            modelCallsAttempted: input.modelCallsAttempted,
+      const row = await c.update(
+        {
+          status,
+          outcome,
+          stopReason,
+          finishedAt: input.finishedAt,
+          modelCallsAttempted: input.modelCallsAttempted,
 
-            candidatesUnrenderable: input.candidatesUnrenderable,
-            candidatesRefused: input.candidatesRefused,
-            resolvedModelId: input.resolvedModelId,
+          candidatesUnrenderable: input.candidatesUnrenderable,
+          candidatesRefused: input.candidatesRefused,
+          resolvedModelId: input.resolvedModelId,
 
-            tokensIn: input.tokensIn,
-            tokensOut: input.tokensOut,
-            failureReason: input.failureReason,
-          })
-          .where(
-            s.owned(
-              analysisRuns,
-              eq(analysisRuns.projectId, input.projectId),
-              eq(analysisRuns.id, input.runId),
-
-              eq(analysisRuns.status, "running"),
-            ),
-          )
-          .returning(),
+          tokensIn: input.tokensIn,
+          tokensOut: input.tokensOut,
+          failureReason: input.failureReason,
+        },
+        eq(analysisRuns.projectId, input.projectId),
+        eq(analysisRuns.id, input.runId),
+        eq(analysisRuns.status, "running"),
       );
 
       if (!row) {

@@ -6,8 +6,9 @@ import type {
 } from "@growthmind/core";
 import { DETECTOR_CORPUS_MAX_SESSIONS } from "@growthmind/core";
 import type { ExclusionReason, TenantContext } from "@growthmind/shared";
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
+import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { events } from "../schema/events";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
@@ -27,6 +28,8 @@ export function createDetectorCorpusService(
   db: ScopedDb,
   ctx: TenantContext,
 ): DetectorCorpusService {
+  const s = scoped(db, ctx);
+
   return {
     async read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpus> {
       const windowRows = await db
@@ -38,8 +41,8 @@ export function createDetectorCorpusService(
         })
         .from(sessions)
         .where(
-          and(
-            eq(sessions.organizationId, ctx.organizationId),
+          s.owned(
+            sessions,
             eq(sessions.projectId, projectId),
             gte(sessions.startedAt, window.start),
             lte(sessions.startedAt, window.end),
@@ -66,8 +69,8 @@ export function createDetectorCorpusService(
               })
               .from(events)
               .where(
-                and(
-                  eq(events.organizationId, ctx.organizationId),
+                s.owned(
+                  events,
                   eq(events.projectId, projectId),
                   inArray(events.sessionId, selectedIds),
                 ),
@@ -124,8 +127,8 @@ export function createDetectorCorpusService(
         .select({ id: sessionSourcePollRuns.id })
         .from(sessionSourcePollRuns)
         .where(
-          and(
-            eq(sessionSourcePollRuns.organizationId, ctx.organizationId),
+          s.owned(
+            sessionSourcePollRuns,
             eq(sessionSourcePollRuns.projectId, projectId),
             eq(sessionSourcePollRuns.status, "completed"),
           ),
@@ -135,7 +138,7 @@ export function createDetectorCorpusService(
       const [anyEvent] = await db
         .select({ id: events.id })
         .from(events)
-        .where(and(eq(events.organizationId, ctx.organizationId), eq(events.projectId, projectId)))
+        .where(s.owned(events, eq(events.projectId, projectId)))
         .limit(1);
 
       return {
