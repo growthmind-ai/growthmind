@@ -8,6 +8,7 @@ import {
   renderDeliveryClosure,
   renderStageView,
   STAGE_FINDING_UNAVAILABLE,
+  STAGE_UNREADABLE_HEADING,
   STAGE_RETIRE_CLOSURE,
   type FirstRunDeliveryState,
   type StagePersistedFacts,
@@ -43,22 +44,20 @@ export function Stage(props: StageProps) {
 
   return (
     <Stack gap="sm">
+      {/* The fault owns the heading when there is one. "Reading what came back."
+          above a sentence saying there is nothing left to wait for is the screen
+          contradicting itself, and the hint under it — "this screen rebuilds
+          itself" — promises a recovery that is not coming (B-040). */}
       <Title order={2} size="h4">
-        {view.heading}
+        {props.findingUnavailable ? STAGE_UNREADABLE_HEADING : view.heading}
       </Title>
-
-      <Text c="dimmed" size="sm">
-        {view.hint}
-      </Text>
 
       {/* The one fault this screen admits to. It never suppresses the log
           beside it: those lines are measurements that really did happen, and
           they are the evidence that the wait was real rather than dropped. */}
-      {props.findingUnavailable ? (
-        <Text size="sm" c="stamp.4">
-          {STAGE_FINDING_UNAVAILABLE}
-        </Text>
-      ) : null}
+      <Text size="sm" c={props.findingUnavailable ? "stamp.4" : "dimmed"}>
+        {props.findingUnavailable ? STAGE_FINDING_UNAVAILABLE : view.hint}
+      </Text>
 
       <WaitLog lines={view.lines} />
 
