@@ -61,10 +61,15 @@ async function eventsFor(projectId: string) {
   return rows.filter((row) => row.projectId === projectId);
 }
 
-function dbThatFailsToInsert(realDb: TestDb, table: unknown, message: string): TestDb {
+function dbThatFailsOn(
+  realDb: TestDb,
+  operation: "insert" | "update",
+  table: unknown,
+  message: string,
+): TestDb {
   const handler: ProxyHandler<TestDb> = {
     get(target, prop, receiver) {
-      if (prop === "insert") {
+      if (prop === operation) {
         return (arg: unknown) => {
           if (arg === table) {
             throw new Error(message);
@@ -79,6 +84,58 @@ function dbThatFailsToInsert(realDb: TestDb, table: unknown, message: string): T
         : value;
     },
   };
+  return new Proxy(realDb, handler);
+}
+
+function dbThatFailsToInsert(realDb: TestDb, table: unknown, message: string): TestDb {
+  return dbThatFailsOn(realDb, "insert", table, message);
+}
+
+// Keyed on the payload, not on call order: the same table is also updated by the
+// claim and by the watermark advance, and both must still succeed.
+function dbThatFailsHealthWrites(realDb: TestDb, message: string): TestDb {
+  const handler: ProxyHandler<TestDb> = {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+
+      if (prop !== "update") {
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      }
+
+      return (arg: unknown) => {
+        const builder = (value as (arg: unknown) => unknown).call(target, arg) as Record<
+          string,
+          unknown
+        >;
+
+        if (arg !== schema.projectConnections) {
+          return builder;
+        }
+
+        return new Proxy(builder, {
+          get(builderTarget, builderProp, builderReceiver) {
+            const member = Reflect.get(builderTarget, builderProp, builderReceiver);
+
+            if (builderProp !== "set") {
+              return typeof member === "function"
+                ? (member as (...args: unknown[]) => unknown).bind(builderTarget)
+                : member;
+            }
+
+            return (payload: Record<string, unknown>) => {
+              if ("health" in payload) {
+                throw new Error(message);
+              }
+              return (member as (payload: unknown) => unknown).call(builderTarget, payload);
+            };
+          },
+        });
+      };
+    },
+  };
+
   return new Proxy(realDb, handler);
 }
 
@@ -497,5 +554,46 @@ test("a duration-capped run is not reported as a failure", async () => {
 test("the fake upstream emits the pinned microsecond +00:00 timestamp form", () => {
   expect(toPostHogInstant(new Date("2026-07-30T14:57:54.891Z"))).toBe(
     "2026-07-30T14:57:54.891000+00:00",
+  );
+});
+
+test("a health-badge write that fails still leaves the poll run completed", async () => {
+  const seeded = await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({
+      results: [
+        fakeEvent({
+          distinctId: `${PREFIX}visitor-badge`,
+          sessionId: `${PREFIX}session-badge`,
+          occurredAt: new Date(NOW.getTime() - 60_000),
+        }),
+      ],
+      next: null,
+    }),
+  });
+
+  // The badge is written after the run is already recorded completed. It is a
+  // display fact, and losing it must not cost the run its terminal state — a
+  // stuck "polling" is what the user would see instead.
+  const failingDb = dbThatFailsHealthWrites(db, "simulated health badge write failure");
+
+  await runSessionSourcePoll(
+    createPollDeps({ db: failingDb, fetch: posthog.fetch, clock, logger }),
+  );
+
+  const runs = await pollRunsFor(seeded.connectionId);
+  expect(runs.length).toBeGreaterThanOrEqual(1);
+  expect(runs.every((run) => run.status === "completed")).toBe(true);
+  expect(runs.every((run) => run.finishedAt !== null)).toBe(true);
+
+  expect((await eventsFor(seeded.projectId)).length).toBe(1);
+
+  expect(logger.errors.some((line) => line.includes("health badge could not be updated"))).toBe(
+    true,
+  );
+  expect(logger.errors.some((line) => line.includes("simulated health badge write failure"))).toBe(
+    true,
   );
 });

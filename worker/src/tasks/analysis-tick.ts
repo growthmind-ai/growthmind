@@ -3,6 +3,7 @@ import type { AnalysisStopReason } from "@growthmind/shared";
 import { ANALYSIS_RUN_STATUS_MESSAGES, describeError } from "@growthmind/shared";
 import type { CandidateFinding } from "@growthmind/core";
 
+import { isolated } from "../task-logger";
 import { planCandidate } from "../analysis/plan";
 import { toCountRows } from "../analysis/shapes";
 import type { RunTally } from "../analysis/tally";
@@ -69,13 +70,11 @@ async function recordIdentity(
   signature: string,
   logger: AnalysisLogger,
 ): Promise<void> {
-  try {
-    await ledger.recordSignature(lane.projectId, candidate);
-  } catch (error) {
-    logger.error(
-      `analysis tick: candidate ${signature} was recorded as a finding but its identity could not be filed — ${describeError(error)}`,
-    );
-  }
+  await isolated(
+    logger,
+    `analysis tick: candidate ${signature} was recorded as a finding but its identity could not be filed`,
+    () => ledger.recordSignature(lane.projectId, candidate),
+  );
 }
 
 async function closeRun(

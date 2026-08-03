@@ -4,10 +4,9 @@ import type { AnalysisRunsRepo, FindingsRepo, SignatureLedgerService } from "@gr
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
 import type { SummarySource, SummaryUsage, TenantContext } from "@growthmind/shared";
 
-export interface AnalysisLogger {
-  info(message: string): void;
-  error(message: string): void;
-}
+import type { TaskLogger } from "../task-logger";
+
+export type AnalysisLogger = TaskLogger;
 
 export const ANALYSIS_ACTOR_ID = SYSTEM_ACTOR.ANALYSIS_TICK;
 
