@@ -8,14 +8,9 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-import {
-  ONBOARDING_MESSAGES,
-  STEP_DESCRIPTORS,
-  type StepView,
-  type WorkStep,
-} from "@growthmind/shared";
+import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
-import { ConnectSlackForm } from "../../components/first-run/ConnectSlackForm";
+import { SlackConnection } from "../../components/slack/SlackConnection";
 
 import {
   blankComments,
@@ -24,6 +19,7 @@ import {
   offenders,
   readFirstRun,
 } from "./helpers/first-run-source";
+import { stepCardProps } from "./helpers/slack-card";
 import { readMarkup, type RenderedCard } from "./helpers/rendered-markup";
 
 const FAKE_ROUTER: AppRouterInstance = {
@@ -44,55 +40,34 @@ const render = (node: ReactElement): string =>
     ),
   );
 
-function slackStep(): WorkStep {
-  const found = STEP_DESCRIPTORS.find((descriptor) => descriptor.id === "slack");
-
-  if (found === undefined || found.kind !== "work") {
-    throw new Error(
-      "STEP_DESCRIPTORS carries no `work` step `slack`. Step 3 is the delivery step and it has " +
-        "a form; a `coming-next` or missing descriptor here means the sequence changed shape.",
-    );
-  }
-
-  return found;
-}
-
-const ACTIVE_VIEW: StepView = {
-  id: "slack",
-  ordinal: 3,
-  state: "active",
-  open: true,
-  interactive: true,
-};
-
 const readCard = (slackWorkspaceName: string | null): RenderedCard =>
   readMarkup(
     render(
-      createElement(ConnectSlackForm, {
-        step: slackStep(),
-        view: ACTIVE_VIEW,
-        channelId: null,
-        slackWorkspaceAttached: true,
-        slackWorkspaceName,
-        slackOAuthAvailable: true,
-      }),
+      createElement(
+        SlackConnection,
+        stepCardProps({
+          channelId: null,
+          slackWorkspaceAttached: true,
+          slackWorkspaceName,
+          slackOAuthAvailable: true,
+        }),
+      ),
     ),
   );
 
 // Props erase at runtime, so the required prop stops only a TS caller; the card must degrade like null, not .trim() undefined.
 const readCardWithNoSuchProp = (): RenderedCard => {
-  const withoutTheField = {
-    step: slackStep(),
-    view: ACTIVE_VIEW,
+  const { slackWorkspaceName: _dropped, ...withoutTheField } = stepCardProps({
     channelId: null,
     slackWorkspaceAttached: true,
+    slackWorkspaceName: null,
     slackOAuthAvailable: true,
-  };
+  });
 
   return readMarkup(
     render(
       createElement(
-        ConnectSlackForm as unknown as ComponentType<typeof withoutTheField>,
+        SlackConnection as unknown as ComponentType<typeof withoutTheField>,
         withoutTheField,
       ),
     ),
@@ -108,9 +83,8 @@ const NAME_THREADED = /slackWorkspaceName=\{status\.slackWorkspaceName\}/;
 
 const PLANTED_UNTHREADED_PAGE = fixtureAt(
   "apps/web/app/(first-run)/first-run/planted-page.tsx",
-  `      <ConnectSlackForm
-        step={step}
-        view={view}
+  `      <SlackConnection
+        fields={step.fields}
         channelId={status.channelId}
         slackWorkspaceAttached={status.slackWorkspaceAttached}
         slackOAuthAvailable={status.slackOAuthAvailable}
@@ -120,9 +94,8 @@ const PLANTED_UNTHREADED_PAGE = fixtureAt(
 
 const CLEAN_THREADED_PAGE = fixtureAt(
   "apps/web/app/(first-run)/first-run/clean-page.tsx",
-  `      <ConnectSlackForm
-        step={step}
-        view={view}
+  `      <SlackConnection
+        fields={step.fields}
         channelId={status.channelId}
         slackWorkspaceAttached={status.slackWorkspaceAttached}
         slackWorkspaceName={status.slackWorkspaceName}

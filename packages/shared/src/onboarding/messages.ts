@@ -196,6 +196,18 @@ export const SLACK_MUST_INVITE_THE_BOT =
 export const SLACK_SKIPPED_NOTICE =
   "You can still see the next part on this screen. But nothing will arrive anywhere after that until Slack is connected.";
 
+// The post-setup home for the delivery connection. Setup retires and takes its
+// screen with it (deviation 1), so the sentences that name a missing channel need
+// somewhere permanent to point at.
+export const SETTINGS_TITLE = "Where what we find arrives";
+
+export const SETTINGS_POSTING_TEMPLATE = "What we find is posted to #{channel}.";
+
+export const SETTINGS_NO_DELIVERY_LINE =
+  "No Slack channel is connected, so what we find has nowhere to arrive. Connect one below and it goes where your team already works.";
+
+export const SETTINGS_BACK_LABEL = "Back";
+
 // Not the field it replaces: on this path the list IS the field, no id is typed.
 export const FIELD_CHANNEL_LABEL = "Channel";
 
@@ -383,6 +395,11 @@ export const ONBOARDING_MESSAGES = {
   tryAgain: TRY_AGAIN_LABEL,
   slackSkippedNotice: SLACK_SKIPPED_NOTICE,
 
+  settingsTitle: SETTINGS_TITLE,
+  settingsPostingTemplate: SETTINGS_POSTING_TEMPLATE,
+  settingsNoDelivery: SETTINGS_NO_DELIVERY_LINE,
+  settingsBack: SETTINGS_BACK_LABEL,
+
   stepAgentTitle: STEP_AGENT_TITLE,
   stepAgentWhatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
   stepAgentFiller: STEP_AGENT_FILLER,
@@ -484,6 +501,11 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SLACK_MUST_RECONNECT,
   SLACK_MUST_INVITE_THE_BOT,
   SLACK_SKIPPED_NOTICE,
+
+  SETTINGS_TITLE,
+  SETTINGS_POSTING_TEMPLATE,
+  SETTINGS_NO_DELIVERY_LINE,
+  SETTINGS_BACK_LABEL,
 
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,

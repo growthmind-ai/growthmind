@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createFirstRunRepo } from "@growthmind/db";
 import { SET_UP_CTA_LABEL } from "@growthmind/shared";
 
+import { SettledPanel } from "../components/landing/settled-panel";
 import { SignOutButton } from "../components/landing/sign-out-button";
 import { WorkspaceName } from "../components/landing/workspace-name";
 
@@ -94,25 +95,7 @@ export default async function HomePage() {
                 (FR-O21): once this user has finished setup, `/` offers no way
                 back and no link to it exists anywhere in the app. */}
             {dismissed ? (
-              <>
-                {liveness === null ? null : (
-                  <Group wrap="nowrap" align="flex-start" gap="sm">
-                    <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
-                      ·
-                    </Text>
-                    <Text>{liveness}</Text>
-                  </Group>
-                )}
-
-                {settled === null ? null : (
-                  <Group wrap="nowrap" align="flex-start" gap="sm">
-                    <Text c="dimmed" fw={700} style={{ width: 20, flexShrink: 0 }} aria-hidden>
-                      ·
-                    </Text>
-                    <Text c="dimmed">{settled}</Text>
-                  </Group>
-                )}
-              </>
+              <SettledPanel liveness={liveness} settled={settled} />
             ) : (
               <>
                 <ButtonLink

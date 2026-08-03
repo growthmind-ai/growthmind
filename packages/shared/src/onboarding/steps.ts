@@ -159,6 +159,13 @@ const CHANNEL_ID_FIELD: FieldDescriptor = {
   refusalCodes: [],
 };
 
+// Named separately from the step because the connection card is mounted on two
+// surfaces — the setup step, and the settings page that outlives it.
+export const SLACK_CONNECTION_FIELDS: readonly FieldDescriptor[] = Object.freeze([
+  BOT_TOKEN_FIELD,
+  CHANNEL_ID_FIELD,
+]);
+
 const CONNECT_ACTION: ActionDescriptor = {
   id: "connect",
   label: CONNECT_ACTION_LABEL,
@@ -211,7 +218,7 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     ordinal: 3,
     title: STEP_SLACK_TITLE,
     helper: STEP_SLACK_HELPER,
-    fields: [BOT_TOKEN_FIELD, CHANNEL_ID_FIELD],
+    fields: SLACK_CONNECTION_FIELDS,
     actions: [SEND_TEST_MESSAGE_ACTION, SKIP_SLACK_ACTION],
     confirmations: ["test-message"],
     skippable: true,
