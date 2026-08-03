@@ -13,6 +13,13 @@ const PROD_COMPLETE = {
   GROWTHMIND_ENCRYPTION_KEY: "cHJvZC1maXh0dXJlLWVuY3J5cHRpb24ta2V5LTMyYnk=",
 };
 
+const loadInterestPingConfigured = (): Promise<(env: ServerEnv) => boolean> =>
+  loadUnderConstruction<(env: ServerEnv) => boolean>({
+    modulePath: "../../src/env",
+    exportName: "interestPingConfigured",
+    ownedBy: "ADD Wave 1, the env task (AD-5, AD-9)",
+  });
+
 describe("parseServerEnv", () => {
   test("accepts a complete production environment", () => {
     const env = parseServerEnv(PROD_COMPLETE);
@@ -188,13 +195,6 @@ describe("parseServerEnv", () => {
   // W-7/W-8 (AD-5, AD-9): optional-by-construction like the Slack pair above, but a SET
   // value must be a URL — the operator set it deliberately, so a typo fails at boot.
   const INTEREST_WEBHOOK = "https://hooks.slack.com/services/T0000/B0000/fixture-token";
-
-  const loadInterestPingConfigured = (): Promise<(env: ServerEnv) => boolean> =>
-    loadUnderConstruction<(env: ServerEnv) => boolean>({
-      modulePath: "../../src/env",
-      exportName: "interestPingConfigured",
-      ownedBy: "ADD Wave 1, the env task (AD-5, AD-9)",
-    });
 
   test("production boots with the interest webhook absent or set, and the configured flag follows", async () => {
     const interestPingConfigured = await loadInterestPingConfigured();
