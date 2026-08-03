@@ -462,6 +462,10 @@ async function finishFailed(
   // Two writes, two catches. Bundled, a health-badge throw was reported as "could not
   // record its failed run" while the run had in fact been recorded — the terminal state
   // and the badge fail for different reasons and read differently to whoever is paged.
+  // The badge is attempted either way: the connection is failing whether or not its run
+  // row landed, and a stale "healthy" badge is the worse of the two wrong answers.
+  let recorded = true;
+
   try {
     await input.pollRuns.finish(input.runId, {
       status: "failed",
@@ -471,6 +475,7 @@ async function finishFailed(
       ...input.counts,
     });
   } catch (error) {
+    recorded = false;
     deps.logger.error(
       `session source poll: connection ${input.connection.id} could not record its failed run — ${describeError(error)}`,
     );
@@ -478,7 +483,9 @@ async function finishFailed(
 
   await isolated(
     deps.logger,
-    `session source poll: connection ${input.connection.id} recorded its failed run but its health badge could not be updated`,
+    recorded
+      ? `session source poll: connection ${input.connection.id} recorded its failed run but its health badge could not be updated`
+      : `session source poll: connection ${input.connection.id} could not record its failed run, and its health badge could not be updated either`,
     () =>
       input.connections.recordHealth(input.connection.id, {
         health: "failing",

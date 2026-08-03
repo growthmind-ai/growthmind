@@ -597,3 +597,33 @@ test("a health-badge write that fails still leaves the poll run completed", asyn
     true,
   );
 });
+
+test("when both the failed-run write and the health badge fail, neither log claims the other succeeded", async () => {
+  await seedWired();
+  const clock = createFakeClock(NOW);
+  const logger = createRecordingLogger();
+  const posthog = createFakePostHog({
+    events: () => ({ kind: "network", message: "connection reset by peer" }),
+  });
+
+  // Splitting one try into two made the second write run even when the first threw,
+  // so its sentence must not assert a premise the first one just disproved.
+  const failingDb = dbThatFailsHealthWrites(
+    dbThatFailsOn(db, "update", schema.sessionSourcePollRuns, "simulated failed-run write failure"),
+    "simulated health badge write failure",
+  );
+
+  await runSessionSourcePoll(
+    createPollDeps({ db: failingDb, fetch: posthog.fetch, clock, logger }),
+  );
+
+  expect(logger.errors.some((line) => line.includes("could not record its failed run"))).toBe(true);
+  expect(
+    logger.errors.some((line) => line.includes("recorded its failed run but its health badge")),
+  ).toBe(false);
+  expect(
+    logger.errors.some((line) =>
+      line.includes("could not record its failed run, and its health badge could not be updated"),
+    ),
+  ).toBe(true);
+});
