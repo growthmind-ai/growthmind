@@ -103,7 +103,7 @@ describe("the step sequence — AD-19, FR-O3, FR-O15, FR-O23", () => {
       expect(stub.kind).toBe("coming-next");
 
       expect(Object.keys(stub).toSorted()).toEqual(
-        ["filler", "id", "kind", "ordinal", "title", "whatItWillDo"].toSorted(),
+        ["id", "kind", "ordinal", "rail", "title", "whatItWillDo"].toSorted(),
       );
 
       const keys = Object.keys(stub);
@@ -147,14 +147,14 @@ describe("the step sequence — AD-19, FR-O3, FR-O15, FR-O23", () => {
     expect(moved).toHaveLength(1);
   });
 
-  test("each stub names the outcome that will fill it", async () => {
+  test("each stub names the outcome that will fill it and the rail that fills its chips", async () => {
     const descriptors = await loadStepDescriptors();
 
     for (const id of STUB_IDS) {
       const stub = descriptorFor(descriptors, id);
       if (stub.kind !== "coming-next") throw new Error(`${id} is not a stub`);
 
-      expect(stub.filler.trim().length).toBeGreaterThan(0);
+      expect(stub.rail).toBe(id === "repo" ? "code" : "coding-assistant");
       expect(stub.whatItWillDo.trim().length).toBeGreaterThan(0);
     }
   });

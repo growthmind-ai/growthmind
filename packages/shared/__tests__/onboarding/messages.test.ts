@@ -272,8 +272,10 @@ describe("the onboarding copy audit — AD-4, FR-O22", () => {
 
     const allowed = new Set([...allowList, "Growthmind"]);
 
+    // The planted offender must sit OUTSIDE the allow-list: Mixpanel played this
+    // role until AD-7.2 sanctioned it, which would have made the control dead.
     expect(
-      properNounOffenders("Paste the key you use for Mixpanel here.", allowed).length,
+      properNounOffenders("Paste the key you use for Datadog here.", allowed).length,
     ).toBeGreaterThan(0);
 
     expect(properNounOffenders("We read sessions from your PostHog project.", allowed)).toEqual([]);

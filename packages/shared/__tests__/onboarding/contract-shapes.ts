@@ -143,7 +143,7 @@ export type StepDescriptor =
       readonly ordinal: number;
       readonly title: string;
       readonly whatItWillDo: string;
-      readonly filler: string;
+      readonly rail: "analytics" | "code" | "coding-assistant";
     }
   //   ^ no `fields`, no `actions`, no `confirmations`. There is nothing to
   //     render as a control. This absence IS the FR-O3/FR-O15 contract.

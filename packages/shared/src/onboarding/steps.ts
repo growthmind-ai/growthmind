@@ -17,18 +17,17 @@ import {
   FIELD_SELF_HOST_DISCLOSURE,
   SEND_TEST_MESSAGE_LABEL,
   SKIP_FOR_NOW_LABEL,
-  STEP_AGENT_FILLER,
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,
   STEP_ANALYTICS_HELPER,
   STEP_ANALYTICS_TITLE,
   STEP_MOMENT_TITLE,
-  STEP_REPO_FILLER,
   STEP_REPO_TITLE,
   STEP_REPO_WHAT_IT_WILL_DO,
   STEP_SLACK_HELPER,
   STEP_SLACK_TITLE,
 } from "./messages";
+import type { ProviderRail } from "./providers";
 
 export const stepStateSchema = z.enum(["pending", "active", "done", "skipped", "coming-next"]);
 export type StepState = z.infer<typeof stepStateSchema>;
@@ -73,7 +72,9 @@ export type StepDescriptor =
       readonly ordinal: number;
       readonly title: string;
       readonly whatItWillDo: string;
-      readonly filler: string;
+      // The soon card derives its chips from the catalogue by rail — no
+      // hand-passed provider list (AD-8, D11).
+      readonly rail: ProviderRail;
     }
   //   ^ no `fields`, no `actions`, no `confirmations`. There is nothing to
   //     render as a control. This absence IS the FR-O3/FR-O15 contract.
@@ -197,7 +198,7 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     ordinal: 1,
     title: STEP_REPO_TITLE,
     whatItWillDo: STEP_REPO_WHAT_IT_WILL_DO,
-    filler: STEP_REPO_FILLER,
+    rail: "code",
   } satisfies StepDescriptor,
   {
     kind: "work",
@@ -229,7 +230,7 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     ordinal: 4,
     title: STEP_AGENT_TITLE,
     whatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
-    filler: STEP_AGENT_FILLER,
+    rail: "coding-assistant",
   } satisfies StepDescriptor,
   {
     kind: "stage",
