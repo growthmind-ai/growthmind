@@ -143,14 +143,12 @@ export {
 
 export {
   createApiKeysRepo,
-  resolveApiKeyForRead,
   resolveApiKeyPrincipal,
   API_KEY_ACTOR_PREFIX,
   API_KEY_ACTOR_ROLE,
   type ApiKeysRepo,
   type MintedApiKey,
   type ApiKeyRow,
-  type ResolvedApiKey,
 } from "./repositories/api-keys.repo";
 
 export {

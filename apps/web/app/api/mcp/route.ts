@@ -1,22 +1,17 @@
 import type { ScopedDb } from "@growthmind/db";
 
 import { createApiKeyMcpCredentials } from "@/lib/mcp/credentials";
-import { createAbsentReadPort } from "@/lib/mcp/read-port";
+import { createLiveReadPort } from "@/lib/mcp/read-port-live";
 import { handleMcpRequest, type McpServerDeps } from "@/lib/mcp/server";
 import { getDb } from "@/lib/db";
 
-import { logger } from "@growthmind/shared";
 export const dynamic = "force-dynamic";
-
-const absentReads = createAbsentReadPort((message) => {
-  logger.warn(message);
-});
 
 export function resolveMcpDeps(db: ScopedDb = getDb()): McpServerDeps {
   return {
     credentials: createApiKeyMcpCredentials(db),
 
-    reads: absentReads,
+    reads: createLiveReadPort(db),
   };
 }
 

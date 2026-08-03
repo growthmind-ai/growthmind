@@ -77,33 +77,6 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
   };
 }
 
-export interface ResolvedApiKey {
-  readonly organizationId: string;
-}
-
-export async function resolveApiKeyForRead(
-  db: ScopedDb,
-  presented: string,
-): Promise<ResolvedApiKey | null> {
-  if (!isApiKeyFormat(presented)) {
-    return null;
-  }
-
-  const keyHash = hashApiKeyMaterial(presented);
-
-  const [row] = await db
-    .select({ organizationId: apiKeys.organizationId })
-    .from(apiKeys)
-    .where(and(eq(apiKeys.keyHash, keyHash), isNull(apiKeys.revokedAt)))
-    .limit(1);
-
-  if (!row) {
-    return null;
-  }
-
-  return { organizationId: row.organizationId };
-}
-
 export const API_KEY_ACTOR_PREFIX = "api-key:";
 
 export const API_KEY_ACTOR_ROLE = "api_key";

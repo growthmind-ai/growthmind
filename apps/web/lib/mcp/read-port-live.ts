@@ -1,5 +1,6 @@
-import type { ScopedDb } from "@growthmind/db";
+import { createFixesService, type ScopedDb } from "@growthmind/db";
 
+import { toFindingRecord, toFixRecord, toOpenFixRow } from "./dto";
 import type {
   FindingRecord,
   FixRecord,
@@ -10,25 +11,41 @@ import type {
   OpenFixPage,
 } from "./read-port";
 
-const NOT_IMPLEMENTED = "mcp live read port: not implemented";
-
 export function createLiveReadPort(db: ScopedDb): McpReadPort {
-  void db;
-
   return {
-    listOpenFixes(query: ListOpenFixesQuery): Promise<OpenFixPage> {
-      void query;
-      throw new Error(NOT_IMPLEMENTED);
+    async listOpenFixes(query: ListOpenFixesQuery): Promise<OpenFixPage> {
+      const page = await createFixesService(db, query.principal).listOpen({
+        projectId: query.projectId,
+        limit: query.limit,
+      });
+
+      return { fixes: page.rows.map(toOpenFixRow), totalOpen: page.totalOpen };
     },
 
-    getFix(query: GetFixQuery): Promise<FixRecord | null> {
-      void query;
-      throw new Error(NOT_IMPLEMENTED);
+    async getFix(query: GetFixQuery): Promise<FixRecord | null> {
+      const read = await createFixesService(db, query.principal).readFix(query.fixId);
+      if (read === null) {
+        return null;
+      }
+
+      return toFixRecord({
+        fixId: read.fix.id,
+        findingId: read.fix.findingId,
+        status: read.fix.status,
+        spec: read.spec,
+        attempt: read.fix.attempt,
+        alreadyLanded: read.fix.alreadyLanded,
+        impact: read.impact,
+        resultsBy: read.fix.resultsBy,
+      });
     },
 
-    getFinding(query: GetFindingQuery): Promise<FindingRecord | null> {
-      void query;
-      throw new Error(NOT_IMPLEMENTED);
+    // A finding with no derivable observation reads back as null here, so the answer is the
+    // typed not-found rather than a schema throw the caller would see as a fault.
+    async getFinding(query: GetFindingQuery): Promise<FindingRecord | null> {
+      const read = await createFixesService(db, query.principal).readFinding(query.findingId);
+
+      return read === null ? null : toFindingRecord(read);
     },
   };
 }

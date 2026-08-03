@@ -13,7 +13,6 @@ import {
 
 import {
   createApiKeysRepo,
-  resolveApiKeyForRead,
   resolveApiKeyPrincipal,
   API_KEY_ACTOR_PREFIX,
   API_KEY_ACTOR_ROLE,
@@ -52,8 +51,11 @@ describe("api-keys repository and resolver", () => {
 
     expect(isApiKeyFormat(minted.raw)).toBe(true);
 
-    expect(await resolveApiKeyForRead(db, minted.raw)).toEqual({
+    expect(await resolveApiKeyPrincipal(db, minted.raw)).toEqual({
+      userId: `${API_KEY_ACTOR_PREFIX}${minted.key.id}`,
       organizationId: org.organizationId,
+      organizationName: org.organizationName,
+      role: API_KEY_ACTOR_ROLE,
     });
   });
 
@@ -113,15 +115,13 @@ describe("api-keys repository and resolver", () => {
     const repo = createApiKeysRepo(db, org.ctx);
     const minted = await repo.mint({ name: "revoke-live agent" });
 
-    expect(await resolveApiKeyForRead(db, minted.raw)).toEqual({
-      organizationId: org.organizationId,
-    });
+    expect((await resolveApiKeyPrincipal(db, minted.raw))?.organizationId).toBe(org.organizationId);
 
     const revoked = await repo.revoke(minted.key.id);
     expect(revoked?.id).toBe(minted.key.id);
     expect(revoked?.revokedAt).toBeInstanceOf(Date);
 
-    expect(await resolveApiKeyForRead(db, minted.raw)).toBeNull();
+    expect(await resolveApiKeyPrincipal(db, minted.raw)).toBeNull();
 
     const [row] = await db
       .select()
@@ -164,7 +164,7 @@ describe("api-keys repository and resolver", () => {
 
     expect(Date.now() - firstAt.getTime()).toBeGreaterThanOrEqual(25);
 
-    expect(await resolveApiKeyForRead(db, minted.raw)).toBeNull();
+    expect(await resolveApiKeyPrincipal(db, minted.raw)).toBeNull();
   });
 
   it("should report nothing revoked for another organization's key id", async () => {
@@ -188,9 +188,9 @@ describe("api-keys repository and resolver", () => {
       .from(schema.apiKeys)
       .where(eq(schema.apiKeys.id, minted.key.id));
     expect(row?.revokedAt).toBeNull();
-    expect(await resolveApiKeyForRead(db, minted.raw)).toEqual({
-      organizationId: orgA.organizationId,
-    });
+    expect((await resolveApiKeyPrincipal(db, minted.raw))?.organizationId).toBe(
+      orgA.organizationId,
+    );
   });
 
   it("should report nothing revoked for an id that never existed", async () => {
@@ -217,31 +217,29 @@ describe("api-keys repository and resolver", () => {
     const second = await repo.mint({ name: "two-live agent two" });
 
     expect(first.raw).not.toBe(second.raw);
-    expect(await resolveApiKeyForRead(db, first.raw)).toEqual({
-      organizationId: org.organizationId,
-    });
-    expect(await resolveApiKeyForRead(db, second.raw)).toEqual({
-      organizationId: org.organizationId,
-    });
+    expect((await resolveApiKeyPrincipal(db, first.raw))?.userId).toBe(
+      `${API_KEY_ACTOR_PREFIX}${first.key.id}`,
+    );
+    expect((await resolveApiKeyPrincipal(db, second.raw))?.userId).toBe(
+      `${API_KEY_ACTOR_PREFIX}${second.key.id}`,
+    );
 
     await repo.revoke(first.key.id);
 
-    expect(await resolveApiKeyForRead(db, first.raw)).toBeNull();
-    expect(await resolveApiKeyForRead(db, second.raw)).toEqual({
-      organizationId: org.organizationId,
-    });
+    expect(await resolveApiKeyPrincipal(db, first.raw)).toBeNull();
+    expect((await resolveApiKeyPrincipal(db, second.raw))?.organizationId).toBe(org.organizationId);
   });
 
   it("should never reach the database for malformed material", async () => {
     const dead = await createTestDb();
     await dead.close();
 
-    expect(await resolveApiKeyForRead(dead.db, "not-a-key")).toBeNull();
-    expect(await resolveApiKeyForRead(dead.db, "")).toBeNull();
+    expect(await resolveApiKeyPrincipal(dead.db, "not-a-key")).toBeNull();
+    expect(await resolveApiKeyPrincipal(dead.db, "")).toBeNull();
 
     const wellFormedUnknown = `${API_KEY_PREFIX}${"a".repeat(43)}`;
     expect(isApiKeyFormat(wellFormedUnknown)).toBe(true);
-    await expect(resolveApiKeyForRead(dead.db, wellFormedUnknown)).rejects.toThrow(/api_keys/);
+    await expect(resolveApiKeyPrincipal(dead.db, wellFormedUnknown)).rejects.toThrow(/api_keys/);
   });
 
   it("should resolve nothing for a genuinely minted ingest key", async () => {
@@ -260,7 +258,7 @@ describe("api-keys repository and resolver", () => {
       kind: "standard",
     });
 
-    expect(await resolveApiKeyForRead(db, ingest.raw)).toBeNull();
+    expect(await resolveApiKeyPrincipal(db, ingest.raw)).toBeNull();
 
     expect(isWriteKeyFormat(ingest.raw)).toBe(true);
     expect(await resolveWriteKeyForIngest(db, ingest.raw)).toEqual({

@@ -6,7 +6,9 @@ import {
   createFindingPayloadsRepo,
   createFindingsRepo,
   createFixesService,
-  resolveApiKeyForRead,
+  resolveApiKeyPrincipal,
+  API_KEY_ACTOR_PREFIX,
+  API_KEY_ACTOR_ROLE,
 } from "@growthmind/db";
 import {
   createTestDb,
@@ -72,6 +74,8 @@ let ctxA: TenantContext;
 let ctxB: TenantContext;
 let keyA: string;
 let keyB: string;
+let keyAId: string;
+let keyBId: string;
 
 const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
 
@@ -108,8 +112,12 @@ beforeAll(async () => {
     organizationId: organizationB.id,
   });
 
-  keyA = (await createApiKeysRepo(dbHandle.db, ctxA).mint({ name: "agent-mcpxk-a" })).raw;
-  keyB = (await createApiKeysRepo(dbHandle.db, ctxB).mint({ name: "agent-mcpxk-b" })).raw;
+  const mintedA = await createApiKeysRepo(dbHandle.db, ctxA).mint({ name: "agent-mcpxk-a" });
+  const mintedB = await createApiKeysRepo(dbHandle.db, ctxB).mint({ name: "agent-mcpxk-b" });
+  keyA = mintedA.raw;
+  keyB = mintedB.raw;
+  keyAId = mintedA.key.id;
+  keyBId = mintedB.key.id;
 
   expect(ctxA.organizationId).not.toBe(ctxB.organizationId);
   expect(keyA).not.toBe(keyB);
@@ -305,11 +313,21 @@ describe("two real organizations, two real credentials, and no way from one to t
   });
 
   test("should never resolve one organization's credential to the other organization", async () => {
-    const resolvedA = await resolveApiKeyForRead(dbHandle.db, keyA);
-    const resolvedB = await resolveApiKeyForRead(dbHandle.db, keyB);
+    const resolvedA = await resolveApiKeyPrincipal(dbHandle.db, keyA);
+    const resolvedB = await resolveApiKeyPrincipal(dbHandle.db, keyB);
 
-    expect(resolvedA).toEqual({ organizationId: ctxA.organizationId });
-    expect(resolvedB).toEqual({ organizationId: ctxB.organizationId });
+    expect(resolvedA).toEqual({
+      userId: `${API_KEY_ACTOR_PREFIX}${keyAId}`,
+      organizationId: ctxA.organizationId,
+      organizationName: ctxA.organizationName,
+      role: API_KEY_ACTOR_ROLE,
+    });
+    expect(resolvedB).toEqual({
+      userId: `${API_KEY_ACTOR_PREFIX}${keyBId}`,
+      organizationId: ctxB.organizationId,
+      organizationName: ctxB.organizationName,
+      role: API_KEY_ACTOR_ROLE,
+    });
 
     expect(resolvedA?.organizationId).not.toBe(ctxB.organizationId);
     expect(resolvedB?.organizationId).not.toBe(ctxA.organizationId);

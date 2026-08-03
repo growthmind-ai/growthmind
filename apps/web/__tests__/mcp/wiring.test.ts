@@ -2,12 +2,21 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createHmac } from "node:crypto";
+
+import { serialiseFixSpecInput } from "@growthmind/core";
 import {
   createApiKeysRepo,
+  createFindingPayloadsRepo,
+  createFindingsRepo,
+  createFixesService,
   createProjectsRepo,
   createWriteKeysRepo,
   resolveWriteKeyForIngest,
+  API_KEY_ACTOR_PREFIX,
+  API_KEY_ACTOR_ROLE,
 } from "@growthmind/db";
+import { seedAnalysisRun } from "@growthmind/db/testing";
 import { API_KEY_PREFIX, MCP_TOOL, type TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
@@ -20,7 +29,15 @@ import {
   signUpTestUser,
   type AuthTestContext,
 } from "../tenancy/helpers/auth-fixture";
-import { fingerprint, sseDataLine, toolCallRequest, verbRequest } from "./helpers/mcp-fixture";
+import {
+  candidateFor,
+  fingerprint,
+  sseDataLine,
+  toolCallRequest,
+  verbRequest,
+  WINDOW_END,
+  WINDOW_START,
+} from "./helpers/mcp-fixture";
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
 
@@ -29,14 +46,20 @@ const UNKNOWN_BUT_WELL_FORMED = `${API_KEY_PREFIX}${"a".repeat(43)}`;
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 const PRE_SDK_CONTENT_TYPE = "application/json;charset=utf-8";
 
+const LIVE_SURFACE = "/mcpwire/pricing";
+
 const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
 
 let authCtx: AuthTestContext;
 let ownerCtx: TenantContext;
 
 let mintedRaw: string;
+let mintedKeyId: string;
 
 let writeKeyRaw: string;
+
+let liveFixId: string;
+let liveFindingId: string;
 
 beforeAll(async () => {
   authCtx = await setupAuthTest();
@@ -57,7 +80,9 @@ beforeAll(async () => {
     organizationId: organization.id,
   });
 
-  mintedRaw = (await createApiKeysRepo(authCtx.db, ownerCtx).mint({ name: "agent-mcpwire" })).raw;
+  const minted = await createApiKeysRepo(authCtx.db, ownerCtx).mint({ name: "agent-mcpwire" });
+  mintedRaw = minted.raw;
+  mintedKeyId = minted.key.id;
 
   const project = await createProjectsRepo(authCtx.db, ownerCtx).create({
     name: "Mcpwire Landing Page",
@@ -68,6 +93,39 @@ beforeAll(async () => {
       kind: "standard",
     })
   ).raw;
+
+  const run = await seedAnalysisRun(authCtx.db, { ctx: ownerCtx, projectId: project.id });
+  const finding = await createFindingsRepo(authCtx.db, ownerCtx).persist({
+    projectId: project.id,
+    runId: run.id,
+    signature: createHmac("sha256", "mcpwire").update(LIVE_SURFACE).digest("hex"),
+    signatureVersion: 1,
+    summarySource: "model_rendered",
+    headline: "People are leaving the pricing page without going any further.",
+    context: ["We saw sessions reach the pricing page and stop there."],
+    finalClass: "confusing",
+    surface: LIVE_SURFACE,
+    surfaceNormalisationVersion: 1,
+    counts: [],
+    confidenceBasis: "threshold_met",
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    evidenceShape: "mcpwire-live-evidence",
+    evidenceShapeVersion: 1,
+    resolvedModelId: null,
+  });
+  await createFindingPayloadsRepo(authCtx.db, ownerCtx).upsertFor({
+    findingId: finding.id,
+    payload: serialiseFixSpecInput({ candidate: candidateFor(LIVE_SURFACE), signals: [] }),
+  });
+
+  const opened = await createFixesService(authCtx.db, ownerCtx).openFor(finding.id);
+  if (opened.outcome !== "opened") {
+    throw new Error(`mcpwire fixture: openFor answered "${opened.outcome}", not "opened"`);
+  }
+
+  liveFindingId = finding.id;
+  liveFixId = opened.fix.id;
 });
 
 afterAll(async () => {
@@ -76,7 +134,7 @@ afterAll(async () => {
 });
 
 describe("the mounted route answers the credential store this sprint built", () => {
-  test("WIRE-M1 — should answer 200 to a real minted credential through the mounted POST", async () => {
+  test("WIRE-M1 — should answer a real minted credential with the row this organization owns", async () => {
     const print = await fingerprint(
       await POST(toolCallRequest({ tool: MCP_TOOL.LIST_OPEN_FIXES, key: mintedRaw })),
     );
@@ -90,10 +148,32 @@ describe("the mounted route answers the credential store this sprint built", () 
     expect(payload).toContain('"jsonrpc":"2.0"');
     expect(payload).toContain('"id":1');
     expect(payload).toContain('"structuredContent"');
-    expect(payload).toContain('"fixes":[]');
-    expect(payload).toContain('"returned":0');
-    expect(payload).toContain('"totalOpen":0');
+
+    // The row itself, through the mounted route: an absent read port answers an empty list
+    // here, so these four assertions are what makes the swap in resolveMcpDeps load-bearing.
+    expect(payload).toContain(liveFixId);
+    expect(payload).toContain(liveFindingId);
+    expect(payload).toContain('"returned":1');
+    expect(payload).toContain('"totalOpen":1');
     expect(payload).toContain('"truncated":false');
+
+    expect(payload).not.toContain('"isError":true');
+  });
+
+  test("WIRE-M1 — and reads that fix back as a rendered spec through the mounted POST", async () => {
+    const print = await fingerprint(
+      await POST(
+        toolCallRequest({ tool: MCP_TOOL.GET_FIX, input: { fixId: liveFixId }, key: mintedRaw }),
+      ),
+    );
+
+    expect(print.status).toBe(200);
+    expect(print.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
+
+    const payload = sseDataLine(print.body);
+    expect(payload).toContain(liveFixId);
+    expect(payload).toContain('"specText"');
+    expect(payload).toContain(LIVE_SURFACE);
 
     expect(payload).not.toContain('"isError":true');
   });
@@ -140,9 +220,27 @@ describe("the mounted route answers the credential store this sprint built", () 
     const deps = resolveMcpDeps(authCtx.db);
 
     expect(await deps.credentials.resolve(mintedRaw)).toEqual({
-      organizationId: ownerCtx.organizationId,
+      context: {
+        userId: `${API_KEY_ACTOR_PREFIX}${mintedKeyId}`,
+        organizationId: ownerCtx.organizationId,
+        organizationName: ownerCtx.organizationName,
+        role: API_KEY_ACTOR_ROLE,
+      },
     });
     expect(await deps.credentials.resolve(writeKeyRaw)).toBeNull();
+  });
+
+  test("should build its read port over the same database handle, not the absent one", async () => {
+    const deps = resolveMcpDeps(authCtx.db);
+
+    const page = await deps.reads.listOpenFixes({
+      principal: ownerCtx,
+      projectId: null,
+      limit: 25,
+    });
+
+    expect(page.totalOpen).toBe(1);
+    expect(page.fixes.map((fix) => fix.fixId)).toEqual([liveFixId]);
   });
 });
 
