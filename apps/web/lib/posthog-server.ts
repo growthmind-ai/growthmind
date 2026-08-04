@@ -5,7 +5,16 @@ import { resolvePostHogHosts } from "./posthog-hosts";
 import { logger } from "@growthmind/shared";
 let posthogClient: PostHog | null = null;
 
+// The test runner sets NODE_ENV itself, so this cannot be forgotten the way an unset
+// variable can. Without it, a suite that creates users through the real auth hooks posts
+// them to whatever project the machine is configured for (B-046).
+export function isAnalyticsSuppressed(nodeEnv: string | undefined): boolean {
+  return nodeEnv === "test";
+}
+
 export function getPostHogClient(): PostHog | null {
+  if (isAnalyticsSuppressed(process.env.NODE_ENV)) return null;
+
   const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
   if (!token) {
