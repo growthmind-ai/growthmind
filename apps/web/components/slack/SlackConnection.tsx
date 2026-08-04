@@ -115,7 +115,10 @@ export function ChannelPicker(props: ChannelPickerProps): ReactNode {
         {ONBOARDING_MESSAGES.slackPrivateChannelHint}
       </Text>
 
-      <CopyableCommand command={ONBOARDING_MESSAGES.slackInviteCommand} />
+      <CopyableCommand
+        command={ONBOARDING_MESSAGES.slackInviteCommand}
+        copyLabel={ONBOARDING_MESSAGES.slackCopyInviteLabel}
+      />
 
       {/* The list is fetched once on mount, so an invite made after that is
           invisible until something asks Slack again. Offered in every picking
