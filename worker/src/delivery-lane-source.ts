@@ -3,6 +3,7 @@
 import {
   COUNT_ROLES,
   confidenceBasisSchema,
+  deliveryClaimsExpireBefore,
   toMeasuredCount,
   type ConfidenceBasis,
   type CountRole,
@@ -161,8 +162,20 @@ function deliverableFor(finding: FindingRecord, logger: DeliveryLogger): Deliver
   return { findingId: finding.id, confidenceBasis, sampleSize, signature, message };
 }
 
-function isSpokenFor(delivery: DeliveryRecord | null): boolean {
-  return delivery !== null && delivery.status !== "failed";
+// `pending` means a tick is posting this right now — unless that tick died, in which case
+// the row says "in progress" forever and this finding is never a candidate again. Treating
+// an expired claim as spoken for is the other half of the deadlock: clearing the lane's
+// `openFindingIds` alone would unblock the project and still never resend THIS finding.
+function isSpokenFor(delivery: DeliveryRecord | null, staleClaimsBefore: Date): boolean {
+  if (delivery === null || delivery.status === "failed") {
+    return false;
+  }
+
+  if (delivery.status === "pending") {
+    return delivery.claimedAt.getTime() >= staleClaimsBefore.getTime();
+  }
+
+  return true;
 }
 
 // The other half of a channel re-point. The delivery dedup key is `(finding, channel)`, so
@@ -197,6 +210,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
     at: Date,
   ): Promise<DeliveryLane | null> {
     const windowStart = new Date(at.getTime() - DELIVERY_WEEK_MS);
+    const staleClaimsBefore = deliveryClaimsExpireBefore(at);
 
     try {
       const findings = createFindingsRepo(deps.db, ctx);
@@ -226,7 +240,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
           deliveredThisWeek += 1;
         }
 
-        if (isSpokenFor(delivery)) {
+        if (isSpokenFor(delivery, staleClaimsBefore)) {
           continue;
         }
 

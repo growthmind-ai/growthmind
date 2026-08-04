@@ -3,7 +3,8 @@
 // process. A fake anywhere else and this file proves nothing.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
-import { createDeliveriesRepo, schema } from "@growthmind/db";
+import { DELIVERY_CLAIM_TTL_MS } from "@growthmind/core";
+import { createDeliveriesRepo, schema, signatureHex } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
 import {
@@ -498,4 +499,65 @@ test("a connection that has never moved holds nothing back", async () => {
   const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
 
   expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
+});
+
+// The other half of the abandoned-lease fix. Clearing the lane's `openFindingIds` unblocks
+// the PROJECT; without this the finding itself stays `pending` forever and is never a
+// candidate again — unblocked and unsendable, which reads as "delivery works" while the one
+// finding that was mid-flight when the tick died is silently dropped for good.
+async function claimAndAbandon(org: SeededOrg, claimedAt: Date): Promise<void> {
+  const [row] = await findingRows();
+  if (row === undefined) {
+    throw new Error("the fixture seeded no finding");
+  }
+
+  const claim = await createDeliveriesRepo(db, org.ctx).claimForPost({
+    projectId: org.workspace.projectId,
+    findingId: org.findingId,
+    signature: signatureHex(row.signature),
+    channelId: CHANNEL_A,
+    claimedAt,
+    staleClaimsBefore: new Date(claimedAt.getTime() - 1),
+  });
+
+  expect(claim.claimed).toBe(true);
+}
+
+test("a claim still in flight keeps its finding out of the candidate list", async () => {
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  const org = await seedOrgWithFinding({ label: "in-flight", channelId: CHANNEL_A });
+
+  await claimAndAbandon(org, new Date(NOW.getTime() - 60_000));
+
+  const logger = createRecordingDeliveryLogger();
+  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+  expect(lane?.candidates).toEqual([]);
+});
+
+test("a finding whose claim was abandoned becomes deliverable again", async () => {
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  const org = await seedOrgWithFinding({ label: "abandoned", channelId: CHANNEL_A });
+
+  await claimAndAbandon(org, new Date(NOW.getTime() - DELIVERY_CLAIM_TTL_MS - 60_000));
+
+  const logger = createRecordingDeliveryLogger();
+  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+  expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
+});
+
+test("a tick recovers a project whose delivery was stuck behind an abandoned claim", async () => {
+  // The whole bug, end to end through the real entry point: before the fix this posted
+  // nothing, on this tick and on every tick after it, for the life of the installation.
+  const org = await seedOrgWithFinding({ label: "recovered", channelId: CHANNEL_A });
+
+  await claimAndAbandon(org, new Date(NOW.getTime() - DELIVERY_CLAIM_TTL_MS - 60_000));
+
+  const poster = createRecordingPoster();
+  const { summary } = await runTheTick(poster);
+
+  expect(summary.posted).toBe(1);
+  expect(poster.posted).toHaveLength(1);
+  expect(poster.posted[0]?.channelId).toBe(CHANNEL_A);
 });

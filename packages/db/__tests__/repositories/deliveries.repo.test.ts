@@ -23,6 +23,12 @@ const CHANNEL = "C0FINDINGS";
 const OTHER_CHANNEL = "C0ENGINEERING";
 const CLAIMED_AT = new Date("2026-07-31T09:00:00.000Z");
 
+// Before every claim this suite makes, so nothing reads as abandoned unless a test says so.
+const NOTHING_EXPIRED = new Date(CLAIMED_AT.getTime() - 60 * 60 * 1_000);
+
+// After them, so every live claim reads as abandoned.
+const EVERYTHING_EXPIRED = new Date(CLAIMED_AT.getTime() + 60 * 60 * 1_000);
+
 function makeClaimInput(
   projectId: string,
   overrides: Partial<ClaimDeliveryInput> = {},
@@ -33,6 +39,7 @@ function makeClaimInput(
     signature: testSignature("a".repeat(64)),
     channelId: CHANNEL,
     claimedAt: CLAIMED_AT,
+    staleClaimsBefore: NOTHING_EXPIRED,
     ...overrides,
   };
 }
@@ -74,7 +81,7 @@ describe("deliveries repository", () => {
     expect(second.delivery?.attempts).toBe(1);
     expect(second.delivery?.status).toBe("pending");
 
-    const pending = await repo.listPendingForProject(project.id);
+    const pending = await repo.listPendingForProject(project.id, NOTHING_EXPIRED);
     expect(pending).toHaveLength(1);
   });
 
@@ -133,7 +140,7 @@ describe("deliveries repository", () => {
     const owners = [first, second].filter((result) => result.claimed);
     expect(owners).toHaveLength(1);
 
-    const pending = await repo.listPendingForProject(project.id);
+    const pending = await repo.listPendingForProject(project.id, NOTHING_EXPIRED);
     expect(pending).toHaveLength(1);
     expect(pending[0]?.attempts).toBe(1);
   });
@@ -159,7 +166,7 @@ describe("deliveries repository", () => {
     expect(toEngineering.claimed).toBe(true);
     expect(toEngineering.delivery?.id).not.toBe(toFindings.delivery?.id);
 
-    const pending = await repo.listPendingForProject(project.id);
+    const pending = await repo.listPendingForProject(project.id, NOTHING_EXPIRED);
     expect(pending.map((row) => row.channelId).toSorted()).toEqual(
       [CHANNEL, OTHER_CHANNEL].toSorted(),
     );
@@ -191,7 +198,7 @@ describe("deliveries repository", () => {
 
     expect(await repoB.findFor("finding-xt-read", CHANNEL)).toBeNull();
     expect(await repoB.findLatestForSignature(projectA.id, signature)).toBeNull();
-    expect(await repoB.listPendingForProject(projectA.id)).toEqual([]);
+    expect(await repoB.listPendingForProject(projectA.id, NOTHING_EXPIRED)).toEqual([]);
 
     expect((await repoA.findFor("finding-xt-read", CHANNEL))?.id).toBe(claimed.delivery?.id);
   });
@@ -281,7 +288,7 @@ describe("deliveries repository", () => {
     expect((await teammateRepo.findLatestForSignature(project.id, signature))?.id).toBe(
       claimed.delivery?.id,
     );
-    expect(await teammateRepo.listPendingForProject(project.id)).toHaveLength(1);
+    expect(await teammateRepo.listPendingForProject(project.id, NOTHING_EXPIRED)).toHaveLength(1);
   });
 
   it("keeps the same finding id under a different org as a separate row", async () => {
@@ -355,7 +362,7 @@ describe("deliveries repository", () => {
     expect(failed?.failedAt?.getTime()).toBe(failedAt.getTime());
     expect(failed?.failureReason).toBe("Slack did not accept the message.");
 
-    const pendingAfterFailure = await repo.listPendingForProject(project.id);
+    const pendingAfterFailure = await repo.listPendingForProject(project.id, NOTHING_EXPIRED);
     expect(pendingAfterFailure.map((row) => row.id)).toEqual([bystander.delivery.id]);
 
     const retry = await repo.claimForPost(
@@ -439,7 +446,7 @@ describe("deliveries repository", () => {
         channelId: OTHER_CHANNEL,
       }),
     );
-    expect(await repo.listPendingForProject(project.id)).toHaveLength(2);
+    expect(await repo.listPendingForProject(project.id, NOTHING_EXPIRED)).toHaveLength(2);
 
     const posted = await repo.markPosted({
       findingId: "finding-happy-exit",
@@ -457,7 +464,7 @@ describe("deliveries repository", () => {
     expect(posted?.status).toBe("posted");
     expect(failed?.status).toBe("failed");
 
-    expect(await repo.listPendingForProject(project.id)).toEqual([]);
+    expect(await repo.listPendingForProject(project.id, NOTHING_EXPIRED)).toEqual([]);
   });
 
   it("stamps every column its read paths filter on", async () => {
@@ -492,7 +499,7 @@ describe("deliveries repository", () => {
     expect((await repo.findLatestForSignature(project.id, signature))?.id).toBe(
       claimed.delivery.id,
     );
-    expect((await repo.listPendingForProject(project.id))[0]?.id).toBe(claimed.delivery.id);
+    expect((await repo.listPendingForProject(project.id, NOTHING_EXPIRED))[0]?.id).toBe(claimed.delivery.id);
   });
 
   it("resolves one delivery when two organizations post into the same channel", async () => {
@@ -639,5 +646,102 @@ describe("deliveries repository", () => {
         messageRef: sharedRef,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// A claim is a lease. A tick that dies between claiming a delivery and recording its
+// outcome leaves the row `pending`, and every later tick read it as work in progress — so
+// the lane answered `one_already_open` forever and the organization silently stopped
+// receiving anything, with nothing in a log to say why.
+describe("an abandoned claim is a lease that expires, not a deadlock", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  async function seedClaimed(label: string) {
+    const org = await seedOrgWithOwner(db, {
+      orgName: `acme-${label}`,
+      userName: `Owner ${label}`,
+      email: `owner-${label}@acme.example`,
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: `checkout-${label}`,
+    });
+    const repo = createDeliveriesRepo(db, org.ctx);
+
+    const claimed = await repo.claimForPost(makeClaimInput(project.id));
+    expect(claimed.claimed).toBe(true);
+
+    return { repo, project };
+  }
+
+  it("stops reporting an expired claim as work in progress", async () => {
+    const { repo, project } = await seedClaimed("lease-expired");
+
+    // The exact read whose non-empty answer is what stopped delivery forever.
+    expect(await repo.listPendingForProject(project.id, NOTHING_EXPIRED)).toHaveLength(1);
+    expect(await repo.listPendingForProject(project.id, EVERYTHING_EXPIRED)).toEqual([]);
+  });
+
+  it("lets a later tick take over an expired claim", async () => {
+    const { repo, project } = await seedClaimed("lease-taken-over");
+
+    // Without this the row is unblocked but unsendable: nothing would ever claim it again.
+    const retaken = await repo.claimForPost(
+      makeClaimInput(project.id, {
+        claimedAt: new Date("2026-07-31T12:00:00.000Z"),
+        staleClaimsBefore: EVERYTHING_EXPIRED,
+      }),
+    );
+
+    expect(retaken.claimed).toBe(true);
+    expect(retaken.delivery?.attempts).toBe(2);
+    expect(retaken.delivery?.status).toBe("pending");
+  });
+
+  it("never takes over a claim that is still in flight", async () => {
+    // The whole risk of an expiry: two ticks posting the same finding to the same channel.
+    const { repo, project } = await seedClaimed("lease-live");
+
+    const stolen = await repo.claimForPost(
+      makeClaimInput(project.id, {
+        claimedAt: new Date("2026-07-31T09:00:30.000Z"),
+        staleClaimsBefore: NOTHING_EXPIRED,
+      }),
+    );
+
+    expect(stolen.claimed).toBe(false);
+    expect(stolen.delivery?.attempts).toBe(1);
+  });
+
+  it("never takes over a delivery that already posted", async () => {
+    // `posted` is terminal. An expiry that reached it would re-send a delivered finding.
+    const { repo, project } = await seedClaimed("lease-posted");
+
+    await repo.markPosted({
+      findingId: "finding-1",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T09:00:05.000Z"),
+      messageRef: "1785481299.000100",
+    });
+
+    const retaken = await repo.claimForPost(
+      makeClaimInput(project.id, {
+        claimedAt: new Date("2026-08-30T09:00:00.000Z"),
+        staleClaimsBefore: EVERYTHING_EXPIRED,
+      }),
+    );
+
+    expect(retaken.claimed).toBe(false);
+    expect(retaken.delivery?.status).toBe("posted");
+    expect(await repo.listPendingForProject(project.id, EVERYTHING_EXPIRED)).toEqual([]);
   });
 });
