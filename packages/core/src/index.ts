@@ -166,6 +166,12 @@ export {
   type ResidualPiiScan,
 } from "./delivery/residual-pii";
 export {
+  reviewFindingText,
+  type FindingText,
+  type FindingTextInput,
+  type ScannedText,
+} from "./delivery/finding-text";
+export {
   DELIVERY_BUDGET_PER_WEEK,
   DELIVERY_CLAIM_TTL_MS,
   deliveryClaimsExpireBefore,

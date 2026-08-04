@@ -29,7 +29,7 @@ import {
   createFindingPayloadsRepo,
   type FindingPayloadRow,
 } from "../repositories/finding-payloads.repo";
-import { findingContextSchema } from "../repositories/findings.repo";
+import { findingContextSchema } from "../repositories/finding-text";
 import { createFixesRepo, openFixesIn, type FixRow } from "../repositories/fixes.repo";
 import { createGrowthContextRepo } from "../repositories/growth-context.repo";
 import { scoped } from "../repositories/scope";

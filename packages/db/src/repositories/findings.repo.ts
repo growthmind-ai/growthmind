@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { findings } from "../schema/findings";
 import { orgCrud } from "./crud";
+import { readFindingText, type FindingText, type ScannedText } from "./finding-text";
 import { scoped } from "./scope";
 import type { ScopedExecutor } from "./types";
 
@@ -26,14 +27,12 @@ export const measuredCountRowSchema = z.object({
 });
 export type MeasuredCountRow = z.infer<typeof measuredCountRowSchema>;
 
-export const findingContextSchema = z.array(z.string());
-
 const countsSchema = z.array(measuredCountRowSchema);
 
 type FindingRow = typeof findings.$inferSelect;
 
-export type FindingRecord = Omit<FindingRow, "context" | "counts"> & {
-  readonly context: readonly string[];
+export type FindingRecord = Omit<FindingRow, "headline" | "context" | "counts"> & {
+  readonly text: FindingText;
   readonly counts: readonly MeasuredCountRow[];
 };
 
@@ -45,8 +44,8 @@ export interface PersistFindingInput {
 
   readonly signatureVersion: number;
   readonly summarySource: SummarySource;
-  readonly headline: string;
-  readonly context: readonly string[];
+  readonly headline: ScannedText;
+  readonly context: readonly ScannedText[];
   readonly finalClass: string;
   readonly surface: string;
 
@@ -86,10 +85,12 @@ const notOurProject = (): Error =>
   new Error("findings: the project named is not this organization's");
 
 function toRecord(row: FindingRow): FindingRecord {
+  const { headline, context, counts, ...rest } = row;
+
   return {
-    ...row,
-    context: findingContextSchema.parse(row.context),
-    counts: countsSchema.parse(row.counts),
+    ...rest,
+    text: readFindingText({ headline, context }),
+    counts: countsSchema.parse(counts),
   };
 }
 
@@ -104,7 +105,6 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
   return {
     async persist(input: PersistFindingInput): Promise<FindingRecord> {
       const summarySource = summarySourceSchema.parse(input.summarySource);
-      const context = findingContextSchema.parse(input.context);
       const counts = countsSchema.parse(input.counts);
       await s.assertProjectOwned(input.projectId, notOurProject);
 
@@ -116,7 +116,7 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
           signatureVersion: input.signatureVersion,
           summarySource,
           headline: input.headline,
-          context,
+          context: input.context,
           finalClass: input.finalClass,
           surface: input.surface,
           surfaceNormalisationVersion: input.surfaceNormalisationVersion,

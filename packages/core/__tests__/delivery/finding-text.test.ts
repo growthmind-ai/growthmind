@@ -79,8 +79,13 @@ describe("reviewFindingText", () => {
       reviewFindingText({ headline: CLEAN_HEADLINE, context: CLEAN_CONTEXT }),
     );
 
-    expect(verdict.headline).toBe(CLEAN_HEADLINE);
-    expect(verdict.context).toEqual([...CLEAN_CONTEXT]);
+    // Widening ScannedText to string is the sanctioned direction, and these two
+    // annotations are the compile-time proof that it stays open.
+    const headline: string = verdict.headline;
+    const context: readonly string[] = verdict.context;
+
+    expect(headline).toBe(CLEAN_HEADLINE);
+    expect(context).toEqual([...CLEAN_CONTEXT]);
   });
 
   for (const kind of RESIDUAL_PII_KINDS) {

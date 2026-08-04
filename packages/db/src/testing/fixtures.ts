@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import { reviewFindingText, type ScannedText } from "@growthmind/core";
+import { summarySourceSchema, tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
 import { createAnalysisRunsRepo } from "../repositories/analysis-runs.repo";
+import type { MeasuredCountRow } from "../repositories/findings.repo";
 import type { ScopedDb } from "../repositories/types";
 import * as schema from "../schema";
 
@@ -233,4 +235,91 @@ export async function seedConnection(
   }
 
   return { id: row.id, projectId: row.projectId };
+}
+
+export interface ScannedFindingText {
+  readonly headline: ScannedText;
+  readonly context: readonly ScannedText[];
+}
+
+export function scannedTextFor(
+  headline: string,
+  context: readonly string[] = [],
+): ScannedFindingText {
+  const verdict = reviewFindingText({ headline, context });
+
+  if (verdict.held) {
+    throw new Error(
+      `scannedTextFor: the text given is held as ${verdict.why}, so no fixture may persist it`,
+    );
+  }
+
+  return { headline: verdict.headline, context: verdict.context };
+}
+
+export interface SeedUnscannedFindingParams {
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly headline: string;
+  readonly context: readonly string[];
+  readonly signature?: string;
+  readonly surface?: string;
+  readonly finalClass?: string;
+  readonly counts?: readonly MeasuredCountRow[];
+  readonly windowStart?: Date;
+  readonly windowEnd?: Date;
+  readonly evidenceShape?: string;
+  readonly createdAt?: Date;
+}
+
+export interface SeededUnscannedFinding {
+  readonly id: string;
+}
+
+const UNSCANNED_WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
+
+const UNSCANNED_WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
+
+// Writes a findings row straight to the table, past the branded persist path, so a test can
+// stand up the rows that predate the scan. Nothing outside `__tests__/` may reference it.
+export async function seedUnscannedFinding(
+  db: ScopedDb,
+  params: SeedUnscannedFindingParams,
+): Promise<SeededUnscannedFinding> {
+  const surface = params.surface ?? "/checkout";
+
+  const [row] = await db
+    .insert(schema.findings)
+    .values({
+      id: randomUUID(),
+      organizationId: params.ctx.organizationId,
+      projectId: params.projectId,
+      runId: params.runId,
+      signature: params.signature ?? randomUUID(),
+      signatureVersion: 1,
+      summarySource: summarySourceSchema.enum.model_rendered,
+      headline: params.headline,
+      context: params.context,
+      finalClass: params.finalClass ?? "confusing",
+      surface,
+      surfaceNormalisationVersion: 1,
+      counts: params.counts ?? [],
+      confidenceBasis: "28 kept sessions in a seven-day window",
+      windowStart: params.windowStart ?? UNSCANNED_WINDOW_START,
+      windowEnd: params.windowEnd ?? UNSCANNED_WINDOW_END,
+      evidenceShape: params.evidenceShape ?? `funnel_dropoff:surface=${surface}`,
+      evidenceShapeVersion: 1,
+      resolvedModelId: "claude-sonnet-5",
+
+      // OQ-2 pins timing rules on this column, so it is stored as written, never as now().
+      createdAt: params.createdAt ?? new Date(),
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("seedUnscannedFinding: insert returned no row");
+  }
+
+  return { id: row.id };
 }
