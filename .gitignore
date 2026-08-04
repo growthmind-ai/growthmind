@@ -33,7 +33,10 @@ local/
 
 # orchestrator working artifacts — local only (durable ones get promoted to
 # ../internal). Root-anchored: an unanchored tasks/ would swallow real source
-# directories like worker/src/tasks/.
+# directories like worker/src/tasks/. PRDs, ADDs and decision records now live
+# under .ai/, ignored above; the docs/ entries are their retired homes, kept so
+# a stale writer cannot publish one.
 /tasks/
 /docs/prds/
 /docs/adds/
+/docs/decisions/

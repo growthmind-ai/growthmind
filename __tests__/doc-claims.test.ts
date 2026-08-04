@@ -14,14 +14,13 @@ const SCANNED = [
   "docs/architecture.md",
   "docs/product-decisions.md",
   "docs/stack.md",
-  "docs/mvp.md",
   "docs/get-started.md",
   "docs/telemetry.md",
   "docs/reliability-checklist.md",
 ];
 
 /** Gitignored here, so a link into one resolves for a maintainer and 404s for everyone else. */
-const NOT_PUBLISHED = /^(tasks|docs\/prds|docs\/adds|\.ai|\.claude|local)\//;
+const NOT_PUBLISHED = /^(tasks|\.ai|\.claude|local)\//;
 
 const MARKDOWN_LINK = /\[[^\]]*\]\(([^)]+)\)/g;
 
@@ -50,7 +49,8 @@ function brokenLinksIn(file: string): string[] {
 
 /**
  * Claims the repository can check about itself. Each is a sentence a reader would
- * act on, paired with the condition that makes it true.
+ * act on, paired with the condition that makes it true. Entries under `.ai/` are
+ * checked only where that directory exists — it is gitignored, so CI never sees them.
  */
 const CLAIMS: readonly {
   readonly file: string;
@@ -83,19 +83,19 @@ const CLAIMS: readonly {
     because: "a skills/ directory now exists",
   },
   {
-    file: "docs/decisions/0007-mcp-route-surface.md",
+    file: ".ai/decisions/0007-mcp-route-surface.md",
     claim: /No table records a finding or a fix/i,
     holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),
     because: "packages/db/src/schema/fixes.ts exists — a fix is recorded",
   },
   {
-    file: "docs/decisions/0007-mcp-route-surface.md",
+    file: ".ai/decisions/0007-mcp-route-surface.md",
     claim: /All three tools read real rows/i,
     holdsWhen: () => read("apps/web/app/api/mcp/route.ts").includes("createLiveReadPort"),
     because: "the mounted route no longer binds the live read port",
   },
   {
-    file: "docs/decisions/0007-mcp-route-surface.md",
+    file: ".ai/decisions/0007-mcp-route-surface.md",
     claim: /resolved by `resolveApiKeyPrincipal`/,
     holdsWhen: () =>
       read("packages/db/src/repositories/api-keys.repo.ts").includes(
@@ -120,7 +120,10 @@ describe("documentation links", () => {
 describe("documentation claims", () => {
   test("no document makes a claim the repository contradicts", () => {
     const contradicted = CLAIMS.filter(
-      (entry) => entry.claim.test(read(entry.file)) && !entry.holdsWhen(),
+      (entry) =>
+        existsSync(`${ROOT}/${entry.file}`) &&
+        entry.claim.test(read(entry.file)) &&
+        !entry.holdsWhen(),
     ).map((entry) => `${entry.file}: "${entry.claim.source}" — ${entry.because}`);
 
     expect(contradicted).toEqual([]);
