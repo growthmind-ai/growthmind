@@ -1,0 +1,40 @@
+#!/bin/sh
+# Runs the three cheap gates from CI's Build gate before a push: typecheck,
+# lint, format:check. Together they cost about nine seconds; `bun test` and
+# `bun run build` are minutes, so they stay in CI. Bypass with --no-verify.
+set -u
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# A branch deletion (`git push origin :branch`) pushes a zero local SHA and has
+# no tree to check.
+pushing_content=0
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  case "$local_sha" in
+    0000000000000000000000000000000000000000) ;;
+    *) pushing_content=1 ;;
+  esac
+done
+[ "$pushing_content" = 1 ] || exit 0
+
+failed=""
+
+run_gate() {
+  name=$1
+  shift
+  printf '\n\033[1m→ %s\033[0m\n' "$name"
+  "$@" || failed="$failed $name"
+}
+
+run_gate typecheck bun run typecheck
+run_gate lint bun run lint
+run_gate format:check bun run format:check
+
+if [ -n "$failed" ]; then
+  printf '\n\033[31mPush blocked — CI would fail here:%s\033[0m\n' "$failed"
+  case "$failed" in
+    *format:check*) printf '  formatting: bun run format\n' ;;
+  esac
+  printf '  bypass:     git push --no-verify\n\n'
+  exit 1
+fi

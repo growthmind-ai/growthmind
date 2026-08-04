@@ -50,6 +50,13 @@ bun run db:generate  # drizzle migration from schema changes
 bun run db:migrate   # apply migrations
 ```
 
+A `pre-push` hook ([.githooks/pre-push](.githooks/pre-push), wired to
+`core.hooksPath` by `bun install`) runs `typecheck + lint + format:check` before
+every push, about nine seconds. `bun test` and `bun run build` are minutes, so
+they stay in CI, which is why the hook narrows CI's Build gate rather than
+replacing it — `bun run check` is still the gate a change has to pass. Skip the
+hook with `git push --no-verify` when you want CI to be the judge.
+
 No.env needed locally, development defaults cover everything; `.env.example`
 documents each variable. Auth schema changes: edit `apps/web/lib/auth.ts`, then
 `bun run db:generate:auth && bun run db:generate` (never hand-edit
