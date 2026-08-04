@@ -120,17 +120,28 @@ export const CHANNEL_NOT_LISTED: FirstRunGateRefusal = Object.freeze({
   status: 409,
 });
 
-// `attachChannel` fills an empty address and never moves a chosen one — moving
-// it forks every delivery already recorded (D12). It names the stored channel.
+// `attachChannel` fills an empty address and never moves a chosen one. Moving is the
+// settings route's job, because only that one stamps the cutover a move needs (D12) — so
+// this names the stored channel AND the place the move is done.
 export function channelAlreadyChosen(label: string): FirstRunGateRefusal {
   return Object.freeze({
     code: "channel_already_chosen",
     message:
-      `This workspace already sends what we find to #${label}, so nothing was changed. A ` +
-      `channel is chosen once, and that one is set — your findings arrive there from now on.`,
+      `This workspace already sends what we find to #${label}, so nothing was changed. To ` +
+      `send them somewhere else, change the channel on the settings page.`,
     status: 409,
   });
 }
+
+// The move's own refusal: there is a workspace and an address, and the write still lost.
+// Only reachable as a race with another member moving the same row (D6).
+export const CHANNEL_MOVE_LOST: FirstRunGateRefusal = Object.freeze({
+  code: "channel_move_lost",
+  message:
+    "Somebody else changed this channel while you were choosing, so nothing was changed. " +
+    "Reload the page to see where findings go now.",
+  status: 409,
+});
 
 // Names the offending keys via `issue.keys`: "something was wrong" is unfixable.
 function unrecognizedKeysMessage(names: readonly string[]): string {

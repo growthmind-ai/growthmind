@@ -23,6 +23,10 @@ export interface SlackDeliveryOrganization {
   // `null` since AD-4: an org mid-OAuth is active, has a token, and has no address. Widened
   // here but NOT on `DeliveryLane.channelId`, so postability narrows once at `isDeliveryTarget`.
   readonly channelId: string | null;
+
+  // `null` until the address has moved. The delivery lane sends nothing found at or before
+  // it, which is what stops a re-point replaying the backlog into the new channel.
+  readonly deliveryCutoverAt: Date | null;
 }
 
 // Every organization with an ACTIVE Slack connection — the population the delivery tick
@@ -37,6 +41,7 @@ export async function listOrgsWithActiveSlackConnection(
       organizationId: slackConnections.organizationId,
       connectionId: slackConnections.id,
       channelId: slackConnections.channelId,
+      deliveryCutoverAt: slackConnections.deliveryCutoverAt,
     })
     .from(slackConnections)
     .where(eq(slackConnections.isActive, true))
@@ -66,6 +71,7 @@ export async function listOrgsWithActiveSlackConnection(
       organizationName,
       connectionId: row.connectionId,
       channelId: row.channelId,
+      deliveryCutoverAt: row.deliveryCutoverAt,
     };
   });
 }

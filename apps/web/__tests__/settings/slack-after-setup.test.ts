@@ -117,12 +117,17 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
 
   test("the page mounts the card unskippable and interactive, and names where it posts", () => {
     const code = settingsSource();
+    const controls = blankComments(
+      readExisting("apps/web/components/slack/SlackDeliveryControls.tsx").source,
+    );
 
     expect(code).toContain("<SlackConnection");
     expect(code).toMatch(/skippable=\{false\}/);
     expect(code).toMatch(/\binteractive\b/);
-    expect(code).toContain("SETTINGS_POSTING_TEMPLATE");
-    expect(code).toContain("SETTINGS_NO_DELIVERY_LINE");
+    expect(code).toContain("settingsNoDelivery");
+
+    // The posting sentence lives on the settled control — the only state with an address.
+    expect(controls).toContain("settingsPostingTemplate");
   });
 
   test("the page reads the connection at organization scope, so a teammate can finish it", () => {
@@ -131,7 +136,11 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(reader).toContain("getActiveForOrg");
     expect(reader).toContain("isDeliveryTarget");
 
-    expect(settingsSource()).toContain("readSlackSettings");
+    // The page reads through the whole-page view now; the Slack read is one of its three.
+    expect(settingsSource()).toContain("readSettingsView");
+    expect(blankComments(readExisting("apps/web/lib/settings/view.ts").source)).toContain(
+      "readSlackSettings",
+    );
   });
 
   test("the landing page a dismissed founder lands on links here", () => {
@@ -143,6 +152,19 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(landing).toContain("<SettledPanel");
     expect(landing).toMatch(/dismissed\s*\?[\s\S]{0,200}?<SettledPanel/);
     expect(panel).toContain("ROUTES.settings");
+  });
+
+  test("every capability setup configured has an entry point on this page", () => {
+    const code = settingsSource();
+
+    // Each name below is a control that existed, worked, and was unreachable (D11).
+    expect(code).toContain("<ConnectAnalyticsForm");
+    expect(code).toContain("<PrivacyReceipt");
+    expect(code).toContain("<SlackDeliveryControls");
+
+    for (const group of ["settingsSourceGroup", "settingsDeliveryGroup", "settingsExcludedGroup"]) {
+      expect(code).toContain(group);
+    }
   });
 
   test("the terminal setup state mounts the card itself rather than linking away", () => {
@@ -185,11 +207,25 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(card).toMatch(/const\s+settled\s*=\s*props\.settled && !postFailed/);
   });
 
-  test("the connected state says what became true and what cannot be changed here", () => {
-    const code = settingsSource();
+  test("the connected state says what became true, and the channel can be moved", () => {
+    const controls = blankComments(
+      readExisting("apps/web/components/slack/SlackDeliveryControls.tsx").source,
+    );
 
-    expect(code).toContain("SETTINGS_SETTLED_LINE");
-    expect(code).toContain("SETTINGS_CHANNEL_FIXED_LINE");
+    expect(controls).toContain("settingsSettled");
+
+    // Frozen before, because moving forks `(finding, channel)` and replays the backlog
+    // (D12). It moves now because the move stamps a cutover — not because the risk went.
+    expect(controls).toContain("settingsChannelChange");
+    expect(controls).toContain("settingsChannelChangeConsequence");
+    expect(controls).toContain("SETTINGS_API.slackChannel");
+  });
+
+  test("the consequence of moving is readable before the move, not after it", () => {
+    // Nobody can consent to "we will not re-send what we already sent" if the sentence
+    // only appears once the address has changed.
+    expect(ONBOARDING_MESSAGES.settingsChannelChangeConsequence).toMatch(/before/i);
+    expect(ONBOARDING_MESSAGES.settingsChannelMovedTemplate).toContain("{channel}");
   });
 
   test("the posting sentence is a claim about the address, not about the last post", () => {

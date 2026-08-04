@@ -417,3 +417,85 @@ test("a residual-PII block holds the post back and marks the delivery, not the f
   expect(deliveries[0]?.failureReason ?? "").not.toContain("buyer@");
   expect((deliveries[0]?.failureReason ?? "").length).toBeGreaterThan(0);
 });
+
+// The delivery half of the channel re-point. Moving a chosen channel forks the dedup key
+// `(finding, channel)`, so against the new address every earlier finding reads as never
+// delivered and the whole backlog posts again. The cutover is what stops that, and it stops
+// nothing unless this lane reads it — a stamp nobody consults is the D11 shape.
+// `findings.created_at` is a database default, not the seeded `at`, and the gate compares
+// against exactly that column — so the cutover has to be built from the persisted row.
+async function moveChannelTo(channelId: string, cutoverAt: Date): Promise<void> {
+  await db
+    .update(tableUnderConstruction("slackConnections", OWNER_SCHEMA))
+    .set({ channelId, deliveryCutoverAt: cutoverAt });
+}
+
+async function persistedFindingCreatedAt(): Promise<Date> {
+  const [row] = await findingRows();
+  if (row === undefined) {
+    throw new Error("the fixture seeded no finding");
+  }
+  return row.createdAt;
+}
+
+test("a finding older than the cutover is not replayed into the channel that replaced its own", async () => {
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  const org = await seedOrgWithFinding({ label: "moved", channelId: CHANNEL_A });
+
+  const logger = createRecordingDeliveryLogger();
+  const lanes = createDeliveryLaneSource({ db, logger });
+
+  // Undelivered and deliverable BEFORE the move, so a green below is about the cutover
+  // rather than about a lane that had nothing to send in the first place.
+  const [before] = await lanes.listDueLanes(NOW);
+  expect(before?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
+
+  const createdAt = await persistedFindingCreatedAt();
+  await moveChannelTo(CHANNEL_B, new Date(createdAt.getTime() + 60_000));
+
+  const [after] = await lanes.listDueLanes(NOW);
+  expect(after?.channelId).toBe(CHANNEL_B);
+  expect(after?.candidates).toEqual([]);
+});
+
+test("a finding exactly at the cutover instant stays with the channel that received it", async () => {
+  // The boundary the comparison turns on. `<=`, not `<`: the move happens after the finding
+  // was already deliverable to the old address, so an equal timestamp belongs to the old one.
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  await seedOrgWithFinding({ label: "boundary", channelId: CHANNEL_A });
+
+  await moveChannelTo(CHANNEL_B, await persistedFindingCreatedAt());
+
+  const logger = createRecordingDeliveryLogger();
+  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+  expect(lane?.candidates).toEqual([]);
+});
+
+test("a finding made after the cutover still goes to the channel that replaced the old one", async () => {
+  // The other direction, which is the whole point of allowing the move: suppressing the
+  // backlog must not suppress the product.
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  const org = await seedOrgWithFinding({ label: "later", channelId: CHANNEL_A });
+
+  const createdAt = await persistedFindingCreatedAt();
+  await moveChannelTo(CHANNEL_B, new Date(createdAt.getTime() - 60_000));
+
+  const logger = createRecordingDeliveryLogger();
+  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+  expect(lane?.channelId).toBe(CHANNEL_B);
+  expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
+});
+
+test("a connection that has never moved holds nothing back", async () => {
+  // `null` is the overwhelmingly common row, and a predicate that treated it as "suppress
+  // everything" would silently stop every installation delivering.
+  const createDeliveryLaneSource = await loadCreateDeliveryLaneSource();
+  const org = await seedOrgWithFinding({ label: "never-moved", channelId: CHANNEL_A });
+
+  const logger = createRecordingDeliveryLogger();
+  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+  expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
+});

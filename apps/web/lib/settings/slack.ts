@@ -1,13 +1,15 @@
 import type { ScopedDb } from "@growthmind/db";
 import { createSlackConnectionsRepo, describeDriverError, isDeliveryTarget } from "@growthmind/db";
 import type { TenantContext } from "@growthmind/shared";
-import { logger, parseWebEnv } from "@growthmind/shared";
+import { channelLabel, logger, parseWebEnv } from "@growthmind/shared";
 
 import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
 export interface SlackSettingsView {
   // Narrowed through `isDeliveryTarget`, so a sentinel row reads as no address.
   readonly channelId: string | null;
+
+  readonly channelLabel: string | null;
 
   readonly workspaceAttached: boolean;
   readonly workspaceName: string | null;
@@ -27,8 +29,12 @@ export async function readSlackSettings(
   try {
     const slack = await createSlackConnectionsRepo(db, ctx).getActiveForOrg();
 
+    // One narrowing feeds both fields, so a sentinel row cannot read as deliverable in one.
+    const address = slack !== null && isDeliveryTarget(slack) ? slack.channelId : null;
+
     return {
-      channelId: slack !== null && isDeliveryTarget(slack) ? slack.channelId : null,
+      channelId: address,
+      channelLabel: slack === null || address === null ? null : channelLabel(slack),
       workspaceAttached: slack !== null,
       workspaceName: slack?.workspaceName ?? null,
       oauthAvailable,
@@ -41,6 +47,7 @@ export async function readSlackSettings(
 
     return {
       channelId: null,
+      channelLabel: null,
       workspaceAttached: false,
       workspaceName: null,
       oauthAvailable,

@@ -254,6 +254,29 @@ const DISPLAY_ORDINALS: ReadonlyMap<StepId, number> = new Map(
   LIVE_STEP_DESCRIPTORS.map((descriptor, index) => [descriptor.id, index + 1]),
 );
 
+// Named, because the settings page mounts the analytics form outside any step sequence and
+// finding it by predicate there would hand every caller a `WorkStep | undefined` to widen.
+export const ANALYTICS_STEP: WorkStep = (() => {
+  const step = STEP_DESCRIPTORS.find(
+    (descriptor): descriptor is WorkStep =>
+      descriptor.kind === "work" && descriptor.id === "analytics",
+  );
+  if (step === undefined) {
+    throw new Error("steps: no work step is declared for analytics");
+  }
+  return step;
+})();
+
+export const SLACK_STEP: WorkStep = (() => {
+  const step = STEP_DESCRIPTORS.find(
+    (descriptor): descriptor is WorkStep => descriptor.kind === "work" && descriptor.id === "slack",
+  );
+  if (step === undefined) {
+    throw new Error("steps: no work step is declared for slack");
+  }
+  return step;
+})();
+
 export function displayOrdinal(id: StepId): number {
   return (
     DISPLAY_ORDINALS.get(id) ??

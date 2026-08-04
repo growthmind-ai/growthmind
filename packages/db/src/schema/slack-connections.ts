@@ -33,8 +33,8 @@ export function slackCredentialAad(ctx: TenantContext): string {
 }
 
 // Org-scoped, not actor-scoped: `connected_by_user_id` is attribution, never a filter.
-// `slack_connections_active_org_uidx` — UNIQUE on `(organization_id)` WHERE `is_active` —
-// makes one active connection per org true; a channel-less row still fills that slot.
+// `slack_connections_active_org_uidx` makes one active connection per org true; a
+// channel-less row still fills that slot.
 export const slackConnections = pgTable(
   "slack_connections",
   {
@@ -48,8 +48,7 @@ export const slackConnections = pgTable(
     // Never the empty string; every reader must distinguish it from a connected row.
     channelId: text("channel_id"),
 
-    // Stamped beside the address at `attachChannel`, from the listing the founder chose
-    // from. NULL on the pasted-token path and on rows predating this column.
+    // From the listing the founder chose from. NULL on the pasted-token path.
     channelName: text("channel_name"),
 
     workspaceName: text("workspace_name"),
@@ -65,6 +64,9 @@ export const slackConnections = pgTable(
 
     healthReasonMessage: text("health_reason_message"),
     healthCheckedAt: timestamp("health_checked_at", { withTimezone: true }),
+
+    // Stamped when the address MOVES; delivery gates on it, or a move replays the backlog.
+    deliveryCutoverAt: timestamp("delivery_cutover_at", { withTimezone: true }),
 
     connectedByUserId: text("connected_by_user_id").references(() => user.id, {
       onDelete: "set null",
