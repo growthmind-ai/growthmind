@@ -17,8 +17,8 @@ import {
   FIELD_SELF_HOST_DISCLOSURE,
   SEND_TEST_MESSAGE_LABEL,
   SKIP_FOR_NOW_LABEL,
+  STEP_AGENT_HELPER,
   STEP_AGENT_TITLE,
-  STEP_AGENT_WHAT_IT_WILL_DO,
   STEP_ANALYTICS_HELPER,
   STEP_ANALYTICS_TITLE,
   STEP_MOMENT_TITLE,
@@ -90,6 +90,15 @@ export type StepDescriptor =
       readonly skippable: boolean;
     }
   | {
+      readonly kind: "panel";
+      readonly id: StepId;
+      readonly ordinal: number;
+      readonly title: string;
+      readonly helper: string;
+    }
+  //   ^ no `fields`, no `actions`, no `confirmations`: the panel owns its own
+  //     controls (O-026 D-9), and that absence is the contract.
+  | {
       readonly kind: "stage";
       readonly id: StepId;
       readonly ordinal: number;
@@ -99,6 +108,8 @@ export type StepDescriptor =
 export type ComingNextStep = Extract<StepDescriptor, { kind: "coming-next" }>;
 
 export type WorkStep = Extract<StepDescriptor, { kind: "work" }>;
+
+export type PanelStep = Extract<StepDescriptor, { kind: "panel" }>;
 
 export type StageStep = Extract<StepDescriptor, { kind: "stage" }>;
 
@@ -225,12 +236,11 @@ export const STEP_DESCRIPTORS: readonly StepDescriptor[] = Object.freeze([
     skippable: true,
   } satisfies StepDescriptor,
   {
-    kind: "coming-next",
+    kind: "panel",
     id: "agent",
     ordinal: 4,
     title: STEP_AGENT_TITLE,
-    whatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
-    rail: "coding-assistant",
+    helper: STEP_AGENT_HELPER,
   } satisfies StepDescriptor,
   {
     kind: "stage",
@@ -292,6 +302,8 @@ export type StepSequenceFacts = {
   readonly slackSkipped: boolean;
 
   readonly slackTestPostFailed: boolean;
+
+  readonly agentConnected: boolean;
   readonly armedAt: Date | null;
 
   readonly reopenedReadOnly: boolean;
@@ -318,51 +330,84 @@ export function isAnalyticsAttached(status: ConnectionStateStatus | null): boole
   return status !== null && ATTACHED_STATUSES.has(status);
 }
 
-type WorkResolution = "done" | "skipped" | null;
+export type StepResolution = "done" | "skipped" | null;
 
-function resolveAnalytics(facts: StepSequenceFacts): WorkResolution {
+// Self-describing rather than positional: inserting a step into a positional
+// array shifts every index that reads it, and the agent step would have started
+// gating the stage in silence (O-026 D-9).
+type ResolvedStep = {
+  readonly id: StepId;
+  readonly resolution: StepResolution;
+  // The stage opens on the steps a founder must finish before a run can say
+  // anything. A coding assistant is not one of them.
+  readonly gatesStage: boolean;
+};
+
+function resolveAnalytics(facts: StepSequenceFacts): StepResolution {
   return isAnalyticsAttached(facts.connectionStatus) ? "done" : null;
 }
 
-function resolveSlack(facts: StepSequenceFacts): WorkResolution {
+function resolveSlack(facts: StepSequenceFacts): StepResolution {
   if (facts.slackConnected) return "done";
 
   if (facts.slackSkipped) return "skipped";
   return null;
 }
 
+// No "skipped": a founder who connects no assistant has not skipped this step,
+// they have not done it.
+function resolveAgent(facts: StepSequenceFacts): StepResolution {
+  return facts.agentConnected ? "done" : null;
+}
+
+function stepResolutions(facts: StepSequenceFacts): readonly ResolvedStep[] {
+  return [
+    { id: "analytics", resolution: resolveAnalytics(facts), gatesStage: true },
+    { id: "slack", resolution: resolveSlack(facts), gatesStage: true },
+    { id: "agent", resolution: resolveAgent(facts), gatesStage: false },
+  ];
+}
+
 function unresolvedState(
   index: number,
-  resolutions: readonly WorkResolution[],
+  resolutions: readonly ResolvedStep[],
   armedAt: Date | null,
 ): StepState {
   const anyEarlierUnresolved = resolutions
     .slice(0, index)
-    .some((resolution) => resolution === null);
-  const anyLaterResolved = resolutions.slice(index + 1).some((resolution) => resolution !== null);
+    .some((entry) => entry.resolution === null);
+  const anyLaterResolved = resolutions.slice(index + 1).some((entry) => entry.resolution !== null);
 
   return !anyEarlierUnresolved && !anyLaterResolved && armedAt === null ? "active" : "pending";
 }
 
-export function deriveStepStates(facts: StepSequenceFacts): readonly StepView[] {
-  const resolutions: readonly WorkResolution[] = [resolveAnalytics(facts), resolveSlack(facts)];
-  const workResolved = resolutions.every((resolution) => resolution !== null);
+function stateOf(descriptor: StepDescriptor, walked: ReadonlyMap<StepId, StepState>): StepState {
+  if (descriptor.kind === "coming-next") return "coming-next";
+  if (descriptor.kind === "stage") return "active";
+  return walked.get(descriptor.id) ?? "pending";
+}
 
-  const stateById: Record<StepId, StepState> = {
-    repo: "coming-next",
-    analytics: resolutions[0] ?? unresolvedState(0, resolutions, facts.armedAt),
-    slack: resolutions[1] ?? unresolvedState(1, resolutions, facts.armedAt),
-    agent: "coming-next",
-    moment: "active",
-  };
+export function deriveStepStates(facts: StepSequenceFacts): readonly StepView[] {
+  const resolutions = stepResolutions(facts);
+
+  const walked: ReadonlyMap<StepId, StepState> = new Map(
+    resolutions.map((entry, index) => [
+      entry.id,
+      entry.resolution ?? unresolvedState(index, resolutions, facts.armedAt),
+    ]),
+  );
+
+  const stageOpen =
+    facts.armedAt !== null ||
+    resolutions.every((entry) => !entry.gatesStage || entry.resolution !== null);
 
   return STEP_DESCRIPTORS.map((descriptor) => {
-    const open = descriptor.kind === "stage" ? facts.armedAt !== null || workResolved : true;
+    const open = descriptor.kind === "stage" ? stageOpen : true;
 
     return {
       id: descriptor.id,
       ordinal: descriptor.ordinal,
-      state: stateById[descriptor.id],
+      state: stateOf(descriptor, walked),
       open,
 
       interactive: open && !facts.reopenedReadOnly && descriptor.kind !== "coming-next",
