@@ -112,7 +112,7 @@ describe("failure code coverage", () => {
   // plumbing is not, and naming it dates the copy the day a second one arrives.
   test("no message names the vendor except inside the address a person has to visit", () => {
     for (const message of Object.values(REPLAY_FAILURE_MESSAGES)) {
-      expect(message.replaceAll("app.rrweb.com/api-keys", "")).not.toContain("rrweb");
+      expect(message.toLowerCase().replaceAll("app.rrweb.com/api-keys", "")).not.toContain("rrweb");
     }
   });
 });
