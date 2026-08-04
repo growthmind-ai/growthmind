@@ -28,3 +28,9 @@ export const firstRunAgentMintInputSchema = z.strictObject({
 });
 
 export type FirstRunAgentMintInput = z.infer<typeof firstRunAgentMintInputSchema>;
+
+// Revoking takes no key id: it revokes every live key in the caller's org, so
+// there is nowhere for a caller to name someone else's.
+export const firstRunAgentRevokeInputSchema = z.strictObject({});
+
+export type FirstRunAgentRevokeInput = z.infer<typeof firstRunAgentRevokeInputSchema>;

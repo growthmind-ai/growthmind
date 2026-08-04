@@ -125,6 +125,9 @@ const unarmedPayload = (counter: OnboardingCounterView): FirstRunStatusPayload =
   slackOAuthAvailable: true,
   providerInterest: [],
   interestPingAvailable: false,
+  mcpUrl: "https://app.example.com/api/mcp",
+  agentConnection: { kind: "none" },
+  agentProviderOrder: [],
 });
 
 const READY_TO_ARM: SetupFacts = {

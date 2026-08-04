@@ -146,7 +146,9 @@ describe("POST /api/first-run/agent/key — the mint (D-5, AC-1)", () => {
 
     const rows = await keyRows(scope.organizationId);
     const serialized = JSON.stringify(body);
-    for (const column of ["id", "name", "key_prefix"] as const) {
+    // key_prefix is the key's own first characters, so it is in the body by
+    // construction. Line 145 is what proves nothing else rides along.
+    for (const column of ["id", "name"] as const) {
       const value = String(rows[0]?.[column]);
       expect(`${column} leaked: ${serialized.includes(value)}`).toBe(`${column} leaked: false`);
     }

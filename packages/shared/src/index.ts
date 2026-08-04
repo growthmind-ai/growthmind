@@ -621,9 +621,11 @@ export {
   agentConnectionSchema,
   toAgentConnection,
   firstRunAgentMintInputSchema,
+  firstRunAgentRevokeInputSchema,
   type AgentConnection,
   type ApiKeyUseSummary,
   type FirstRunAgentMintInput,
+  type FirstRunAgentRevokeInput,
 } from "./onboarding/agent";
 
 export {
