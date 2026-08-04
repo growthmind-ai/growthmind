@@ -14,16 +14,13 @@ export function personsUrl(host: string, sourceProjectId: string): string {
   return `${trimHost(host)}/api/projects/${encodeURIComponent(sourceProjectId)}/persons`;
 }
 
-// No `encodeURIComponent`, unlike its two siblings: the list path has nothing
-// customer-supplied between host and path end. The trailing slash is the vendor's — it is
-// the path the live probe in scripts/spikes/notes/posthog-projects-endpoint.md got 200 on.
+// Nothing customer-supplied to encode, and the trailing slash is the vendor's.
+// see scripts/spikes/notes/posthog-projects-endpoint.md
 export function projectsUrl(host: string): string {
   return `${trimHost(host)}/api/projects/`;
 }
 
-// Ingest origins, US before EU; the order is contract, not presentation. That live spike
-// established both that `/api/projects/` is served on the ingest origin and that a
-// wrong-region key answers 401, not 403 — so both statuses mean "try the next origin".
+// Order is contract: a wrong-region key answers 401, not 403, so both mean "try the next".
 export const PROBE_ORIGINS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"] as const;
 
 // Every key is SDK-set and may be absent: PostHog derives none server-side. Always optional.
