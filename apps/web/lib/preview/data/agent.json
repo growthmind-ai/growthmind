@@ -49,8 +49,14 @@
   ],
   "skills": [
     { "name": "growthmind-fix", "does": "how to receive a fix spec, work it, and claim it" },
-    { "name": "growthmind-instrument", "does": "how to make a change measurable before shipping it" },
-    { "name": "growthmind-activation-sweep", "does": "how to check a flow for dead ends before the pull request" }
+    {
+      "name": "growthmind-instrument",
+      "does": "how to make a change measurable before shipping it"
+    },
+    {
+      "name": "growthmind-activation-sweep",
+      "does": "how to check a flow for dead ends before the pull request"
+    }
   ],
   "skillsNote": "This is the part most people miss. The tools tell your agent what is true. The skills tell it how to behave — and that is what stops it shipping a fix nobody can measure.",
   "cannot": [

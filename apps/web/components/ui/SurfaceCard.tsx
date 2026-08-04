@@ -11,25 +11,16 @@ interface SurfaceCardProps extends PaperProps {
   readonly children: ReactNode;
 }
 
-export function SurfaceCard({
-  tone = "default",
-  children,
-  className,
-  ...props
-}: SurfaceCardProps) {
+export function SurfaceCard({ tone = "default", children, className, ...props }: SurfaceCardProps) {
   return (
     <Paper
       withBorder
       radius="sm"
       p="md"
       bg={
-        tone === "highlight"
-          ? "var(--mantine-primary-color-light)"
-          : "var(--mantine-color-default)"
+        tone === "highlight" ? "var(--mantine-primary-color-light)" : "var(--mantine-color-default)"
       }
-      className={[tone === "accent" ? classes.accent : null, className]
-        .filter(Boolean)
-        .join(" ")}
+      className={[tone === "accent" ? classes.accent : null, className].filter(Boolean).join(" ")}
       {...props}
     >
       {children}

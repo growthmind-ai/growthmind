@@ -32,7 +32,11 @@ export interface OverviewView {
   readonly window: string;
   readonly coverage: CoverageCounts;
 
-  readonly calibration: { readonly right: number; readonly wrong: number; readonly pending: number };
+  readonly calibration: {
+    readonly right: number;
+    readonly wrong: number;
+    readonly pending: number;
+  };
   readonly rows: readonly FindingRow[];
 }
 

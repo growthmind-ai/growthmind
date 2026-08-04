@@ -45,8 +45,8 @@ export default function AudiencePage() {
       </SurfaceCard>
 
       <SectionHeading title="What we believe about them">
-        Each belief carries its evidence and the decision it changed. A belief that changed
-        nothing is a belief we should not be holding.
+        Each belief carries its evidence and the decision it changed. A belief that changed nothing
+        is a belief we should not be holding.
       </SectionHeading>
 
       <Stack gap="sm">

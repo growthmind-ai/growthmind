@@ -17,8 +17,8 @@ export default async function ChannelPage() {
   return (
     <Stack gap="lg">
       <PageHeader title="Findings arrive where you already are">
-        Fully legible without clicking anything. The link is for checking us, not for
-        understanding us.
+        Fully legible without clicking anything. The link is for checking us, not for understanding
+        us.
       </PageHeader>
 
       <Paper withBorder radius="md" style={{ overflow: "hidden", maxWidth: 760 }}>
@@ -99,8 +99,8 @@ export default async function ChannelPage() {
       </Paper>
 
       <Text size="sm" c="dimmed">
-        One thing at a time, with a hard ceiling per week. A day with nothing to say says nothing
-        — and says so.
+        One thing at a time, with a hard ceiling per week. A day with nothing to say says nothing —
+        and says so.
       </Text>
     </Stack>
   );

@@ -22,8 +22,8 @@ export default function AgentPage() {
   return (
     <Stack gap="lg">
       <PageHeader title="What your coding agent sees">
-        The same findings, rendered for a machine. No second product, no translation layer —
-        one artefact, two audiences.
+        The same findings, rendered for a machine. No second product, no translation layer — one
+        artefact, two audiences.
       </PageHeader>
 
       <Stack gap={4}>

@@ -9,7 +9,10 @@ import { join } from "node:path";
 //  2. `<Table.Thead>` — Mantine's compound members are static properties, and those do not
 //     survive the client-reference proxy. Fix: the flat export, `TableThead`.
 
-const ROOTS = [join(import.meta.dir, "..", "..", "app"), join(import.meta.dir, "..", "..", "components")];
+const ROOTS = [
+  join(import.meta.dir, "..", "..", "app"),
+  join(import.meta.dir, "..", "..", "components"),
+];
 
 function walk(dir: string): string[] {
   const found: string[] = [];

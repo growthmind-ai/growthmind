@@ -26,7 +26,13 @@ function BeatRow({ beat, cited }: { readonly beat: BeatView; readonly cited: boo
           : "2px solid transparent",
       }}
     >
-      <Text ff="monospace" size="xs" c="dimmed" fw={beat.notable ? 700 : 400} style={{ flexShrink: 0 }}>
+      <Text
+        ff="monospace"
+        size="xs"
+        c="dimmed"
+        fw={beat.notable ? 700 : 400}
+        style={{ flexShrink: 0 }}
+      >
         {beat.at}
       </Text>
       <Box className={classes.beatLine}>
@@ -88,10 +94,7 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
       )}
 
       {claims.length > 0 ? null : (
-        <Box
-          className={classes.note}
-          style={{ "--note-row": "1" } as React.CSSProperties}
-        >
+        <Box className={classes.note} style={{ "--note-row": "1" } as React.CSSProperties}>
           <Stack gap={4}>
             <Text size="sm" c="dimmed">
               {FINDINGS_MESSAGES.noClaims}

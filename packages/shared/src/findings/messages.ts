@@ -53,7 +53,8 @@ export const OVERVIEW_NOT_CONNECTED =
 
 export const EVIDENCE_ONE_SESSION_LINE = "One person's session below.";
 
-export const EVIDENCE_COHORT_TEMPLATE = "{count} people got through — their path diverged at {when}.";
+export const EVIDENCE_COHORT_TEMPLATE =
+  "{count} people got through — their path diverged at {when}.";
 
 export const EVIDENCE_CLAIMS_TITLE = "What we think happened";
 

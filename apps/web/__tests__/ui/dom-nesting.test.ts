@@ -101,7 +101,9 @@ function offenders(): string[] {
       if (children.length === 0) continue;
 
       const name = file.path.split(/[\\/]/).slice(-3).join("/");
-      found.push(`${name}:${String(nesting.line)} — <${nesting.tag}> contains <${children.join(">, <")}>`);
+      found.push(
+        `${name}:${String(nesting.line)} — <${nesting.tag}> contains <${children.join(">, <")}>`,
+      );
     }
   }
 

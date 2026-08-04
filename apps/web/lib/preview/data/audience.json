@@ -53,11 +53,20 @@
     }
   ],
   "arriveWith": [
-    { "label": "Technical fluency", "value": "Will paste an API key. Will not open a config file." },
+    {
+      "label": "Technical fluency",
+      "value": "Will paste an API key. Will not open a config file."
+    },
     { "label": "Time before first action", "value": "Median 71 seconds on your setup page." },
     { "label": "Device, first visit", "value": "31% phone, 66% desktop, 3% tablet." },
-    { "label": "Already have", "value": "Slack 78% · a repository we can read 62% · analytics 100%, which is how we are here at all." },
-    { "label": "Cannot do alone", "value": "Install a workspace-wide Slack app — needs an admin in 22% of cases, and that is where your setup stalls." },
+    {
+      "label": "Already have",
+      "value": "Slack 78% · a repository we can read 62% · analytics 100%, which is how we are here at all."
+    },
+    {
+      "label": "Cannot do alone",
+      "value": "Install a workspace-wide Slack app — needs an admin in 22% of cases, and that is where your setup stalls."
+    },
     { "label": "Decides alone", "value": "Yes. No sign-off, no procurement, no seat request." },
     { "label": "Judged on", "value": "Weekly active teams. Not signups, not sessions." },
     { "label": "Leaves when", "value": "Setup outlasts one sitting." }

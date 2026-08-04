@@ -16,7 +16,9 @@
       "id": "m2",
       "at": "yesterday at 09:02",
       "lead": null,
-      "body": ["We read 1,104 sessions yesterday and found nothing worth telling you. That is a normal day."],
+      "body": [
+        "We read 1,104 sessions yesterday and found nothing worth telling you. That is a normal day."
+      ],
       "evidence": null,
       "forecast": null,
       "findingId": null

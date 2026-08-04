@@ -70,10 +70,16 @@ export function readEvidence(id: string): EvidenceRecord | null {
   return EVIDENCE[id] ?? null;
 }
 
-export function pickSession(record: EvidenceRecord, requested: string | undefined): EvidenceSession | null {
+export function pickSession(
+  record: EvidenceRecord,
+  requested: string | undefined,
+): EvidenceSession | null {
   if (record.sessions.length === 0) return null;
 
-  return record.sessions.find((session) => session.id === requested) ?? (record.sessions[0] as EvidenceSession);
+  return (
+    record.sessions.find((session) => session.id === requested) ??
+    (record.sessions[0] as EvidenceSession)
+  );
 }
 
 export function hasEvidence(id: string): boolean {

@@ -8,10 +8,38 @@ import type { BeatView, ClaimView } from "@growthmind/shared";
 import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscript";
 
 const BEATS: readonly BeatView[] = [
-  { index: 0, at: "00:00", kind: "navigate", text: "landed /settings/team", notable: false, attempt: null },
-  { index: 1, at: "00:11", kind: "network", text: "POST /api/team/invite → 500", notable: true, attempt: null },
-  { index: 2, at: "00:19", kind: "click", text: 'clicked button "Send invite"', notable: false, attempt: 2 },
-  { index: 3, at: "00:31", kind: "click", text: 'clicked button "Send invite"', notable: false, attempt: 3 },
+  {
+    index: 0,
+    at: "00:00",
+    kind: "navigate",
+    text: "landed /settings/team",
+    notable: false,
+    attempt: null,
+  },
+  {
+    index: 1,
+    at: "00:11",
+    kind: "network",
+    text: "POST /api/team/invite → 500",
+    notable: true,
+    attempt: null,
+  },
+  {
+    index: 2,
+    at: "00:19",
+    kind: "click",
+    text: 'clicked button "Send invite"',
+    notable: false,
+    attempt: 2,
+  },
+  {
+    index: 3,
+    at: "00:31",
+    kind: "click",
+    text: 'clicked button "Send invite"',
+    notable: false,
+    attempt: 3,
+  },
 ];
 
 const CLAIMS: readonly ClaimView[] = [
@@ -77,7 +105,9 @@ describe("the annotated transcript renders valid markup", () => {
   });
 
   test("no paragraph contains a block element", () => {
-    const offenders = paragraphs(markup()).filter((body) => /<(div|p|ul|ol|section|form)\b/.test(body));
+    const offenders = paragraphs(markup()).filter((body) =>
+      /<(div|p|ul|ol|section|form)\b/.test(body),
+    );
 
     expect(offenders).toEqual([]);
   });
