@@ -92,10 +92,8 @@ s12 · retried twice · 500 × 3
 proof secured · the failed request itself · 3 of 3
 ```
 
-This surface is the on-record deviation from the non-dashboard rule
-([product-decisions §10](product-decisions.md)): it exists once, during
-install, and retires with onboarding. The finding card says so in its own
-copy: _"This screen retires with onboarding."_
+This surface exists once, during install, and retires with onboarding. The
+finding card says so in its own copy: _"This screen retires with onboarding."_
 
 **Their product**, not ours. The broken save is triggered in the user's own
 app (a settings form whose save returns 500 and shows "Something went wrong.

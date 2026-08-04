@@ -85,8 +85,8 @@ flowchart LR
 ```
 
 **What Growthmind is not.** It is not the customer's event system of record (§11),
-it does not write code (§1), and it has no dashboard (§10). Those three absences
-shape more of this architecture than any feature does.
+and it does not write code (§1). Those two absences shape more of this
+architecture than any feature does.
 
 ---
 
@@ -204,13 +204,16 @@ suffices), §12 (token cost falls on their budget, so it must be _their_ agent
 spending it), and §10 (one output, two audiences. The fix spec is legible to a
 founder and executable by an agent because it is the same artefact).
 
-### · The app is the record; Slack is the interface
+### · The app is the record; Slack is the delivery channel
 
-§10 says non-dashboard. §5 says nothing may happen the customer cannot inspect
-afterwards. Those are reconcilable only if the web app exists but is not where the
-work happens: it holds install, connections, billing, the append-only audit log,
-export, and the kill switch. Findings are **pushed**, never pulled. If a user has to
-open the app to learn something, that is a design bug.
+§10 says findings are **pushed**, never pulled. §5 says nothing may happen the
+customer cannot inspect afterwards. Both are satisfied by the same split: Slack is
+where a finding *arrives*, and the app is where everything *lives* — the account
+and its shell (profile, sign-out, org switching, navigation), install, connections,
+settings, billing, the append-only audit log, export, the kill switch, and the
+findings record itself. A customer who never opens the app still receives every
+finding; one who does open it finds the whole history waiting. Needing to open the
+app to *receive* something is a design bug; having somewhere worth opening is not.
 
 Test that holds the line: the Slack renderer is a pure function with a legibility
 budget asserted in unit tests. No message may require a link to be understood, and
@@ -1003,9 +1006,8 @@ commitment nothing prevents violating.
 | 9   | Chase, then escalate or withdraw                   | `experiments.chase`, N then 2N, three attempts                 |
 | 9   | Close every experiment                             | Terminal states + `experiments.force-close`                    |
 | 9   | Human can kill anything, reason recorded           | `killed_by_human` state, reason feeds ranking                  |
-| 10  | Non-dashboard                                      | ; findings pushed, never pulled                                |
 | 10  | Legible in one Slack message                       | Pure renderer with a tested legibility budget                  |
-| 10  | No habit required                                  | Push delivery; nothing to check                                |
+| 10  | Pushed, never pulled; no habit required            | Push delivery; nothing to check                                |
 | 10  | No babysitting                                     | Worker owns every long-running step                            |
 | 10  | One artefact, two audiences                        | The fix spec (§7)                                              |
 | 10  | No new vocabulary                                  | Renderer language rules; tools named for what the agent wants  |

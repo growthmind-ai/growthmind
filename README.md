@@ -57,7 +57,7 @@ Growthmind is an open-source growth engine that closes that gap. It challenges t
 >
 > **[Get it fixed]** · [Not useful]
 
-No dashboard. No ranked list of twelve things. No new vocabulary to learn. One message, fully legible without clicking anything, evidence attached, dismissible, and a dismissal is remembered.
+No ranked list of twelve things. No new vocabulary to learn. One message, fully legible without clicking anything, evidence attached, dismissible, and a dismissal is remembered.
 
 ## The loop
 
