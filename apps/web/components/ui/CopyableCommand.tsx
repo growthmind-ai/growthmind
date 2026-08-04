@@ -13,6 +13,10 @@ interface CopyableCommandProps {
   // Required, not optional: two adjacent buttons both announcing "Copy" are
   // indistinguishable by ear, and an optional name is one that gets forgotten.
   readonly copyLabel: string;
+
+  // The name above is fixed, so the visible `Copy` → `Copied` swap announces
+  // nothing; a page that wants a reader told feeds its own live region from here.
+  readonly onCopied?: () => void;
 }
 
 // A command a person is expected to run somewhere else. Reading it off the screen
@@ -45,7 +49,10 @@ export function CopyableCommand(props: CopyableCommandProps) {
           <Button
             variant="default"
             size="compact-sm"
-            onClick={copy}
+            onClick={() => {
+              copy();
+              props.onCopied?.();
+            }}
             aria-labelledby={labelId}
             style={tapTargetStyle}
           >

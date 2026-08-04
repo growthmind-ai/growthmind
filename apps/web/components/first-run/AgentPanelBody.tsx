@@ -1,6 +1,15 @@
 "use client";
 
-import { Button, Collapse, CopyButton, Group, NativeSelect, Stack, Text } from "@mantine/core";
+import {
+  Button,
+  Collapse,
+  CopyButton,
+  Group,
+  NativeSelect,
+  Stack,
+  Text,
+  VisuallyHidden,
+} from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
@@ -65,6 +74,13 @@ interface AgentPanelBodyProps {
   readonly onCancelRevoke: () => void;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+
+  // What just happened, for a reader who cannot see the button change. Both copy
+  // controls carry a fixed accessible name, so the visible `Copy` → `Copied` swap
+  // announces nothing and this region is the whole of that feedback (UX §5.5).
+  readonly announcement: string | null;
+  readonly onCopyKey: () => void;
+  readonly onCopyBlock: () => void;
 }
 
 // One polite region, always mounted, carrying whichever sentence the state
@@ -174,6 +190,7 @@ function FileForm(props: {
   readonly filled: AgentBlockInput;
   readonly open: boolean;
   readonly onToggle: () => void;
+  readonly onCopied: () => void;
 }): ReactNode {
   const render = props.config.disclosure;
 
@@ -213,6 +230,7 @@ function FileForm(props: {
           <CopyableBlock
             block={render(props.filled)}
             copyLabel={withName(AGENT_COPY_BLOCK_TEMPLATE, props.config.path)}
+            onCopied={props.onCopied}
           />
         </Stack>
       </Collapse>
@@ -226,6 +244,7 @@ function BlockSection(props: {
   readonly rawKey: string | null;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly onCopied: () => void;
 }) {
   const config = agentProviderConfig(props.provider);
   const filled = { url: props.mcpUrl, key: props.rawKey ?? AGENT_KEY_PLACEHOLDER };
@@ -236,9 +255,13 @@ function BlockSection(props: {
       <PathLine config={config} />
 
       {config.format === "command" ? (
-        <CopyableCommand command={config.render(filled)} copyLabel={label} />
+        <CopyableCommand
+          command={config.render(filled)}
+          copyLabel={label}
+          onCopied={props.onCopied}
+        />
       ) : (
-        <CopyableBlock block={config.render(filled)} copyLabel={label} />
+        <CopyableBlock block={config.render(filled)} copyLabel={label} onCopied={props.onCopied} />
       )}
 
       <DeliveryNote config={config} />
@@ -248,12 +271,13 @@ function BlockSection(props: {
         filled={filled}
         open={props.fileFormOpen}
         onToggle={props.onToggleFileForm}
+        onCopied={props.onCopied}
       />
     </Stack>
   );
 }
 
-function KeyRow(props: { readonly rawKey: string }) {
+function KeyRow(props: { readonly rawKey: string; readonly onCopied: () => void }) {
   return (
     <Stack gap={4}>
       <Text size="xs" fw={700} tt="uppercase" c="dimmed">
@@ -270,7 +294,10 @@ function KeyRow(props: { readonly rawKey: string }) {
             <Button
               variant="default"
               size="compact-sm"
-              onClick={copy}
+              onClick={() => {
+                copy();
+                props.onCopied();
+              }}
               aria-label={AGENT_COPY_KEY_LABEL}
               style={tapTargetStyle}
             >
@@ -325,10 +352,12 @@ function RevealBody(props: {
   readonly rawKey: string | null;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly onCopyKey: () => void;
+  readonly onCopyBlock: () => void;
 }) {
   return (
     <Stack gap="sm">
-      {props.rawKey === null ? null : <KeyRow rawKey={props.rawKey} />}
+      {props.rawKey === null ? null : <KeyRow rawKey={props.rawKey} onCopied={props.onCopyKey} />}
 
       <BlockSection
         provider={props.provider}
@@ -336,6 +365,7 @@ function RevealBody(props: {
         rawKey={props.rawKey}
         fileFormOpen={props.fileFormOpen}
         onToggleFileForm={props.onToggleFileForm}
+        onCopied={props.onCopyBlock}
       />
 
       <Text size="sm" c="dimmed">
@@ -352,6 +382,7 @@ function WaitingBody(props: {
   readonly onRevoke: () => void;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly onCopyBlock: () => void;
 }) {
   return (
     <Stack gap="sm">
@@ -368,6 +399,7 @@ function WaitingBody(props: {
         rawKey={null}
         fileFormOpen={props.fileFormOpen}
         onToggleFileForm={props.onToggleFileForm}
+        onCopied={props.onCopyBlock}
       />
 
       <Group justify="flex-start">
@@ -427,6 +459,8 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
           rawKey={props.rawKey}
           fileFormOpen={props.fileFormOpen}
           onToggleFileForm={props.onToggleFileForm}
+          onCopyKey={props.onCopyKey}
+          onCopyBlock={props.onCopyBlock}
         />
       );
 
@@ -439,6 +473,7 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
           onRevoke={props.onRevoke}
           fileFormOpen={props.fileFormOpen}
           onToggleFileForm={props.onToggleFileForm}
+          onCopyBlock={props.onCopyBlock}
         />
       );
 
@@ -474,6 +509,8 @@ export function AgentPanelBody(props: AgentPanelBodyProps) {
       <Text size="sm" aria-live="polite">
         {STATUS_LINES[props.state]}
       </Text>
+
+      <VisuallyHidden aria-live="polite">{props.announcement}</VisuallyHidden>
 
       {stateBody(props)}
     </Stack>

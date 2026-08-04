@@ -29,14 +29,20 @@ import { SlackConnection } from "@/components/slack/SlackConnection";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
-import { resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
+import { agentStillWatched, resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
 import { AgentPanel } from "./AgentPanel";
 import { FIRST_RUN_API, postJson } from "./api";
 import styles from "./first-run.module.css";
-import { LiveAgentConnection } from "./live-agent";
+import {
+  EMPTY_HOLD,
+  HeldAgentPanelContext,
+  LiveAgentConnection,
+  type AgentPanelHold,
+  type HeldAgentPanel,
+} from "./live-agent";
 import { SetupStage } from "./SetupStage";
 import { Stage } from "./Stage";
 import { StepRow } from "./StepRow";
@@ -105,6 +111,7 @@ export function useLiveCounter(fallback: OnboardingCounterView): OnboardingCount
 interface LiveProps {
   readonly counter: OnboardingCounterView;
   readonly agent: AgentConnection;
+  readonly held: HeldAgentPanel;
   readonly children: ReactNode;
 }
 
@@ -113,7 +120,9 @@ interface LiveProps {
 function Live(props: LiveProps) {
   return (
     <LiveCounter value={props.counter}>
-      <LiveAgentConnection value={props.agent}>{props.children}</LiveAgentConnection>
+      <LiveAgentConnection value={props.agent}>
+        <HeldAgentPanelContext value={props.held}>{props.children}</HeldAgentPanelContext>
+      </LiveAgentConnection>
     </LiveCounter>
   );
 }
@@ -141,6 +150,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const [reopened, setReopened] = useState(false);
   const [folding, setFolding] = useState(false);
 
+  // Held HERE, not in the panel: arming swaps which of the two panels is mounted,
+  // and a one-time key kept inside either instance is destroyed by that swap.
+  const [hold, setHold] = useState<AgentPanelHold>(EMPTY_HOLD);
+
   const current = polled ?? props.status;
 
   const facts: StagePersistedFacts = {
@@ -167,10 +180,16 @@ export function FirstRunClient(props: FirstRunClientProps) {
     connectionState.status === "not_connected" ? null : connectionState.status,
   );
 
-  // Read off the payload on every visit, never from the fact that this page just
-  // minted a key: a teammate who minted nothing reads the same two facts.
-  const agentWaiting = current.agentConnection.kind === "waiting";
+  // Connection is read off the payload on every visit — a teammate who minted
+  // nothing reads the same fact. Whether there is anything left to WATCH is the
+  // other question: the payload that rendered this page was served before the
+  // press, so a key minted in this tab is one the payload cannot know about, and
+  // waiting for it to say so is waiting for a poll that never starts.
   const agentConnected = current.agentConnection.kind === "connected";
+  const agentWaiting = agentStillWatched({
+    connection: current.agentConnection,
+    heldKey: hold.rawKey,
+  });
 
   // Every member is a persisted row or stamp, so a second tab, a reload and a
   // return tomorrow all land on the sentence the database describes.
@@ -325,7 +344,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const sequenceGone = armed && !folding;
 
   return (
-    <Live counter={current.counter} agent={current.agentConnection}>
+    <Live counter={current.counter} agent={current.agentConnection} held={{ hold, setHold }}>
       <Stack gap="md">
         {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.

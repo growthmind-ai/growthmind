@@ -14,7 +14,9 @@ import {
 
 import {
   AGENT_CONNECTED_ORG_LINE,
+  AGENT_KEY_ONCE_NOTICE,
   AGENT_PICK_PROMPT,
+  AGENT_PRE_MINT_LINE,
   AGENT_WAITING_LINE,
   COUNTER_COMPLETENESS_STATEMENT,
   COUNTER_WINDOW_STATEMENT,
@@ -30,7 +32,13 @@ import {
 
 import { AgentPanel } from "../../components/first-run/AgentPanel";
 import { FirstRunClient } from "../../components/first-run/FirstRunClient";
+import {
+  HeldAgentPanelContext,
+  type AgentPanelHold,
+  type HeldAgentPanel,
+} from "../../components/first-run/live-agent";
 import type { FirstRunStatusPayload } from "../../lib/first-run/status";
+import { blankComments, readExisting } from "./helpers/first-run-source";
 import { readMarkup } from "./helpers/rendered-markup";
 
 const FAKE_ROUTER: AppRouterInstance = {
@@ -52,6 +60,8 @@ const render = (node: ReactElement): string =>
   );
 
 const occurrences = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+
+const sourceOf = (file: string): string => blankComments(readExisting(file).source);
 
 function stepTitle(id: StepId): string {
   const found = LIVE_STEP_DESCRIPTORS.find((descriptor) => descriptor.id === id);
@@ -194,5 +204,93 @@ describe("O-026 — the assistant card survives arming, and only until first con
 
     expect(html).not.toContain(STRIP_REOPEN_LABEL);
     expect(occurrences(html, stepTitle("agent"))).toBe(0);
+  });
+});
+
+// The assistant step does not gate the stage, so minting at step 3 and arming at
+// step 4 is the documented path — and arming unmounts the panel the mint happened
+// in. A key shown once cannot be the losing instance's to hold.
+describe("O-026 — arming may not destroy a revealed one-time key", () => {
+  const RAW_KEY = "gmak_7f3c9a1b4d8e2f06";
+
+  const CLIENT = "apps/web/components/first-run/FirstRunClient.tsx";
+  const PANEL = "apps/web/components/first-run/AgentPanel.tsx";
+
+  const panel = (): ReactElement =>
+    createElement(AgentPanel, {
+      connection: { kind: "none" } as AgentConnection,
+      mcpUrl: MCP_URL,
+      providerOrder: ORDER,
+    });
+
+  const withHold = (hold: AgentPanelHold, ...panels: readonly ReactElement[]): string => {
+    const held: HeldAgentPanel = { hold, setHold: () => {} };
+
+    return render(
+      createElement(
+        HeldAgentPanelContext,
+        { value: held },
+        ...panels.map((node, index) => createElement("div", { key: index }, node)),
+      ),
+    );
+  };
+
+  test("a panel that minted nothing itself still shows the key the screen is holding", () => {
+    const html = withHold({ rawKey: RAW_KEY, provider: "cursor" }, panel());
+    const read = readMarkup(html);
+
+    expect(read.text).toContain(AGENT_KEY_ONCE_NOTICE);
+    expect(html).toContain(RAW_KEY);
+  });
+
+  test("CONTROL: the same panel with nothing held renders choose, so the row above is not vacuous", () => {
+    const html = render(panel());
+
+    expect(readMarkup(html).text).toContain(AGENT_PRE_MINT_LINE);
+    expect(html).not.toContain(RAW_KEY);
+  });
+
+  test("both mount points read the one hold, so the swap hands the key over rather than dropping it", () => {
+    const html = withHold({ rawKey: RAW_KEY, provider: "cursor" }, panel(), panel());
+
+    expect(occurrences(html, AGENT_KEY_ONCE_NOTICE)).toBe(2);
+    expect(occurrences(html, AGENT_PRE_MINT_LINE)).toBe(0);
+  });
+
+  test("the chosen assistant travels with the key, so the block beside it is not another one's", () => {
+    const html = withHold({ rawKey: RAW_KEY, provider: "windsurf" }, panel());
+
+    // Windsurf is not first in the order, so a panel that reset to its own default
+    // would render Claude Code's CLI line instead of this key's own block.
+    expect(html).toContain("serverUrl");
+    expect(html).not.toContain("claude mcp add");
+  });
+
+  test("the hold is the screen's state and its provider sits above the swap, not inside a branch", () => {
+    const code = sourceOf(CLIENT);
+
+    expect(code).toMatch(/const \[hold, setHold\] = useState<AgentPanelHold>\(EMPTY_HOLD\)/);
+
+    const provider = code.indexOf("held={{ hold, setHold }}");
+    const swap = code.indexOf("const sequenceGone");
+
+    expect(provider).toBeGreaterThan(-1);
+    expect(swap).toBeGreaterThan(-1);
+    expect(code.indexOf("<HeldAgentPanelContext")).toBeGreaterThan(-1);
+
+    // Every branch arming picks between renders inside `Live`, which is where the
+    // hold is provided — so no branch can be the key's owner.
+    expect(provider).toBeLessThan(code.indexOf("{sequenceGone ? null : ("));
+  });
+
+  test("the panel reads the held key rather than owning it", () => {
+    const code = sourceOf(PANEL);
+
+    expect(code).toMatch(/const held = useHeldAgentPanel\(\)/);
+    expect(code).toMatch(/const hold = held\?\.hold \?\? ownHold/);
+    expect(code).toMatch(/const rawKey = hold\.rawKey/);
+
+    // Nothing in the panel may write a raw key into a setter of its own.
+    expect(code).not.toMatch(/setRawKey/);
   });
 });

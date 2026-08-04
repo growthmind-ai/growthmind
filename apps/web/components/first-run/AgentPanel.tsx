@@ -1,10 +1,14 @@
 "use client";
 
 import { Box, Stack, Text } from "@mantine/core";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  AGENT_BLOCK_COPIED_ANNOUNCEMENT,
   AGENT_COPY_KEY_LABEL,
+  AGENT_KEY_COPIED_ANNOUNCEMENT,
+  AGENT_MINTED_ANNOUNCEMENT,
   AGENT_PROVIDER_IDS,
   AGENT_REVOKE_CONFIRM_LABEL,
   AGENT_REVOKE_FAILED_LINE,
@@ -17,7 +21,12 @@ import { resolveAgentPanelState, type AgentPanelAction } from "./agent-panel-sta
 import { AgentPanelBody } from "./AgentPanelBody";
 import { mintAgentKey, revokeAgentKeys } from "./api";
 import styles from "./first-run.module.css";
-import { useLiveAgentConnection } from "./live-agent";
+import {
+  EMPTY_HOLD,
+  useHeldAgentPanel,
+  useLiveAgentConnection,
+  type AgentPanelHold,
+} from "./live-agent";
 
 interface AgentPanelProps {
   readonly connection: AgentConnection;
@@ -51,33 +60,65 @@ export function AgentPanel(props: AgentPanelProps) {
   // Never the prop alone: first contact arrives from outside the browser, and the
   // poll that notices it re-renders this through the context, not the subtree.
   const connection = useLiveAgentConnection(props.connection);
+  const router = useRouter();
 
-  const [provider, setProvider] = useState<AgentProviderId>(
-    props.providerOrder[0] ?? AGENT_PROVIDER_IDS[0],
-  );
   // Page memory, and nowhere else: nothing writes this to storage and nothing
-  // re-fetches it. A reload loses it, and the panel then renders `waiting`.
-  const [rawKey, setRawKey] = useState<string | null>(null);
+  // re-fetches it. A reload loses it, and the panel then renders `waiting`. The
+  // screen above holds it so arming — which swaps this component for a second
+  // instance of itself — cannot destroy a key that is shown once.
+  const held = useHeldAgentPanel();
+  const [ownHold, setOwnHold] = useState<AgentPanelHold>(EMPTY_HOLD);
+
   const [action, setAction] = useState<AgentPanelAction>("idle");
   const [revokeFailed, setRevokeFailed] = useState(false);
   const [fileFormOpen, setFileFormOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState<string | null>(null);
+
+  const hold = held?.hold ?? ownHold;
+  const setHold = held?.setHold ?? setOwnHold;
+
+  const rawKey = hold.rawKey;
+  const provider: AgentProviderId =
+    hold.provider ?? props.providerOrder[0] ?? AGENT_PROVIDER_IDS[0];
 
   const panel = useRef<HTMLDivElement>(null);
   const confirming = useRef(false);
   const busy = useRef(false);
+  const focusedKey = useRef(rawKey);
 
   const state = resolveAgentPanelState({ connection, rawKey, action });
 
   useEffect(() => {
-    if (rawKey === null) {
+    // A key already held when this instance mounted is one the founder minted
+    // before arming: moving focus for it would steal the press that armed.
+    if (rawKey === null || focusedKey.current === rawKey) {
       return;
     }
+    focusedKey.current = rawKey;
 
     // Mantine's `loading` sets `disabled`, which drops the pressed control out of
     // the tab order and strands focus on the body. The next action is copying the
     // key, so focus goes there (UX §5.5).
     control(panel.current, named(AGENT_COPY_KEY_LABEL))?.focus();
   }, [rawKey]);
+
+  // UX §5.5 rows 20/21: Escape is the second way out of the confirm, and the
+  // effect below moves focus back to the control it replaced. No test drives the
+  // key press — this repo has no DOM renderer.
+  useEffect(() => {
+    if (action !== "confirming-revoke") {
+      return undefined;
+    }
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setAction("idle");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [action]);
 
   useEffect(() => {
     const open = action === "confirming-revoke";
@@ -102,6 +143,7 @@ export function AgentPanel(props: AgentPanelProps) {
     busy.current = true;
 
     setRevokeFailed(false);
+    setAnnouncement(null);
     setAction("minting");
 
     const key = await mintAgentKey(provider);
@@ -112,8 +154,13 @@ export function AgentPanel(props: AgentPanelProps) {
       return;
     }
 
-    setRawKey(key);
+    setHold({ rawKey: key, provider });
     setAction("idle");
+    setAnnouncement(AGENT_MINTED_ANNOUNCEMENT);
+
+    // The step's new state is persisted, so it is re-read rather than guessed at
+    // here — the sequence's own row is derived from a payload minted after it.
+    router.refresh();
   }
 
   async function confirmRevoke(): Promise<void> {
@@ -132,8 +179,10 @@ export function AgentPanel(props: AgentPanelProps) {
       return;
     }
 
-    setRawKey(null);
+    setHold({ ...hold, rawKey: null });
     setAction("revoked");
+    setAnnouncement(null);
+    router.refresh();
   }
 
   function openConfirm(): void {
@@ -145,7 +194,7 @@ export function AgentPanel(props: AgentPanelProps) {
   // and the next assistant may not have one at all (UX §5.3).
   function pickProvider(id: AgentProviderId): void {
     setFileFormOpen(false);
-    setProvider(id);
+    setHold({ ...hold, provider: id });
   }
 
   // A render nobody pressed for is at rest: a reload, a poll and a teammate's
@@ -168,6 +217,9 @@ export function AgentPanel(props: AgentPanelProps) {
           onCancelRevoke={() => setAction("idle")}
           fileFormOpen={fileFormOpen}
           onToggleFileForm={() => setFileFormOpen((open) => !open)}
+          announcement={announcement}
+          onCopyKey={() => setAnnouncement(AGENT_KEY_COPIED_ANNOUNCEMENT)}
+          onCopyBlock={() => setAnnouncement(AGENT_BLOCK_COPIED_ANNOUNCEMENT)}
         />
       </Box>
 

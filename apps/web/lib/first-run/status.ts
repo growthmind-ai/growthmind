@@ -13,6 +13,7 @@ import {
 import type {
   AgentConnection,
   AgentProviderId,
+  ApiKeyUseSummary,
   DeliveryStatus,
   FirstRunDeliveryState,
   FirstRunStatus,
@@ -155,6 +156,25 @@ async function resolveDelivery(input: {
   }
 }
 
+const NO_KEY_USE: ApiKeyUseSummary = { liveCount: 0, anyUsed: false };
+
+// The delivery lane's shape, for its reason: this read names every column of a table
+// a pending migration may not have widened, and one unreadable step may not cost the page.
+async function resolveKeyUse(input: {
+  readonly db: ScopedDb;
+  readonly ctx: TenantContext;
+}): Promise<ApiKeyUseSummary> {
+  try {
+    return await createApiKeysRepo(input.db, input.ctx).liveKeyUse();
+  } catch (error) {
+    logger.error("onboarding status: whether a key has been used could not be read", {
+      organizationId: input.ctx.organizationId,
+      reason: describeDriverError(error),
+    });
+    return NO_KEY_USE;
+  }
+}
+
 export async function buildFirstRunStatus(
   input: BuildFirstRunStatusInput,
 ): Promise<FirstRunStatusPayload> {
@@ -165,7 +185,7 @@ export async function buildFirstRunStatus(
     createSlackConnectionsRepo(db, ctx).getActiveForOrg(),
     createFirstRunRepo(db, ctx).readState(projectId),
     createProviderInterestRepo(db, ctx).listNotedProviders(),
-    createApiKeysRepo(db, ctx).liveKeyUse(),
+    resolveKeyUse({ db, ctx }),
   ]);
 
   const view = toOnboardingCounterView(counter);

@@ -18,7 +18,12 @@ import {
   loadValueUnderConstruction,
   underConstructionSpecifier,
 } from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
-import { AGENT_PANEL, blankComments, readFirstRun } from "./helpers/first-run-source";
+import {
+  AGENT_PANEL,
+  AGENT_PANEL_BODY,
+  blankComments,
+  readFirstRun,
+} from "./helpers/first-run-source";
 import { readMarkup } from "./helpers/rendered-markup";
 
 const OWNER_BODY =
@@ -65,6 +70,9 @@ interface AgentPanelBodyProps {
   readonly onCancelRevoke: () => void;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly announcement: string | null;
+  readonly onCopyKey: () => void;
+  readonly onCopyBlock: () => void;
 }
 
 interface AgentBlockInput {
@@ -186,6 +194,7 @@ async function panelMarkup(
   input: PanelInput,
   provider: AgentProviderId = "cursor",
   fileFormOpen = false,
+  announcement: string | null = null,
 ): Promise<string> {
   const resolve = await loadResolver();
   const Body = await loadBody();
@@ -204,6 +213,9 @@ async function panelMarkup(
       onCancelRevoke: NOOP,
       fileFormOpen,
       onToggleFileForm: NOOP,
+      announcement,
+      onCopyKey: NOOP,
+      onCopyBlock: NOOP,
     }),
   );
 }
@@ -684,6 +696,92 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
         assertive: (await panelMarkup(input)).includes("assertive"),
       }).toEqual({ action: input.action, assertive: false });
     }
+  });
+
+  test("a copy is announced, because the accessible name of both copy controls is fixed", async () => {
+    const copied = await message("AGENT_KEY_COPIED_ANNOUNCEMENT");
+    const blockCopied = await message("AGENT_BLOCK_COPIED_ANNOUNCEMENT");
+    const notice = await message("AGENT_KEY_ONCE_NOTICE");
+
+    // Nothing on screen changes an accessible name on copy: the block control's
+    // name is a fixed `aria-label` and the command control's a fixed
+    // `aria-labelledby`, so this region is the whole of the feedback.
+    const quiet = await panelMarkup(REVEAL);
+    expect(quiet).not.toContain(copied);
+    expect(quiet).not.toContain(blockCopied);
+
+    for (const announcement of [copied, blockCopied]) {
+      const html = await panelMarkup(REVEAL, "cursor", false, announcement);
+      const text = readMarkup(html).text;
+
+      expect(text).toContain(announcement);
+
+      // The state strip keeps its own sentence: a copy may not overwrite the one
+      // warning that says the key is shown once.
+      expect(text).toContain(notice);
+    }
+  });
+
+  test("the announcement rides a polite region of its own, and never an assertive one", async () => {
+    const copied = await message("AGENT_KEY_COPIED_ANNOUNCEMENT");
+    const html = await panelMarkup(REVEAL, "cursor", false, copied);
+
+    expect([...html.matchAll(/aria-live="polite"/g)].length).toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain("assertive");
+
+    const region = /<[^>]*aria-live="polite"[^>]*>([^<]*)</g;
+    const carried = [...html.matchAll(region)].map((match) => match[1] ?? "");
+    expect(carried).toContain(copied);
+  });
+
+  test("every copy control the body renders is wired to the announcement", async () => {
+    const code = blankComments(readFirstRun(AGENT_PANEL_BODY).source);
+
+    const controls = [...code.matchAll(/<Copyable(?:Block|Command)\b[\s\S]*?\/>/g)].map(
+      (match) => match[0],
+    );
+    const keyRows = [...code.matchAll(/<CopyButton\b/g)].length;
+
+    expect(controls).toHaveLength(3);
+    expect(keyRows).toBe(1);
+    expect(controls.filter((element) => element.includes("onCopied="))).toHaveLength(3);
+
+    // The key's own control is a bare CopyButton, so its wire is the handler.
+    expect(code).toMatch(/copy\(\);\s*props\.onCopied\(\);/);
+
+    const island = blankComments(readFirstRun(AGENT_PANEL).source);
+    expect(island).toMatch(
+      /onCopyKey=\{\(\) => setAnnouncement\(AGENT_KEY_COPIED_ANNOUNCEMENT\)\}/,
+    );
+    expect(island).toMatch(
+      /onCopyBlock=\{\(\) => setAnnouncement\(AGENT_BLOCK_COPIED_ANNOUNCEMENT\)\}/,
+    );
+  });
+
+  test("the mint announcement is used rather than left as a string no surface reads", async () => {
+    const minted = await message("AGENT_MINTED_ANNOUNCEMENT");
+    const island = blankComments(readFirstRun(AGENT_PANEL).source);
+
+    expect(island).toMatch(/setAnnouncement\(AGENT_MINTED_ANNOUNCEMENT\)/);
+    expect(readMarkup(await panelMarkup(REVEAL, "cursor", false, minted)).text).toContain(minted);
+  });
+
+  test("Escape cancels the revoke confirm — a source wire, because no test presses a key here", async () => {
+    const code = blankComments(readFirstRun(AGENT_PANEL).source);
+
+    const listener = /addEventListener\("keydown"/.exec(code);
+    expect(listener).not.toBeNull();
+
+    const gate = code.slice(0, listener?.index ?? 0);
+    expect(gate).toMatch(/action !== "confirming-revoke"[\s\S]{0,400}?"Escape"/);
+
+    expect(code).toMatch(/event\.key === "Escape"[\s\S]{0,80}?setAction\("idle"\)/);
+    expect(code).toMatch(/removeEventListener\("keydown"/);
+
+    // The body stays render-pure: the listener belongs to the island (ADD D-12).
+    expect(blankComments(readFirstRun(AGENT_PANEL_BODY).source)).not.toMatch(
+      /addEventListener|useEffect|useState/,
+    );
   });
 
   test("the focus wire exists in AgentPanel.tsx source — no DOM renderer here, so nothing drives it", async () => {

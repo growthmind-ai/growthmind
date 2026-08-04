@@ -12,6 +12,10 @@ interface CopyableBlockProps {
   // Required, not optional: two adjacent buttons both announcing "Copy" are
   // indistinguishable by ear, and an optional name is one that gets forgotten.
   readonly copyLabel: string;
+
+  // The name above is fixed, so the visible `Copy` → `Copied` swap announces
+  // nothing; a page that wants a reader told feeds its own live region from here.
+  readonly onCopied?: () => void;
 }
 
 export function CopyableBlock(props: CopyableBlockProps) {
@@ -26,7 +30,10 @@ export function CopyableBlock(props: CopyableBlockProps) {
           <Button
             variant="default"
             size="compact-sm"
-            onClick={copy}
+            onClick={() => {
+              copy();
+              props.onCopied?.();
+            }}
             aria-label={props.copyLabel}
             style={tapTargetStyle}
             w={{ base: "100%", xs: "auto" }}
