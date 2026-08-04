@@ -29,7 +29,7 @@ interface RecordedRequest {
   readonly url: string;
   readonly authorization: string | null;
   readonly accept: string | null;
-  readonly redirect: RequestRedirect | undefined;
+  readonly redirect: RequestInit["redirect"] | undefined;
 }
 
 interface FakeFetch {
@@ -74,6 +74,7 @@ function createFakeDeps(
   options?: { deadlineExceededAfter?: (ms: number) => boolean },
 ): { deps: RrwebSourceDeps; sleeps: number[] } {
   const sleeps: number[] = [];
+  const deadlineExceededAfter = options?.deadlineExceededAfter;
   return {
     deps: {
       fetch: fetchImpl,
@@ -82,7 +83,7 @@ function createFakeDeps(
       },
       now: () => new Date("2026-08-04T18:00:00.000Z"),
       random: () => 0,
-      deadlineExceededAfter: options?.deadlineExceededAfter,
+      ...(deadlineExceededAfter !== undefined ? { deadlineExceededAfter } : {}),
     },
     sleeps,
   };
