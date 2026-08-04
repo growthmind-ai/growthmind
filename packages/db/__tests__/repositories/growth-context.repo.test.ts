@@ -258,3 +258,75 @@ describe("growth context repository — writing against a row that moved", () =>
     );
   });
 });
+
+describe("growth context repository — two people answering at once", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it("keeps both answers when two pages are stated at the same moment", async () => {
+    // The whole list is rewritten to change one entry, so a plain read-modify-write would
+    // have each writer put the other's stale value back and lose one answer silently.
+    const { org, projectId } = await seedOrgAndProject(db, "concurrent-states");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    await repo.save({
+      projectId,
+      surfaces: [
+        { ...CHECKOUT, confirmedAt: null },
+        { ...CHECKOUT, surface: "/reports", role: "keeps_people", confirmedAt: null },
+      ],
+      confirmedChangeable: [],
+    });
+
+    const statedAt = new Date("2026-08-04T21:00:00.000Z");
+
+    await Promise.all([
+      repo.statePageRole({ projectId, surface: "/checkout", role: "makes_money", statedAt }),
+      repo.statePageRole({ projectId, surface: "/reports", role: "first_value", statedAt }),
+    ]);
+
+    const after = await repo.findForProject(projectId);
+
+    expect(after?.bySurface.get("/checkout")?.confirmedAt).toEqual(statedAt);
+    expect(after?.bySurface.get("/reports")?.confirmedAt).toEqual(statedAt);
+    expect(after?.bySurface.get("/reports")?.role).toBe("first_value");
+  });
+
+  it("states a page on a project that has no record at all yet", async () => {
+    const { org, projectId } = await seedOrgAndProject(db, "states-from-nothing");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    await repo.statePageRole({
+      projectId,
+      surface: "/checkout",
+      role: "makes_money",
+      statedAt: new Date("2026-08-04T21:00:00.000Z"),
+    });
+
+    expect((await repo.findForProject(projectId))?.bySurface.get("/checkout")?.basis).toBe(
+      "stated_by_customer",
+    );
+  });
+
+  it("refuses to state a page on another organization's project", async () => {
+    const mine = await seedOrgAndProject(db, "state-tenant-mine");
+    const theirs = await seedOrgAndProject(db, "state-tenant-theirs");
+
+    await expect(
+      createGrowthContextRepo(db, mine.org.ctx).statePageRole({
+        projectId: theirs.projectId,
+        surface: "/checkout",
+        role: "makes_money",
+        statedAt: new Date("2026-08-04T21:00:00.000Z"),
+      }),
+    ).rejects.toThrow(/not this organization's/);
+  });
+});

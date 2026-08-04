@@ -29,6 +29,7 @@ export const FIRST_RUN_API = {
 // Separate write: this one MOVES a chosen address and stamps the delivery cutover.
 export const SETTINGS_API = {
   slackChannel: "/api/settings/slack/channel",
+  pageRole: "/api/settings/pages/role",
 } as const;
 
 export interface PostAnswer {
