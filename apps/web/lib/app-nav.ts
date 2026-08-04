@@ -38,17 +38,13 @@ const PRODUCT: NavGroup = {
   ],
 };
 
-const ACCOUNT: NavGroup = {
-  label: "Account",
-  items: [
-    { href: ROUTES.settings, label: "Settings" },
-    { href: ROUTES.account, label: "Profile" },
-  ],
-};
-
+// Settings and the profile are not here: they hang off the account block at the foot of the
+// rail, which is where a signed-in person looks for their own things. Listing them twice makes
+// the nav answer "where do I work" and "who am I" in one column, and neither answer reads.
+//
 // The nav is built from what the viewer can actually open. Someone off the preview allow list
 // gets `notFound` on every Work and Your-product route, so offering them the links would be a
-// sidebar of nine dead ends.
+// sidebar of nine dead ends — they get Home, and the account menu that has always been there.
 export function navGroupsFor(canSeePreview: boolean): readonly NavGroup[] {
-  return canSeePreview ? [ROOT, WORK, PRODUCT, ACCOUNT] : [ROOT, ACCOUNT];
+  return canSeePreview ? [ROOT, WORK, PRODUCT] : [ROOT];
 }
