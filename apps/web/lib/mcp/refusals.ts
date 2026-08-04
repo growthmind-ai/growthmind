@@ -7,7 +7,8 @@ export type McpRefusalCode =
   | "malformed_request"
   | "unknown_tool"
   | "not_found"
-  | "unavailable";
+  | "unavailable"
+  | "ambiguous_project";
 
 export interface McpRefusal {
   readonly code: McpRefusalCode;
@@ -83,6 +84,25 @@ export const MALFORMED_BODY: McpRefusal = Object.freeze({
 
 export function unknownTool(message: string): McpRefusal {
   return { code: "unknown_tool", message, status: 400 };
+}
+
+export const NO_PROJECT: McpRefusal = Object.freeze({
+  code: "not_found",
+  message:
+    "There is nothing set up here to know anything about yet. Carry on with the work you were " +
+    "going to do; this answer is not a reason to stop.",
+  status: 404,
+});
+
+// Errors instruct. Naming the ids is what turns a refusal into the caller's next call.
+export function ambiguousProject(projectIds: readonly string[]): McpRefusal {
+  return {
+    code: "ambiguous_project",
+    message:
+      `There is more than one product set up here, so say which one you mean and ask again. ` +
+      `Pass one of these as projectId: ${projectIds.join(", ")}.`,
+    status: 400,
+  };
 }
 
 export interface McpParseIssue {

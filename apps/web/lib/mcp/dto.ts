@@ -1,13 +1,17 @@
 import type { FixSpecInput } from "@growthmind/core";
 import {
+  FIX_SURFACE_FORBIDDEN_REFUSALS,
+  SURFACE_ROLE_NOTES,
   isNormalisedUrlPath,
   mcpMeasuredCountSchema,
   type FindingEvidence,
   type FixStatus,
+  type ForbiddenReason,
   type McpMeasuredCount,
+  type SurfaceRole,
 } from "@growthmind/shared";
 
-import type { FindingRecord, FixRecord, OpenFixRow } from "./read-port";
+import type { FindingRecord, FixRecord, GrowthContextRecord, OpenFixRow } from "./read-port";
 
 // Every timestamp below is read off a persisted row, and a jsonb column carries every shape
 // ever written into it, so the declared type of one is a claim rather than a guarantee.
@@ -121,6 +125,66 @@ export function toFixRecord(fix: PersistedFix): FixRecord {
     alreadyLanded: toStrings(fix.alreadyLanded),
     impact: toMcpMeasuredCount(fix.impact),
     resultsBy: toIso(fix.resultsBy),
+  };
+}
+
+export interface PersistedGrowthContext {
+  readonly projectId: string;
+  readonly surface: string | null;
+  readonly changeable: {
+    readonly allowed: boolean;
+    readonly reason: ForbiddenReason | null;
+  } | null;
+  readonly whatMatters: readonly {
+    readonly surface: string;
+    readonly role: SurfaceRole;
+    readonly confirmedByAPerson: boolean;
+  }[];
+  readonly knownProblems: readonly {
+    readonly findingId: string;
+    readonly fixId: string | null;
+    readonly headline: string;
+    readonly affected: PersistedCount;
+    readonly lastSeenAt: unknown;
+  }[];
+  readonly declined: readonly {
+    readonly headline: string;
+    readonly declinedAt: unknown;
+  }[];
+}
+
+export function toGrowthContextRecord(read: PersistedGrowthContext): GrowthContextRecord {
+  return {
+    projectId: read.projectId,
+    surface: read.surface,
+    changeable:
+      read.changeable === null
+        ? null
+        : {
+            allowed: read.changeable.allowed,
+            // The same sentence a person is shown in Slack, per §10's one-output-two-audiences
+            // rule — an agent-only wording here would be a second copy to drift.
+            reason:
+              read.changeable.reason === null
+                ? null
+                : FIX_SURFACE_FORBIDDEN_REFUSALS[read.changeable.reason],
+          },
+    whatMatters: read.whatMatters.map((note) => ({
+      surface: note.surface,
+      matters: SURFACE_ROLE_NOTES[note.role],
+      confirmedByAPerson: note.confirmedByAPerson,
+    })),
+    knownProblems: read.knownProblems.map((problem) => ({
+      findingId: problem.findingId,
+      fixId: problem.fixId,
+      headline: problem.headline,
+      affected: toMcpMeasuredCount(problem.affected),
+      lastSeenAt: toIso(problem.lastSeenAt),
+    })),
+    declined: read.declined.map((idea) => ({
+      headline: idea.headline,
+      declinedAt: toIso(idea.declinedAt),
+    })),
   };
 }
 

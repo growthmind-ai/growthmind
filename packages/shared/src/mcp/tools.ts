@@ -4,6 +4,8 @@ import {
   getFindingInputSchema,
   getFindingOutputSchema,
   getFixInputSchema,
+  getGrowthContextInputSchema,
+  getGrowthContextOutputSchema,
   fixSpecEnvelopeSchema,
   listOpenFixesInputSchema,
   listOpenFixesOutputSchema,
@@ -13,6 +15,7 @@ export const MCP_TOOL = {
   LIST_OPEN_FIXES: "list_open_fixes",
   GET_FIX: "get_fix",
   GET_FINDING: "get_finding",
+  GET_GROWTH_CONTEXT: "get_growth_context",
 } as const;
 
 export type McpToolName = (typeof MCP_TOOL)[keyof typeof MCP_TOOL];
@@ -21,6 +24,7 @@ export const MCP_TOOL_NAMES = [
   MCP_TOOL.LIST_OPEN_FIXES,
   MCP_TOOL.GET_FIX,
   MCP_TOOL.GET_FINDING,
+  MCP_TOOL.GET_GROWTH_CONTEXT,
 ] as const satisfies readonly [McpToolName, ...McpToolName[]];
 
 export const MCP_TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -83,10 +87,28 @@ const getFindingTool: McpToolDescriptor = {
   readOnlyHint: true,
 };
 
+const getGrowthContextTool: McpToolDescriptor = {
+  name: MCP_TOOL.GET_GROWTH_CONTEXT,
+  title: "What we know about a page",
+  description:
+    "Tells you what a page is for in this business, and whether the people who own it have " +
+    "ruled it out of bounds for a coding agent. Call this when you are about to work on a page " +
+    "and nobody has handed you a fix — while you are still deciding what to build. Name a page " +
+    "address to ask about one page, or leave it out to see which pages matter here. You get " +
+    "back what the page is for, whether work on it is allowed and why not when it is not, the " +
+    "problems already known on it, and the ideas a person has already turned down so you do " +
+    "not raise them again. An empty answer means nothing is known here yet, which is not a " +
+    "reason to stop.",
+  inputSchema: getGrowthContextInputSchema,
+  outputSchema: getGrowthContextOutputSchema,
+  readOnlyHint: true,
+};
+
 export const MCP_TOOLS: readonly McpToolDescriptor[] = [
   listOpenFixesTool,
   getFixTool,
   getFindingTool,
+  getGrowthContextTool,
 ];
 
 export type McpToolResolution =

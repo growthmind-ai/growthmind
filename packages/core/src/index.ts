@@ -233,20 +233,14 @@ export {
 export { toFindingEvidence } from "./fixes/finding-evidence";
 
 export {
-  SURFACE_ROLES,
-  WORTH_BASES,
   WORTH_WEIGHT_VERSION,
   UNWEIGHTED,
   surfaceWorth,
   unknownWorth,
   isSurfaceWorth,
   weightOfRole,
-  surfaceRoleSchema,
-  worthBasisSchema,
   surfaceWorthSchema,
   surfaceWorthInputSchema,
-  type SurfaceRole,
-  type WorthBasis,
   type SurfaceWorth,
   type SurfaceWorthInput,
 } from "./growth/surface-worth";

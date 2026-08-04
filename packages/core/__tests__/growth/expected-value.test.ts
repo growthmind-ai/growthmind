@@ -7,7 +7,7 @@ import {
   expectedValueOfCount,
 } from "../../src/growth/expected-value";
 import { surfaceWorth, unknownWorth, weightOfRole } from "../../src/growth/surface-worth";
-import type { SurfaceRole } from "../../src/growth/surface-worth";
+import type { SurfaceRole } from "@growthmind/shared";
 
 const WINDOW = {
   start: new Date("2026-07-24T00:00:00.000Z"),

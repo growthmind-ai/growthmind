@@ -135,14 +135,16 @@ function inputKeysOf(): readonly string[] {
 }
 
 describe("MCP tool identity", () => {
-  test("exposes exactly list_open_fixes, get_fix and get_finding, by those literal names", () => {
+  test("exposes exactly the four read tools, by those literal names", () => {
     expect(MCP_TOOL.LIST_OPEN_FIXES).toBe("list_open_fixes");
     expect(MCP_TOOL.GET_FIX).toBe("get_fix");
     expect(MCP_TOOL.GET_FINDING).toBe("get_finding");
+    expect(MCP_TOOL.GET_GROWTH_CONTEXT).toBe("get_growth_context");
 
     expect(MCP_TOOLS.map((tool) => tool.name).toSorted()).toEqual([
       "get_finding",
       "get_fix",
+      "get_growth_context",
       "list_open_fixes",
     ]);
   });
@@ -253,7 +255,7 @@ describe("this surface is read-only", () => {
   test("there is no write tool in the exported list", () => {
     const names: readonly string[] = MCP_TOOLS.map((tool) => tool.name);
     expect(names).not.toContain("report_shipped");
-    expect(MCP_TOOLS.length).toBe(3);
+    expect(MCP_TOOLS.length).toBe(4);
   });
 
   test("no tool name or description offers to change anything", () => {
@@ -335,7 +337,14 @@ describe("tool inputs — the organization is never an argument", () => {
 
   test("the key walk reaches the keys it claims to check", () => {
     const keys = inputKeysOf();
-    expect(keys.toSorted()).toEqual(["findingId", "fixId", "limit", "projectId"]);
+    expect(keys.toSorted()).toEqual([
+      "findingId",
+      "fixId",
+      "limit",
+      "projectId",
+      "projectId",
+      "surface",
+    ]);
   });
 
   test("the key walk descends through optionals, defaults, arrays and readonly wrappers", () => {

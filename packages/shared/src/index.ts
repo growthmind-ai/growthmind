@@ -342,6 +342,19 @@ export {
   fixSpecEnvelopeSchema,
   findingEvidenceSchema,
   getFindingOutputSchema,
+  GROWTH_CONTEXT_MAX_ITEMS,
+  getGrowthContextInputSchema,
+  getGrowthContextOutputSchema,
+  surfaceNoteSchema,
+  changeableSchema,
+  knownProblemSchema,
+  declinedIdeaSchema,
+  type GetGrowthContextInput,
+  type GetGrowthContextOutput,
+  type SurfaceNote,
+  type Changeable,
+  type KnownProblem,
+  type DeclinedIdea,
   type McpSetAsideBasis,
   type McpCountBasis,
   type McpMeasuredCount,
@@ -733,5 +746,16 @@ export {
 } from "./findings/messages";
 
 export { evidenceForAgent } from "./findings/agent-text";
-export { FORBIDDEN_REASONS, forbiddenReasonSchema, type ForbiddenReason } from "./growth/types";
+export {
+  FORBIDDEN_REASONS,
+  SURFACE_ROLES,
+  WORTH_BASES,
+  forbiddenReasonSchema,
+  surfaceRoleSchema,
+  worthBasisSchema,
+  type ForbiddenReason,
+  type SurfaceRole,
+  type WorthBasis,
+} from "./growth/types";
+export { SURFACE_ROLE_NOTES, NOTHING_KNOWN_YET_NOTE, ALL_GROWTH_MESSAGES } from "./growth/messages";
 export { FIX_SURFACE_FORBIDDEN_REFUSALS } from "./delivery/messages";

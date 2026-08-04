@@ -6,10 +6,13 @@ import {
   fixSpecEnvelopeSchema,
   getFindingInputSchema,
   getFixInputSchema,
+  getGrowthContextInputSchema,
+  getGrowthContextOutputSchema,
   listOpenFixesInputSchema,
   listOpenFixesOutputSchema,
   logger,
   resolveMcpTool,
+  type GetGrowthContextInput,
   type ListOpenFixesInput,
   type McpToolDescriptor,
   type McpToolName,
@@ -17,7 +20,15 @@ import {
 
 import type { McpCredential } from "./credentials";
 import type { McpReadPort, OpenFixRow } from "./read-port";
-import { NOT_FOUND, UNAVAILABLE, malformedInput, unknownTool, type McpRefusal } from "./refusals";
+import {
+  NOT_FOUND,
+  NO_PROJECT,
+  UNAVAILABLE,
+  ambiguousProject,
+  malformedInput,
+  unknownTool,
+  type McpRefusal,
+} from "./refusals";
 
 export type McpToolOutcome =
   | { readonly ok: true; readonly tool: McpToolName; readonly result: unknown }
@@ -85,6 +96,14 @@ async function runTool(
       }
       return getFinding(parsed.data.findingId, reads, credential);
     }
+
+    case MCP_TOOL.GET_GROWTH_CONTEXT: {
+      const parsed = getGrowthContextInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return { ok: false, refusal: malformedInput(name, parsed.error.issues) };
+      }
+      return getGrowthContext(parsed.data, reads, credential);
+    }
   }
 }
 
@@ -103,7 +122,10 @@ async function listOpenFixes(
     limit: input.limit,
   });
 
-  const chosen = page.fixes.toSorted(byUrgencyThenId).slice(0, input.limit);
+  // The read port hands these back ranked by expected value, which is what §6 means by
+  // urgency and what this tool's description promises. Re-sorting here on the readout date
+  // put them back in deadline order and quietly undid that ranking.
+  const chosen = page.fixes.slice(0, input.limit);
 
   return answered(
     MCP_TOOL.LIST_OPEN_FIXES,
@@ -117,17 +139,6 @@ async function listOpenFixes(
       },
     }),
   );
-}
-
-function byUrgencyThenId(left: OpenFixRow, right: OpenFixRow): number {
-  const byDate = Date.parse(left.resultsBy) - Date.parse(right.resultsBy);
-  if (byDate !== 0) {
-    return byDate;
-  }
-
-  if (left.fixId < right.fixId) return -1;
-  if (left.fixId > right.fixId) return 1;
-  return 0;
 }
 
 function toSummary(row: OpenFixRow): Record<string, unknown> {
@@ -186,4 +197,43 @@ async function getFinding(
   }
 
   return answered(MCP_TOOL.GET_FINDING, GET_FINDING_OUTPUT_SCHEMA.parse(record));
+}
+
+async function getGrowthContext(
+  input: GetGrowthContextInput,
+  reads: McpReadPort,
+  credential: McpCredential,
+): Promise<McpToolOutcome> {
+  const answer = await reads.getGrowthContext({
+    principal: credential.context,
+    surface: input.surface ?? null,
+    projectId: input.projectId ?? null,
+  });
+
+  if (answer.outcome === "no_project") {
+    return { ok: false, refusal: NO_PROJECT };
+  }
+
+  if (answer.outcome === "ambiguous_project") {
+    return { ok: false, refusal: ambiguousProject(answer.projectIds) };
+  }
+
+  const record = answer.record;
+
+  return answered(
+    MCP_TOOL.GET_GROWTH_CONTEXT,
+    getGrowthContextOutputSchema.parse({
+      projectId: record.projectId,
+      surface: record.surface,
+      changeable: record.changeable,
+      whatMatters: record.whatMatters,
+      knownProblems: record.knownProblems,
+      declined: record.declined,
+
+      nothingKnownYet:
+        record.whatMatters.length === 0 &&
+        record.knownProblems.length === 0 &&
+        record.declined.length === 0,
+    }),
+  );
 }

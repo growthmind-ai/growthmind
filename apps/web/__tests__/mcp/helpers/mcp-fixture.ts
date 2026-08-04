@@ -15,6 +15,8 @@ import type {
   FixRecord,
   GetFindingQuery,
   GetFixQuery,
+  GetGrowthContextQuery,
+  GrowthContextAnswer,
   ListOpenFixesQuery,
   McpReadPort,
   OpenFixPage,
@@ -198,6 +200,12 @@ export interface FakeReadStore {
   readonly openFixes?: readonly StoredOpenFix[];
   readonly fixes?: readonly StoredFix[];
   readonly findings?: readonly StoredFinding[];
+  readonly growthContexts?: readonly StoredGrowthContext[];
+}
+
+export interface StoredGrowthContext {
+  readonly organizationId: string;
+  readonly answer: GrowthContextAnswer;
 }
 
 export interface RecordingReadPort {
@@ -209,6 +217,7 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
   const openFixes = store.openFixes ?? [];
   const fixes = store.fixes ?? [];
   const findings = store.findings ?? [];
+  const growthContexts = store.growthContexts ?? [];
   const organizationsAsked: string[] = [];
 
   const port: McpReadPort = {
@@ -250,6 +259,15 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
       );
       return Promise.resolve(found?.record ?? null);
     },
+
+    getGrowthContext(query: GetGrowthContextQuery): Promise<GrowthContextAnswer> {
+      organizationsAsked.push(query.principal.organizationId);
+      const found = growthContexts.find(
+        (stored) => stored.organizationId === query.principal.organizationId,
+      );
+
+      return Promise.resolve(found?.answer ?? { outcome: "no_project" });
+    },
   };
 
   return { port, organizationsAsked };
@@ -264,6 +282,7 @@ export function throwingReadPort(): McpReadPort {
     listOpenFixes: unreachableRead,
     getFix: unreachableRead,
     getFinding: unreachableRead,
+    getGrowthContext: unreachableRead,
   };
 }
 

@@ -12,7 +12,7 @@ import {
 } from "../../src/delivery/schedule";
 import type { DeliveryCandidate, DeliveryLaneState } from "../../src/delivery/schedule";
 import { surfaceWorth, unknownWorth } from "../../src/growth/surface-worth";
-import type { SurfaceRole } from "../../src/growth/surface-worth";
+import type { SurfaceRole } from "@growthmind/shared";
 
 const NOW = new Date("2026-07-30T09:00:00.000Z");
 
