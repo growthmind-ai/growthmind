@@ -1,9 +1,11 @@
 # Growthmind: Get Started. The First Ten Minutes
 
-> Companion to [`mvp.md`](mvp.md). That document decides _which_ pieces exist
-> first; this one describes what those pieces must **feel like** on first run —
-> the experiential contract the MVP build is held to, beat by beat. It is
-> extracted from the public `/get-started` page on growthmind.ai, where the same
+> What the first run must **feel like**, beat by beat — the experiential
+> contract the build is held to. Companion to
+> [`product-decisions.md`](product-decisions.md), which decides what the product
+> commits to; this one describes how those commitments land on a founder's
+> screen. It is extracted from the public `/get-started` page on growthmind.ai,
+> where the same
 > script plays as an animated film. The page states publicly that its figures
 > are illustrative and that the push must land while the founder is still on the
 > screen; this document is where the build answers for that.
@@ -17,11 +19,10 @@
 A founder connects five things, breaks their own product on purpose, and before
 they have gone looking for something else to do, the screen they are still
 standing on names the failure — with the evidence attached. Everything below is
-the script of that experience. The hypothesis it tests is
-[`mvp.md` §1](mvp.md#1-the-glue-moment): a founder who is still there when it
-lands is glued. That is the whole bar, and it is deliberately not a number —
-we measure what the wait actually costs and we promise nobody a clock
-([`mvp.md` §7 deviation 4](mvp.md#7-deviations-on-the-record)).
+the script of that experience. The hypothesis it tests: a founder who is still
+there when it lands is glued. That is the whole bar, and it is deliberately not
+a number — we measure what the wait actually costs and we promise nobody a
+clock.
 
 ## 2. The timeline
 
@@ -43,9 +44,8 @@ started the wait.
 | 9    | They break it again. Nothing posts twice                          | The signature ledger remembers                       |
 | 10   | "Get it fixed" is a spec their agent can read                     | Hypothesis: they're glued                            |
 
-The five setup steps and their confirmations are specified in
-[`mvp.md` §2](mvp.md#2-onboarding-flow); this table adds the order and the proof
-each beat must deliver on screen.
+This table is the contract for the five setup steps and their confirmations:
+the order they run in, and the proof each beat must deliver on screen.
 
 ## 3. The surfaces
 
@@ -64,8 +64,8 @@ prints its confirmation as it proves itself:
 
 Note the second line. Step two claims nothing has been checked inside your
 capture config, because there is no capture code of ours to check —
-`packages/sdk-js` is a stub and stays one at MVP scale
-([`mvp.md` §4](mvp.md#4-what-is-in-what-is-out)). What step two shows instead is
+`packages/sdk-js` is a stub and stays one at this scale. What step two shows
+instead is
 a **read-only receipt** of what we do and do not collect: page addresses kept as
 tidied-up patterns rather than raw ones, whose visits are set aside and where
 that guess came from, the direction we fail in when we cannot tell (we keep the
@@ -73,10 +73,10 @@ visit), identity stored as a one-way stand-in, no bag of event properties at
 all, and every outbound message checked for leftover personal detail before it
 leaves. Nothing on it is a setting, and there is nothing to switch on.
 
-That is the §5 PII commitment surfaced during onboarding exactly as
-[`mvp.md` §6](mvp.md#6-commitments-that-still-bind-at-mvp-scale) requires, and
-it is the honest version of it: a receipt states what is already true and can be
-proved, where a confirmation implies work this build has not done.
+That is the [§5 PII commitment](product-decisions.md) surfaced during
+onboarding, and it is the honest version of it: a receipt states what is already
+true and can be proved, where a confirmation implies work this build has not
+done.
 
 **The first-run console**, `FIRST-RUN · LIVE · READ-ONLY`. A five-row
 checklist where each row carries its own proof (`main · read-only`,
@@ -93,7 +93,7 @@ proof secured · the failed request itself · 3 of 3
 ```
 
 This surface is the on-record deviation from the non-dashboard rule
-([`mvp.md` §7.1](mvp.md#7-deviations-on-the-record)): it exists once, during
+([product-decisions §10](product-decisions.md)): it exists once, during
 install, and retires with onboarding. The finding card says so in its own
 copy: _"This screen retires with onboarding."_
 
@@ -141,7 +141,7 @@ What the copy demonstrates, deliberately:
   on file, the §6 three-way split (evidence gate) rendered as a sentence a
   founder can audit.
 - **Two actions only.** "Get it fixed" leads to the fix spec; "Not useful"
-  suppresses the signature permanently ([`mvp.md` §8](mvp.md#8-done-when)).
+  suppresses the signature permanently.
 
 **The suppression line (beat nine)**. When the identical failure happens
 again, nothing posts, and the ledger says why in one line:
@@ -174,8 +174,7 @@ Every save posts to /api/settings, and every attempt since 04:55 came back
 ```
 
 The spec is plain sentences an agent can act on and a founder can read over
-its shoulder, the MVP's minimal fix spec (structured state rendered as
-sentences, no code), per [`mvp.md` §4](mvp.md#4-what-is-in-what-is-out). The
+its shoulder — structured state rendered as sentences, no code. The
 MCP surface behind it is the read-only subset: `list_open_fixes`, `get_fix`,
 `get_finding`. §6 is how you wire it up today.
 
@@ -301,25 +300,22 @@ The `/get-started` page is a public commitment, and it is careful about three
 things this build must keep true:
 
 1. **The figures are illustrative, and so is the pacing.** The page commits to
-   no push window at all. The M-0 spike
-   ([`mvp.md` §3](mvp.md#3-the-gating-spike--run-before-anything-is-built)) ran
-   and the committed one did not survive it, so
-   [`mvp.md` §7 deviation 4](mvp.md#7-deviations-on-the-record) withdrew it: a
-   third party's own leg is outside our control, the two terms that are ours are
-   fixed, and what we owe a reader is the measured result rather than a promise
-   made before the measurement. What the page does promise is the shape of the
-   moment — the finding lands while the founder is still on the screen.
+   no push window at all. The M-0 gating spike ran and the committed window did
+   not survive it, so it was withdrawn: a third party's own leg is outside our
+   control, the two terms that are ours are fixed, and what we owe a reader is
+   the measured result rather than a promise made before the measurement. What
+   the page does promise is the shape of the moment — the finding lands while
+   the founder is still on the screen.
 2. **"Open source and built in the open, so you can hold us to it."** The page
    invites scrutiny of exactly the commitments in
-   [`mvp.md` §6](mvp.md#6-commitments-that-still-bind-at-mvp-scale).
+   [`product-decisions.md`](product-decisions.md).
 3. **Read-only, stated everywhere.** The repo connection says it, the console
    banner says it, the MCP subset enforces it. §1's read-only rule is visible
    copy, not a footnote.
 
 ## 8. Done when, experientially
 
-[`mvp.md` §8](mvp.md#8-done-when) states the acceptance criteria; this film
-adds the register they must be experienced in:
+The acceptance criteria, in the register they must be experienced in:
 
 - Every setup step's confirmation is **visible and specific**. A branch name,
   a ticking counter, a test message, an empty-but-valid response. "Connected"

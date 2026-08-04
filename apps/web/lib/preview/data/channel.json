@@ -1,0 +1,25 @@
+{
+  "channel": "issues",
+  "messages": [
+    {
+      "id": "m1",
+      "at": "today at 09:14",
+      "lead": "People can't send team invites.",
+      "body": [
+        "14 of the 110 people who opened your team settings this week tried to invite someone and the button did nothing — the request behind it failed every time. Most pressed it three times, then left."
+      ],
+      "evidence": "We think the workspace they belong to is missing on that path, in invite.tsx:41. It started the day PR #482 — Move invite sending behind the new workspace resolver — was merged. Nothing failed here in the nine days before it.",
+      "forecast": "If this is the only thing stopping them, we expect 1 in 8 more to finish setup.",
+      "findingId": "8c21"
+    },
+    {
+      "id": "m2",
+      "at": "yesterday at 09:02",
+      "lead": null,
+      "body": ["We read 1,104 sessions yesterday and found nothing worth telling you. That is a normal day."],
+      "evidence": null,
+      "forecast": null,
+      "findingId": null
+    }
+  ]
+}

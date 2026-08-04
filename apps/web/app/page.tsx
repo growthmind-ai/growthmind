@@ -13,6 +13,7 @@ import { LogoMark, LogoWordmark } from "../components/ui/Logo";
 import { tapTargetStyle } from "../components/ui/tap-target";
 import { getDb } from "../lib/db";
 import { readLandingView } from "../lib/landing/view";
+import { viewerMaySeePreview } from "../lib/preview/guard";
 import { ROUTES } from "../lib/routes";
 import { getTenantContext } from "../lib/tenant";
 
@@ -73,6 +74,14 @@ export default async function HomePage() {
               to" (FR-O21): a settled founder is offered no way into setup. What changed is
               where they go instead — setup retired holding seven decisions, and the page it
               retired into offered one. */}
+          {/* Rendered only for someone already on the preview allow list, so it can never
+              offer a customer a way into a screen of invented findings. */}
+          {(await viewerMaySeePreview()) ? (
+            <AnchorLink href={ROUTES.seen} size="sm">
+              Preview the surfaces still being built →
+            </AnchorLink>
+          ) : null}
+
           {dismissed ? (
             <SettledPanel view={view} />
           ) : (

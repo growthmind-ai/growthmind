@@ -1,0 +1,62 @@
+{
+  "config": "{\n  \"growthmind\": {\n    \"url\": \"https://app.growthmind.ai/api/mcp\",\n    \"headers\": { \"Authorization\": \"Bearer gm_live_…\" }\n  }\n}",
+  "tools": [
+    {
+      "key": "list",
+      "name": "list_open_fixes",
+      "call": "list_open_fixes({ limit: 25 })",
+      "why": "Called when you have asked it to improve something and it has no id yet. Most urgent first, and a total so it knows whether it is looking at a slice.",
+      "response": "{\n  \"fixes\": [\n    { \"id\": \"fix_8c21\",\n      \"problem\": \"People can't send team invites\",\n      \"affected\": 14, \"measured\": 110,\n      \"readout_due\": \"2026-08-09\",\n      \"attempt\": 1 },\n    { \"id\": \"fix_4d70\",\n      \"problem\": \"The card form never appears on Safari\",\n      \"affected\": 23, \"measured\": 340,\n      \"readout_due\": \"2026-08-12\",\n      \"attempt\": 2 }\n  ],\n  \"returned\": 2,\n  \"total\": 2\n}"
+    },
+    {
+      "key": "fix",
+      "name": "get_fix",
+      "call": "get_fix({ id: \"fix_8c21\" })",
+      "why": "Read before it touches any code. Names the files, states the checks it will be judged on, says when to stop early — and tells it which attempt this is, so it only does the part that is missing.",
+      "response": "{\n  \"id\": \"fix_8c21\",\n  \"finding_id\": \"8c21\",\n  \"attempt\": 1,\n  \"what_is_wrong\": \"The invite request fails for people who joined\n                    the workspace by invite rather than creating it.\",\n  \"where\": [\"apps/web/components/team/invite.tsx\"],\n  \"introduced_by\": { \"pull_request\": 482, \"merged\": \"2026-07-30\" },\n  \"why_it_matters\": \"14 of 110 people who opened team settings could\n                     not send an invite. Sharing is this product's\n                     activation moment.\",\n  \"checks\": [\n    \"The invite succeeds for a member who joined by invite\",\n    \"The person is told what went wrong, not shown a generic message\",\n    \"Invite events fire again on both paths\"\n  ],\n  \"stop_if\": \"Fewer than 80 people reach the page before 2026-08-09.\n              Say it is not readable rather than guessing.\",\n  \"readout_due\": \"2026-08-09\",\n  \"earlier_attempts\": [],\n  \"contains_code\": false\n}"
+    },
+    {
+      "key": "finding",
+      "name": "get_finding",
+      "call": "get_finding({ id: \"8c21\" })",
+      "why": "Called when it wants to understand the problem before working on it, or explain to a person why the work is worth doing. The transcript is the same one you read on the evidence screen.",
+      "response": "{\n  \"id\": \"8c21\",\n  \"headline\": \"People can't send team invites\",\n  \"affected\": 14, \"measured\": 110,\n  \"window\": [\"2026-07-28\", \"2026-08-04\"],\n  \"mechanism\": [\n    { \"statement\": \"The request behind the button fails for people\n                    who joined by invite.\",\n      \"cites\": [\"beat:3\", \"beat:4\"] },\n    { \"statement\": \"The workspace they belong to is missing there.\",\n      \"cites\": [\"invite.tsx:41\", \"pull_request:482\"] }\n  ],\n  \"transcript\": [\n    { \"at\": \"00:11\", \"kind\": \"click\",   \"target\": \"Send invite\" },\n    { \"at\": \"00:11\", \"kind\": \"network\", \"route\": \"POST /api/team/invite\", \"status\": 500 },\n    { \"at\": \"00:11\", \"kind\": \"console\", \"text\": \"TypeError: cannot read 'orgId'\" },\n    { \"at\": \"00:19\", \"kind\": \"click\",   \"target\": \"Send invite\", \"attempt\": 2 },\n    { \"at\": \"00:38\", \"kind\": \"exit\",    \"to\": \"/\" }\n  ],\n  \"control_group\": { \"succeeded\": 96, \"diverged_at\": \"00:11\" },\n  \"withheld\": false,\n  \"everything_here_was\": \"observed, never inferred\"\n}"
+    }
+  ],
+  "founderSees": [
+    "People can't send team invites.",
+    "14 of 110 people tried and the button did nothing. Most pressed it three times, then left.",
+    "Started the day PR #482 shipped. We expect 1 in 8 more to finish setup if this is the only thing stopping them."
+  ],
+  "agentSees": "\"what_is_wrong\": \"The invite request fails\n   for people who joined the workspace by\n   invite rather than creating it.\",\n\"where\": [\"components/team/invite.tsx\"],\n\"introduced_by\": { \"pull_request\": 482 },\n\"affected\": 14, \"measured\": 110,\n\"contains_code\": false",
+  "moments": [
+    {
+      "title": "You say \"work the open fixes\"",
+      "detail": "The agent calls list_open_fixes, picks the top one, and reads its instructions before touching anything."
+    },
+    {
+      "title": "You paste a link from your channel",
+      "detail": "The id in the link is all it needs. get_fix returns the instructions; get_finding returns the evidence behind them if it wants to check the work is worth doing."
+    },
+    {
+      "title": "It is about to change a file that already has a fix open against it",
+      "detail": "The skill we install tells it to check first, so two changes never land on the same surface at once and confuse the measurement."
+    },
+    {
+      "title": "It says it is done",
+      "detail": "Nothing happens over this wire. We go and look at your repository and your events ourselves, because a completion message is a claim, not a fact."
+    }
+  ],
+  "skills": [
+    { "name": "growthmind-fix", "does": "how to receive a fix spec, work it, and claim it" },
+    { "name": "growthmind-instrument", "does": "how to make a change measurable before shipping it" },
+    { "name": "growthmind-activation-sweep", "does": "how to check a flow for dead ends before the pull request" }
+  ],
+  "skillsNote": "This is the part most people miss. The tools tell your agent what is true. The skills tell it how to behave — and that is what stops it shipping a fix nobody can measure.",
+  "cannot": [
+    "We never write code. All three tools are read-only, and read-only access to your repository is enough for the entire loop.",
+    "The agent cannot mark its own work done. It has no tool for it. We verify against your repository and your events, and only then does the clock start.",
+    "A fix spec contains no code. It names the files and says what must be true when you are finished. How to get there is your agent's job, not ours.",
+    "It cannot see another customer. The key is scoped to one workspace, and every read is filtered by it before it reaches the database."
+  ]
+}

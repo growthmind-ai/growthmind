@@ -1,0 +1,36 @@
+.annotated {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  column-gap: var(--mantine-spacing-lg);
+  row-gap: 0;
+  align-items: start;
+}
+
+.beat {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.note {
+  grid-column: 2;
+  grid-row: var(--note-row);
+}
+
+/* The margin cannot hold a note beside its beat at this width, so the notes follow the
+   transcript and name the times they cite instead. */
+@media (max-width: 62em) {
+  .annotated {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--mantine-spacing-xs);
+  }
+
+  .beat,
+  .note {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+.beatLine {
+  overflow-wrap: anywhere;
+}

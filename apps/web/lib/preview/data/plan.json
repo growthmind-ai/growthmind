@@ -1,0 +1,42 @@
+{
+  "branch": "feat/team-wizard",
+  "aboutToShip": "A three-step wizard for team setup, replacing the single settings page. Read from feat/team-wizard, 7 files changed.",
+  "assessment": "Most people signing up arrive from search and have never opened your docs. They finish team setup in one sitting or not at all. A three-step wizard adds two places to stop, and the step that fails today — sending the invite — becomes step three, behind two steps that currently do not exist.",
+  "heldAgainst": "Held against 340 real sessions on the page this replaces, and against what we know about first-session behaviour in tools bought without a sales call.",
+  "ranked": [
+    {
+      "change": "Fix the invite request, ship nothing else",
+      "impact": "High",
+      "confidence": 0.81,
+      "effort": "S",
+      "score": 8.8,
+      "picked": true
+    },
+    {
+      "change": "Keep one page, add a way to resend an invite",
+      "impact": "Medium",
+      "confidence": 0.52,
+      "effort": "S",
+      "score": 4.1,
+      "picked": false
+    },
+    {
+      "change": "The three-step wizard as branched",
+      "impact": "Low",
+      "confidence": 0.34,
+      "effort": "L",
+      "score": 1.8,
+      "picked": false
+    }
+  ],
+  "onlyOneReason": "We will not recommend two things at once. The wizard is not wrong — it is second, and it is cheaper to judge once the invite works.",
+  "prediction": "Invite completion rises from 31 in 110 to at least 42 in 110 within two full weeks of traffic. We keep it if it does. We kill it if it does not. We read out on 18 August, and that date does not move.",
+  "trackingPlan": [
+    { "event": "team_settings_opened", "note": null },
+    { "event": "invite_form_started", "note": null },
+    { "event": "invite_submitted", "note": null },
+    { "event": "invite_request_failed", "note": "new — this is the one nobody would have added" },
+    { "event": "invite_delivered", "note": null }
+  ],
+  "joinable": "The prediction and the measurement come from the same flow, so they can be compared without anyone deciding later what counted."
+}
