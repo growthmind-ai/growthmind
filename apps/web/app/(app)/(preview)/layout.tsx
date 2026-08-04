@@ -1,5 +1,6 @@
 import { Box, Text } from "@mantine/core";
 
+import { PREVIEW_DISCLAIMER } from "@/lib/preview/disclaimer";
 import { requirePreviewSession } from "@/lib/preview/guard";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export default async function PreviewLayout({ children }: { readonly children: R
         style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
       >
         <Text size="xs" c="dimmed">
-          Example content. Nothing on this page was measured from a real product.
+          {PREVIEW_DISCLAIMER}
         </Text>
       </Box>
       {children}

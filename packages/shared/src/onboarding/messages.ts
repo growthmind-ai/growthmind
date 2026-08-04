@@ -340,6 +340,13 @@ export const STEP_AGENT_TITLE = "Connect your coding assistant";
 export const STEP_AGENT_HELPER =
   "Whoever writes the code here gives their coding assistant a key. After that it can ask Growthmind what is open and pull a fix to work on, without anyone opening this screen again.";
 
+// The same panel, on the page anyone can open after setup. Setup is not linkable back to,
+// so without these two lines the only way to a key was a screen nobody can reach again.
+export const AGENT_PAGE_TITLE = "Your coding assistant";
+
+export const AGENT_PAGE_LEDE =
+  "Give your assistant a key and it can ask what we have found and pick up a fix. You can take the key back here whenever you want.";
+
 export const AGENT_PICK_PROMPT = "Which assistant writes your code?";
 
 export const AGENT_PRE_MINT_LINE =
@@ -630,6 +637,8 @@ export const ONBOARDING_MESSAGES = {
 
   stepAgentTitle: STEP_AGENT_TITLE,
   stepAgentHelper: STEP_AGENT_HELPER,
+  agentPageTitle: AGENT_PAGE_TITLE,
+  agentPageLede: AGENT_PAGE_LEDE,
   agentPickPrompt: AGENT_PICK_PROMPT,
   agentPreMintLine: AGENT_PRE_MINT_LINE,
   agentPasteIntoTemplate: AGENT_PASTE_INTO_TEMPLATE,
@@ -804,6 +813,8 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
 
   STEP_AGENT_TITLE,
   STEP_AGENT_HELPER,
+  AGENT_PAGE_TITLE,
+  AGENT_PAGE_LEDE,
   AGENT_PICK_PROMPT,
   AGENT_PRE_MINT_LINE,
   AGENT_PASTE_INTO_TEMPLATE,
