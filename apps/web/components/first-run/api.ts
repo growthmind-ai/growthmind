@@ -3,6 +3,7 @@
 
 import {
   NETWORK_FAILURE_NOTICE,
+  type AgentConnection,
   type AgentProviderId,
   type InterestProviderId,
 } from "@growthmind/shared";
@@ -24,6 +25,12 @@ export const FIRST_RUN_API = {
   slackOAuthStart: "/api/first-run/slack/oauth/start",
   slackChannels: "/api/first-run/slack/channels",
   slackChannel: "/api/first-run/slack/channel",
+} as const;
+
+// Read by every surface that shows the connection after setup, where first-run's own
+// status route is neither reachable nor the right shape.
+export const AGENT_API = {
+  connection: "/api/agent/connection",
 } as const;
 
 // Separate write: this one MOVES a chosen address and stamps the delivery cutover.
@@ -154,6 +161,20 @@ export async function mintAgentKey(provider: AgentProviderId): Promise<string | 
   const key = asRecord(answer.body)?.key;
 
   return typeof key === "string" && key !== "" ? key : null;
+}
+
+// `null` for every failure, including a refusal: a caller holding a connection keeps the
+// one it has rather than replacing it with a worse guess.
+export async function readAgentConnection(): Promise<AgentConnection | null> {
+  const answer = await getJson(AGENT_API.connection);
+
+  if (answer === null || !answer.ok) {
+    return null;
+  }
+
+  const kind = asRecord(asRecord(answer.body)?.connection)?.kind;
+
+  return kind === "none" || kind === "waiting" || kind === "connected" ? { kind } : null;
 }
 
 // No id: the route revokes every live key in the caller's organisation.

@@ -2,11 +2,10 @@ import { Box, Code, Group, List, ListItem, SimpleGrid, Stack, Text } from "@mant
 
 import { AgentTools } from "@/components/preview/AgentTools";
 import { Eyebrow } from "@/components/ui/Eyebrow";
-import { PageHeader, RuledRow } from "@/components/ui/Page";
+import { RuledRow } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { PREVIEW_DISCLAIMER } from "@/lib/preview/disclaimer";
 import { readAgent } from "@/lib/preview/readers";
-
-export const dynamic = "force-dynamic";
 
 function Block({ children }: { readonly children: string }) {
   return (
@@ -16,15 +15,18 @@ function Block({ children }: { readonly children: string }) {
   );
 }
 
-export default function AgentPage() {
+// Mounted on a page that is real, so the disclaimer travels with the content rather than
+// sitting in the layout the content used to live under.
+export function AgentVision() {
   const view = readAgent();
 
   return (
     <Stack gap="lg">
-      <PageHeader title="What your coding agent sees">
-        The same findings, rendered for a machine. No second product, no translation layer — one
-        artefact, two audiences.
-      </PageHeader>
+      <Box pt="xs" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
+        <Text size="xs" c="dimmed">
+          {PREVIEW_DISCLAIMER}
+        </Text>
+      </Box>
 
       <Stack gap={4}>
         <Eyebrow>How it attaches</Eyebrow>
