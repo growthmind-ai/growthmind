@@ -3,8 +3,9 @@
 import { Anchor, Button, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 
+import { LastUsedBadge } from "@/components/ui/LastUsedBadge";
 import { signIn } from "@/lib/auth-client";
 import {
   clearField,
@@ -15,16 +16,23 @@ import {
   validateSignIn,
   type SignInErrors,
 } from "@/lib/auth-forms";
+import type { LastLoginMethod } from "@/lib/last-login-method";
 import { ROUTES } from "@/lib/routes";
 
 const PENDING_LABEL = "Signing you in…";
 
-export function SignInForm() {
+interface SignInFormProps {
+  readonly lastUsed: LastLoginMethod | null;
+}
+
+export function SignInForm({ lastUsed }: SignInFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<SignInErrors>(NO_SIGN_IN_ERRORS);
   const [isPending, setIsPending] = useState(false);
+  const badgeId = useId();
+  const isLastUsed = lastUsed === "email";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -92,9 +100,17 @@ export function SignInForm() {
             {errors.form}
           </Text>
         ) : null}
-        <Button type="submit" size="md" fullWidth loading={isPending}>
-          {isPending ? PENDING_LABEL : "Sign in"}
-        </Button>
+        <LastUsedBadge badgeId={badgeId} lastUsed={isLastUsed}>
+          <Button
+            type="submit"
+            size="md"
+            fullWidth
+            loading={isPending}
+            aria-describedby={isLastUsed ? badgeId : undefined}
+          >
+            {isPending ? PENDING_LABEL : "Sign in"}
+          </Button>
+        </LastUsedBadge>
         {/* The open-source imprint moved to the route group's layout — it
             belongs to both pages, and one copy is one place to change it. */}
         <Text size="sm" ta="center">
