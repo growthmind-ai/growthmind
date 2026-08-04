@@ -14,10 +14,24 @@ export interface PollCadenceInput {
   readonly terminal: boolean;
 
   readonly deliveryState: FirstRunDeliveryState;
+
+  readonly agentWaiting: boolean;
 }
 
 // `null` means nothing left to watch, and nothing else.
 export function resolvePollCadenceMs(input: PollCadenceInput): number | null {
+  const watching = resolveWatchedCadenceMs(input);
+
+  // First contact arrives from outside the browser, so a key that has never been
+  // used is only ever noticed by asking again.
+  if (watching === null && input.agentWaiting) {
+    return PRE_ARM_POLL_MS;
+  }
+
+  return watching;
+}
+
+function resolveWatchedCadenceMs(input: PollCadenceInput): number | null {
   // The hourly check produces findings for projects nobody armed; that founder is in setup.
   if (!input.armed) {
     return input.attached ? PRE_ARM_POLL_MS : null;
