@@ -1,3 +1,4 @@
+import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 
@@ -15,6 +16,7 @@ const CHECKOUT = {
   role: "makes_money",
   basis: "stated_by_customer",
   confirmedAt: CONFIRMED,
+  normalisationVersion: URL_PATH_NORMALISATION_VERSION,
 } as const;
 
 async function seedOrgAndProject(db: TestDb, label: string) {
@@ -161,5 +163,98 @@ describe("growth context repository", () => {
     const { org } = await seedOrgAndProject(db, "empty-list");
 
     expect((await createGrowthContextRepo(db, org.ctx).findForProjects([])).size).toBe(0);
+  });
+});
+
+describe("growth context repository — writing against a row that moved", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it("writes when the row is exactly as it was read", async () => {
+    const { org, projectId } = await seedOrgAndProject(db, "unchanged-writes");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    await repo.save({ projectId, surfaces: [CHECKOUT], confirmedChangeable: [] });
+    const snapshot = await repo.snapshotForProject(projectId);
+
+    const written = await repo.saveIfUnchanged(
+      { projectId, surfaces: [{ ...CHECKOUT, role: "keeps_people" }], confirmedChangeable: [] },
+      snapshot?.updatedAt ?? null,
+    );
+
+    expect(written).toBe(true);
+    expect((await repo.findForProject(projectId))?.bySurface.get("/checkout")?.role).toBe(
+      "keeps_people",
+    );
+  });
+
+  it("refuses to write over a confirmation that arrived after it read", async () => {
+    // The whole point of the stamp: a nightly derivation must not discard what a person
+    // said while it was working the answer out.
+    const { org, projectId } = await seedOrgAndProject(db, "confirmation-wins");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    await repo.save({ projectId, surfaces: [CHECKOUT], confirmedChangeable: [] });
+    const snapshot = await repo.snapshotForProject(projectId);
+
+    await repo.save({
+      projectId,
+      surfaces: [{ ...CHECKOUT, role: "first_value", basis: "stated_by_customer" }],
+      confirmedChangeable: [],
+    });
+
+    const written = await repo.saveIfUnchanged(
+      { projectId, surfaces: [{ ...CHECKOUT, role: "keeps_people" }], confirmedChangeable: [] },
+      snapshot?.updatedAt ?? null,
+    );
+
+    expect(written).toBe(false);
+    expect((await repo.findForProject(projectId))?.bySurface.get("/checkout")?.role).toBe(
+      "first_value",
+    );
+  });
+
+  it("refuses to write when it read no row and one has appeared since", async () => {
+    const { org, projectId } = await seedOrgAndProject(db, "appeared-since");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    await repo.save({
+      projectId,
+      surfaces: [{ ...CHECKOUT, role: "first_value" }],
+      confirmedChangeable: [],
+    });
+
+    expect(
+      await repo.saveIfUnchanged(
+        { projectId, surfaces: [CHECKOUT], confirmedChangeable: [] },
+        null,
+      ),
+    ).toBe(false);
+    expect((await repo.findForProject(projectId))?.bySurface.get("/checkout")?.role).toBe(
+      "first_value",
+    );
+  });
+
+  it("inserts when it read no row and none has appeared", async () => {
+    const { org, projectId } = await seedOrgAndProject(db, "first-write");
+    const repo = createGrowthContextRepo(db, org.ctx);
+
+    expect(
+      await repo.saveIfUnchanged(
+        { projectId, surfaces: [CHECKOUT], confirmedChangeable: [] },
+        null,
+      ),
+    ).toBe(true);
+    expect((await repo.findForProject(projectId))?.bySurface.get("/checkout")?.role).toBe(
+      "makes_money",
+    );
   });
 });

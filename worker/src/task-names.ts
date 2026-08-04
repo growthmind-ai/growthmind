@@ -10,6 +10,8 @@ export const TASK = {
   ANALYSIS_ONBOARDING: "analysis:onboarding",
 
   PROVIDER_INTEREST_TICK: "provider-interest:tick",
+
+  GROWTH_CONTEXT_TICK: "growth-context:tick",
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

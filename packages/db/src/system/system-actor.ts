@@ -4,6 +4,7 @@ export const SYSTEM_ACTOR = {
   SESSION_SOURCE_POLL: "system:session-source-poll",
   ANALYSIS_TICK: "system:analysis-tick",
   DELIVERY_TICK: "system:delivery-tick",
+  GROWTH_CONTEXT_TICK: "system:growth-context-tick",
 } as const;
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];
