@@ -247,14 +247,15 @@ function createFakeLedger(): FakeLedger {
         return Promise.resolve(match ?? null);
       },
 
-      listPendingForProject(projectId: string): Promise<DeliveryRecord[]> {
+      listPendingForProject(projectId: string, staleClaimsBefore: Date): Promise<DeliveryRecord[]> {
         guard(projectId);
         return Promise.resolve(
           [...stored.values()].filter(
             (row) =>
               row.organizationId === ctx.organizationId &&
               row.projectId === projectId &&
-              row.status === "pending",
+              row.status === "pending" &&
+              row.claimedAt.getTime() >= staleClaimsBefore.getTime(),
           ),
         );
       },

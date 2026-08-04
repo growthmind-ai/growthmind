@@ -4,8 +4,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   DELIVERY_BUDGET_PER_WEEK,
+  DELIVERY_CLAIM_TTL_MS,
   compareDeliveryCandidates,
   decideDelivery,
+  deliveryClaimsExpireBefore,
   isDeliverable,
 } from "../../src/delivery/schedule";
 import type { DeliveryCandidate, DeliveryLaneState } from "../../src/delivery/schedule";
@@ -421,5 +423,36 @@ describe("decideDelivery — purity (no clock, no I/O)", () => {
     });
 
     expect(decideDelivery(state, NOW)).toEqual(decideDelivery(state, NOW));
+  });
+});
+
+describe("deliveryClaimsExpireBefore", () => {
+  const AT = new Date("2026-08-04T12:00:00.000Z");
+
+  test("a claim expires exactly one TTL before the instant asked about", () => {
+    expect(deliveryClaimsExpireBefore(AT).getTime()).toBe(AT.getTime() - DELIVERY_CLAIM_TTL_MS);
+  });
+
+  test("the window outlives more than one tick of the 15-minute delivery cadence", () => {
+    // A TTL shorter than the gap between ticks lets a live claim be stolen, and two ticks
+    // then post the same finding to the same channel.
+    const FIFTEEN_MINUTES_MS = 15 * 60 * 1_000;
+
+    expect(DELIVERY_CLAIM_TTL_MS).toBeGreaterThan(FIFTEEN_MINUTES_MS);
+  });
+
+  test("the window is far shorter than the week the delivery budget is measured over", () => {
+    // A TTL near the budget window would make an abandoned claim indistinguishable from a
+    // deliberate silence for most of the week it blocks.
+    const A_WEEK_MS = 7 * 24 * 60 * 60 * 1_000;
+
+    expect(DELIVERY_CLAIM_TTL_MS).toBeLessThan(A_WEEK_MS / 10);
+  });
+
+  test("it does not mutate the date it is given", () => {
+    const at = new Date(AT);
+    deliveryClaimsExpireBefore(at);
+
+    expect(at.getTime()).toBe(AT.getTime());
   });
 });

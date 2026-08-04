@@ -167,6 +167,8 @@ export {
 } from "./delivery/residual-pii";
 export {
   DELIVERY_BUDGET_PER_WEEK,
+  DELIVERY_CLAIM_TTL_MS,
+  deliveryClaimsExpireBefore,
   isDeliverable,
   compareDeliveryCandidates,
   decideDelivery,

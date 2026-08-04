@@ -1,5 +1,11 @@
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
-import { decideDelivery, renderSlackMessage, scanResidualPii, toBlockKit } from "@growthmind/core";
+import {
+  decideDelivery,
+  deliveryClaimsExpireBefore,
+  renderSlackMessage,
+  scanResidualPii,
+  toBlockKit,
+} from "@growthmind/core";
 import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
@@ -212,7 +218,11 @@ async function runLane(
 
   const deliveries = deps.deliveriesFor(ctx);
 
-  const pending = await deliveries.listPendingForProject(lane.projectId);
+  // One instant for both the read and the claim below, so a lease cannot read as expired
+  // here and still in flight there.
+  const staleClaimsBefore = deliveryClaimsExpireBefore(tickAt);
+
+  const pending = await deliveries.listPendingForProject(lane.projectId, staleClaimsBefore);
 
   const state: DeliveryLaneState = {
     openFindingIds: pending.map((row) => row.findingId),
@@ -249,6 +259,7 @@ async function runLane(
     signature: chosen.signature,
     channelId: lane.channelId,
     claimedAt: tickAt,
+    staleClaimsBefore,
   });
 
   if (!claim.claimed) {

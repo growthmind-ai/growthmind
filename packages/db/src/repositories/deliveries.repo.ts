@@ -4,7 +4,7 @@ import {
   type DeliveryStatus,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 
 import { organization } from "../schema/auth";
 import { deliveries } from "../schema/deliveries";
@@ -22,6 +22,10 @@ export interface ClaimDeliveryInput {
 
   readonly channelId: string;
   readonly claimedAt: Date;
+
+  // Claims older than this are abandoned rather than in flight, and may be taken over. The
+  // policy lives in `@growthmind/core`; this repository only applies the instant it is given.
+  readonly staleClaimsBefore: Date;
 }
 
 export type ClaimDeliveryResult =
@@ -58,7 +62,9 @@ export interface DeliveriesRepo {
     signature: SignatureHex,
   ): Promise<DeliveryRecord | null>;
 
-  listPendingForProject(projectId: string): Promise<DeliveryRecord[]>;
+  // Only claims still in flight. An abandoned one must not read as work in progress, or the
+  // lane answers `one_already_open` on every future tick and the org receives nothing again.
+  listPendingForProject(projectId: string, staleClaimsBefore: Date): Promise<DeliveryRecord[]>;
 }
 
 export const DELIVERY_CONFLICT_TARGET = [
@@ -71,6 +77,17 @@ const RE_CLAIMABLE_STATUS: DeliveryStatus = "failed";
 
 function byTuple(findingId: string, channelId: string) {
   return and(eq(deliveries.findingId, findingId), eq(deliveries.channelId, channelId));
+}
+
+// A row is takeable when the last attempt FAILED, or when it was claimed and never
+// resolved. Without the second arm nothing ever reclaims an abandoned lease. Composed
+// through `sql` rather than `or`, which widens to `SQL | undefined` and cannot satisfy the
+// non-optional `setWhere` — a claim with no predicate would overwrite a live delivery.
+function reclaimable(staleClaimsBefore: Date): SQL {
+  return sql`(${eq(deliveries.status, RE_CLAIMABLE_STATUS)} or (${eq(
+    deliveries.status,
+    "pending",
+  )} and ${lt(deliveries.claimedAt, staleClaimsBefore)}))`;
 }
 
 export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): DeliveriesRepo {
@@ -90,7 +107,7 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         },
         {
           target: DELIVERY_CONFLICT_TARGET,
-          setWhere: eq(deliveries.status, RE_CLAIMABLE_STATUS),
+          setWhere: reclaimable(input.staleClaimsBefore),
           set: {
             status: "pending",
             claimedAt: input.claimedAt,
@@ -155,9 +172,16 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
       return rows[0] ?? null;
     },
 
-    async listPendingForProject(projectId: string): Promise<DeliveryRecord[]> {
+    async listPendingForProject(
+      projectId: string,
+      staleClaimsBefore: Date,
+    ): Promise<DeliveryRecord[]> {
       return c.list({
-        where: and(eq(deliveries.projectId, projectId), eq(deliveries.status, "pending")),
+        where: and(
+          eq(deliveries.projectId, projectId),
+          eq(deliveries.status, "pending"),
+          gte(deliveries.claimedAt, staleClaimsBefore),
+        ),
         orderBy: [desc(deliveries.claimedAt)],
       });
     },

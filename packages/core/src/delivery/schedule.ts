@@ -4,6 +4,19 @@ import type { ConfidenceBasis } from "../findings/candidate";
 
 export const DELIVERY_BUDGET_PER_WEEK = 3;
 
+// A claim is a lease, and a lease with no expiry is a deadlock. A tick that dies between
+// claiming a delivery and recording its outcome leaves the row `pending`, and `pending` is
+// read by every later tick as work in progress — so the lane returns `one_already_open`
+// forever and the organization silently stops receiving anything. Two ticks' headroom over
+// the 15-minute cadence: long enough that a slow post is never stolen, short enough that a
+// lost claim costs half an hour rather than the rest of the installation's life.
+export const DELIVERY_CLAIM_TTL_MS = 30 * 60 * 1_000;
+
+// Claims older than this are abandoned, not in flight.
+export function deliveryClaimsExpireBefore(at: Date): Date {
+  return new Date(at.getTime() - DELIVERY_CLAIM_TTL_MS);
+}
+
 export type DeliveryCandidate = {
   readonly findingId: string;
   readonly confidenceBasis: ConfidenceBasis;

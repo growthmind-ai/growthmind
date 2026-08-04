@@ -264,6 +264,7 @@ describe("fixes service", () => {
         signature: sha256Hex("fixes.service.test:two-channels"),
         channelId,
         claimedAt,
+        staleClaimsBefore: new Date(claimedAt.getTime() - 60 * 60 * 1_000),
       });
     }
 
