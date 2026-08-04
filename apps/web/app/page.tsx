@@ -77,7 +77,7 @@ export default async function HomePage() {
           {/* Rendered only for someone already on the preview allow list, so it can never
               offer a customer a way into a screen of invented findings. */}
           {(await viewerMaySeePreview()) ? (
-            <AnchorLink href={ROUTES.seen} size="sm">
+            <AnchorLink href={ROUTES.channel} size="sm">
               Preview the surfaces still being built →
             </AnchorLink>
           ) : null}

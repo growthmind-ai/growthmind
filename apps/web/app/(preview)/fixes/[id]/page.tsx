@@ -1,12 +1,13 @@
 import { Badge, Box, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
 import { notFound } from "next/navigation";
 
-import { ButtonLink } from "@/components/ui/Links";
+import { AnchorLink, ButtonLink } from "@/components/ui/Links";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readOutVerdictAction } from "@/lib/preview/actions";
 import { readFixForFinding, readVerdictForFinding } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { seenPath, verdictPath } from "@/lib/preview/tabs";
+import { evidencePath, verdictPath } from "@/lib/preview/tabs";
+import { ROUTES } from "@/lib/routes";
 import type { CheckState } from "@/lib/preview/types";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,11 @@ export default async function FixPage({ params }: { readonly params: Promise<{ r
           {fix.title}
         </Title>
         <Text size="sm" c="dimmed">
-          Sent to {fix.dispatchedTo} on {fix.dispatchedOn} · reads out {fix.readoutDue}
+          Sent to{" "}
+          <AnchorLink href={ROUTES.agent} size="sm">
+            {fix.dispatchedTo}
+          </AnchorLink>{" "}
+          on {fix.dispatchedOn} · reads out {fix.readoutDue}
         </Text>
       </Stack>
 
@@ -140,7 +145,7 @@ export default async function FixPage({ params }: { readonly params: Promise<{ r
           </form>
         )}
         <ButtonLink
-          href={seenPath(id)}
+          href={evidencePath(id)}
           variant="subtle"
           size="compact-sm"
           style={tapTargetStyle}

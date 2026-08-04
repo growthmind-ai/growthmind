@@ -12,7 +12,7 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 import { mintFixAction } from "@/lib/preview/actions";
 import { pickSession, readEvidence } from "@/lib/preview/findings";
 import { readPreviewState } from "@/lib/preview/session";
-import { fixPath, seenPath } from "@/lib/preview/tabs";
+import { evidencePath, fixPath } from "@/lib/preview/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +50,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
                server component, and a function cannot cross into a client one as a prop. */
             <Link
               key={entry.id}
-              href={`${seenPath(record.id)}?session=${entry.id}`}
+              href={`${evidencePath(record.id)}?session=${entry.id}`}
               style={{ textDecoration: "none" }}
             >
               <Badge

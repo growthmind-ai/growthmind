@@ -14,7 +14,7 @@ import classes from "@/components/preview/preview.module.css";
 import { RestoreButton } from "@/components/preview/RestoreButton";
 import { readOverview, readRow } from "@/lib/preview/findings";
 import { readPreviewState } from "@/lib/preview/session";
-import { seenPath } from "@/lib/preview/tabs";
+import { evidencePath } from "@/lib/preview/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ function Count({ row }: { readonly row: FindingRow }) {
 
 function Row({ row }: { readonly row: FindingRow }) {
   return (
-    <Link href={seenPath(row.id)} className={classes.rowLink}>
+    <Link href={evidencePath(row.id)} className={classes.rowLink}>
       <Count row={row} />
       <Box style={{ minWidth: 0 }}>
         <Text fw={600} style={{ lineHeight: 1.4 }}>

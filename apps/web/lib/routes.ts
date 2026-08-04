@@ -10,7 +10,8 @@ export const ROUTES = {
   // The preview surfaces. Listed here as their literal segments so the "every route has a
   // file behind it" guard covers them; build real paths with the helpers in `preview/tabs`.
   seen: "/seen",
-  seenDetail: "/seen/[id]",
+  evidence: "/evidence",
+  evidenceDetail: "/evidence/[id]",
   channel: "/channel",
   audience: "/audience",
   plan: "/plan",
