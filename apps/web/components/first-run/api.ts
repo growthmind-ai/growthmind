@@ -1,13 +1,19 @@
 // No body below carries a tenancy key: the project comes from the session.
 // `apps/web` declares no `zod`, so the narrowing here is hand-written.
 
-import { NETWORK_FAILURE_NOTICE, type InterestProviderId } from "@growthmind/shared";
+import {
+  NETWORK_FAILURE_NOTICE,
+  type AgentProviderId,
+  type InterestProviderId,
+} from "@growthmind/shared";
 
 export const FIRST_RUN_API = {
   status: "/api/first-run/status",
   arm: "/api/first-run/arm",
   dismiss: "/api/first-run/dismiss",
   interest: "/api/first-run/interest",
+  agentKey: "/api/first-run/agent/key",
+  agentRevoke: "/api/first-run/agent/revoke",
   analyticsDiscover: "/api/first-run/analytics/discover",
   analyticsConnect: "/api/first-run/analytics/connect",
   analyticsDisconnect: "/api/first-run/analytics/disconnect",
@@ -134,6 +140,26 @@ export async function postForOutcome(
 // repeat taps alike, so there is nothing else to read from it (AD-6).
 export async function postInterest(provider: InterestProviderId): Promise<ActionOutcome> {
   return postForOutcome(FIRST_RUN_API.interest, { provider }, NETWORK_FAILURE_NOTICE);
+}
+
+// The raw key is in this one response and nowhere else; `null` is every failure.
+export async function mintAgentKey(provider: AgentProviderId): Promise<string | null> {
+  const answer = await postJson(FIRST_RUN_API.agentKey, { provider });
+
+  if (answer === null || !answer.ok) {
+    return null;
+  }
+
+  const key = asRecord(answer.body)?.key;
+
+  return typeof key === "string" && key !== "" ? key : null;
+}
+
+// No id: the route revokes every live key in the caller's organisation.
+export async function revokeAgentKeys(): Promise<boolean> {
+  const answer = await postJson(FIRST_RUN_API.agentRevoke, {});
+
+  return answer !== null && answer.ok;
 }
 
 // A nameless row is a choice nobody can make, so an entry missing either field

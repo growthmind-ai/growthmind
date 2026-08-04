@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  agentConnectionSchema,
   canArm,
   deriveStepStates,
   displayOrdinal,
@@ -16,6 +17,7 @@ import {
   reduceStage,
   SLACK_CONNECTION_FIELDS,
   STAGE_RETIRE_CLOSURE,
+  type AgentConnection,
   type OnboardingCounterView,
   type SetupFacts,
   type StagePersistedFacts,
@@ -54,6 +56,11 @@ function seedClock(status: FirstRunStatusPayload): number {
 // whole screen down, and an unreadable answer is worth no claim rather than a crash.
 const deliveryStateOf = firstRunDeliveryStateSchema.catch("none");
 
+// Same reason, one sprint later: the old instance's payload carries no
+// `agentConnection` at all, and an unparsed `undefined` reaches the panel's
+// resolver as a shape it has no branch for.
+const agentConnectionOf = agentConnectionSchema.catch({ kind: "none" });
+
 function readStatus(body: unknown): FirstRunStatusPayload | null {
   if (typeof body !== "object" || body === null) {
     return null;
@@ -71,6 +78,7 @@ function readStatus(body: unknown): FirstRunStatusPayload | null {
     deliveryState: deliveryStateOf.parse(record.deliveryState),
     deliveryFailureReason:
       typeof record.deliveryFailureReason === "string" ? record.deliveryFailureReason : null,
+    agentConnection: agentConnectionOf.parse(record.agentConnection),
   };
 }
 
@@ -89,6 +97,31 @@ const LiveCounter = createContext<OnboardingCounterView | null>(null);
 // inside it still re-renders when a context it consumes changes.
 export function useLiveCounter(fallback: OnboardingCounterView): OnboardingCounterView {
   return useContext(LiveCounter) ?? fallback;
+}
+
+const LiveAgent = createContext<AgentConnection | null>(null);
+
+// The same wire for the agent step, and the whole of what makes "this step ticks
+// itself the moment a call arrives" true: first contact is stamped outside the
+// browser, so the poll is the only thing that ever notices it.
+export function useLiveAgentConnection(fallback: AgentConnection): AgentConnection {
+  return useContext(LiveAgent) ?? fallback;
+}
+
+interface LiveProps {
+  readonly counter: OnboardingCounterView;
+  readonly agent: AgentConnection;
+  readonly children: ReactNode;
+}
+
+// One home for every fact the poll has to push into the frozen server subtree, so
+// the next one added does not re-indent the whole screen below.
+function Live(props: LiveProps) {
+  return (
+    <LiveCounter value={props.counter}>
+      <LiveAgent value={props.agent}>{props.children}</LiveAgent>
+    </LiveCounter>
+  );
 }
 
 interface FirstRunClientProps {
@@ -133,6 +166,11 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const attached = isAnalyticsAttached(
     connectionState.status === "not_connected" ? null : connectionState.status,
   );
+
+  // Read off the payload on every visit, never from the fact that this page just
+  // minted a key: a teammate who minted nothing reads the same two facts.
+  const agentWaiting = current.agentConnection.kind === "waiting";
+  const agentConnected = current.agentConnection.kind === "connected";
 
   // Every member is a persisted row or stamp, so a second tab, a reload and a
   // return tomorrow all land on the sentence the database describes.
@@ -190,6 +228,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
     armed,
     terminal,
     deliveryState: current.deliveryState,
+    agentWaiting,
   });
 
   useEffect(() => {
@@ -271,6 +310,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
     slackSkipped: current.slackSkippedAt !== null,
 
     slackTestPostFailed: false,
+    agentConnected,
     armedAt: facts.armedAt,
 
     reopenedReadOnly: true,
@@ -281,7 +321,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const notice = resolveOfflineNotice({ lost, armed, terminal });
 
   return (
-    <LiveCounter value={current.counter}>
+    <Live counter={current.counter} agent={current.agentConnection}>
       <Stack gap="md">
         {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.
@@ -431,6 +471,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Group>
         ) : null}
       </Stack>
-    </LiveCounter>
+    </Live>
   );
 }
