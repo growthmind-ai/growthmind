@@ -13,6 +13,10 @@ afterEach(() => {
   process.env[KEY] = originalKey;
 });
 
+function throwingStart(): never {
+  throw new Error("recorder init failed");
+}
+
 function createRecordingStart(): {
   fakeStart: (config: Record<string, unknown>) => void;
   calls: Record<string, unknown>[];
@@ -26,8 +30,8 @@ function createRecordingStart(): {
   };
 }
 
-// The unmask allowlist can live under any option key an SDK chooses (unmaskTextClass,
-// unmaskTextSelector, ...); scan every string/RegExp value rather than pin one key name.
+// AD-5a: the installed SDK exposes no unmask/allowlist seam, so nothing is
+// exempted from masking; scan every string/RegExp value to prove that.
 function collectStrings(value: unknown, out: string[] = []): string[] {
   if (typeof value === "string") {
     out.push(value);
@@ -53,9 +57,14 @@ describe("REPLAY_CAPTURE_CONFIG", () => {
     expect((REPLAY_CAPTURE_CONFIG as Record<string, unknown>).maskAllInputs).toBe(true);
   });
 
-  test("carries an explicit unmask allowlist naming the gm-replay-unmasked class", () => {
+  test("masks all text via a catch-all selector and exempts nothing (no unmask/allowlist key)", () => {
+    expect((REPLAY_CAPTURE_CONFIG as Record<string, unknown>).maskTextSelector).toBe("*");
+
+    const keys = Object.keys(REPLAY_CAPTURE_CONFIG);
+    expect(keys.some((key) => /unmask|allow/i.test(key))).toBe(false);
+
     const strings = collectStrings(REPLAY_CAPTURE_CONFIG);
-    expect(strings.some((value) => value.includes("gm-replay-unmasked"))).toBe(true);
+    expect(strings.some((value) => value.includes("gm-replay-unmasked"))).toBe(false);
   });
 
   test("meta, when present, names no email-like or name-like field", () => {
@@ -94,9 +103,6 @@ describe("startReplayCapture", () => {
 
   test("a recorder that throws on start never breaks the page", () => {
     process.env[KEY] = "rrweb_public_key_test_only";
-    const throwingStart = (): void => {
-      throw new Error("recorder init failed");
-    };
 
     expect(() => startReplayCapture(throwingStart)).not.toThrow();
   });

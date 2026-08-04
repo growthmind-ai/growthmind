@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 
 import { POSTHOG_PROXY_PATH, resolvePostHogHosts } from "./lib/posthog-hosts";
+import { startReplayCapture } from "./lib/rrweb-capture";
 
 import { logger } from "@growthmind/shared";
 const token = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
@@ -26,3 +27,5 @@ if (token) {
     debug: process.env.NODE_ENV === "development",
   });
 }
+
+startReplayCapture();
