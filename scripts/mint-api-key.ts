@@ -6,7 +6,7 @@ import {
   type ResolveOrganizationResult,
 } from "../packages/db/src/admin/index";
 import { createApiKeysRepo, createDb } from "../packages/db/src/index";
-import { parseBaseEnv, tenantContextSchema } from "../packages/shared/src/index";
+import { apiKeyNameFor, parseBaseEnv, tenantContextSchema } from "../packages/shared/src/index";
 
 const USAGE = [
   "Mint a read credential for your coding agent.",
@@ -99,15 +99,6 @@ function printRefusal(refusal: Extract<ResolveOrganizationResult, { ok: false }>
   write("Add an owner to it, then run this again. Nothing was minted.");
 }
 
-function defaultKeyName(): string {
-  return `read credential (${new Date().toISOString().slice(0, 10)})`;
-}
-
-function resolveKeyName(requested: string | undefined): string {
-  const trimmed = requested?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : defaultKeyName();
-}
-
 async function main(): Promise<number> {
   const args = parseArguments(process.argv.slice(2));
 
@@ -146,7 +137,7 @@ async function main(): Promise<number> {
     });
 
     const minted = await createApiKeysRepo(db, ctx).mint({
-      name: resolveKeyName(args.name),
+      name: apiKeyNameFor({ requested: args.name ?? null, label: null, now: new Date() }),
     });
 
     write(`Organisation: ${organisation.name} (${organisation.id})`);
