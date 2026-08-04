@@ -27,6 +27,7 @@
     "db:generate": "bun run --filter @growthmind/db db:generate",
     "db:generate:auth": "bunx @better-auth/cli@1.4.21 generate --config apps/web/lib/auth.schema.ts --output packages/db/src/schema/auth.ts --yes",
     "db:migrate": "bun run --filter @growthmind/db db:migrate",
+    "visual-review": "node scripts/visual-review.ts",
     "check": "bun run typecheck && bun run lint && bun run format:check && bun test && bun run build"
   },
   "devDependencies": {
@@ -35,6 +36,7 @@
     "@types/node": "^26.0.0",
     "oxlint": "^1.76.0",
     "oxlint-tsgolint": "^7.0.2001",
+    "playwright-core": "^1.62.1",
     "prettier": "3.9.6",
     "typescript": "^7.0.2"
   },
