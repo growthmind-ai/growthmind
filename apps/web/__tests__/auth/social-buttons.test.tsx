@@ -12,18 +12,30 @@ const SOCIAL: readonly SocialProviderId[] = ["google", "github"];
 
 // `readMarkup` drops the provider's own <style> tags, so these rows assert what a person
 // sees rather than what React emitted.
+function markupOf(
+  providers: readonly SocialProviderId[],
+  lastUsed: LastLoginMethod | null = null,
+): string {
+  return renderToStaticMarkup(
+    createElement(MantineProvider, null, createElement(SocialButtons, { providers, lastUsed })),
+  );
+}
+
 function render(
   providers: readonly SocialProviderId[],
   lastUsed: LastLoginMethod | null = null,
 ): RenderedCard {
-  return readMarkup(
-    renderToStaticMarkup(
-      createElement(MantineProvider, null, createElement(SocialButtons, { providers, lastUsed })),
-    ),
-  );
+  return readMarkup(markupOf(providers, lastUsed));
 }
 
+const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+
 const markers = (card: RenderedCard): number => card.text.split("Last used").length - 1;
+
+// Reproduced unmodified is the condition on using either mark, so these pin the one
+// detail that says the mark is the real one: Google's four colours, GitHub's flat fill.
+const GOOGLE_RED = "#EA4335";
+const GITHUB_FILL = 'fill="currentColor"';
 
 // Driven from BOTH ends: the producer resolving the list is tested in social-auth.test.ts,
 // and these rows prove the consumer actually branches on it. A provider registered on the
@@ -73,6 +85,32 @@ describe("the social sign-in wire — providers, driven into the rendered contro
     for (const forbidden of ["CLIENT_SECRET", "client_secret", "GOOGLE_CLIENT_ID"]) {
       expect(markup).not.toContain(forbidden);
     }
+  });
+});
+
+describe("the provider marks on the social controls", () => {
+  test("each control carries its own provider's mark, and only its own", () => {
+    expect(markupOf(["google"])).toContain(GOOGLE_RED);
+    expect(markupOf(["google"])).not.toContain(GITHUB_FILL);
+
+    expect(markupOf(["github"])).toContain(GITHUB_FILL);
+    expect(markupOf(["github"])).not.toContain(GOOGLE_RED);
+  });
+
+  test("one mark per control, never a second one over the same button", () => {
+    expect(count(markupOf(SOCIAL), "<svg")).toBe(2);
+    expect(count(markupOf(["google"]), "<svg")).toBe(1);
+    expect(count(markupOf([]), "<svg")).toBe(0);
+  });
+
+  test("the mark is decoration, not part of the button's name", () => {
+    const rendered = render(SOCIAL);
+
+    expect(rendered.controls).toEqual(["Continue with Google", "Continue with GitHub"]);
+  });
+
+  test("every mark is hidden from a screen reader, which already hears the label", () => {
+    expect(count(markupOf(SOCIAL), 'aria-hidden="true"')).toBe(2);
   });
 });
 
