@@ -158,7 +158,6 @@ export {
   type FixesRepo,
   type FixRow,
   type ClaimFixInput,
-  type ListOpenFixesOptions,
   type CountOpenFixesOptions,
 } from "./repositories/fixes.repo";
 

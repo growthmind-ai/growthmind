@@ -3,7 +3,7 @@ import {
   type FixConflictColumn,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fixes } from "../schema/fixes";
@@ -22,11 +22,6 @@ export interface ClaimFixInput {
   readonly resultsByRuleVersion: number;
 }
 
-export interface ListOpenFixesOptions {
-  readonly projectId: string | null;
-  readonly limit: number;
-}
-
 export interface CountOpenFixesOptions {
   readonly projectId: string | null;
 }
@@ -37,8 +32,6 @@ export interface FixesRepo {
   findById(fixId: string): Promise<FixRow | null>;
 
   findForFinding(findingId: string): Promise<FixRow | null>;
-
-  listOpen(options: ListOpenFixesOptions): Promise<FixRow[]>;
 
   countOpen(options: CountOpenFixesOptions): Promise<number>;
 }
@@ -96,14 +89,6 @@ export function createFixesRepo(db: ScopedExecutor, ctx: TenantContext): FixesRe
 
     async findForFinding(findingId: string): Promise<FixRow | null> {
       return c.maybe(byFinding(findingId));
-    },
-
-    async listOpen(options: ListOpenFixesOptions): Promise<FixRow[]> {
-      return c.list({
-        where: openFixesIn(options.projectId),
-        orderBy: [asc(fixes.resultsBy), asc(fixes.openedAt)],
-        limit: options.limit,
-      });
     },
 
     async countOpen(options: CountOpenFixesOptions): Promise<number> {

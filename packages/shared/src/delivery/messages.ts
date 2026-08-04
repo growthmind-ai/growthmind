@@ -92,9 +92,8 @@ export function deliveryFailureSentence(code: PostFailureCode): string {
 export const FIX_QUEUED_ACKNOWLEDGEMENT =
   "Right — this one is queued for your coding agent. Ask it to work on your open fixes.";
 
-// Not a contradiction of the silent no-op on a repeated delivery: that is Slack resending
-// one press, this is somebody pressing a second time, and a control that answers nothing
-// reads as broken. Wave 6 separates them on the identity of the interaction.
+// Said on a second press, never on a repeated delivery of one press: the interactivity
+// route separates the two on the payload's identity.
 export const FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT =
   "Already queued. Ask your coding agent to work on your open fixes.";
 
