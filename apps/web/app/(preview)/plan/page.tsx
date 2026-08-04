@@ -1,4 +1,18 @@
-import { Box, Group, Paper, Stack, Table, Text, Title } from "@mantine/core";
+import {
+  Box,
+  Group,
+  Paper,
+  Stack,
+  Table,
+  TableScrollContainer,
+  TableTbody,
+  TableTd,
+  TableTh,
+  TableThead,
+  TableTr,
+  Text,
+  Title,
+} from "@mantine/core";
 
 import { ButtonLink } from "@/components/ui/Links";
 import { tapTargetStyle } from "@/components/ui/tap-target";
@@ -51,43 +65,43 @@ export default function PlanPage() {
         <Text size="xs" fw={700} tt="uppercase" c="dimmed">
           One change, ranked
         </Text>
-        <Table.ScrollContainer minWidth={520}>
+        <TableScrollContainer minWidth={520}>
           <Table striped={false} withRowBorders>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Change</Table.Th>
-                <Table.Th ta="right">Impact</Table.Th>
-                <Table.Th ta="right">Confidence</Table.Th>
-                <Table.Th ta="right">Effort</Table.Th>
-                <Table.Th ta="right">Score</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
+            <TableThead>
+              <TableTr>
+                <TableTh>Change</TableTh>
+                <TableTh ta="right">Impact</TableTh>
+                <TableTh ta="right">Confidence</TableTh>
+                <TableTh ta="right">Effort</TableTh>
+                <TableTh ta="right">Score</TableTh>
+              </TableTr>
+            </TableThead>
+            <TableTbody>
               {view.ranked.map((row) => (
-                <Table.Tr
+                <TableTr
                   key={row.change}
                   style={
                     row.picked ? { background: "var(--mantine-primary-color-light)" } : undefined
                   }
                 >
-                  <Table.Td>
+                  <TableTd>
                     <Text fw={row.picked ? 700 : 400} size="sm">
                       {row.change}
                     </Text>
-                  </Table.Td>
-                  <Table.Td ta="right">{row.impact}</Table.Td>
-                  <Table.Td ta="right" ff="monospace">
+                  </TableTd>
+                  <TableTd ta="right">{row.impact}</TableTd>
+                  <TableTd ta="right" ff="monospace">
                     {row.confidence.toFixed(2)}
-                  </Table.Td>
-                  <Table.Td ta="right">{row.effort}</Table.Td>
-                  <Table.Td ta="right" ff="monospace" fw={700}>
+                  </TableTd>
+                  <TableTd ta="right">{row.effort}</TableTd>
+                  <TableTd ta="right" ff="monospace" fw={700}>
                     {row.score.toFixed(1)}
-                  </Table.Td>
-                </Table.Tr>
+                  </TableTd>
+                </TableTr>
               ))}
-            </Table.Tbody>
+            </TableTbody>
           </Table>
-        </Table.ScrollContainer>
+        </TableScrollContainer>
         <Text size="sm" c="dimmed">
           {view.onlyOneReason}
         </Text>

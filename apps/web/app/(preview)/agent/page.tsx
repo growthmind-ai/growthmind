@@ -1,4 +1,15 @@
-import { Box, Code, Group, List, Paper, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+import {
+  Box,
+  Code,
+  Group,
+  List,
+  ListItem,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
 
 import { AgentTools } from "@/components/preview/AgentTools";
 import { readAgent } from "@/lib/preview/readers";
@@ -132,7 +143,7 @@ export default function AgentPage() {
         <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
           <List spacing="xs" size="sm">
             {view.cannot.map((line) => (
-              <List.Item key={line}>{line}</List.Item>
+              <ListItem key={line}>{line}</ListItem>
             ))}
           </List>
         </Paper>
