@@ -1,9 +1,19 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { REPLAY_CAPTURE_CONFIG, startReplayCapture } from "../lib/rrweb-capture";
+import {
+  REPLAY_CAPTURE_CONFIG,
+  resetReplayCaptureGuardForTests,
+  startReplayCapture,
+} from "../lib/rrweb-capture";
 
 const KEY = "NEXT_PUBLIC_RRWEB_PUBLIC_KEY";
 const originalKey = process.env[KEY];
+
+// The guard is module-level state (one recorder per real page load), so each
+// test needs "no page load has happened yet" restored before it runs.
+beforeEach(() => {
+  resetReplayCaptureGuardForTests();
+});
 
 afterEach(() => {
   if (originalKey === undefined) {
@@ -109,5 +119,25 @@ describe("startReplayCapture", () => {
     process.env[KEY] = "rrweb_public_key_test_only";
 
     expect(() => startReplayCapture(throwingStart)).not.toThrow();
+  });
+
+  test("a second call on the same page load adds no second entry to the fake's calls", () => {
+    process.env[KEY] = "rrweb_public_key_test_only";
+    const { fakeStart, calls } = createRecordingStart();
+
+    startReplayCapture(fakeStart);
+    startReplayCapture(fakeStart);
+
+    expect(calls.length).toBe(1);
+  });
+
+  test("the guard holds even when the first start threw, so a retry never opens a second recorder", () => {
+    process.env[KEY] = "rrweb_public_key_test_only";
+    const { fakeStart, calls } = createRecordingStart();
+
+    expect(() => startReplayCapture(throwingStart)).not.toThrow();
+    startReplayCapture(fakeStart);
+
+    expect(calls).toEqual([]);
   });
 });
