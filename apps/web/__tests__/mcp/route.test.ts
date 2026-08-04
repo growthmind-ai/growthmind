@@ -427,12 +427,12 @@ describe("this surface reads and does nothing else", () => {
   });
 
   test("WIRE-R19 — every tool this surface exposes is a read, and the write tool is absent", () => {
-    expect(MCP_TOOLS).toHaveLength(3);
+    expect(MCP_TOOLS).toHaveLength(4);
     expect(MCP_TOOLS.every((tool) => tool.readOnlyHint)).toBe(true);
     expect(MCP_TOOLS.map((tool) => tool.name)).not.toContain("report_shipped");
   });
 
-  test("WIRE-R20 — tools/list answers with the three tools and requires a credential like everything else", async () => {
+  test("WIRE-R20 — tools/list answers with the four tools and requires a credential like everything else", async () => {
     const anonymous = await fingerprint(
       await handleMcpRequest(rpcRequest({ method: "tools/list" }), absentDeps()),
     );
@@ -450,7 +450,7 @@ describe("this surface reads and does nothing else", () => {
     if (!Array.isArray(tools)) {
       throw new Error(`mcproute: tools/list carried no tools array. Body: ${print.body}`);
     }
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(4);
 
     const advertised = new Map<string, Record<string, unknown>>();
     for (const entry of tools) {

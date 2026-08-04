@@ -75,10 +75,56 @@ export interface OpenFixPage {
   readonly totalOpen: number;
 }
 
+export interface SurfaceNoteRow {
+  readonly surface: string;
+
+  readonly matters: string;
+  readonly confirmedByAPerson: boolean;
+}
+
+export interface KnownProblemRow {
+  readonly findingId: string;
+  readonly fixId: string | null;
+  readonly headline: string;
+  readonly affected: McpMeasuredCount;
+
+  readonly lastSeenAt: string;
+}
+
+export interface DeclinedIdeaRow {
+  readonly headline: string;
+
+  readonly declinedAt: string;
+}
+
+export interface GrowthContextRecord {
+  readonly projectId: string;
+  readonly surface: string | null;
+
+  readonly changeable: { readonly allowed: boolean; readonly reason: string | null } | null;
+  readonly whatMatters: readonly SurfaceNoteRow[];
+  readonly knownProblems: readonly KnownProblemRow[];
+  readonly declined: readonly DeclinedIdeaRow[];
+}
+
+export interface GetGrowthContextQuery {
+  readonly principal: TenantContext;
+
+  readonly surface: string | null;
+
+  readonly projectId: string | null;
+}
+
+export type GrowthContextAnswer =
+  | { readonly outcome: "answered"; readonly record: GrowthContextRecord }
+  | { readonly outcome: "no_project" }
+  | { readonly outcome: "ambiguous_project"; readonly projectIds: readonly string[] };
+
 export interface McpReadPort {
   listOpenFixes(query: ListOpenFixesQuery): Promise<OpenFixPage>;
   getFix(query: GetFixQuery): Promise<FixRecord | null>;
   getFinding(query: GetFindingQuery): Promise<FindingRecord | null>;
+  getGrowthContext(query: GetGrowthContextQuery): Promise<GrowthContextAnswer>;
 }
 
 export function createAbsentReadPort(log: (message: string) => void): McpReadPort {
@@ -104,6 +150,10 @@ export function createAbsentReadPort(log: (message: string) => void): McpReadPor
     getFinding(): Promise<FindingRecord | null> {
       announceOnce();
       return Promise.resolve(null);
+    },
+    getGrowthContext(): Promise<GrowthContextAnswer> {
+      announceOnce();
+      return Promise.resolve({ outcome: "no_project" });
     },
   };
 }

@@ -1,5 +1,7 @@
+import type { SurfaceRole } from "@growthmind/shared";
+
 import type { MeasuredCount } from "../counts/measured-count";
-import type { SurfaceRole, SurfaceWorth } from "./surface-worth";
+import type { SurfaceWorth } from "./surface-worth";
 
 export type ExpectedValue = {
   readonly score: number;

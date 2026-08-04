@@ -228,3 +228,89 @@ export const getFindingOutputSchema = z.object({
   evidence: z.array(findingEvidenceSchema).min(1).max(FINDING_EVIDENCE_MAX_ITEMS).readonly(),
 });
 export type GetFindingOutput = z.infer<typeof getFindingOutputSchema>;
+
+export const GROWTH_CONTEXT_MAX_ITEMS = 10;
+
+export const getGrowthContextInputSchema = z.object({
+  surface: z.string().min(1).max(512).optional(),
+
+  projectId: mcpIdSchema.optional(),
+});
+export type GetGrowthContextInput = z.infer<typeof getGrowthContextInputSchema>;
+
+export const surfaceNoteSchema = z.object({
+  surface: z.string().min(1),
+
+  matters: z.string().min(1),
+
+  confirmedByAPerson: z.boolean(),
+});
+export type SurfaceNote = z.infer<typeof surfaceNoteSchema>;
+
+export const changeableSchema = z.object({
+  allowed: z.boolean(),
+
+  reason: z.string().min(1).nullable(),
+});
+export type Changeable = z.infer<typeof changeableSchema>;
+
+export const knownProblemSchema = z.object({
+  findingId: mcpIdSchema,
+
+  fixId: mcpIdSchema.nullable(),
+  headline: z.string().min(1),
+  affected: mcpMeasuredCountSchema,
+  lastSeenAt: mcpTimestampSchema,
+});
+export type KnownProblem = z.infer<typeof knownProblemSchema>;
+
+export const declinedIdeaSchema = z.object({
+  headline: z.string().min(1),
+  declinedAt: mcpTimestampSchema,
+});
+export type DeclinedIdea = z.infer<typeof declinedIdeaSchema>;
+
+export const getGrowthContextOutputSchema = z
+  .object({
+    projectId: mcpIdSchema,
+
+    surface: z.string().min(1).nullable(),
+
+    changeable: changeableSchema.nullable(),
+
+    whatMatters: z.array(surfaceNoteSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
+
+    knownProblems: z.array(knownProblemSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
+
+    declined: z.array(declinedIdeaSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
+
+    nothingKnownYet: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.surface === null && value.changeable !== null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changeable"],
+        message: "a changeable verdict answers one page, so it needs one page to have been named",
+      });
+    }
+
+    if (value.surface !== null && value.changeable === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["changeable"],
+        message: "a named page must carry whether it may be changed",
+      });
+    }
+
+    const known =
+      value.whatMatters.length > 0 || value.knownProblems.length > 0 || value.declined.length > 0;
+    if (value.nothingKnownYet && known) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["nothingKnownYet"],
+        message: "nothingKnownYet may not be true alongside something known",
+      });
+    }
+  });
+export type GetGrowthContextOutput = z.infer<typeof getGrowthContextOutputSchema>;

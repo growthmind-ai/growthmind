@@ -93,7 +93,7 @@ describe("WIRE-S2 — callTool takes the credential separately and reads the org
   const CREDENTIAL_ORG = "org-from-the-credential";
   const FOREIGN_ORG = "org-from-the-request";
 
-  test("asks the read port only about the credential's organization, on all three tools", async () => {
+  test("asks the read port only about the credential's organization, on all four tools", async () => {
     const spy = fakeReadPort();
     const credential: McpCredential = credentialFor(CREDENTIAL_ORG);
 
@@ -111,7 +111,19 @@ describe("WIRE-S2 — callTool takes the credential separately and reads the org
       credential,
     );
 
-    expect(spy.organizationsAsked).toEqual([CREDENTIAL_ORG, CREDENTIAL_ORG, CREDENTIAL_ORG]);
+    await callTool(
+      MCP_TOOL.GET_GROWTH_CONTEXT,
+      { organizationId: FOREIGN_ORG, surface: "/checkout" },
+      spy.port,
+      credential,
+    );
+
+    expect(spy.organizationsAsked).toEqual([
+      CREDENTIAL_ORG,
+      CREDENTIAL_ORG,
+      CREDENTIAL_ORG,
+      CREDENTIAL_ORG,
+    ]);
   });
 });
 

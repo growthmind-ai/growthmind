@@ -1,8 +1,8 @@
-import { isNormalisedUrlPath } from "@growthmind/shared";
+import { isNormalisedUrlPath, surfaceRoleSchema, worthBasisSchema } from "@growthmind/shared";
 import { z } from "zod";
 
 import { EMPTY_PROPOSAL_SCOPE, type ProposalScope } from "./proposable";
-import { surfaceRoleSchema, surfaceWorth, unknownWorth, worthBasisSchema } from "./surface-worth";
+import { surfaceWorth, unknownWorth } from "./surface-worth";
 import type { SurfaceWorth } from "./surface-worth";
 
 export const ROLED_SURFACE_LIMIT = 200;

@@ -170,9 +170,14 @@ describe("WIRE-W8 — two identical tool calls produce two identical answers and
     expect(spy.organizationsAsked).toEqual([ORG_A, ORG_A]);
   });
 
-  test("the only port the surface has is the read port, and it has three read methods", () => {
+  test("the only port the surface has is the read port, and it has four read methods", () => {
     const { spy } = spyDeps();
 
-    expect(Object.keys(spy.port).toSorted()).toEqual(["getFinding", "getFix", "listOpenFixes"]);
+    expect(Object.keys(spy.port).toSorted()).toEqual([
+      "getFinding",
+      "getFix",
+      "getGrowthContext",
+      "listOpenFixes",
+    ]);
   });
 });

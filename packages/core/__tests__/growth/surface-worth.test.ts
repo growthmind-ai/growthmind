@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import { SURFACE_ROLES } from "@growthmind/shared";
+
 import {
-  SURFACE_ROLES,
   UNWEIGHTED,
   WORTH_WEIGHT_VERSION,
   isSurfaceWorth,

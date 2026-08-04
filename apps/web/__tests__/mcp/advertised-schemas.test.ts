@@ -117,7 +117,7 @@ function advertisedNames(ad: Advertisement): readonly string[] {
 }
 
 describe("WIRE-J1 — every tool advertises an input schema that is a JSON Schema object and never null", () => {
-  test("should advertise a non-null object with a type of object for each of the three tools", async () => {
+  test("should advertise a non-null object with a type of object for each of the four tools", async () => {
     const ad = await readAdvertisement();
 
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
@@ -183,14 +183,14 @@ describe("WIRE-J3 — no advertised schema carries the standard-schema key", () 
 });
 
 describe("WIRE-J4 — registering every tool with its shared Zod schemas does not throw", () => {
-  test("should build the handler, register all three tools with both schemas, and answer tools/list", async () => {
+  test("should build the handler, register all four tools with both schemas, and answer tools/list", async () => {
     const ad = await readAdvertisement();
 
     expect(ad.status).toBe(200);
     expect(ad.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
     expect(ad.body).not.toContain(UNAVAILABLE.message);
 
-    expect(ad.tools).toHaveLength(3);
+    expect(ad.tools).toHaveLength(4);
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 
     for (const tool of ad.tools) {
@@ -206,7 +206,7 @@ describe("WIRE-J5 — the advertised dialect is draft 2020-12 and needs no conve
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 
     const documents = everyDocument(ad);
-    expect(documents).toHaveLength(6);
+    expect(documents).toHaveLength(8);
 
     for (const document of documents) {
       expect(document).not.toBeNull();
@@ -216,7 +216,7 @@ describe("WIRE-J5 — the advertised dialect is draft 2020-12 and needs no conve
 });
 
 describe("WIRE-J6 — every tool advertises an output schema the client can validate against", () => {
-  test("should advertise a non-null object output schema with an object root for all three tools", async () => {
+  test("should advertise a non-null object output schema with an object root for all four tools", async () => {
     const ad = await readAdvertisement();
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 

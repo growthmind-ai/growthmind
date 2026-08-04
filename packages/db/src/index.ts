@@ -252,3 +252,13 @@ export {
   type GrowthContextRow,
   type SaveGrowthContextInput,
 } from "./repositories/growth-context.repo";
+export {
+  createGrowthContextService,
+  GROWTH_CONTEXT_ITEM_LIMIT,
+  type GrowthContextService,
+  type GrowthContextReadModel,
+  type ReadGrowthContextInput,
+  type RoledSurfaceNote,
+  type KnownProblemRow,
+  type DeclinedIdeaRow,
+} from "./services/growth-context.service";

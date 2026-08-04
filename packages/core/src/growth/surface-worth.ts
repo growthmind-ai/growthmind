@@ -1,19 +1,13 @@
-import { isNormalisedUrlPath } from "@growthmind/shared";
+import {
+  isNormalisedUrlPath,
+  surfaceRoleSchema,
+  worthBasisSchema,
+  type SurfaceRole,
+  type WorthBasis,
+} from "@growthmind/shared";
 import { z } from "zod";
 
 const STATED: unique symbol = Symbol("growthmind.stated-worth");
-
-export const SURFACE_ROLES = [
-  "makes_money",
-  "first_value",
-  "leads_to_money",
-  "keeps_people",
-  "unknown",
-] as const;
-
-export type SurfaceRole = (typeof SURFACE_ROLES)[number];
-
-export const surfaceRoleSchema = z.enum(SURFACE_ROLES);
 
 export const WORTH_WEIGHT_VERSION = 1;
 
@@ -28,16 +22,6 @@ const WEIGHT_BY_ROLE: Record<SurfaceRole, number> = {
 };
 
 export const UNWEIGHTED = WEIGHT_BY_ROLE.unknown;
-
-export const WORTH_BASES = [
-  "stated_by_customer",
-  "derived_from_product",
-  "observed_from_behaviour",
-] as const;
-
-export type WorthBasis = (typeof WORTH_BASES)[number];
-
-export const worthBasisSchema = z.enum(WORTH_BASES);
 
 export type SurfaceWorth = {
   readonly surface: string;
