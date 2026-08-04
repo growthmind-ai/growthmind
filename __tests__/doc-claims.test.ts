@@ -47,6 +47,12 @@ function brokenLinksIn(file: string): string[] {
   return broken;
 }
 
+// `\s+` rather than a literal space: both sentences wrap mid-phrase in the
+// document, so a single-space needle reads the file and matches nothing.
+const GET_STARTED_NO_KEY_SCREEN = /no key-management\s+screen/i;
+
+const GET_STARTED_NO_FINDINGS_TABLE = /no table\s+of\s+findings/i;
+
 /**
  * Claims the repository can check about itself. Each is a sentence a reader would
  * act on, paired with the condition that makes it true. Entries under `.ai/` are
@@ -81,6 +87,19 @@ const CLAIMS: readonly {
     claim: /No skills directory exists here today/i,
     holdsWhen: () => !existsSync(`${ROOT}/skills`),
     because: "a skills/ directory now exists",
+  },
+  {
+    file: "docs/get-started.md",
+    claim: GET_STARTED_NO_KEY_SCREEN,
+    holdsWhen: () => !existsSync(`${ROOT}/apps/web/app/api/first-run/agent/key/route.ts`),
+    because:
+      "apps/web/app/api/first-run/agent/key/route.ts exists — /first-run mints a key in the browser",
+  },
+  {
+    file: "docs/get-started.md",
+    claim: GET_STARTED_NO_FINDINGS_TABLE,
+    holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),
+    because: "packages/db/src/schema/fixes.ts exists — the tools have read real rows since O-020",
   },
   {
     file: ".ai/decisions/0007-mcp-route-surface.md",
@@ -132,5 +151,21 @@ describe("documentation claims", () => {
   test("the ledger bites — a claim present with its condition false is reported", () => {
     const planted = { claim: /Growthmind/, holdsWhen: (): boolean => false };
     expect(planted.claim.test(read("README.md")) && !planted.holdsWhen()).toBe(true);
+  });
+
+  test("the two get-started needles survive the line wrap that hides them from a literal space", () => {
+    const keyScreen =
+      "This surface reads with a key you mint yourself. There is no key-management\nscreen yet, it is one command, run from the repo root";
+    expect(GET_STARTED_NO_KEY_SCREEN.test(keyScreen)).toBe(true);
+    expect(/no key-management screen/i.test(keyScreen)).toBe(false);
+
+    const findingsTable =
+      "There is no table of findings behind these tools yet. That is a\nseparate";
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test(findingsTable)).toBe(true);
+
+    expect(GET_STARTED_NO_KEY_SCREEN.test("the key screen lists every key")).toBe(false);
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test("a table of findings exists")).toBe(false);
+
+    expect(CLAIMS.filter((entry) => entry.file === "docs/get-started.md")).toHaveLength(2);
   });
 });

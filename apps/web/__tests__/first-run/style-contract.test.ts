@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  AGENT_PANEL,
+  AGENT_PANEL_BODY,
   blankComments,
+  COPYABLE_BLOCK,
   FINDING_CARD,
   FIRST_RUN_COMPONENTS,
   FIRST_RUN_CSS,
@@ -459,6 +462,35 @@ describe("styling, motion and announcement — B6, UX §5, ESC-O3", () => {
       file: card.file,
       statusContainers: 1,
     });
+  });
+
+  test("the multi-line copy primitive reaches the shared tap target, not its own 44", () => {
+    const carriers = readAll([COPYABLE_BLOCK, AGENT_PANEL_BODY, AGENT_PANEL]);
+
+    for (const scanned of carriers) {
+      const code = blankComments(scanned.source);
+
+      expect({ file: scanned.file, declaresItsOwn44: INLINE_TAP_TARGET.test(code) }).toEqual({
+        file: scanned.file,
+        declaresItsOwn44: false,
+      });
+    }
+
+    const block = readFirstRun(COPYABLE_BLOCK);
+    const blockCode = blankComments(block.source);
+
+    expect({ file: block.file, usesSharedTapTarget: blockCode.includes("tapTargetStyle") }).toEqual(
+      {
+        file: block.file,
+        usesSharedTapTarget: true,
+      },
+    );
+
+    expect(INTERACTIVE.test(blockCode)).toBe(true);
+
+    expect(offenders(carriers, HARDCODED_COLOUR)).toEqual([]);
+    expect(offenders(carriers, TRANSITION_ALL)).toEqual([]);
+    expect(offenders(carriers, JS_HOVER)).toEqual([]);
   });
 
   test("every interactive control meets the 44px tap target through the shared primitive", () => {

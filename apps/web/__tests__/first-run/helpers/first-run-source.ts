@@ -22,6 +22,8 @@ export interface FirstRunFile {
 const OWNER_7A = "ADD Wave 7a (frontend — the sequence, the forms, the receipt)";
 const OWNER_7B = "ADD Wave 7b (frontend — the client, the strip, the stage, the styles)";
 const OWNER_O024 = "ADD O-024 AD-8 (frontend — the chip machine, the chip row, the soon card)";
+const OWNER_O026 =
+  "ADD O-026 D-11/D-12 (frontend — the multi-line copy primitive and the agent panel trio)";
 
 const entry = (repoRelativePath: string, ownedBy: string): FirstRunFile => ({
   repoRelativePath,
@@ -51,6 +53,20 @@ export const SLACK_CONNECTION = entry("apps/web/components/slack/SlackConnection
 
 export const FINDING_CARD = entry("apps/web/components/first-run/FindingCard.tsx", OWNER_7B);
 
+export const COPYABLE_BLOCK = entry("apps/web/components/ui/CopyableBlock.tsx", OWNER_O026);
+
+export const AGENT_PANEL_STATE = entry(
+  "apps/web/components/first-run/agent-panel-state.ts",
+  OWNER_O026,
+);
+
+export const AGENT_PANEL_BODY = entry(
+  "apps/web/components/first-run/AgentPanelBody.tsx",
+  OWNER_O026,
+);
+
+export const AGENT_PANEL = entry("apps/web/components/first-run/AgentPanel.tsx", OWNER_O026);
+
 export const FIRST_RUN_CSS = entry("apps/web/components/first-run/first-run.module.css", OWNER_7B);
 
 export const FIRST_RUN_PAGE = entry("apps/web/app/(first-run)/first-run/page.tsx", OWNER_7A);
@@ -73,6 +89,10 @@ export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
   STAGE,
   WAIT_LOG,
   FINDING_CARD,
+  COPYABLE_BLOCK,
+  AGENT_PANEL_STATE,
+  AGENT_PANEL_BODY,
+  AGENT_PANEL,
 ];
 
 export const FIRST_RUN_ROUTE_FILES: readonly FirstRunFile[] = [
