@@ -5,7 +5,7 @@ import type { DetectorName, FindingClass } from "../rules/types";
 import { canonicalJson } from "../serialise/canonical-json";
 import type { CanonicalObject } from "../serialise/canonical-json";
 
-export const EVIDENCE_SHAPE_VERSION = 1;
+export const EVIDENCE_SHAPE_VERSION = 2;
 
 export type EvidenceShapeInput = {
   readonly detector: DetectorName;
@@ -23,6 +23,7 @@ export type EvidenceShapeSerialiser = (input: EvidenceShapeInput) => string;
 
 export const EVIDENCE_SHAPE_SERIALISERS: ReadonlyMap<number, EvidenceShapeSerialiser> = new Map([
   [1, serialiseV1],
+  [2, serialiseV2],
 ]);
 
 function assertNormalisedSurface(surface: string): string {
@@ -43,6 +44,22 @@ function serialiseV1(input: EvidenceShapeInput): string {
     detector: input.detector,
     surface: assertNormalisedSurface(input.surface),
     surfaceNormalisationVersion: input.surfaceNormalisationVersion,
+    signalKinds: input.signals.map((signal) => signal.kind),
+    symptomClass: input.symptomClass,
+  };
+
+  return canonicalJson(shape);
+}
+
+// v2 drops `surfaceNormalisationVersion`. It is derived per-window from the events on the
+// surface and goes null the moment they disagree, so every surface walked 2 → null → 3 across
+// a normalisation rollout — three identities for one problem, with no code change (B-016).
+// The version stays on the candidate and on the findings row as provenance.
+function serialiseV2(input: EvidenceShapeInput): string {
+  const shape: CanonicalObject = {
+    v: 2,
+    detector: input.detector,
+    surface: assertNormalisedSurface(input.surface),
     signalKinds: input.signals.map((signal) => signal.kind),
     symptomClass: input.symptomClass,
   };

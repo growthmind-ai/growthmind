@@ -67,6 +67,10 @@ const GOLDEN_V1 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +
   '"surface":"/checkout","surfaceNormalisationVersion":2,"symptomClass":"broken","v":1}';
 
+const GOLDEN_V2 =
+  '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +
+  '"surface":"/checkout","symptomClass":"broken","v":2}';
+
 function withSurface(surface: string): EvidenceShapeInput {
   return {
     detector: "funnel_dropoff",
@@ -219,15 +223,20 @@ describe("evidenceShape — versioning forks deliberately", () => {
       symptomClass: "broken",
     };
 
-    expect(EVIDENCE_SHAPE_VERSION).toBe(1);
+    expect(EVIDENCE_SHAPE_VERSION).toBe(2);
     expect(evidenceShape(candidate, 1)).toContain('"v":1');
+    expect(evidenceShape(candidate, 2)).toContain('"v":2');
 
-    const v1 = EVIDENCE_SHAPE_SERIALISERS.get(EVIDENCE_SHAPE_VERSION);
-    expect(v1).toBeDefined();
-    expect(v1?.(candidate)).toBe(GOLDEN_V1);
-    expect(v1?.(candidate)).toBe(evidenceShape(candidate, 1));
+    const current = EVIDENCE_SHAPE_SERIALISERS.get(EVIDENCE_SHAPE_VERSION);
+    expect(current).toBeDefined();
+    expect(current?.(candidate)).toBe(GOLDEN_V2);
+    expect(current?.(candidate)).toBe(evidenceShape(candidate, EVIDENCE_SHAPE_VERSION));
 
-    expect(() => evidenceShape(candidate, 2)).toThrow(/version/i);
+    // The retired serialiser stays reachable by its own number, and only by its own number.
+    expect(EVIDENCE_SHAPE_SERIALISERS.get(1)?.(candidate)).toBe(GOLDEN_V1);
+    expect(evidenceShape(candidate, 1)).not.toBe(evidenceShape(candidate, 2));
+
+    expect(() => evidenceShape(candidate, 3)).toThrow(/version/i);
   });
 });
 
@@ -276,39 +285,52 @@ describe("evidenceShape — un-normalised paths are refused (security, PII)", ()
   });
 });
 
-describe("evidenceShape — surfaceNormalisationVersion is part of identity", () => {
-  test("should carry surfaceNormalisationVersion so a normalisation change is detectable rather than a silent fork", () => {
-    const atVersion = (surfaceNormalisationVersion: number | null): EvidenceShapeInput => ({
-      detector: "funnel_dropoff",
-      surface: normalisedSurface("/checkout"),
-      surfaceNormalisationVersion,
-      signals: [
-        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
-        struggleSignal({
-          subkind: "repeated_attempt",
-          surface: "/checkout",
-          attempts: 3,
-          strugglingSessions: 3,
-          kept: 10,
-        }),
-      ],
-      symptomClass: "broken",
-    });
+describe("evidenceShape — surfaceNormalisationVersion is provenance, not identity (B-016)", () => {
+  const atVersion = (surfaceNormalisationVersion: number | null): EvidenceShapeInput => ({
+    detector: "funnel_dropoff",
+    surface: normalisedSurface("/checkout"),
+    surfaceNormalisationVersion,
+    signals: [
+      correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
+      struggleSignal({
+        subkind: "repeated_attempt",
+        surface: "/checkout",
+        attempts: 3,
+        strugglingSessions: 3,
+        kept: 10,
+      }),
+    ],
+    symptomClass: "broken",
+  });
 
-    const underV1Rules = evidenceShape(atVersion(1), 1);
-    const underCurrentRules = evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION), 1);
+  test("should hold one identity across the whole 2 → null → 3 rollout walk", () => {
+    // The walk a real surface takes across a URL_PATH_NORMALISATION_VERSION bump: unanimous on
+    // the old version, then null while the window straddles the boundary and the events on the
+    // surface disagree, then unanimous on the new one. Under v1 that was three identities.
+    const before = evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION), 2);
+    const midRollout = evidenceShape(atVersion(null), 2);
+    const after = evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION + 1), 2);
 
-    const unversionedLegacyRow = evidenceShape(atVersion(null), 1);
+    expect(before).toBe(GOLDEN_V2);
+    expect(midRollout).toBe(before);
+    expect(after).toBe(before);
 
-    expect(underCurrentRules).toBe(GOLDEN_V1);
-    expect(underV1Rules).not.toBe(underCurrentRules);
-    expect(unversionedLegacyRow).not.toBe(underV1Rules);
-    expect(unversionedLegacyRow).not.toBe(underCurrentRules);
+    expect(before).not.toContain("surfaceNormalisationVersion");
+  });
 
-    expect(underCurrentRules).toContain(
-      `"surfaceNormalisationVersion":${URL_PATH_NORMALISATION_VERSION}`,
+  test("should not collide the mid-rollout null with the legacy pre-versioning null", () => {
+    // The second half of the fork: `null` meant both "the window straddles a bump" and "written
+    // before versions were recorded". Neither is in the identity now, so neither can collide.
+    expect(evidenceShape(atVersion(null), 2)).toBe(
+      evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION), 2),
     );
-    expect(underV1Rules).toContain('"surfaceNormalisationVersion":1');
-    expect(unversionedLegacyRow).toContain('"surfaceNormalisationVersion":null');
+  });
+
+  test("should still reproduce the v1 string for a row written under v1", () => {
+    // A stored v1 shape must keep recomputing to itself, or every guarantee hanging off it
+    // detaches silently — the failure `evidenceShape` refuses by construction.
+    expect(evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION), 1)).toBe(GOLDEN_V1);
+    expect(evidenceShape(atVersion(1), 1)).toContain('"surfaceNormalisationVersion":1');
+    expect(evidenceShape(atVersion(null), 1)).toContain('"surfaceNormalisationVersion":null');
   });
 });
