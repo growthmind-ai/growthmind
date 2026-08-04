@@ -8,6 +8,7 @@ import {
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -411,14 +412,15 @@ describe("get_growth_context and get_fix over real rows, driven through POST /ap
     org: LiveOrg,
     input: { readonly surface: string; readonly headline: string },
   ): Promise<string> {
+    const text = scannedTextFor(input.headline, ["One line of context, never a blob."]);
     const record = await createFindingsRepo(handle.db, org.ctx).persist({
       projectId: org.projectId,
       runId: org.runId,
       signature: randomUUID(),
       signatureVersion: 1,
       summarySource: "model_rendered",
-      headline: input.headline,
-      context: ["One line of context, never a blob."],
+      headline: text.headline,
+      context: text.context,
       finalClass: "confusing",
       surface: input.surface,
       surfaceNormalisationVersion: 1,

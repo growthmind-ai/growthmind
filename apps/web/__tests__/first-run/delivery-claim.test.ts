@@ -18,7 +18,7 @@ import {
   type MeasuredCountRow,
   type ScopedDb,
 } from "@growthmind/db";
-import { driverQueryError, seedAnalysisRun } from "@growthmind/db/testing";
+import { driverQueryError, scannedTextFor, seedAnalysisRun } from "@growthmind/db/testing";
 import {
   DELIVERY_LANE_FAILURE_CLAUSE,
   deliveryFailureSentence,
@@ -265,6 +265,10 @@ async function projectOf(scope: SeededMemberScope): Promise<string> {
   return projectId;
 }
 
+const CLEAN_TEXT = scannedTextFor("Checkout drops after the address step", [
+  "One line of context, never a blob.",
+]);
+
 async function seedFinding(scope: SeededMemberScope, projectId: string): Promise<string> {
   const run = await seedAnalysisRun(bed.db, { ctx: scope.ctx, projectId });
   const repo = createFindingsRepo(bed.db, scope.ctx);
@@ -275,8 +279,8 @@ async function seedFinding(scope: SeededMemberScope, projectId: string): Promise
     signature: randomUUID(),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "Checkout drops after the address step",
-    context: ["One line of context, never a blob."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "funnel_dropoff",
     surface: "/checkout",
     surfaceNormalisationVersion: 1,

@@ -16,6 +16,7 @@ import {
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -53,6 +54,10 @@ const KEPT = 25;
 const EVENT_NAME = "checkout_payment_failed";
 
 const CONTEXT_MARKER = "a sentence only this finding's narrative carries";
+
+const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
+  CONTEXT_MARKER,
+]);
 
 // An address the residual scanner classifies as `email_address`, distinctive enough that
 // finding it anywhere downstream can only be this row's persisted text.
@@ -169,8 +174,8 @@ async function seedFinding(org: SeededOrg, surface: string): Promise<FindingReco
     signature: digestFor(`${org.label}${surface}`),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the reports page without going any further.",
-    context: [CONTEXT_MARKER],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface,
     surfaceNormalisationVersion: 1,
@@ -403,7 +408,10 @@ describe("the MCP route reading real rows", () => {
     expect(answer.text).toBe(NOT_FOUND.message);
     expect(answer.body).not.toContain(UNAVAILABLE.message);
 
-    for (const sentence of finding.context) {
+    const text = finding.text;
+    if (text.held) throw new Error("the seeded finding is the clean control and must not hold");
+
+    for (const sentence of text.context) {
       expect(answer.body).not.toContain(sentence);
     }
     expect(answer.body).not.toContain(CONTEXT_MARKER);

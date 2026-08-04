@@ -24,7 +24,7 @@ import {
   dotStrictControl,
   CONTROL_VALID_BODY,
 } from "../../../../../packages/shared/__tests__/onboarding/probes/strict-zod-fixtures";
-import { seedAnalysisRun, seedConnection } from "@growthmind/db/testing";
+import { scannedTextFor, seedAnalysisRun, seedConnection } from "@growthmind/db/testing";
 import {
   FIRST_RUN_API_DIR,
   FIRST_RUN_ROUTES,
@@ -155,14 +155,15 @@ async function seedFinding(
 ): Promise<void> {
   const run = await seedAnalysisRun(bed.db, { ctx: scope.ctx, projectId });
   const repo = createFindingsRepo(bed.db, scope.ctx);
+  const text = scannedTextFor(overrides.headline, ["One line of context, never a blob."]);
   await repo.persist({
     projectId,
     runId: run.id,
     signature: randomUUID(),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: overrides.headline,
-    context: ["One line of context, never a blob."],
+    headline: text.headline,
+    context: text.context,
     finalClass: "funnel_dropoff",
     surface: "/checkout",
     surfaceNormalisationVersion: 1,

@@ -174,6 +174,14 @@ describe("finding text reaches no reader outside the residual-PII gate", () => {
     const declaring = files.filter((file) => file.startsWith(SCHEMA_DIR));
     expect(declaring).toContain(`${SCHEMA_MODULE}.ts`);
 
+    // The exclusion has to hide real importers — the sibling tables' foreign keys — or it
+    // is inert, and the equality below would be pinning a set nothing was ever kept out of.
+    const hidden = declaring.filter(importsSchemaFindings);
+    expect({ excluded: SCHEMA_DIR, hides: hidden.length > 0 }).toEqual({
+      excluded: SCHEMA_DIR,
+      hides: true,
+    });
+
     const importers = files.filter(
       (file) => !file.startsWith(SCHEMA_DIR) && importsSchemaFindings(file),
     );

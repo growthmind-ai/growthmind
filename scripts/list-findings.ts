@@ -12,6 +12,8 @@ import {
   createFindingsRepo,
   createFixesRepo,
   createProjectsRepo,
+  describeHold,
+  type FindingText,
   type ScopedDb,
 } from "../packages/db/src/index";
 import {
@@ -81,18 +83,22 @@ export function parseArguments(argv: readonly string[]): Arguments {
 export interface FindingLine {
   readonly findingId: string;
   readonly foundAt: Date;
-  readonly headline: string;
+  readonly text: FindingText;
   readonly surface: string;
   readonly mintable: boolean;
   readonly fixId: string | null;
 }
+
+// Names no cause and echoes nothing. The row keeps its other lines, so the count of rows
+// printed is unchanged and there is no total to correct.
+const WITHHELD_LINE = "(the written explanation for this one is not shown here)";
 
 export function describeFinding(line: FindingLine): readonly string[] {
   const state = line.fixId !== null ? `fix ${line.fixId}` : line.mintable ? "ready" : "no detail";
 
   return [
     `${line.findingId}   ${line.foundAt.toISOString().slice(0, 16).replace("T", " ")}   ${state}`,
-    `  ${line.headline}`,
+    `  ${line.text.held ? WITHHELD_LINE : line.text.headline}`,
     `  on ${line.surface}`,
   ];
 }
@@ -137,10 +143,19 @@ export async function listFindings(
         fixes.findForFinding(finding.id),
       ]);
 
+      // stderr, so `2>/dev/null` leaves a report an operator can paste into a ticket while
+      // the person debugging the hold still has the kind.
+      if (finding.text.held) {
+        const hold = describeHold(finding.text);
+        process.stderr.write(
+          `finding ${finding.id}: its written text is held (${hold.reason}/${String(hold.kind)}), so the line below it is a placeholder\n`,
+        );
+      }
+
       collected.push({
         findingId: finding.id,
         foundAt: finding.createdAt,
-        headline: finding.headline,
+        text: finding.text,
         surface: finding.surface,
         mintable: payload !== null,
         fixId: fix?.id ?? null,

@@ -10,6 +10,7 @@ import {
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -34,6 +35,10 @@ import { candidateFor } from "../mcp/helpers/mcp-fixture";
 const INTERACTIVITY_URL = "http://localhost:3000/api/slack/interactivity";
 
 const SIGNING_SECRET = "slack-fixture-signing-secret-never-real";
+
+const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
+  "We saw sessions reach the reports page and stop there.",
+]);
 
 const SIGNATURE_VERSION = "v0";
 
@@ -107,8 +112,8 @@ async function freshOrg(): Promise<SeededOrg> {
     signature,
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the reports page without going any further.",
-    context: ["We saw sessions reach the reports page and stop there."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface: `/${label}/reports`,
     surfaceNormalisationVersion: 1,
