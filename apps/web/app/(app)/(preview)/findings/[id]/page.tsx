@@ -8,11 +8,15 @@ import { AnnotatedTranscript } from "@/components/findings/AnnotatedTranscript";
 import { FindingActions } from "@/components/preview/FindingActions";
 import { CopyBlock } from "@/components/ui/CopyBlock";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { AnchorLink } from "@/components/ui/Links";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { PageHeader } from "@/components/ui/Page";
+import { PageHeader, RuledRow } from "@/components/ui/Page";
 import { pickSession, readEvidence } from "@/lib/preview/findings";
+import { readFixForFinding, readVerdictForFinding } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath } from "@/lib/preview/tabs";
+import { experimentPath, findingPath, fixPath } from "@/lib/paths";
+import { outcomeWordOf } from "@/lib/preview/summaries";
+import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +25,7 @@ interface PageProps {
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function EvidencePage({ params, searchParams }: PageProps) {
+export default async function FindingPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const record = readEvidence(id);
   if (record === null) notFound();
@@ -30,12 +34,41 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
   const session = pickSession(record, typeof requested === "string" ? requested : undefined);
   const state = await readPreviewState();
 
+  // The trail this finding left. Evidence used to be a tab beside the fix and the verdict,
+  // which made one thing look like three; they are the same thing at three ages.
+  const fix = readFixForFinding(record.id);
+  const verdict = readVerdictForFinding(record.id);
+
   return (
     <Stack gap="lg">
       <PageHeader title={record.headline}>
         {record.countLine}
         {record.withheld ? "" : " · one person's session below"}
       </PageHeader>
+
+      {fix === null && verdict === null ? null : (
+        <Stack gap={0}>
+          <Eyebrow pb={4}>What happened next</Eyebrow>
+          {fix === null ? null : (
+            <RuledRow lead={<Text c="dimmed">Fix</Text>} leadWidth={90}>
+              <AnchorLink href={fixPath(record.id)}>{fix.title}</AnchorLink>
+              <Text size="sm" c="dimmed">
+                Sent to {fix.dispatchedTo} on {fix.dispatchedOn} · reads out {fix.readoutDue}
+              </Text>
+            </RuledRow>
+          )}
+          {verdict === null ? null : (
+            <RuledRow lead={<Text c="dimmed">Verdict</Text>} leadWidth={90}>
+              <AnchorLink href={experimentPath(record.id)}>
+                {outcomeWordOf(verdict.verdict)} — {verdict.title}
+              </AnchorLink>
+              <Text size="sm" c="dimmed">
+                {verdict.measuredOn}: {verdict.measurement}
+              </Text>
+            </RuledRow>
+          )}
+        </Stack>
+      )}
 
       {record.sessions.length <= 1 ? null : (
         <Group gap="xs">
@@ -44,7 +77,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
                server component, and a function cannot cross into a client one as a prop. */
             <Link
               key={entry.id}
-              href={`${evidencePath(record.id)}?session=${entry.id}`}
+              href={`${findingPath(record.id)}?session=${entry.id}`}
               style={{ textDecoration: "none" }}
             >
               <Badge
@@ -149,7 +182,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
       </Group>
 
       <Text size="sm">
-        <Link href="/seen">← Back to everything we&apos;ve seen</Link>
+        <Link href={ROUTES.findings}>← All findings</Link>
       </Text>
     </Stack>
   );

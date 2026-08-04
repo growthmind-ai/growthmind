@@ -75,8 +75,8 @@ const CONNECTED: SlackCardFacts = {
 
 const ADD_TO_SLACK = /\badd\b[\s\S]{0,32}?\bto slack\b/i;
 
-const SETTINGS_PAGE = "apps/web/app/settings/page.tsx";
-const LANDING_PAGE = "apps/web/app/page.tsx";
+const SETTINGS_PAGE = "apps/web/app/(app)/settings/page.tsx";
+const LANDING_PAGE = "apps/web/app/(app)/page.tsx";
 const SETTLED_PANEL = "apps/web/components/landing/settled-panel.tsx";
 
 const settingsSource = (): string => blankComments(readExisting(SETTINGS_PAGE).source);

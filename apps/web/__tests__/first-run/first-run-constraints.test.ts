@@ -29,7 +29,7 @@ const EXEMPT: readonly { readonly path: RegExp; readonly why: string }[] = [
   { path: /^apps\/web\/app\/api\/first-run\//, why: "the surface's own routes (AD-16)" },
   { path: /^apps\/web\/lib\/first-run\//, why: "the surface's own boundary helpers" },
   {
-    path: /^apps\/web\/app\/page\.tsx$/,
+    path: /^apps\/web\/app\/\(app\)\/page\.tsx$/,
     why: "THE ONE SANCTIONED LINK — the dismissal-gated CTA (FR-O2, AD-17). Row 3 proves the gate",
   },
 ];
@@ -191,7 +191,9 @@ describe("deviation 1 — the surface nothing links back to (FR-O21, AC-O26)", (
     );
     expect(unsanctionedLinks([asSurfaceFile])).toEqual([]);
 
-    expect(unsanctionedLinks([fixtureAt("apps/web/app/page.tsx", PLANTED_NAV.source)])).toEqual([]);
+    expect(
+      unsanctionedLinks([fixtureAt("apps/web/app/(app)/page.tsx", PLANTED_NAV.source)]),
+    ).toEqual([]);
 
     for (const { why } of EXEMPT) expect(why.trim().length).toBeGreaterThan(0);
 

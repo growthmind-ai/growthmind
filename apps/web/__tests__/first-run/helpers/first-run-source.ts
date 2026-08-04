@@ -71,7 +71,7 @@ export const FIRST_RUN_CSS = entry("apps/web/components/first-run/first-run.modu
 
 export const FIRST_RUN_PAGE = entry("apps/web/app/(first-run)/first-run/page.tsx", OWNER_7A);
 
-export const LANDING_PAGE = entry("apps/web/app/page.tsx", OWNER_7A);
+export const LANDING_PAGE = entry("apps/web/app/(app)/page.tsx", OWNER_7A);
 
 export const FIRST_RUN_COMPONENTS: readonly FirstRunFile[] = [
   CHIP_STATE,
