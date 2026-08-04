@@ -82,6 +82,18 @@ export const ICP_BELIEF_HEADINGS: Record<IcpBeliefKind, string> = {
   what_they_are_trying_to_do: "What they are trying to do",
 };
 
+export const BELIEF_CORRECT_ACTION = "Change";
+
+export const BELIEF_REMOVE_ACTION = "Not true of us";
+
+export const BELIEF_SAVE_ACTION = "Save";
+
+export const BELIEF_CANCEL_ACTION = "Cancel";
+
+export const BELIEF_CORRECTED_NOTE = "You corrected this";
+
+export const BELIEF_EDIT_LABEL = "What is true instead";
+
 export const ALL_GROWTH_MESSAGES: readonly string[] = [
   ...Object.values(SURFACE_ROLE_NOTES),
   NOTHING_KNOWN_YET_NOTE,
@@ -107,4 +119,10 @@ export const ALL_GROWTH_MESSAGES: readonly string[] = [
   SITE_READ_FROM,
   SITE_TOLD_TO_US,
   ...Object.values(ICP_BELIEF_HEADINGS),
+  BELIEF_CORRECT_ACTION,
+  BELIEF_REMOVE_ACTION,
+  BELIEF_SAVE_ACTION,
+  BELIEF_CANCEL_ACTION,
+  BELIEF_CORRECTED_NOTE,
+  BELIEF_EDIT_LABEL,
 ];

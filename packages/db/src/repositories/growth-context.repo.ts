@@ -9,6 +9,7 @@ import {
   URL_PATH_NORMALISATION_VERSION,
   icpModelSchema,
   logger,
+  type IcpBeliefKind,
   type IcpModel,
   type ResearchStatus,
   type SurfaceRole,
@@ -46,6 +47,19 @@ export interface SiteResearchRow {
   readonly researchStatus: ResearchStatus;
   readonly researchedAt: Date | null;
   readonly researchFailure: string | null;
+}
+
+export interface CorrectBeliefInput {
+  readonly projectId: string;
+  readonly kind: IcpBeliefKind;
+
+  // The statement being replaced, as the person saw it.
+  readonly was: string;
+
+  // Null removes the belief outright: a claim that is simply untrue of this product is
+  // worth less than no claim.
+  readonly statement: string | null;
+  readonly statedAt: Date;
 }
 
 export interface GrowthContextSnapshot {
@@ -87,6 +101,11 @@ export interface GrowthContextRepo {
   recordResearch(input: { projectId: string; icp: IcpModel; researchedAt: Date }): Promise<void>;
 
   recordResearchFailure(input: { projectId: string; failure: string }): Promise<void>;
+
+  // A person disagreeing with a belief. `statement: null` removes it. Either way the row is
+  // re-read and re-merged here, because the browser's copy predates whatever the last read
+  // wrote. Returns false when the belief being corrected is no longer there.
+  correctBelief(input: CorrectBeliefInput): Promise<boolean>;
 
   // One page, stated by a person. A whole-list write from a page loaded before last night's
   // run would revert everything that run added, so the merge happens here against the row as
@@ -214,6 +233,46 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
     // pages at the same moment would each write the other's stale value back and one answer
     // would vanish with nothing said. Every attempt re-reads and re-merges against the row
     // as it is now, and only writes if it has not moved since.
+    async correctBelief(input: CorrectBeliefInput): Promise<boolean> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      const current = await this.readSiteResearch(input.projectId);
+      if (current === null) return false;
+
+      const target = current.icp.beliefs.find(
+        (belief) => belief.kind === input.kind && belief.statement === input.was,
+      );
+      if (target === undefined) return false;
+
+      const others = current.icp.beliefs.filter((belief) => belief !== target);
+
+      const beliefs =
+        input.statement === null
+          ? others
+          : [
+              ...others,
+              {
+                kind: input.kind,
+                statement: input.statement,
+                // A correction is the highest-signal row in the table, so it keeps what it
+                // replaced rather than overwriting it into silence.
+                correctedFrom: target.correctedFrom ?? target.statement,
+                provenance: {
+                  source: "stated_by_customer" as const,
+                  at: input.statedAt,
+                  citation: null,
+                },
+              },
+            ];
+
+      await db
+        .update(growthContext)
+        .set({ icp: { beliefs }, updatedAt: new Date() })
+        .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
+
+      return true;
+    },
+
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 

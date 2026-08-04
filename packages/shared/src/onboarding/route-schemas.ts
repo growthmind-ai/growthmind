@@ -2,6 +2,7 @@
 // (WIRE-Z1). Every one is `z.strictObject`: a plain `z.object` strips a tenancy key and 200s.
 import { z } from "zod";
 
+import { ICP_STATEMENT_MAX, icpBeliefKindSchema } from "../growth/icp";
 import { surfaceRoleSchema } from "../growth/types";
 
 export const firstRunStatusInputSchema = z.strictObject({});
@@ -74,3 +75,13 @@ export const settingsSiteInputSchema = z.strictObject({
   domain: z.string().min(1).max(253),
 });
 export type SettingsSiteInput = z.infer<typeof settingsSiteInputSchema>;
+
+export const settingsBeliefInputSchema = z.strictObject({
+  kind: icpBeliefKindSchema,
+
+  was: z.string().min(1).max(ICP_STATEMENT_MAX),
+
+  // Null removes the belief.
+  statement: z.string().min(1).max(ICP_STATEMENT_MAX).nullable(),
+});
+export type SettingsBeliefInput = z.infer<typeof settingsBeliefInputSchema>;
