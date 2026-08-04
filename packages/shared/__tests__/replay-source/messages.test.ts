@@ -72,14 +72,16 @@ describe("failure code coverage", () => {
   test("REPLAY_FAILURE_MESSAGES covers exactly the six replay failure codes", () => {
     const codes = replayFailureCodeSchema.options;
     expect(codes.toSorted()).toEqual(
-      [
-        "invalid_credentials",
-        "missing_read_scope",
-        "recording_not_found",
-        "unreachable",
-        "rate_limited",
-        "misconfigured",
-      ].toSorted(),
+      (
+        [
+          "invalid_credentials",
+          "missing_read_scope",
+          "recording_not_found",
+          "unreachable",
+          "rate_limited",
+          "misconfigured",
+        ] as const
+      ).toSorted(),
     );
 
     expect(Object.keys(REPLAY_FAILURE_MESSAGES).toSorted()).toEqual(codes.toSorted());

@@ -59,14 +59,16 @@ describe("rrwebEventSchema", () => {
 describe("replayFailureCodeSchema", () => {
   test("its options are exactly the six documented failure codes, nothing more or fewer", () => {
     expect(replayFailureCodeSchema.options.toSorted()).toEqual(
-      [
-        "invalid_credentials",
-        "missing_read_scope",
-        "recording_not_found",
-        "unreachable",
-        "rate_limited",
-        "misconfigured",
-      ].toSorted(),
+      (
+        [
+          "invalid_credentials",
+          "missing_read_scope",
+          "recording_not_found",
+          "unreachable",
+          "rate_limited",
+          "misconfigured",
+        ] as const
+      ).toSorted(),
     );
   });
 
