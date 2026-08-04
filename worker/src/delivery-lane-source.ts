@@ -5,8 +5,10 @@ import {
   confidenceBasisSchema,
   deliveryClaimsExpireBefore,
   toMeasuredCount,
+  worthOf,
   type ConfidenceBasis,
   type CountRole,
+  type GrowthContext,
 } from "@growthmind/core";
 import type {
   DeliveryRecord,
@@ -18,6 +20,7 @@ import type {
 import {
   createDeliveriesRepo,
   createFindingsRepo,
+  createGrowthContextRepo,
   createProjectsRepo,
   describeDriverError,
   isDeliveryTarget,
@@ -116,7 +119,11 @@ function sampleSizeFor(counts: readonly MeasuredCountRow[]): {
   return { numerator: last.numerator, denominator: last.denominator };
 }
 
-function deliverableFor(finding: FindingRecord, logger: DeliveryLogger): DeliverableFinding | null {
+function deliverableFor(
+  finding: FindingRecord,
+  growth: GrowthContext | null,
+  logger: DeliveryLogger,
+): DeliverableFinding | null {
   if (!isSignatureHex(finding.signature)) {
     logger.error(
       `delivery lane source: finding ${finding.id} carries a signature that is not a digest, so it was held back`,
@@ -159,7 +166,14 @@ function deliverableFor(finding: FindingRecord, logger: DeliveryLogger): Deliver
     return null;
   }
 
-  return { findingId: finding.id, confidenceBasis, sampleSize, signature, message };
+  return {
+    findingId: finding.id,
+    confidenceBasis,
+    sampleSize,
+    signature,
+    message,
+    worth: worthOf(growth, finding.surface),
+  };
 }
 
 // `pending` means a tick is posting this right now — unless that tick died, in which case
@@ -198,6 +212,24 @@ export interface DeliveryLaneSourceDeps {
   readonly logger: DeliveryLogger;
 }
 
+// Ordering is not delivery. This read failing must cost the lane its weighting and nothing
+// else — inside the lane's own try it would cost the project every finding it was due.
+async function weightingFor(
+  deps: DeliveryLaneSourceDeps,
+  ctx: TenantContext,
+  projectId: string,
+): Promise<GrowthContext | null> {
+  try {
+    return await createGrowthContextRepo(deps.db, ctx).findForProject(projectId);
+  } catch (error) {
+    deps.logger.error(
+      `delivery lane source: project ${projectId} could not be weighted this tick, so its ` +
+        `findings are ordered as if nothing had been said about them — ${describeDriverError(error)}`,
+    );
+    return null;
+  }
+}
+
 export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): DeliveryLaneSource {
   // `null` means this project's turn failed (D8), never "nothing to send" — that is
   // a lane with empty `candidates`. The parameter type IS the AD-4 guard: only an
@@ -215,6 +247,11 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
     try {
       const findings = createFindingsRepo(deps.db, ctx);
       const deliveries = createDeliveriesRepo(deps.db, ctx);
+
+      // Read once per lane, not per finding, and read fresh every tick: a correction to
+      // what a surface is worth reorders this queue on the next tick rather than from the
+      // next finding onwards.
+      const growth = await weightingFor(deps, ctx, projectId);
 
       const recent = await findings.listForProject(projectId, {
         limit: FINDINGS_CONSIDERED_PER_LANE,
@@ -244,7 +281,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
           continue;
         }
 
-        const deliverable = deliverableFor(finding, deps.logger);
+        const deliverable = deliverableFor(finding, growth, deps.logger);
         if (deliverable !== null) {
           candidates.push(deliverable);
         }

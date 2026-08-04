@@ -21,3 +21,4 @@ export * from "./slack-connections";
 export * from "./first-run-state";
 export * from "./first-run-dismissals";
 export * from "./provider-interest";
+export { growthContext } from "./growth-context";

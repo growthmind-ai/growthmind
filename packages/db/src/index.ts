@@ -246,3 +246,9 @@ export {
 export { ensureProject, findFirstProjectForOrg } from "./tenancy/ensure-project";
 
 export { and, eq, sql } from "drizzle-orm";
+export {
+  createGrowthContextRepo,
+  type GrowthContextRepo,
+  type GrowthContextRow,
+  type SaveGrowthContextInput,
+} from "./repositories/growth-context.repo";

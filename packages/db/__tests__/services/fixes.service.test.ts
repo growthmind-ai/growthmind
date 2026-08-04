@@ -15,9 +15,11 @@ import { sql } from "drizzle-orm";
 import {
   fixSpecPayload,
   findingCountRow,
+  FORBIDDEN_SURFACE,
   RENDERABLE_SURFACE,
   UNRENDERABLE_SURFACE,
 } from "../helpers/fix-spec-payload";
+import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
 import { createDeliveriesRepo } from "../../src/repositories/deliveries.repo";
 import { createFindingPayloadsRepo } from "../../src/repositories/finding-payloads.repo";
 import { createFindingsRepo } from "../../src/repositories/findings.repo";
@@ -56,6 +58,7 @@ interface SeededFinding {
 interface SeedOptions {
   readonly label: string;
   readonly surface?: string;
+  readonly affected?: number;
   readonly withPayload?: boolean;
 
   readonly projectId?: string;
@@ -110,7 +113,7 @@ async function seedFindingIn(
   if (options.withPayload !== false) {
     await createFindingPayloadsRepo(db, org.ctx).upsertFor({
       findingId: finding.id,
-      payload: fixSpecPayload({ surface }),
+      payload: fixSpecPayload({ surface, affected: options.affected }),
     });
   }
 
@@ -494,5 +497,176 @@ describe("fixes service", () => {
     expect(paged.rows).toHaveLength(1);
     expect(paged.totalOpen).toBe(2);
     expect(paged.rows.map((row) => row.findingId)).not.toContain(stale.findingId);
+  });
+});
+
+describe("fixes service — the §5 deny list", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it("refuses to mint a fix on a page where the customer takes money", async () => {
+    const seeded = await seedFinding(db, { label: "forbidden-money", surface: FORBIDDEN_SURFACE });
+
+    const result = await createFixesService(db, seeded.org.ctx).openFor(seeded.findingId);
+
+    expect(result).toMatchObject({
+      outcome: "surface_forbidden",
+      reason: "pricing_or_billing",
+      surface: FORBIDDEN_SURFACE,
+    });
+  });
+
+  it("mints nothing at all, so the refusal cannot be worked around by asking twice", async () => {
+    const seeded = await seedFinding(db, { label: "forbidden-twice", surface: "/account/login" });
+    const service = createFixesService(db, seeded.org.ctx);
+
+    expect(await service.openFor(seeded.findingId)).toMatchObject({ outcome: "surface_forbidden" });
+    expect(await service.openFor(seeded.findingId)).toMatchObject({ outcome: "surface_forbidden" });
+
+    expect(await createFixesRepo(db, seeded.org.ctx).findForFinding(seeded.findingId)).toBeNull();
+  });
+
+  it("leaves the finding itself untouched — the evidence is refused nothing", async () => {
+    // The deny list governs what may be proposed as work, never what may be observed.
+    // Suppressing the finding would hide a real drop-off from the customer.
+    const seeded = await seedFinding(db, { label: "forbidden-reads", surface: "/legal/terms" });
+
+    const finding = await createFixesService(db, seeded.org.ctx).readFinding(seeded.findingId);
+
+    expect(finding).not.toBeNull();
+    expect(finding?.surface).toBe("/legal/terms");
+    expect(finding?.fixId).toBeNull();
+  });
+
+  it("mints once the customer confirms the page is theirs to change", async () => {
+    const seeded = await seedFinding(db, { label: "forbidden-freed", surface: FORBIDDEN_SURFACE });
+
+    await createGrowthContextRepo(db, seeded.org.ctx).save({
+      projectId: seeded.projectId,
+      surfaces: [],
+      confirmedChangeable: [FORBIDDEN_SURFACE],
+    });
+
+    expect(await createFixesService(db, seeded.org.ctx).openFor(seeded.findingId)).toMatchObject({
+      outcome: "opened",
+    });
+  });
+
+  it("confines the confirmation to the organisation that made it", async () => {
+    const mine = await seedFinding(db, { label: "forbidden-mine", surface: FORBIDDEN_SURFACE });
+    const theirs = await seedFinding(db, { label: "forbidden-theirs", surface: FORBIDDEN_SURFACE });
+
+    await createGrowthContextRepo(db, mine.org.ctx).save({
+      projectId: mine.projectId,
+      surfaces: [],
+      confirmedChangeable: [FORBIDDEN_SURFACE],
+    });
+
+    expect(await createFixesService(db, theirs.org.ctx).openFor(theirs.findingId)).toMatchObject({
+      outcome: "surface_forbidden",
+    });
+  });
+});
+
+describe("fixes service — listOpen ranks by expected value", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it("puts a smaller problem on a surface that matters above a larger one that does not", async () => {
+    // `list_open_fixes` tells a coding agent it returns the most urgent first. Before this,
+    // it returned them in deadline order.
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("rank-org"),
+      userName: NAMES.userName("rank-org"),
+      email: NAMES.email("rank-org"),
+    });
+    const projectId = (
+      await seedProject(db, { organizationId: org.organizationId, name: NAMES.projectName("rank") })
+    ).id;
+
+    const noisy = await seedFindingIn(db, org, {
+      label: "rank-noisy",
+      projectId,
+      surface: "/projects/reports",
+      affected: 24,
+    });
+    const activation = await seedFindingIn(db, org, {
+      label: "rank-activation",
+      projectId,
+      surface: "/onboarding/connect",
+      affected: 6,
+    });
+
+    const service = createFixesService(db, org.ctx);
+    await service.openFor(noisy.findingId);
+    await service.openFor(activation.findingId);
+
+    await createGrowthContextRepo(db, org.ctx).save({
+      projectId,
+      surfaces: [
+        {
+          surface: "/onboarding/connect",
+          role: "first_value",
+          basis: "stated_by_customer",
+          confirmedAt: new Date("2026-08-01T10:00:00.000Z"),
+        },
+      ],
+      confirmedChangeable: [],
+    });
+
+    const page = await service.listOpen({ projectId, limit: 25 });
+
+    expect(page.rows.map((row) => row.findingId)).toEqual([activation.findingId, noisy.findingId]);
+  });
+
+  it("falls back to the deadline order when nothing has been roled", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("rank-plain"),
+      userName: NAMES.userName("rank-plain"),
+      email: NAMES.email("rank-plain"),
+    });
+    const projectId = (
+      await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("rank-plain"),
+      })
+    ).id;
+
+    const smaller = await seedFindingIn(db, org, {
+      label: "rank-plain-small",
+      projectId,
+      surface: "/projects/reports",
+      affected: 4,
+    });
+    const larger = await seedFindingIn(db, org, {
+      label: "rank-plain-large",
+      projectId,
+      surface: "/projects/exports",
+      affected: 21,
+    });
+
+    const service = createFixesService(db, org.ctx);
+    await service.openFor(smaller.findingId);
+    await service.openFor(larger.findingId);
+
+    const page = await service.listOpen({ projectId, limit: 25 });
+
+    expect(page.rows.map((row) => row.findingId)).toEqual([larger.findingId, smaller.findingId]);
   });
 });

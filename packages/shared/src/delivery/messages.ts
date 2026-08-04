@@ -1,3 +1,4 @@
+import type { ForbiddenReason } from "../growth/types";
 import type { PostFailureCode } from "./poster";
 import type {
   DeliveryDecision,
@@ -100,6 +101,15 @@ export const FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT =
 export const FIX_DETAIL_MISSING_REFUSAL =
   "This one was found before we started keeping the detail a coding agent needs. The next check will produce one that works.";
 
+// Product decisions §5. The refusal is the fix, never the finding.
+export const FIX_SURFACE_FORBIDDEN_REFUSALS: Record<ForbiddenReason, string> = {
+  pricing_or_billing:
+    "This is on a page where you take money, so we will not put a coding agent on it. What we found still stands — this change is yours to make.",
+  auth: "This is on a sign-in page, so we will not put a coding agent on it. What we found still stands — this change is yours to make.",
+  consent_or_terms:
+    "This is on a page covering consent or terms, so we will not put a coding agent on it. What we found still stands — this change is yours to make.",
+};
+
 export const SLACK_INTERACTION_UNCONFIGURED_REFUSAL =
   "Slack is not finished being connected here yet, so this button cannot do anything. Whoever set Slack up can finish that, and then pressing it will work.";
 
@@ -119,6 +129,7 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
       FIX_DETAIL_MISSING_REFUSAL,
       SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
+      ...Object.values(FIX_SURFACE_FORBIDDEN_REFUSALS),
       ...Object.values(DELIVERY_DECISION_MESSAGES),
       ...Object.values(NOTHING_TODAY_REASON_MESSAGES),
       ...Object.values(DELIVERY_STATUS_MESSAGES),

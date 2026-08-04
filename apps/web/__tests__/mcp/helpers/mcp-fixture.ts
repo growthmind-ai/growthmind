@@ -93,7 +93,7 @@ export function fixRecordFor(input: {
     fixId: input.fixId,
     findingId: input.findingId,
     status: "open",
-    spec: { candidate: candidateFor(input.surface ?? "/mcp/pricing"), signals: [] },
+    spec: { candidate: candidateFor(input.surface ?? "/mcp/reports"), signals: [] },
     attempt: 1,
     alreadyLanded: [],
     impact: wireCount(LEFT),
@@ -109,7 +109,7 @@ export function openFixRowFor(input: {
   return {
     fixId: input.fixId,
     findingId: input.findingId,
-    summary: "People are leaving the pricing page without going any further.",
+    summary: "People are leaving the reports page without going any further.",
     impact: wireCount(LEFT),
     openedAt: WINDOW_START.toISOString(),
     resultsBy: input.resultsBy,
@@ -123,10 +123,10 @@ export function findingRecordFor(input: {
   return {
     findingId: input.findingId,
     fixId: input.fixId,
-    headline: "People are leaving the pricing page without going any further.",
+    headline: "People are leaving the reports page without going any further.",
     detail:
-      "We saw sessions reach the pricing page and stop there. We are not saying why they stopped.",
-    surface: { name: "the pricing page", path: "/mcp/pricing" },
+      "We saw sessions reach the reports page and stop there. We are not saying why they stopped.",
+    surface: { name: "the reports page", path: "/mcp/reports" },
     affected: wireCount(LEFT),
     firstSeenAt: WINDOW_START.toISOString(),
     lastSeenAt: WINDOW_END.toISOString(),

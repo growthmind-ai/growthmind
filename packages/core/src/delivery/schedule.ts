@@ -1,6 +1,8 @@
 import type { DeliveryDecision, NothingTodayReason } from "@growthmind/shared";
 
 import type { ConfidenceBasis } from "../findings/candidate";
+import { compareExpectedValue, expectedValueOf } from "../growth/expected-value";
+import type { SurfaceWorth } from "../growth/surface-worth";
 
 export const DELIVERY_BUDGET_PER_WEEK = 3;
 
@@ -25,6 +27,11 @@ export type DeliveryCandidate = {
 
     readonly denominator: number;
   };
+
+  // Resolved on every read, never persisted alongside the finding: a customer correcting
+  // what a surface is worth has to reorder the queue on the next tick, not from the next
+  // finding onwards. See .ai/decisions/0013-expected-value-ranking.md
+  readonly worth: SurfaceWorth;
 };
 
 export type DeliveryLaneState = {
@@ -64,6 +71,15 @@ export function compareDeliveryCandidates(a: DeliveryCandidate, b: DeliveryCandi
   const rankB = CONFIDENCE_RANK[b.confidenceBasis];
   if (rankA < rankB) return A_FIRST;
   if (rankA > rankB) return B_FIRST;
+
+  // After confidence, never before it: §6 ranks by expected value, and it also refuses a
+  // call the evidence cannot support. A surface worth eight times another does not lift a
+  // finding above one whose evidence is stronger.
+  const byExpectedValue = compareExpectedValue(
+    expectedValueOf(a.sampleSize.numerator, a.worth),
+    expectedValueOf(b.sampleSize.numerator, b.worth),
+  );
+  if (byExpectedValue !== NEITHER_FIRST) return byExpectedValue;
 
   if (a.sampleSize.denominator > b.sampleSize.denominator) return A_FIRST;
   if (a.sampleSize.denominator < b.sampleSize.denominator) return B_FIRST;
