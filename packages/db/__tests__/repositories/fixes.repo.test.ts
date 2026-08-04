@@ -17,11 +17,16 @@ import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import {
   laneNames,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
   type SeededOrgWithOwner,
 } from "../../src/testing";
+
+const CLEAN_TEXT = scannedTextFor("Two of every three people stop at the payment step", [
+  "Of 28 people who reached the payment step, 19 did not finish.",
+]);
 
 const NAMES = laneNames("fixes-repo");
 
@@ -57,8 +62,8 @@ async function seedFindingIn(
     signature: sha256Hex(`fixes.repo.test:${label}`),
     signatureVersion: 1,
     summarySource: summarySourceSchema.enum.model_rendered,
-    headline: "Two of every three people stop at the payment step",
-    context: ["Of 28 people who reached the payment step, 19 did not finish."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface: RENDERABLE_SURFACE,
     surfaceNormalisationVersion: 1,

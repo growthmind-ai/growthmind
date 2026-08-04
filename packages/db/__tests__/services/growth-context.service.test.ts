@@ -20,6 +20,7 @@ import { sha256Hex, type SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import {
   laneNames,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -35,6 +36,10 @@ const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 const CONFIRMED = new Date("2026-08-01T10:00:00.000Z");
 
 const OFFENDER = "jane.doe@acme.example";
+
+const OLDER_TEXT = scannedTextFor("Older than the detail we keep", [
+  "Something was measured here.",
+]);
 
 const FIXTURES_OWNER = "ADD Wave 1.4 (packages/db/src/testing/fixtures.ts, seedUnscannedFinding)";
 
@@ -86,6 +91,7 @@ async function seedFinding(
 ): Promise<{ findingId: string; signature: SignatureHex }> {
   const run = await seedAnalysisRun(db, { ctx: seeded.org.ctx, projectId: seeded.projectId });
   const signature = sha256Hex(`growth-context.service.test:${input.label}`);
+  const text = scannedTextFor(input.headline, ["Something was measured here."]);
 
   const finding = await createFindingsRepo(db, seeded.org.ctx).persist({
     projectId: seeded.projectId,
@@ -93,8 +99,8 @@ async function seedFinding(
     signature,
     signatureVersion: 1,
     summarySource: summarySourceSchema.enum.model_rendered,
-    headline: input.headline,
-    context: ["Something was measured here."],
+    headline: text.headline,
+    context: text.context,
     finalClass: "confusing",
     surface: input.surface,
     surfaceNormalisationVersion: 1,
@@ -228,7 +234,7 @@ describe("growth context service", () => {
     expect(read.whatMatters.map((note) => note.surface)).toEqual(["/onboarding"]);
     expect(read.whatMatters[0]?.role).toBe("first_value");
     expect(read.whatMatters[0]?.confirmedByAPerson).toBe(true);
-    expect(read.knownProblems.map((problem) => problem.headline)).toEqual([
+    expect(read.knownProblems.map((problem): string => problem.headline)).toEqual([
       "People stop at the second step",
     ]);
   });
@@ -317,7 +323,9 @@ describe("growth context service", () => {
     });
 
     expect(read.declined).toHaveLength(1);
-    expect(read.declined[0]?.headline).toBe("Ask for a company name on the first screen");
+    expect(read.declined.map((row): string => row.headline)).toEqual([
+      "Ask for a company name on the first screen",
+    ]);
   });
 
   it("does not read another organization's pages, problems or refusals", async () => {
@@ -365,8 +373,8 @@ describe("growth context service", () => {
       signature: sha256Hex("growth-context.service.test:no-payload"),
       signatureVersion: 1,
       summarySource: summarySourceSchema.enum.model_rendered,
-      headline: "Older than the detail we keep",
-      context: ["Something was measured here."],
+      headline: OLDER_TEXT.headline,
+      context: OLDER_TEXT.context,
       finalClass: "confusing",
       surface: "/onboarding",
       surfaceNormalisationVersion: 1,
@@ -433,7 +441,7 @@ describe("growth context service", () => {
     expect(problems).not.toContain(heldProblem.findingId);
     expect(problems).not.toContain(heldDeclined.findingId);
 
-    expect(read.declined.map((row) => row.headline)).toEqual([
+    expect(read.declined.map((row): string => row.headline)).toEqual([
       "Ask for a company name on the first screen",
     ]);
 

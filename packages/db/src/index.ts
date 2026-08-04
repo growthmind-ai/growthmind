@@ -184,10 +184,13 @@ export {
 } from "./services/fixes.service";
 
 export {
+  describeHold,
   findingContextSchema,
   readFindingText,
   type FindingText,
   type FindingTextRow,
+  type HeldFindingText,
+  type HoldDescription,
   type ScannedText,
 } from "./repositories/finding-text";
 

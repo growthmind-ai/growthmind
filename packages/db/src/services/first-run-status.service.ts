@@ -3,6 +3,7 @@ import { logger, onboardingFindingSchema } from "@growthmind/shared";
 import { asc, eq, gt, gte } from "drizzle-orm";
 
 import { describeDriverError } from "../repositories/driver-error";
+import { describeHold } from "../repositories/finding-text";
 import { createFindingsRepo } from "../repositories/findings.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
@@ -81,10 +82,28 @@ async function readNewestFinding(
     return NO_FINDING;
   }
 
+  // Only a row from THIS watch is a fault this watch may report: a project already holding
+  // a row nothing can render made a fresh "Start watching" terminal on arrival (B-042).
+  const fromThisWatch = armedAt !== null && record.createdAt > armedAt;
+
+  const text = record.text;
+  if (text.held) {
+    // Both branches log, so a hold is never silent to an operator. The screen is told only
+    // that nothing renders: naming which hold describes what was withheld.
+    logger.error("first-run status: the newest finding's text is held, so no card is shown", {
+      organizationId: ctx.organizationId,
+      projectId,
+      findingId: record.id,
+      ...describeHold(text),
+    });
+
+    return fromThisWatch ? UNRENDERABLE : NO_FINDING;
+  }
+
   const parsed = onboardingFindingSchema.safeParse({
     finalClass: record.finalClass,
-    headline: record.headline,
-    context: record.context,
+    headline: text.headline,
+    context: text.context,
 
     counts: record.counts.map((count) => ({
       numerator: count.numerator,
@@ -99,18 +118,20 @@ async function readNewestFinding(
   });
 
   if (!parsed.success) {
+    // Path and code only. A Zod issue carries `received`, which on a refused column is the
+    // offending value itself.
     logger.error("first-run status: the newest finding did not satisfy the rendered shape", {
       organizationId: ctx.organizationId,
       projectId,
       findingId: record.id,
-      issues: parsed.error.issues,
+      reason: "shape",
+      issues: parsed.error.issues.map((issue) => ({
+        path: issue.path.map((segment) => String(segment)).join("."),
+        code: issue.code,
+      })),
     });
 
-    // No id, so `finding === null` implies `findingId === null` (B-038). And only a row
-    // from THIS watch is a fault this watch may report: a project already holding an
-    // unrenderable row made a fresh "Start watching" terminal on arrival (B-042).
-    const fromThisWatch = armedAt !== null && record.createdAt > armedAt;
-
+    // No id, so `finding === null` implies `findingId === null` (B-038).
     return fromThisWatch ? UNRENDERABLE : NO_FINDING;
   }
 

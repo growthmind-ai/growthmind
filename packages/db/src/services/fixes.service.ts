@@ -29,7 +29,12 @@ import {
   createFindingPayloadsRepo,
   type FindingPayloadRow,
 } from "../repositories/finding-payloads.repo";
-import { findingContextSchema } from "../repositories/finding-text";
+import {
+  describeHold,
+  readFindingText,
+  type HeldFindingText,
+  type ScannedText,
+} from "../repositories/finding-text";
 import { createFixesRepo, openFixesIn, type FixRow } from "../repositories/fixes.repo";
 import { createGrowthContextRepo } from "../repositories/growth-context.repo";
 import { scoped } from "../repositories/scope";
@@ -54,7 +59,7 @@ export interface OpenFixReadModel {
   readonly fixId: string;
   readonly findingId: string;
 
-  readonly summary: string;
+  readonly summary: ScannedText;
   readonly impact: MeasuredCount;
   readonly openedAt: Date;
   readonly resultsBy: Date;
@@ -69,7 +74,10 @@ export interface FixReadModel {
 export interface FindingReadModel {
   readonly findingId: string;
   readonly fixId: string | null;
-  readonly headline: string;
+  readonly headline: ScannedText;
+
+  // Joined from `ScannedText` parts, so it is scanned by construction; the join itself
+  // erases the brand and only the mint may restore one.
   readonly detail: string;
   readonly surface: string;
   readonly affected: MeasuredCount;
@@ -135,6 +143,13 @@ function renders(spec: FixSpecInput): boolean {
     });
     return false;
   }
+}
+
+function heldOut(findingId: string, text: HeldFindingText): void {
+  logger.error("fixes: a finding's text is held, so it is not read back", {
+    findingId,
+    ...describeHold(text),
+  });
 }
 
 function impactOf(candidate: CandidateFinding): MeasuredCount | null {
@@ -233,6 +248,14 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
         return null;
       }
 
+      // Before any other refusal, so a held row costs exactly one log line and answers
+      // `null` — the same answer `get_finding` already gives for a row it cannot assemble.
+      const text = readFindingText(finding);
+      if (text.held) {
+        heldOut(finding.id, text);
+        return null;
+      }
+
       const payload = await payloads.findForFinding(findingId);
       if (!payload) {
         return null;
@@ -252,13 +275,13 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       }
 
       const fix = await repo.findForFinding(findingId);
-      const detail = findingContextSchema.parse(finding.context).join(" ").trim();
+      const detail = text.context.join(" ").trim();
 
       return {
         findingId: finding.id,
         fixId: fix?.id ?? null,
-        headline: finding.headline,
-        detail: detail === "" ? finding.headline : detail,
+        headline: text.headline,
+        detail: detail === "" ? text.headline : detail,
         surface: finding.surface,
         affected,
         firstSeenAt: finding.windowStart,
@@ -282,7 +305,15 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       // dropped: bump the payload version and every fix written under the old one leaves
       // `rows` while the total still claims them, describing a slice that can never fill.
       const joined = await db
-        .select({ fix: fixes, payload: findingPayloads, headline: findings.headline })
+        .select({
+          fix: fixes,
+          payload: findingPayloads,
+
+          // One verdict per row is taken over both columns, so both are selected: a gate
+          // that scanned the headline alone would list a fix `get_finding` then refuses.
+          headline: findings.headline,
+          context: findings.context,
+        })
         .from(fixes)
         .innerJoin(findingPayloads, payloadJoin)
         .innerJoin(findings, and(eq(findings.id, fixes.findingId), s.org(findings)))
@@ -297,6 +328,15 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
 
       const ranked: { readonly row: OpenFixReadModel; readonly value: ExpectedValue }[] = [];
       for (const row of joined) {
+        // The row leaves `rows` AND the total below it, which counts what survived this
+        // loop: a denominator the page can never fill is the defect this one pass exists
+        // to avoid, and a hold must not reintroduce it.
+        const text = readFindingText(row);
+        if (text.held) {
+          heldOut(row.fix.findingId, text);
+          continue;
+        }
+
         const spec = specOf(row.payload);
         const impact = spec ? impactOf(spec.candidate) : null;
         if (!impact || !spec) {
@@ -307,7 +347,7 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
           row: {
             fixId: row.fix.id,
             findingId: row.fix.findingId,
-            summary: row.headline,
+            summary: text.headline,
             impact,
             openedAt: row.fix.openedAt,
             resultsBy: row.fix.resultsBy,

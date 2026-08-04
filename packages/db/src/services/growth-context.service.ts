@@ -15,6 +15,12 @@ import {
 } from "@growthmind/shared";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
+import {
+  describeHold,
+  readFindingText,
+  type HeldFindingText,
+  type ScannedText,
+} from "../repositories/finding-text";
 import { createGrowthContextRepo } from "../repositories/growth-context.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
@@ -34,13 +40,13 @@ export interface RoledSurfaceNote {
 export interface KnownProblemRow {
   readonly findingId: string;
   readonly fixId: string | null;
-  readonly headline: string;
+  readonly headline: ScannedText;
   readonly affected: MeasuredCount;
   readonly lastSeenAt: Date;
 }
 
 export interface DeclinedIdeaRow {
-  readonly headline: string;
+  readonly headline: ScannedText;
   readonly declinedAt: Date;
 }
 
@@ -75,6 +81,13 @@ export interface GrowthContextService {
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function heldOut(findingId: string, text: HeldFindingText): void {
+  logger.error("growth context: a finding's text is held, so it is left out of the answer", {
+    findingId,
+    ...describeHold(text),
+  });
 }
 
 export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): GrowthContextService {
@@ -142,6 +155,7 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         .select({
           id: findings.id,
           headline: findings.headline,
+          context: findings.context,
           windowEnd: findings.windowEnd,
           signature: findings.signature,
         })
@@ -165,13 +179,21 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
 
       const knownProblems: KnownProblemRow[] = [];
       for (const row of recent) {
+        // Nothing here is counted, so a held entry is simply absent — there is no total to
+        // correct, unlike `list_open_fixes`.
+        const text = readFindingText(row);
+        if (text.held) {
+          heldOut(row.id, text);
+          continue;
+        }
+
         const count = affected.get(row.id);
         if (count === undefined) continue;
 
         knownProblems.push({
           findingId: row.id,
           fixId: fixByFinding.get(row.id) ?? null,
-          headline: row.headline,
+          headline: text.headline,
           affected: count,
           lastSeenAt: row.windowEnd,
         });
@@ -180,12 +202,28 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
       // §8: never re-propose a dead idea. A dismissal is joined back to its finding for the
       // headline, because the dismissal row itself records only the signature it suppressed.
       const declinedRows = await db
-        .select({ headline: findings.headline, dismissedAt: dismissals.dismissedAt })
+        .select({
+          findingId: dismissals.findingId,
+          headline: findings.headline,
+          context: findings.context,
+          dismissedAt: dismissals.dismissedAt,
+        })
         .from(dismissals)
         .innerJoin(findings, and(eq(findings.id, dismissals.findingId), s.org(findings)))
         .where(s.owned(dismissals, eq(dismissals.projectId, input.projectId), surfaceFilter))
         .orderBy(desc(dismissals.dismissedAt))
         .limit(GROWTH_CONTEXT_ITEM_LIMIT);
+
+      const declined: DeclinedIdeaRow[] = [];
+      for (const row of declinedRows) {
+        const text = readFindingText(row);
+        if (text.held) {
+          heldOut(row.findingId, text);
+          continue;
+        }
+
+        declined.push({ headline: text.headline, declinedAt: row.dismissedAt });
+      }
 
       return {
         projectId: input.projectId,
@@ -193,10 +231,7 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         changeable,
         whatMatters: roled,
         knownProblems,
-        declined: declinedRows.map((row) => ({
-          headline: row.headline,
-          declinedAt: row.dismissedAt,
-        })),
+        declined,
         // Not narrowed by surface: who the product is for is true of the product, not of
         // one page, and an agent asking about `/checkout` still wants to know who arrives.
         audience: (site?.icp.beliefs ?? []).slice(0, GROWTH_CONTEXT_ITEM_LIMIT).map((belief) => ({

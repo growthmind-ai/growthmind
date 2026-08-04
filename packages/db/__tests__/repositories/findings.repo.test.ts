@@ -18,7 +18,7 @@ import {
 import type { ScopedDb } from "../../src/repositories/types";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { scannedTextFor, seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
 import { findingCountRow } from "../helpers/fix-spec-payload";
 
 const FINDINGS_REPO_PATH = path.join(
@@ -73,6 +73,11 @@ function signatureFor(label: string): string {
   return sha256Hex(`findings.repo.test:${label}`);
 }
 
+const CLEAN_TEXT = scannedTextFor("Two of every three people stop at the payment step", [
+  "Of 28 people who reached the payment step, 19 did not finish.",
+  "This covers the seven days ending 31 July.",
+]);
+
 function makePersistInput(
   projectId: string,
   runId: string,
@@ -84,12 +89,8 @@ function makePersistInput(
     signature: signatureFor("checkout-step-2"),
     signatureVersion: 1,
     summarySource: summarySourceSchema.enum.model_rendered,
-    headline: "Two of every three people stop at the payment step",
-
-    context: [
-      "Of 28 people who reached the payment step, 19 did not finish.",
-      "This covers the seven days ending 31 July.",
-    ],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "funnel_dropoff",
     surface: "app/checkout/payment/page.tsx",
     surfaceNormalisationVersion: 1,

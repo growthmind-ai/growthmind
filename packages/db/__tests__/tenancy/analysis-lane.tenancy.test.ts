@@ -19,7 +19,7 @@ import * as schema from "../../src/schema";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames, seedEvent, seedSession } from "../../src/testing";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { scannedTextFor, seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("al");
 
@@ -44,6 +44,10 @@ const FIXTURE_COUNTS = [
   },
 ] as unknown as readonly MeasuredCountRow[];
 
+const CLEAN_TEXT = scannedTextFor("Fewer people finished checkout than started it.", [
+  "3 of 40 sessions that reached checkout did not finish.",
+]);
+
 function findingInput(params: {
   projectId: string;
   signature: string;
@@ -55,8 +59,8 @@ function findingInput(params: {
     signatureVersion: 1,
     runId: params.runId,
     summarySource: "floor_no_key_configured",
-    headline: "Fewer people finished checkout than started it.",
-    context: ["3 of 40 sessions that reached checkout did not finish."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "drop_off",
     surface: "/checkout",
     surfaceNormalisationVersion: 2,

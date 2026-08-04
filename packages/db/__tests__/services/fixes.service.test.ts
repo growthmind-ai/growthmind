@@ -39,6 +39,7 @@ import { createTestDb, type TestDb } from "../../src/testing";
 import {
   laneNames,
   makeTenantContext,
+  scannedTextFor,
   seedAnalysisRun,
   seedMember,
   seedOrgWithOwner,
@@ -63,6 +64,10 @@ const OFFENDER = "jane.doe@acme.example";
 const HOLD_REASONS = ["residual_pii", "unreadable"] as const;
 
 const FIXTURES_OWNER = "ADD Wave 1.4 (packages/db/src/testing/fixtures.ts, seedUnscannedFinding)";
+
+const CLEAN_TEXT = scannedTextFor("Two of every three people stop at the payment step", [
+  "Of 28 people who reached the payment step, 19 did not finish.",
+]);
 
 type SeedUnscannedFinding = (
   db: ScopedDb,
@@ -133,8 +138,8 @@ async function seedFindingIn(
     signature: sha256Hex(`fixes.service.test:${options.label}`),
     signatureVersion: 1,
     summarySource: summarySourceSchema.enum.model_rendered,
-    headline: "Two of every three people stop at the payment step",
-    context: ["Of 28 people who reached the payment step, 19 did not finish."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface,
     surfaceNormalisationVersion: 1,

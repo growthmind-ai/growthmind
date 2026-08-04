@@ -5,7 +5,13 @@ import { findingCountRow, RENDERABLE_SURFACE } from "../helpers/fix-spec-payload
 import { createFindingsRepo } from "../../src/repositories/findings.repo";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
+import {
+  laneNames,
+  scannedTextFor,
+  seedAnalysisRun,
+  seedOrgWithOwner,
+  seedProject,
+} from "../../src/testing";
 
 const NAMES = laneNames("counts-wire");
 
@@ -13,6 +19,10 @@ const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 
 const SIGNATURE = sha256Hex("findings-counts-wire.test:first-count");
+
+const CLEAN_TEXT = scannedTextFor("Two of every three people stop at the payment step", [
+  "Of 28 people who reached the payment step, 19 did not finish.",
+]);
 
 // A runtime specifier rather than a static import: `packages/db` must not take a build-time
 // dependency on the web app, and the mapper under test has to be the shipped one, not a
@@ -63,8 +73,8 @@ describe("a persisted finding's counts reach the MCP wire", () => {
       signature: SIGNATURE,
       signatureVersion: 1,
       summarySource: summarySourceSchema.enum.model_rendered,
-      headline: "Two of every three people stop at the payment step",
-      context: ["Of 28 people who reached the payment step, 19 did not finish."],
+      headline: CLEAN_TEXT.headline,
+      context: CLEAN_TEXT.context,
       finalClass: "confusing",
       surface: RENDERABLE_SURFACE,
       surfaceNormalisationVersion: 1,

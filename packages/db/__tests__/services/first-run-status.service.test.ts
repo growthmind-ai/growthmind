@@ -23,6 +23,7 @@ import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
 import {
   driverQueryError,
+  scannedTextFor,
   seedAnalysisRun,
   seedConnection,
   seedOrgWithOwner,
@@ -134,6 +135,7 @@ const headlineFor = (label: string): string => `Checkout drops after the ${label
 async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<string> {
   const run = await seedAnalysisRun(db, { ctx: scope.ctx, projectId: scope.projectId });
   const repo = createFindingsRepo(db, scope.ctx);
+  const text = scannedTextFor(headlineFor(label), ["One line of context, never a blob."]);
 
   await repo.persist({
     projectId: scope.projectId,
@@ -141,8 +143,8 @@ async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<
     signature: randomUUID(),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: headlineFor(label),
-    context: ["One line of context, never a blob."],
+    headline: text.headline,
+    context: text.context,
     finalClass: "funnel_dropoff",
     surface: "/checkout",
     surfaceNormalisationVersion: 1,
