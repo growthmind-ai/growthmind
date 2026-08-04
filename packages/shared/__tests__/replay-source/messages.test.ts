@@ -107,4 +107,12 @@ describe("failure code coverage", () => {
     expect(/\brecord/i.test(message)).toBe(true);
     expect(/\bread/i.test(message)).toBe(true);
   });
+
+  // The address a person has to visit is worth naming; the vendor behind our
+  // plumbing is not, and naming it dates the copy the day a second one arrives.
+  test("no message names the vendor except inside the address a person has to visit", () => {
+    for (const message of Object.values(REPLAY_FAILURE_MESSAGES)) {
+      expect(message.replaceAll("app.rrweb.com/api-keys", "")).not.toContain("rrweb");
+    }
+  });
 });

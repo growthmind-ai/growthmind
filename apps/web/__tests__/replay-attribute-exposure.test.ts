@@ -63,12 +63,12 @@ function filesWithBindings(): string[] {
       found.push(path.relative(WEB_ROOT, file).replaceAll("\\", "/"));
     }
   }
-  return found.sort();
+  return found.toSorted();
 }
 
 describe("replay attribute exposure", () => {
   test("every dynamic binding on an unmaskable attribute has been classified", () => {
-    expect(filesWithBindings()).toEqual(Object.keys(REVIEWED).sort());
+    expect(filesWithBindings()).toEqual(Object.keys(REVIEWED).toSorted());
   });
 
   test("the scan sees a planted binding", () => {
