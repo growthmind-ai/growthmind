@@ -187,8 +187,14 @@ below, and it works.
 
 ### Mint a key
 
-This surface reads with a key you mint yourself. There is no key-management
-screen yet, it is one command, run from the repo root against a started stack:
+This surface reads with a key you mint yourself. Setup mints one for you: open
+`/first-run`, pick your assistant, and press the button on the third step. It
+shows the key once, hands you the config block for that assistant already
+filled in, and marks the step done when your assistant first calls us. Revoking
+is on the same screen.
+
+If you have the repo checked out and a stack started, the same key is one
+command:
 
 ```bash
 bun scripts/mint-api-key.ts --name "claude code"
@@ -267,11 +273,11 @@ it sends `"protocolVersion":"2025-11-25"`. A client pinned to the modern
 `2026-07-28` revision is served by the same endpoint, on the same URL, with the
 same three tools. You do not pick one; the endpoint answers both.
 
-### What comes back today: nothing, and it says so
+### What comes back before you have findings
 
-There is no table of findings behind these tools yet. That is a separate piece
-of work, so every answer is honestly empty rather than absent. `list_open_fixes`
-returns an empty list with a truthful window:
+The tools read your organisation's own fixes. Until one exists, every answer is
+honestly empty rather than absent. `list_open_fixes` returns an empty list with
+a truthful window:
 
 ```json
 {
