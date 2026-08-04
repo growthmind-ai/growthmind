@@ -19,6 +19,7 @@ import {
   STAGE_RETIRE_CLOSURE,
   type AgentConnection,
   type OnboardingCounterView,
+  type PanelStep,
   type SetupFacts,
   type StagePersistedFacts,
   type StepSequenceFacts,
@@ -32,8 +33,10 @@ import { resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
+import { AgentPanel } from "./AgentPanel";
 import { FIRST_RUN_API, postJson } from "./api";
 import styles from "./first-run.module.css";
+import { LiveAgentConnection } from "./live-agent";
 import { SetupStage } from "./SetupStage";
 import { Stage } from "./Stage";
 import { StepRow } from "./StepRow";
@@ -99,15 +102,6 @@ export function useLiveCounter(fallback: OnboardingCounterView): OnboardingCount
   return useContext(LiveCounter) ?? fallback;
 }
 
-const LiveAgent = createContext<AgentConnection | null>(null);
-
-// The same wire for the agent step, and the whole of what makes "this step ticks
-// itself the moment a call arrives" true: first contact is stamped outside the
-// browser, so the poll is the only thing that ever notices it.
-export function useLiveAgentConnection(fallback: AgentConnection): AgentConnection {
-  return useContext(LiveAgent) ?? fallback;
-}
-
 interface LiveProps {
   readonly counter: OnboardingCounterView;
   readonly agent: AgentConnection;
@@ -119,10 +113,16 @@ interface LiveProps {
 function Live(props: LiveProps) {
   return (
     <LiveCounter value={props.counter}>
-      <LiveAgent value={props.agent}>{props.children}</LiveAgent>
+      <LiveAgentConnection value={props.agent}>{props.children}</LiveAgentConnection>
     </LiveCounter>
   );
 }
+
+// Found, not hardcoded: the row this card stands in for is the descriptor's, so
+// its ordinal and title cannot drift from the sequence the founder just left.
+const AGENT_STEP = LIVE_STEP_DESCRIPTORS.find(
+  (descriptor): descriptor is PanelStep => descriptor.kind === "panel",
+);
 
 interface FirstRunClientProps {
   readonly status: FirstRunStatusPayload;
@@ -320,6 +320,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const notice = resolveOfflineNotice({ lost, armed, terminal });
 
+  // The one switch: the server sequence and the armed phase's own agent card are
+  // the two sides of it, so neither can ever mount beside the other.
+  const sequenceGone = armed && !folding;
+
   return (
     <Live counter={current.counter} agent={current.agentConnection}>
       <Stack gap="md">
@@ -362,6 +366,28 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Box>
         ) : null}
 
+        {/* THE ONE LIVE CARD THAT SURVIVES ARMING. The assistant step does not
+          gate the stage, so a founder can arm with it unfinished — and the
+          sequence carrying it is gone by then, which left the browser mint
+          unreachable and sent that founder back to a repo checkout they do not
+          have. It goes when first contact lands, because the row below then
+          says so. */}
+        {sequenceGone && !agentConnected && AGENT_STEP !== undefined ? (
+          <StepRow
+            ordinal={displayOrdinal(AGENT_STEP.id)}
+            title={AGENT_STEP.title}
+            helper={AGENT_STEP.helper}
+            state={resolved.get(AGENT_STEP.id)?.state ?? "pending"}
+            open
+          >
+            <AgentPanel
+              connection={current.agentConnection}
+              mcpUrl={props.status.mcpUrl}
+              providerOrder={props.status.agentProviderOrder}
+            />
+          </StepRow>
+        ) : null}
+
         {armed ? (
           <Collapse expanded={reopened}>
             <Stack gap="md">
@@ -388,7 +414,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Collapse>
         ) : null}
 
-        {armed && !folding ? null : (
+        {sequenceGone ? null : (
           <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
         )}
 

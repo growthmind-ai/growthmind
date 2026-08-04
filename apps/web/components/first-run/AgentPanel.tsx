@@ -16,8 +16,8 @@ import {
 import { resolveAgentPanelState, type AgentPanelAction } from "./agent-panel-state";
 import { AgentPanelBody } from "./AgentPanelBody";
 import { mintAgentKey, revokeAgentKeys } from "./api";
-import { useLiveAgentConnection } from "./FirstRunClient";
 import styles from "./first-run.module.css";
+import { useLiveAgentConnection } from "./live-agent";
 
 interface AgentPanelProps {
   readonly connection: AgentConnection;
