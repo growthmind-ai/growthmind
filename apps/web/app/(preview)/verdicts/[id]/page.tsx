@@ -1,11 +1,14 @@
-import { Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import { notFound } from "next/navigation";
 
+import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ButtonLink } from "@/components/ui/Links";
+import { PageHeader } from "@/components/ui/Page";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readVerdictForFinding } from "@/lib/preview/readers";
-import { ROUTES } from "@/lib/routes";
 import { fixPath } from "@/lib/preview/tabs";
+import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -20,54 +23,35 @@ export default async function VerdictPage({
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          {verdict.title}
-        </Title>
-        <Text size="sm" c="dimmed">
-          You cannot read the result on this page before you read the promise that judges it.
-        </Text>
-      </Stack>
+      <PageHeader title={verdict.title}>
+        You cannot read the result on this page before you read the promise that judges it.
+      </PageHeader>
 
       {/* Order is the argument. The criterion is above the measurement, both dated, so the
           gap between them is something the reader confirms rather than something we claim. */}
       <Stack gap="xs">
-        <Paper
-          withBorder
-          radius="sm"
-          p="md"
-          bg="var(--mantine-color-default)"
-          style={{ borderLeftWidth: 3, borderLeftColor: "var(--mantine-primary-color-filled)" }}
-        >
-          <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-            {verdict.promisedOn}
-          </Text>
+        <SurfaceCard tone="accent">
+          <Eyebrow>{verdict.promisedOn}</Eyebrow>
           <Text mt={4}>{verdict.promise}</Text>
-        </Paper>
+        </SurfaceCard>
 
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
-          <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-            {verdict.measuredOn}
-          </Text>
+        <SurfaceCard>
+          <Eyebrow>{verdict.measuredOn}</Eyebrow>
           <Text mt={4}>{verdict.measurement}</Text>
-        </Paper>
+        </SurfaceCard>
 
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-primary-color-light)">
+        <SurfaceCard tone="highlight">
           <Text fw={700}>{verdict.verdict}</Text>
-        </Paper>
+        </SurfaceCard>
       </Stack>
 
-      <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What this does to our record
-        </Text>
+      <SurfaceCard>
+        <Eyebrow>What this does to our record</Eyebrow>
         <Text mt={4}>{verdict.record}</Text>
-      </Paper>
+      </SurfaceCard>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          How this was measured, and what was set aside
-        </Text>
+        <Eyebrow>How this was measured, and what was set aside</Eyebrow>
         <Text size="sm" c="dimmed">
           {verdict.howMeasured}
         </Text>

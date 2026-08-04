@@ -1,12 +1,12 @@
-import { Box, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Box, Group, Paper, Stack, Text } from "@mantine/core";
 
-import { DismissMenu } from "@/components/preview/DismissMenu";
+import { FindingActions } from "@/components/preview/FindingActions";
 import { ButtonLink } from "@/components/ui/Links";
+import { PageHeader } from "@/components/ui/Page";
 import { tapTargetStyle } from "@/components/ui/tap-target";
-import { mintFixAction } from "@/lib/preview/actions";
 import { readChannel } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath, fixPath } from "@/lib/preview/tabs";
+import { evidencePath } from "@/lib/preview/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +16,10 @@ export default async function ChannelPage() {
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          Findings arrive where you already are
-        </Title>
-        <Text size="sm" c="dimmed">
-          Fully legible without clicking anything. The link is for checking us, not for
-          understanding us.
-        </Text>
-      </Stack>
+      <PageHeader title="Findings arrive where you already are">
+        Fully legible without clicking anything. The link is for checking us, not for
+        understanding us.
+      </PageHeader>
 
       <Paper withBorder radius="md" style={{ overflow: "hidden", maxWidth: 760 }}>
         <Box
@@ -85,23 +80,10 @@ export default async function ChannelPage() {
 
             {message.findingId === null ? null : (
               <Group gap="xs" align="flex-start">
-                {state.fixes.includes(message.findingId) ? (
-                  <ButtonLink
-                    href={fixPath(message.findingId)}
-                    size="compact-sm"
-                    style={tapTargetStyle}
-                  >
-                    See the fix you asked for
-                  </ButtonLink>
-                ) : (
-                  <form action={mintFixAction}>
-                    <input type="hidden" name="id" value={message.findingId} />
-                    <Button type="submit" size="compact-sm" style={tapTargetStyle}>
-                      Get it fixed
-                    </Button>
-                  </form>
-                )}
-                <DismissMenu id={message.findingId} />
+                <FindingActions
+                  id={message.findingId}
+                  hasFix={state.fixes.includes(message.findingId)}
+                />
                 <ButtonLink
                   href={evidencePath(message.findingId)}
                   variant="subtle"

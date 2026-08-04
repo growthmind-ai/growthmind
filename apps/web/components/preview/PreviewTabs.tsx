@@ -4,6 +4,7 @@ import { Group, Stack, Text } from "@mantine/core";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Eyebrow } from "@/components/ui/Eyebrow";
 import { PREVIEW_TAB_GROUPS } from "@/lib/preview/tabs";
 
 import classes from "./preview.module.css";
@@ -15,9 +16,7 @@ export function PreviewTabs() {
     <Stack gap={4} pb="xs">
       {PREVIEW_TAB_GROUPS.map((group) => (
         <Stack key={group.label} gap={2}>
-          <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={2}>
-            {group.label}
-          </Text>
+          <Eyebrow mt={2}>{group.label}</Eyebrow>
           <Group gap={4} wrap="nowrap" className={classes.tabstrip}>
             {group.tabs.map((tab, index) => {
               // `startsWith` so a detail route keeps its own tab lit; `/seen` would otherwise

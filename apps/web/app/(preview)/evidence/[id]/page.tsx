@@ -1,18 +1,18 @@
-import { Badge, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Badge, Group, Stack, Text } from "@mantine/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { evidenceForAgent } from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "@/components/findings/AnnotatedTranscript";
-import { DismissMenu } from "@/components/preview/DismissMenu";
+import { FindingActions } from "@/components/preview/FindingActions";
 import { CopyBlock } from "@/components/ui/CopyBlock";
-import { ButtonLink } from "@/components/ui/Links";
-import { tapTargetStyle } from "@/components/ui/tap-target";
-import { mintFixAction } from "@/lib/preview/actions";
+import { Eyebrow } from "@/components/ui/Eyebrow";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { PageHeader } from "@/components/ui/Page";
 import { pickSession, readEvidence } from "@/lib/preview/findings";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath, fixPath } from "@/lib/preview/tabs";
+import { evidencePath } from "@/lib/preview/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -29,19 +29,13 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
   const requested = (await searchParams).session;
   const session = pickSession(record, typeof requested === "string" ? requested : undefined);
   const state = await readPreviewState();
-  const hasFix = state.fixes.includes(record.id);
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          {record.headline}
-        </Title>
-        <Text size="sm" c="dimmed">
-          {record.countLine}
-          {record.withheld ? "" : " · one person's session below"}
-        </Text>
-      </Stack>
+      <PageHeader title={record.headline}>
+        {record.countLine}
+        {record.withheld ? "" : " · one person's session below"}
+      </PageHeader>
 
       {record.sessions.length <= 1 ? null : (
         <Group gap="xs">
@@ -68,13 +62,13 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
       {/* Below the mask floor there is no transcript at all, and the page says so rather
           than rendering an empty one. */}
       {record.withheld || session === null ? (
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+        <SurfaceCard>
           <Text fw={600}>We are not showing this recording</Text>
           <Text c="dimmed" mt={4}>
             We could not mask it confidently, so the detail stays sealed. The counts above were
             still measured from what happened.
           </Text>
-        </Paper>
+        </SurfaceCard>
       ) : (
         <AnnotatedTranscript
           beats={session.beats}
@@ -84,16 +78,8 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
       )}
 
       {record.origin === null ? null : (
-        <Paper
-          withBorder
-          radius="sm"
-          p="md"
-          bg="var(--mantine-color-default)"
-          style={{ borderLeftWidth: 3, borderLeftColor: "var(--mantine-primary-color-filled)" }}
-        >
-          <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-            Where it came from
-          </Text>
+        <SurfaceCard tone="accent">
+          <Eyebrow>Where it came from</Eyebrow>
           <Text ff="monospace" fw={700} mt={4}>
             PR #{record.origin.pullRequest}
           </Text>
@@ -104,11 +90,11 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
           <Text size="sm" mt="xs">
             {record.origin.why}
           </Text>
-        </Paper>
+        </SurfaceCard>
       )}
 
       {record.cohortLine === null ? null : (
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+        <SurfaceCard>
           <Text fw={600}>{record.cohortLine}</Text>
           {record.cohortNote === null ? null : (
             <Text size="sm" c="dimmed" mt={4}>
@@ -129,13 +115,11 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
               ))}
             </Stack>
           )}
-        </Paper>
+        </SurfaceCard>
       )}
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          Coverage and confidence
-        </Text>
+        <Eyebrow>Coverage and confidence</Eyebrow>
         <Text size="sm" c="dimmed">
           {record.coverageLine}
         </Text>
@@ -161,20 +145,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps) 
           />
         )}
 
-        {hasFix ? (
-          <ButtonLink href={fixPath(record.id)} size="compact-sm" style={tapTargetStyle}>
-            See the fix you asked for
-          </ButtonLink>
-        ) : (
-          <form action={mintFixAction}>
-            <input type="hidden" name="id" value={record.id} />
-            <Button type="submit" size="compact-sm" style={tapTargetStyle}>
-              Get it fixed
-            </Button>
-          </form>
-        )}
-
-        <DismissMenu id={record.id} />
+        <FindingActions id={record.id} hasFix={state.fixes.includes(record.id)} />
       </Group>
 
       <Text size="sm">

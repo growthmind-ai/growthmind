@@ -39,42 +39,6 @@
   padding: 3px 8px;
 }
 
-/* The margin note sits beside the beats it cites; below this width there is no margin to
-   sit in, so the notes follow the transcript and name the times they refer to. */
-.annotated {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 17rem;
-  column-gap: var(--mantine-spacing-lg);
-  align-items: start;
-}
-
-.beat {
-  grid-column: 1;
-  min-width: 0;
-}
-
-.note {
-  grid-column: 2;
-  grid-row: var(--note-row);
-}
-
-@media (max-width: 62em) {
-  .annotated {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--mantine-spacing-xs);
-  }
-
-  .beat,
-  .note {
-    grid-column: 1;
-    grid-row: auto;
-  }
-}
-
-.beatLine {
-  overflow-wrap: anywhere;
-}
-
 .rowLink {
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr) auto;

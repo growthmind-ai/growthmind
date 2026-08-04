@@ -1,6 +1,9 @@
-import { Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 
 import { CopyBlock } from "@/components/ui/CopyBlock";
+import { Eyebrow } from "@/components/ui/Eyebrow";
+import { PageHeader } from "@/components/ui/Page";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { readCollect } from "@/lib/preview/readers";
 
 export const dynamic = "force-dynamic";
@@ -19,22 +22,15 @@ export default function CollectPage() {
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          What we do and do not collect
-        </Title>
-        <Text size="sm" c="dimmed">
-          Not written by hand. If the rules change, this page changes with them — or a test fails.
-        </Text>
-      </Stack>
+      <PageHeader title="What we do and do not collect">
+        Not written by hand. If the rules change, this page changes with them — or a test fails.
+      </PageHeader>
 
       <Stack gap="sm">
         {view.groups.map((group) => (
-          <Paper key={group.label} withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+          <SurfaceCard key={group.label}>
             <Group justify="space-between" gap="md" wrap="wrap" mb={6}>
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-                {group.label}
-              </Text>
+              <Eyebrow>{group.label}</Eyebrow>
               <Text size="xs" ff="monospace" c="dimmed">
                 {group.version}
               </Text>
@@ -46,7 +42,7 @@ export default function CollectPage() {
                 </Text>
               ))}
             </Stack>
-          </Paper>
+          </SurfaceCard>
         ))}
       </Stack>
 

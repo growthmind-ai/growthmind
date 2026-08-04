@@ -1,7 +1,6 @@
 import {
   Box,
   Group,
-  Paper,
   Stack,
   Table,
   TableScrollContainer,
@@ -11,12 +10,15 @@ import {
   TableThead,
   TableTr,
   Text,
-  Title,
 } from "@mantine/core";
 
+import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ButtonLink } from "@/components/ui/Links";
+import { PageHeader } from "@/components/ui/Page";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readPlan } from "@/lib/preview/readers";
+import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -25,33 +27,24 @@ export default function PlanPage() {
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          Before you build it
-        </Title>
-        <Text size="sm" c="dimmed">
-          Growthmind read the branch. Here is what it thinks will happen, and what it would do
-          instead.
-        </Text>
-      </Stack>
+      <PageHeader title="Before you build it">
+        Growthmind read the branch. Here is what it thinks will happen, and what it would do
+        instead.
+      </PageHeader>
 
-      <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What you&apos;re about to ship
-        </Text>
+      <SurfaceCard>
+        <Eyebrow>What you&apos;re about to ship</Eyebrow>
         <Text mt={4}>{view.aboutToShip}</Text>
-      </Paper>
+      </SurfaceCard>
 
-      <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What we think it does to the people who actually arrive
-        </Text>
+      <SurfaceCard>
+        <Eyebrow>What we think it does to the people who actually arrive</Eyebrow>
         <Text mt={4}>{view.assessment}</Text>
         <Text size="sm" c="dimmed" mt="xs">
           {view.heldAgainst}
         </Text>
         <ButtonLink
-          href="/audience"
+          href={ROUTES.audience}
           variant="subtle"
           size="compact-sm"
           mt="xs"
@@ -59,12 +52,10 @@ export default function PlanPage() {
         >
           The beliefs this rests on →
         </ButtonLink>
-      </Paper>
+      </SurfaceCard>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          One change, ranked
-        </Text>
+        <Eyebrow>One change, ranked</Eyebrow>
         <TableScrollContainer minWidth={520}>
           <Table striped={false} withRowBorders>
             <TableThead>
@@ -107,17 +98,13 @@ export default function PlanPage() {
         </Text>
       </Stack>
 
-      <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What we predict, before it runs
-        </Text>
+      <SurfaceCard>
+        <Eyebrow>What we predict, before it runs</Eyebrow>
         <Text mt={4} mb="sm">
           {view.prediction}
         </Text>
 
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          The tracking plan this needs — derived from the same flow
-        </Text>
+        <Eyebrow>The tracking plan this needs — derived from the same flow</Eyebrow>
         <Box mt={4}>
           {view.trackingPlan.map((entry) => (
             <Group key={entry.event} gap="sm" wrap="nowrap">
@@ -135,7 +122,7 @@ export default function PlanPage() {
         <Text size="sm" c="dimmed" mt="sm">
           {view.joinable}
         </Text>
-      </Paper>
+      </SurfaceCard>
     </Stack>
   );
 }

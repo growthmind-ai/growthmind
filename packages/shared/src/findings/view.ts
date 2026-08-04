@@ -9,13 +9,8 @@ export interface FindingRow {
   readonly id: string;
   readonly group: FindingGroup;
 
-  // Two fields, not one sentence: eleven five-clause sentences at one weight is a wall of
-  // text. These are the columns the finding already has — the list shows both, at different
-  // weights, and the detail page shows the whole thing.
   readonly headline: string;
   readonly context: string;
-
-  // The honest-limit clause, held apart so it can be rendered quieter than the claim.
   readonly aside: string | null;
 
   // Null denominator for a row that counts something other than affected sessions.
@@ -37,8 +32,6 @@ export interface OverviewView {
   readonly window: string;
   readonly coverage: CoverageCounts;
 
-  // How the calls we already made turned out. This is the accountability claim, and it is
-  // the one number on this page a reader can hold us to.
   readonly calibration: { readonly right: number; readonly wrong: number; readonly pending: number };
   readonly rows: readonly FindingRow[];
 }
@@ -63,8 +56,6 @@ export interface BeatView {
   readonly kind: TranscriptBeatKind;
   readonly text: string;
 
-  // Failure beats carry the weight of the finding, so they are emphasised rather
-  // than coloured — a second colour would read as a severity badge.
   readonly notable: boolean;
   readonly attempt: number | null;
 }
@@ -96,8 +87,7 @@ export interface EvidenceView {
   readonly currentSessionId: string;
   readonly coverageLine: string;
 
-  // Set when the mask floor refused the recording (ADD-001 AD-7). Beats stay empty and
-  // the page renders its second layout rather than an empty transcript.
+  // Set when the mask floor refused the recording (ADD-001 AD-7); beats stay empty.
   readonly withheld: boolean;
 }
 
@@ -112,9 +102,8 @@ export function beatsAreCited(claims: readonly ClaimView[], index: number): bool
   return claims.some((claim) => claim.citesBeats.includes(index));
 }
 
-// Grid rows for the margin notes, 1-based, where beat `i` occupies row `i + 1`. Two claims
-// citing the same beat would otherwise be placed on one row and overlap, so each is pushed
-// below its predecessor — the note stays as close to its evidence as collision allows.
+// Grid rows for the margin notes, 1-based, where beat `i` occupies row `i + 1`. Claims
+// sharing a beat are pushed down one row each, because one grid row cannot hold both.
 export function claimRows(claims: readonly ClaimView[]): readonly number[] {
   const rows: number[] = [];
   let previous = 0;
