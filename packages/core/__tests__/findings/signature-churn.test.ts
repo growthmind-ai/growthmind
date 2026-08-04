@@ -53,11 +53,14 @@ function shapeInputWithSurface(surface: string): EvidenceShapeInput {
   };
 }
 
-type TestLocalEvidenceShapeV2Input = EvidenceShapeInput & { readonly extraSignalCount: number };
+type TestLocalEvidenceShapeV3Input = EvidenceShapeInput & { readonly extraSignalCount: number };
 
-function testLocalSerialiseEvidenceShapeV2(input: TestLocalEvidenceShapeV2Input): string {
+// A hypothetical NEXT version. It was written as `v2` when v2 did not exist; v2 is now the real
+// current serialiser (B-016), so the shim moves up one to keep testing what it was for — that a
+// shape-version bump forks identity and ancestry maps it.
+function testLocalSerialiseEvidenceShapeV3(input: TestLocalEvidenceShapeV3Input): string {
   const shape: CanonicalObject = {
-    v: 2,
+    v: 3,
     detector: input.detector,
     surface: input.surface,
     surfaceNormalisationVersion: input.surfaceNormalisationVersion,
@@ -82,11 +85,16 @@ const GOLDEN_EVIDENCE_SHAPE_V1 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
   '"surface":"/checkout","surfaceNormalisationVersion":2,"symptomClass":"broken","v":1}';
 
+const GOLDEN_EVIDENCE_SHAPE_V2 =
+  '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
+  '"surface":"/checkout","symptomClass":"broken","v":2}';
+
 const BASELINE_SURFACE = mustNormalise("/Checkout");
 const BASELINE_EVIDENCE_SHAPE = evidenceShape(
   shapeInputWithSurface(BASELINE_SURFACE),
   EVIDENCE_SHAPE_VERSION,
 );
+const BASELINE_EVIDENCE_SHAPE_AT_V1 = evidenceShape(shapeInputWithSurface(BASELINE_SURFACE), 1);
 
 const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
   projectId: PROJECT_ID,
@@ -98,21 +106,35 @@ const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
 const GOLDEN_V1_TUPLE_BASELINE =
   '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":2,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
 
+const GOLDEN_TUPLE_BASELINE =
+  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"symptomClass\\":\\"broken\\",\\"v\\":2}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
+
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
     expect(URL_PATH_NORMALISATION_VERSION).toBe(2);
-    expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V1);
+    expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V2);
+
+    // The retired serialiser keeps reproducing its own bytes, so a stored v1 row stays attached.
+    expect(BASELINE_EVIDENCE_SHAPE_AT_V1).toBe(GOLDEN_EVIDENCE_SHAPE_V1);
   });
 
-  test("pins the v1 signature tuple string for the baseline fixture (golden literal, pinned)", () => {
+  test("pins the signature tuple string for the baseline fixture (golden literal, pinned)", () => {
     expect(signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION)).toBe(
-      GOLDEN_V1_TUPLE_BASELINE,
+      GOLDEN_TUPLE_BASELINE,
     );
+
+    // The v1-era tuple, still reproducible from a v1 shape.
+    expect(
+      signatureTuple(
+        { ...BASELINE_TUPLE_INPUT, evidenceShape: BASELINE_EVIDENCE_SHAPE_AT_V1 },
+        SIGNATURE_TUPLE_VERSION,
+      ),
+    ).toBe(GOLDEN_V1_TUPLE_BASELINE);
   });
 });
 
 describe("signature-churn — fork fixtures (relational; independent of any literal)", () => {
-  test("forks the identity when URL_PATH_NORMALISATION_VERSION moves 2 to 3, and an ancestry row maps it", () => {
+  test("holds one identity when URL_PATH_NORMALISATION_VERSION moves 2 to 3 (B-016)", () => {
     const shapeUnderV2 = evidenceShape(
       { ...shapeInputWithSurface(BASELINE_SURFACE), surfaceNormalisationVersion: 2 },
       EVIDENCE_SHAPE_VERSION,
@@ -141,17 +163,31 @@ describe("signature-churn — fork fixtures (relational; independent of any lite
       SIGNATURE_TUPLE_VERSION,
     );
 
-    expect(tupleUnderV2).not.toBe(tupleUnderV3);
-    // Deliberate, named outcome: a fork. The DB layer's `signature_ancestry` maps the
-    // v2 tuple's hash to the v3 tuple's hash with reason
-    // `surface_normalisation_version_bump`. Provable only in `packages/db` (this
-    // package cannot hash).
+    // Was a deliberate fork, and was wrong: the version is derived per-window and goes null
+    // the moment the events on a surface disagree, so an ordinary rollout walked every surface
+    // 2 → null → 3 and minted three identities for one problem. It is provenance now, not
+    // identity, and no ancestry row is owed for a bump that no longer forks anything.
+    expect(tupleUnderV2).toBe(tupleUnderV3);
+
+    const tupleMidRollout = signatureTuple(
+      {
+        projectId: PROJECT_ID,
+        surfaceId: BASELINE_SURFACE,
+        symptomClass: "broken",
+        evidenceShape: evidenceShape(
+          { ...shapeInputWithSurface(BASELINE_SURFACE), surfaceNormalisationVersion: null },
+          EVIDENCE_SHAPE_VERSION,
+        ),
+      },
+      SIGNATURE_TUPLE_VERSION,
+    );
+    expect(tupleMidRollout).toBe(tupleUnderV2);
   });
 
   const TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS: ReadonlyMap<
     number,
-    (input: TestLocalEvidenceShapeV2Input) => string
-  > = new Map([[2, testLocalSerialiseEvidenceShapeV2]]);
+    (input: TestLocalEvidenceShapeV3Input) => string
+  > = new Map([[2, testLocalSerialiseEvidenceShapeV3]]);
 
   test("forks the identity when EVIDENCE_SHAPE_VERSION moves 1 to 2 via a test-local v2 serialiser, and an ancestry row maps it", () => {
     const v1Shape = evidenceShape(shapeInputWithSurface(BASELINE_SURFACE), EVIDENCE_SHAPE_VERSION);
@@ -275,7 +311,7 @@ describe("signature-churn — negative control and anti-vacuity control", () => 
     const second = signatureTuple(BASELINE_TUPLE_INPUT, SIGNATURE_TUPLE_VERSION);
 
     expect(first).toBe(second);
-    expect(first).toBe(GOLDEN_V1_TUPLE_BASELINE);
+    expect(first).toBe(GOLDEN_TUPLE_BASELINE);
   });
 
   test("ANTI-VACUITY: forks the identity (produces a different tuple string) when symptom_class flips broken to confusing", () => {
