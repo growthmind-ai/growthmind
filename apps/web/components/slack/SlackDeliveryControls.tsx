@@ -108,7 +108,9 @@ export function SlackDeliveryControls(props: SlackDeliveryControlsProps) {
 
     const read = readChannelMoveAnswer(answer.body);
     if (read === null) {
-      setFailure(readRefusal(answer.body)?.message ?? ONBOARDING_MESSAGES.settingsChannelMoveRefused);
+      setFailure(
+        readRefusal(answer.body)?.message ?? ONBOARDING_MESSAGES.settingsChannelMoveRefused,
+      );
       return;
     }
 

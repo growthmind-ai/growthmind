@@ -703,7 +703,10 @@ describe("slack_connections — the org's credential, and the teammate who set n
     ).toBeNull();
 
     expect(
-      await readRawScalar(db, sql`select channel_id from slack_connections where id = ${theirs.id}`),
+      await readRawScalar(
+        db,
+        sql`select channel_id from slack_connections where id = ${theirs.id}`,
+      ),
     ).toBe(PICKED_CHANNEL);
   });
 });

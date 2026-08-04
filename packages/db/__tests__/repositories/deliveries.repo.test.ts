@@ -499,7 +499,9 @@ describe("deliveries repository", () => {
     expect((await repo.findLatestForSignature(project.id, signature))?.id).toBe(
       claimed.delivery.id,
     );
-    expect((await repo.listPendingForProject(project.id, NOTHING_EXPIRED))[0]?.id).toBe(claimed.delivery.id);
+    expect((await repo.listPendingForProject(project.id, NOTHING_EXPIRED))[0]?.id).toBe(
+      claimed.delivery.id,
+    );
   });
 
   it("resolves one delivery when two organizations post into the same channel", async () => {

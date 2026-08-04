@@ -8,10 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // The deps types come from the shipped module, not from the contract helper's mirror: the
 // mirror declares only the ports the first-run rows inject, and this route needs the
 // channel lister. A real deps object still satisfies the mirror the handler is typed on.
-import type {
-  FirstRunChannelListing,
-  FirstRunRouteDeps,
-} from "../../../lib/first-run/deps";
+import type { FirstRunChannelListing, FirstRunRouteDeps } from "../../../lib/first-run/deps";
 import {
   bodyOf,
   clockAt,
@@ -163,7 +160,7 @@ describe("POST /api/settings/slack/channel", () => {
 
     const response = await move(scope, FIRST_CHANNEL);
     expect(response.status).toBe(200);
-    expect((await bodyOf(response) as { moved?: unknown }).moved).toBe(false);
+    expect(((await bodyOf(response)) as { moved?: unknown }).moved).toBe(false);
 
     const row = await storedRow(scope.organizationId);
     expect(row?.channelId).toBe(FIRST_CHANNEL);
@@ -217,7 +214,7 @@ describe("POST /api/settings/slack/channel", () => {
     expect((await move(scope, SECOND_CHANNEL)).status).toBe(200);
     const first = (await storedRow(scope.organizationId))?.deliveryCutoverAt;
 
-    expect((await bodyOf(await move(scope, SECOND_CHANNEL)) as { moved?: unknown }).moved).toBe(
+    expect(((await bodyOf(await move(scope, SECOND_CHANNEL))) as { moved?: unknown }).moved).toBe(
       false,
     );
 
