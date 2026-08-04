@@ -1,15 +1,48 @@
+import { serialiseFixSpecInput } from "@growthmind/core";
+import {
+  createFindingPayloadsRepo,
+  createFindingsRepo,
+  createFixesService,
+  schema,
+  type ScopedDb,
+} from "@growthmind/db";
+import {
+  createTestDb,
+  seedAnalysisRun,
+  seedOrgWithOwner,
+  seedProject,
+  type TestDbHandle,
+} from "@growthmind/db/testing";
 import {
   FIX_SURFACE_FORBIDDEN_REFUSALS,
   MCP_TOOL,
   SURFACE_ROLE_NOTES,
+  fixSpecEnvelopeSchema,
   getGrowthContextOutputSchema,
+  type TenantContext,
 } from "@growthmind/shared";
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
+import { POST } from "../../app/api/mcp/route";
 import { callTool } from "../../lib/mcp/call-tool";
 import { toGrowthContextRecord } from "../../lib/mcp/dto";
 import type { GrowthContextAnswer } from "../../lib/mcp/read-port";
-import { credentialFor, fakeReadPort, openFixRowFor } from "./helpers/mcp-fixture";
+import {
+  candidateFor,
+  credentialFor,
+  fakeReadPort,
+  mintRealApiKey,
+  openFixRowFor,
+  sseDataLine,
+  toolCallRequest,
+} from "./helpers/mcp-fixture";
 
 const ORG = "org-growth-context";
 const PROJECT = "project-growth-context";
@@ -241,5 +274,251 @@ describe("list_open_fixes keeps the order it was given", () => {
       "fix-later-deadline",
       "fix-sooner-deadline",
     ]);
+  });
+});
+
+// An address the residual scanner classifies as `email_address`, distinctive enough that
+// finding it anywhere downstream can only be this row's persisted text.
+const PII_OFFENDER = "dana.okonkwo@northwind.example";
+
+const SEED_OWNER =
+  "ADD O-021 Wave 1.4 (packages/db/src/testing/fixtures.ts — `seedUnscannedFinding`, the only " +
+  "helper that writes a finding row whose persisted text never passed the residual scan)";
+
+const SEED_MODULE = "packages/db/src/testing/index.ts";
+
+const FIXES_SERVICE_SOURCE = path.join(
+  import.meta.dir,
+  "../../../../packages/db/src/services/fixes.service.ts",
+);
+
+const COLD_BOOT_BUDGET_MS = 60_000;
+
+interface SeedUnscannedFindingParams {
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly headline: string;
+  readonly context: readonly string[];
+  readonly signature?: string;
+  readonly surface?: string;
+  readonly windowStart?: Date;
+  readonly windowEnd?: Date;
+  readonly createdAt?: Date;
+  readonly evidenceShape?: string;
+}
+
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: SeedUnscannedFindingParams,
+) => Promise<{ readonly id: string }>;
+
+function loadSeedUnscannedFinding(): Promise<SeedUnscannedFinding> {
+  return loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier(SEED_MODULE),
+    exportName: "seedUnscannedFinding",
+    ownedBy: SEED_OWNER,
+  });
+}
+
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[\t ]*\/\/.*$/gm, "");
+}
+
+function methodBodyOf(source: string, marker: string): string {
+  const start = source.indexOf(marker);
+  if (start === -1) {
+    throw new Error(`growth-context fixture: no \`${marker}\` in ${FIXES_SERVICE_SOURCE}`);
+  }
+
+  let depth = 0;
+  for (let index = source.indexOf("{", start); index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+
+  throw new Error(`growth-context fixture: \`${marker}\` has no closing brace`);
+}
+
+interface LiveOrg {
+  readonly label: string;
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly key: string;
+}
+
+interface LiveAnswer {
+  readonly status: number;
+  readonly body: string;
+  readonly structured: unknown;
+}
+
+async function askLive(org: LiveOrg, tool: string, input: unknown = {}): Promise<LiveAnswer> {
+  const response = await POST(toolCallRequest({ tool, input, key: org.key }));
+  const body = await response.text();
+  const frame = JSON.parse(sseDataLine(body)) as { result?: { structuredContent?: unknown } };
+
+  return { status: response.status, body, structured: frame.result?.structuredContent };
+}
+
+describe("get_growth_context and get_fix over real rows, driven through POST /api/mcp", () => {
+  const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
+
+  let handle: TestDbHandle;
+  let seq = 0;
+
+  beforeAll(async () => {
+    handle = await createTestDb();
+    globalForDb.__growthmindDb = handle.db;
+  }, COLD_BOOT_BUDGET_MS);
+
+  afterAll(async () => {
+    delete globalForDb.__growthmindDb;
+    await handle.close();
+  });
+
+  async function freshOrg(): Promise<LiveOrg> {
+    seq += 1;
+    const label = `growth${String(seq)}`;
+
+    const { ctx } = await seedOrgWithOwner(handle.db, {
+      orgName: `Org ${label}`,
+      userName: `Owner ${label}`,
+      email: `owner-${label}-${randomUUID()}@example.com`,
+    });
+    const project = await seedProject(handle.db, {
+      organizationId: ctx.organizationId,
+      name: `Project ${label}`,
+    });
+    const run = await seedAnalysisRun(handle.db, { ctx, projectId: project.id });
+    const key = (await mintRealApiKey(handle.db, ctx, `agent-${label}`)).raw;
+
+    return { label, ctx, projectId: project.id, runId: run.id, key };
+  }
+
+  async function attachPayload(org: LiveOrg, findingId: string, surface: string): Promise<void> {
+    await createFindingPayloadsRepo(handle.db, org.ctx).upsertFor({
+      findingId,
+      payload: serialiseFixSpecInput({ candidate: candidateFor(surface), signals: [] }),
+    });
+  }
+
+  async function seedCleanFinding(
+    org: LiveOrg,
+    input: { readonly surface: string; readonly headline: string },
+  ): Promise<string> {
+    const record = await createFindingsRepo(handle.db, org.ctx).persist({
+      projectId: org.projectId,
+      runId: org.runId,
+      signature: randomUUID(),
+      signatureVersion: 1,
+      summarySource: "model_rendered",
+      headline: input.headline,
+      context: ["One line of context, never a blob."],
+      finalClass: "confusing",
+      surface: input.surface,
+      surfaceNormalisationVersion: 1,
+      counts: [],
+      confidenceBasis: "threshold_met",
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      evidenceShape: `evidence-${org.label}-${input.surface}`,
+      evidenceShapeVersion: 1,
+      resolvedModelId: null,
+    });
+
+    return record.id;
+  }
+
+  async function seedHeldFinding(org: LiveOrg, surface: string): Promise<string> {
+    const seed = await loadSeedUnscannedFinding();
+
+    const row = await seed(handle.db, {
+      ctx: org.ctx,
+      projectId: org.projectId,
+      runId: org.runId,
+      signature: randomUUID(),
+      headline: `Someone typed ${PII_OFFENDER} into the box before leaving.`,
+      context: ["One line of context, never a blob."],
+      surface,
+      windowStart: WINDOW_START,
+      windowEnd: WINDOW_END,
+      evidenceShape: `evidence-${org.label}-${surface}`,
+    });
+
+    return row.id;
+  }
+
+  async function decline(org: LiveOrg, findingId: string, dismissedAt: Date): Promise<void> {
+    await handle.db.insert(schema.dismissals).values({
+      organizationId: org.ctx.organizationId,
+      projectId: org.projectId,
+      findingId,
+      signature: randomUUID(),
+      action: "not_useful",
+      dismissedAt,
+    });
+  }
+
+  test("get_growth_context omits a knownProblems/declined entry with a planted PII offender, driven through POST /api/mcp", async () => {
+    const org = await freshOrg();
+
+    const known = await seedCleanFinding(org, {
+      surface: "/growth/onboarding",
+      headline: "People stop at the second step",
+    });
+    await attachPayload(org, known, "/growth/onboarding");
+
+    const heldKnown = await seedHeldFinding(org, "/growth/held-known");
+    await attachPayload(org, heldKnown, "/growth/held-known");
+
+    const declined = await seedCleanFinding(org, {
+      surface: "/growth/declined",
+      headline: "Ask for a company name on the first screen",
+    });
+    await decline(org, declined, WINDOW_END);
+
+    const heldDeclined = await seedHeldFinding(org, "/growth/held-declined");
+    await decline(org, heldDeclined, WINDOW_START);
+
+    const answer = await askLive(org, MCP_TOOL.GET_GROWTH_CONTEXT);
+
+    expect(answer.status).toBe(200);
+
+    const parsed = getGrowthContextOutputSchema.parse(answer.structured);
+
+    expect(parsed.knownProblems.map((problem) => problem.findingId)).toEqual([known]);
+    expect(parsed.declined.map((idea) => idea.headline)).toEqual([
+      "Ask for a company name on the first screen",
+    ]);
+    expect(answer.body).not.toContain(PII_OFFENDER);
+  });
+
+  test("get_fix never reads findings.headline or findings.context for any candidate", async () => {
+    const readFix = methodBodyOf(
+      withoutComments(readFileSync(FIXES_SERVICE_SOURCE, "utf8")),
+      "async readFix(",
+    );
+
+    expect(readFix).not.toContain("findings.");
+
+    const org = await freshOrg();
+    const heldId = await seedHeldFinding(org, "/growth/held-fix");
+    await attachPayload(org, heldId, "/growth/held-fix");
+
+    const opened = await createFixesService(handle.db, org.ctx).openFor(heldId);
+    if (opened.outcome !== "opened") {
+      throw new Error(`growth-context fixture: openFor answered "${opened.outcome}"`);
+    }
+
+    const answer = await askLive(org, MCP_TOOL.GET_FIX, { fixId: opened.fix.id });
+    const envelope = fixSpecEnvelopeSchema.parse(answer.structured);
+
+    expect(envelope.findingId).toBe(heldId);
+    expect(envelope.specText.length).toBeGreaterThan(0);
   });
 });

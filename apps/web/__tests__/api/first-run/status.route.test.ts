@@ -4,14 +4,19 @@ import {
   eq,
   schema,
   type MeasuredCountRow,
+  type ScopedDb,
 } from "@growthmind/db";
-import { CONNECTION_STATE_MESSAGES } from "@growthmind/shared";
+import { CONNECTION_STATE_MESSAGES, type TenantContext } from "@growthmind/shared";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../../../packages/shared/__tests__/onboarding/module-under-construction";
 import {
   enumerateShapeKeys,
   plainObjectControl,
@@ -173,6 +178,48 @@ async function seedFinding(
 
 function depsFor(scope: SeededMemberScope | null) {
   return { db: bed.db, tenant: tenantOf(scope?.ctx ?? null), now: CLOCK };
+}
+
+// An address the residual scanner classifies as `email_address`, distinctive enough that
+// finding it anywhere in the payload can only be this row's persisted text.
+const PII_OFFENDER = "dana.okonkwo@northwind.example";
+
+const SEED_OWNER =
+  "ADD O-021 Wave 1.4 (packages/db/src/testing/fixtures.ts — `seedUnscannedFinding`, the only " +
+  "helper that writes a finding row whose persisted text never passed the residual scan)";
+
+const SEED_MODULE = "packages/db/src/testing/index.ts";
+
+// ADD Decision 4: only a row from THIS watch may make the screen terminal, so the planted
+// row is stamped after the arm clock. The pre-armedAt case is I4, in packages/db.
+const AFTER_ARMED_AT = new Date("2026-08-01T11:00:00.000Z");
+
+interface SeedUnscannedFindingParams {
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly headline: string;
+  readonly context: readonly string[];
+  readonly signature?: string;
+  readonly surface?: string;
+  readonly counts?: readonly MeasuredCountRow[];
+  readonly windowStart?: Date;
+  readonly windowEnd?: Date;
+  readonly createdAt?: Date;
+  readonly evidenceShape?: string;
+}
+
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: SeedUnscannedFindingParams,
+) => Promise<{ readonly id: string }>;
+
+function loadSeedUnscannedFinding(): Promise<SeedUnscannedFinding> {
+  return loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier(SEED_MODULE),
+    exportName: "seedUnscannedFinding",
+    ownedBy: SEED_OWNER,
+  });
 }
 
 describe("CONTROL — the strictness prober, run against real zod (AD-16a)", () => {
@@ -487,6 +534,48 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     expect(raw).not.toContain("credentialCiphertext");
     expect(raw).not.toContain("credential_ciphertext");
     expect(raw).not.toContain("credentialKeyId");
+  });
+});
+
+describe("GET /api/first-run/status — a finding whose persisted text is held (O-021)", () => {
+  test("a persisted finding with a planted PII offender returns findingUnavailable true and no dirty text, driven through the real route handler", async () => {
+    const handle = await loadRouteHandler(STATUS);
+    const arm = await loadRouteHandler(ARM);
+    const scope = await bed.member("pii-held");
+    const projectId = await projectFor(scope);
+
+    await arm(routeRequest(ARM, {}), depsFor(scope));
+
+    const healthy = await bodyOf(await handle(routeRequest(STATUS), depsFor(scope)));
+    expect(healthy.findingUnavailable).toBe(false);
+    expect(Date.parse(String(healthy.armedAt))).toBeLessThan(AFTER_ARMED_AT.getTime());
+
+    const seed = await loadSeedUnscannedFinding();
+    const run = await seedAnalysisRun(bed.db, { ctx: scope.ctx, projectId });
+
+    await seed(bed.db, {
+      ctx: scope.ctx,
+      projectId,
+      runId: run.id,
+      signature: randomUUID(),
+      headline: `A visitor typed ${PII_OFFENDER} into the box and left.`,
+      context: ["One line of context, never a blob."],
+      surface: "/checkout",
+      counts: [MEASURED_COUNT],
+      windowStart: new Date("2026-07-30T00:00:00.000Z"),
+      windowEnd: new Date("2026-08-01T00:00:00.000Z"),
+      createdAt: AFTER_ARMED_AT,
+    });
+
+    const response = await handle(routeRequest(STATUS), depsFor(scope));
+
+    expect(response.status).toBe(200);
+
+    const body = await bodyOf(response);
+
+    expect(body.findingUnavailable).toBe(true);
+    expect(body.finding).toBeNull();
+    expect(JSON.stringify(body)).not.toContain(PII_OFFENDER);
   });
 });
 
