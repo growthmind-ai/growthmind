@@ -11,6 +11,7 @@ import {
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { apiKeys } from "../schema/api-keys";
+import { organization } from "../schema/auth";
 import { orgCrud } from "./crud";
 import type { ScopedDb, ScopedExecutor } from "./types";
 
@@ -76,14 +77,16 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
   };
 }
 
-export interface ResolvedApiKey {
-  readonly organizationId: string;
-}
+export const API_KEY_ACTOR_PREFIX = "api-key:";
 
-export async function resolveApiKeyForRead(
+export const API_KEY_ACTOR_ROLE = "api_key";
+
+// The organization is read out of the database, keyed by the digest of an unforgeable
+// secret, so no caller can name the tenancy it acts in.
+export async function resolveApiKeyPrincipal(
   db: ScopedDb,
   presented: string,
-): Promise<ResolvedApiKey | null> {
+): Promise<TenantContext | null> {
   if (!isApiKeyFormat(presented)) {
     return null;
   }
@@ -91,8 +94,13 @@ export async function resolveApiKeyForRead(
   const keyHash = hashApiKeyMaterial(presented);
 
   const [row] = await db
-    .select({ organizationId: apiKeys.organizationId })
+    .select({
+      keyId: apiKeys.id,
+      organizationId: apiKeys.organizationId,
+      organizationName: organization.name,
+    })
     .from(apiKeys)
+    .innerJoin(organization, eq(apiKeys.organizationId, organization.id))
     .where(and(eq(apiKeys.keyHash, keyHash), isNull(apiKeys.revokedAt)))
     .limit(1);
 
@@ -100,5 +108,10 @@ export async function resolveApiKeyForRead(
     return null;
   }
 
-  return { organizationId: row.organizationId };
+  return {
+    userId: `${API_KEY_ACTOR_PREFIX}${row.keyId}`,
+    organizationId: row.organizationId,
+    organizationName: row.organizationName,
+    role: API_KEY_ACTOR_ROLE,
+  };
 }

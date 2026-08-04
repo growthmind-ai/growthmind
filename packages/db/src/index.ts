@@ -130,6 +130,7 @@ export {
 } from "./services/signature-ledger.service";
 export {
   createDeliveriesRepo,
+  resolveDeliveryForInteraction,
   DELIVERY_CONFLICT_TARGET,
   type DeliveriesRepo,
   type DeliveryRecord,
@@ -137,16 +138,47 @@ export {
   type ClaimDeliveryResult,
   type MarkPostedInput,
   type MarkFailedInput,
+  type InteractionPrincipal,
 } from "./repositories/deliveries.repo";
 
 export {
   createApiKeysRepo,
-  resolveApiKeyForRead,
+  resolveApiKeyPrincipal,
+  API_KEY_ACTOR_PREFIX,
+  API_KEY_ACTOR_ROLE,
   type ApiKeysRepo,
   type MintedApiKey,
   type ApiKeyRow,
-  type ResolvedApiKey,
 } from "./repositories/api-keys.repo";
+
+export {
+  createFixesRepo,
+  FIX_CONFLICT_COLUMNS,
+  OPEN_FIX_STATUS,
+  type FixesRepo,
+  type FixRow,
+  type ClaimFixInput,
+  type CountOpenFixesOptions,
+} from "./repositories/fixes.repo";
+
+export {
+  createFindingPayloadsRepo,
+  FINDING_PAYLOAD_CONFLICT_TARGET,
+  type FindingPayloadsRepo,
+  type FindingPayloadRow,
+  type UpsertFindingPayloadInput,
+} from "./repositories/finding-payloads.repo";
+
+export {
+  createFixesService,
+  type FixesService,
+  type OpenFixResult,
+  type OpenFixReadModel,
+  type FixReadModel,
+  type FindingReadModel,
+  type ListOpenFixesInput,
+  type ListOpenFixesPage,
+} from "./services/fixes.service";
 
 export {
   createFindingsRepo,

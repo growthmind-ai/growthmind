@@ -1,10 +1,23 @@
-import { createApiKeysRepo } from "@growthmind/db";
-import { createTestDb } from "@growthmind/db/testing";
+import { createHmac } from "node:crypto";
+
+import { serialiseFixSpecInput } from "@growthmind/core";
+import {
+  createApiKeysRepo,
+  createFindingPayloadsRepo,
+  createFindingsRepo,
+  createFixesService,
+} from "@growthmind/db";
+import {
+  createTestDb,
+  seedAnalysisRun,
+  seedOrgWithOwner,
+  seedProject,
+} from "@growthmind/db/testing";
 import { API_KEY_PREFIX, MCP_TOOL, type TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createApiKeyMcpCredentials } from "../../lib/mcp/credentials";
-import { createAbsentReadPort } from "../../lib/mcp/read-port";
+import { createLiveReadPort } from "../../lib/mcp/read-port-live";
 import { NOT_FOUND, UNAUTHENTICATED } from "../../lib/mcp/refusals";
 import { handleMcpRequest, type McpServerDeps } from "../../lib/mcp/server";
 import {
@@ -15,11 +28,14 @@ import {
   type AuthTestContext,
 } from "../tenancy/helpers/auth-fixture";
 import {
+  candidateFor,
   fingerprint,
   mintRealApiKey,
   rpcRequest,
   sseDataLine,
   toolCallRequest,
+  WINDOW_END,
+  WINDOW_START,
   type MintedTestApiKey,
 } from "./helpers/mcp-fixture";
 
@@ -66,9 +82,7 @@ beforeAll(async () => {
 
   deps = {
     credentials: createApiKeyMcpCredentials(authCtx.db),
-    reads: createAbsentReadPort(() => {
-      /* the absence line is asserted in route.test.ts, not here */
-    }),
+    reads: createLiveReadPort(authCtx.db),
   };
 });
 
@@ -78,6 +92,59 @@ afterAll(async () => {
 
 async function mintApiKey(name: string): Promise<MintedTestApiKey> {
   return mintRealApiKey(authCtx.db, ownerCtx, name);
+}
+
+interface StockedOrganization {
+  readonly key: string;
+  readonly fixId: string;
+}
+
+// A whole other organization with one real, renderable fix in it. WIRE-A2's empty answer
+// has to mean "Org Mcpak owns nothing", never "this port reads nothing".
+async function stockedSiblingOrganization(label: string): Promise<StockedOrganization> {
+  const surface = `/mcpak/${label}`;
+  const org = await seedOrgWithOwner(authCtx.db, {
+    orgName: `Org Mcpak ${label}`,
+    userName: `Owner Mcpak ${label}`,
+    email: `owner-mcpak-${label}@example.com`,
+  });
+  const project = await seedProject(authCtx.db, {
+    organizationId: org.organizationId,
+    name: `Mcpak ${label}`,
+  });
+  const run = await seedAnalysisRun(authCtx.db, { ctx: org.ctx, projectId: project.id });
+
+  const finding = await createFindingsRepo(authCtx.db, org.ctx).persist({
+    projectId: project.id,
+    runId: run.id,
+    signature: createHmac("sha256", "mcpak").update(surface).digest("hex"),
+    signatureVersion: 1,
+    summarySource: "model_rendered",
+    headline: "People are leaving the pricing page without going any further.",
+    context: ["We saw sessions reach the pricing page and stop there."],
+    finalClass: "confusing",
+    surface,
+    surfaceNormalisationVersion: 1,
+    counts: [],
+    confidenceBasis: "threshold_met",
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    evidenceShape: `mcpak-${label}`,
+    evidenceShapeVersion: 1,
+    resolvedModelId: null,
+  });
+  await createFindingPayloadsRepo(authCtx.db, org.ctx).upsertFor({
+    findingId: finding.id,
+    payload: serialiseFixSpecInput({ candidate: candidateFor(surface), signals: [] }),
+  });
+
+  const opened = await createFixesService(authCtx.db, org.ctx).openFor(finding.id);
+  if (opened.outcome !== "opened") {
+    throw new Error(`mcpak fixture: openFor answered "${opened.outcome}", not "opened"`);
+  }
+
+  const key = (await mintRealApiKey(authCtx.db, org.ctx, `agent-mcpak-${label}`)).raw;
+  return { key, fixId: opened.fix.id };
 }
 
 async function catalogueWith(key: string | null): Promise<Response> {
@@ -115,6 +182,7 @@ describe("the read surface answers a credential a person minted, and nothing els
 
   test("WIRE-A2 — should answer list_open_fixes with an empty list and a truthful window", async () => {
     const { raw } = await mintApiKey("agent-list-open-fixes");
+    const sibling = await stockedSiblingOrganization("list-control");
 
     const print = await fingerprint(await callWith(raw));
 
@@ -127,8 +195,14 @@ describe("the read surface answers a credential a person minted, and nothing els
     expect(payload).toContain('"returned":0');
     expect(payload).toContain('"totalOpen":0');
     expect(payload).toContain('"truncated":false');
+    expect(payload).not.toContain(sibling.fixId);
 
     expect(payload).not.toContain('"isError":true');
+
+    const stocked = sseDataLine((await fingerprint(await callWith(sibling.key))).body);
+    expect(stocked).toContain(sibling.fixId);
+    expect(stocked).toContain('"returned":1');
+    expect(stocked).toContain('"totalOpen":1');
   });
 
   test("WIRE-A3 — should answer get_fix and get_finding with the frozen not-found", async () => {

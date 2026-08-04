@@ -1,5 +1,6 @@
 import {
   EVIDENCE_SHAPE_VERSION,
+  FIX_SPEC_PAYLOAD_VERSION,
   GATE_REASON_MESSAGES,
   PROOF_PREDICATE_VERSION,
   SIGNATURE_TUPLE_VERSION,
@@ -13,6 +14,8 @@ import type {
   AnalysisRunRecord,
   AnalysisRunsRepo,
   CloseRunInput,
+  FindingPayloadRow,
+  FindingPayloadsRepo,
   FindingRecord,
   FindingSignatureRecord,
   FindingsRepo,
@@ -20,6 +23,7 @@ import type {
   PersistFindingInput,
   RecordSignatureResult,
   SignatureLedgerService,
+  UpsertFindingPayloadInput,
 } from "@growthmind/db";
 import type { SessionSummariser, SummariseInput } from "@growthmind/adapters";
 import type { SummaryRenderResult, TenantContext } from "@growthmind/shared";
@@ -445,6 +449,7 @@ function harness(options: {
         summariser === null ? null : { port: summariser.port, resolvedModelId: MODEL_ID },
       findingsFor: findings.repoFor,
       runsFor: runs.repoFor,
+      payloadsFor: createFakePayloads().repoFor,
       ledgerFor:
         options.ledgerThrows === true
           ? (ctx: TenantContext) => ({
@@ -491,6 +496,77 @@ test("driving the analysis task with a working model persists a finding with sum
   expect(row?.resolvedModelId).toBe(MODEL_ID);
    
   expect(h.ledger.recorded()).toEqual([CANDIDATE_A.surface]);
+});
+
+const COUPON_SURFACE = "/checkout/coupon";
+
+const COUPON_SIGNAL = { kind: "clean_exit", surface: COUPON_SURFACE } as const;
+
+// Parsed through the schema on purpose: today `signals` is stripped as an unknown key, so
+// the assertion below is red until Wave 2 declares it and Wave 4 writes the row.
+const CANDIDATE_WITH_SIGNALS = candidateFindingSchema.parse({
+  ...candidate(COUPON_SURFACE),
+  signals: [COUPON_SIGNAL],
+});
+
+interface FakePayloads {
+  repoFor: (ctx: TenantContext) => FindingPayloadsRepo;
+  rows: () => readonly FindingPayloadRow[];
+}
+
+function createFakePayloads(): FakePayloads {
+  const stored: FindingPayloadRow[] = [];
+
+  const find = (organizationId: string, findingId: string): FindingPayloadRow | undefined =>
+    stored.find((row) => row.organizationId === organizationId && row.findingId === findingId);
+
+  return {
+    rows: () => [...stored],
+    repoFor: (ctx) => ({
+      upsertFor(input: UpsertFindingPayloadInput): Promise<FindingPayloadRow> {
+        const existing = find(ctx.organizationId, input.findingId);
+        if (existing) return Promise.resolve(existing);
+
+        const row: FindingPayloadRow = {
+          id: `o11-payload-${String(stored.length + 1)}`,
+          organizationId: ctx.organizationId,
+          findingId: input.findingId,
+          payloadVersion: input.payload.payloadVersion,
+          candidate: input.payload.candidate,
+          signals: input.payload.signals,
+          createdAt: TICK_AT,
+        };
+        stored.push(row);
+        return Promise.resolve(row);
+      },
+
+      findForFinding(findingId: string): Promise<FindingPayloadRow | null> {
+        return Promise.resolve(find(ctx.organizationId, findingId) ?? null);
+      },
+    }),
+  };
+}
+
+test("persists the payload a fix spec needs alongside the finding", async () => {
+  const payloads = createFakePayloads();
+  const h = harness({ lanes: [lane({ candidates: [CANDIDATE_A, CANDIDATE_WITH_SIGNALS] })] });
+
+  const deps = { ...h.deps, payloadsFor: payloads.repoFor } as AnalysisTickDeps;
+
+  await runAnalysisTick(deps);
+
+  const persisted = h.findings.rows();
+  expect(persisted).toHaveLength(2);
+  expect(payloads.rows()).toHaveLength(persisted.length);
+
+  const withSignals = h.findings.rowFor(signatureOf(CANDIDATE_WITH_SIGNALS));
+  const row = payloads.rows().find((entry) => entry.findingId === withSignals?.id);
+
+  expect(row?.payloadVersion).toBe(FIX_SPEC_PAYLOAD_VERSION);
+  expect((row?.candidate as { detector?: unknown } | undefined)?.detector).toBe(
+    CANDIDATE_WITH_SIGNALS.detector,
+  );
+  expect(row?.signals).toEqual([COUPON_SIGNAL]);
 });
 
 test("driving the analysis task with no key configured persists floor_no_key_configured and attempts zero model calls", async () => {

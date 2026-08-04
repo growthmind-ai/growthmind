@@ -238,7 +238,7 @@ export const SAC_CONTRACT: Record<EnforcedSacId, EnforcedSacRow> = {
         file: GUARD_TESTS,
       },
       {
-        test: "a CandidateFinding carries no struggling-cohort count for the renderer to conflate",
+        test: "a struggling-cohort count never reaches a rendered sentence",
         file: GUARD_TESTS,
       },
       SAC_11_DISJOINTNESS_PROOF,

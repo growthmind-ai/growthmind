@@ -269,6 +269,10 @@ export {
   RESIDUAL_PII_KIND_MESSAGES,
   NO_RATE_SENTENCE,
   DELIVERY_VOCABULARY,
+  FIX_QUEUED_ACKNOWLEDGEMENT,
+  FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
+  FIX_DETAIL_MISSING_REFUSAL,
+  SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
   ALL_DELIVERY_MESSAGES,
 } from "./delivery/messages";
 export {
@@ -285,6 +289,25 @@ export {
   DELIVERY_LANE_FAILURE_CLAUSE,
   deliveryFailureSentence,
 } from "./delivery/messages";
+export {
+  GET_IT_FIXED_ACTION_ID,
+  GET_IT_FIXED_LABEL,
+  FINDING_BLOCK_ID_PREFIX,
+  SLACK_INTERACTION_ACTOR,
+  SLACK_INTERACTION_ROLE,
+  SLACK_TIMESTAMP_TOLERANCE_MS,
+  FIX_RESULTS_WINDOW_DAYS,
+  FIX_RESULTS_RULE_VERSION,
+  FIX_CONFLICT_TARGET,
+  type FixConflictColumn,
+} from "./delivery/interaction-ids";
+
+export {
+  slackInteractionActionSchema,
+  slackInteractionPayloadSchema,
+  type SlackInteractionAction,
+  type SlackInteractionPayload,
+} from "./slack/interaction-payload";
 
 export {
   MCP_TOOL,

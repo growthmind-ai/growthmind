@@ -1,7 +1,8 @@
-import { resolveApiKeyForRead, type ScopedDb } from "@growthmind/db";
+import { resolveApiKeyPrincipal, type ScopedDb } from "@growthmind/db";
+import type { TenantContext } from "@growthmind/shared";
 
 export interface McpCredential {
-  readonly organizationId: string;
+  readonly context: TenantContext;
 }
 
 export interface McpCredentialSource {
@@ -11,12 +12,9 @@ export interface McpCredentialSource {
 export function createApiKeyMcpCredentials(db: ScopedDb): McpCredentialSource {
   return {
     async resolve(presented: string): Promise<McpCredential | null> {
-      const resolved = await resolveApiKeyForRead(db, presented);
-      if (resolved === null) {
-        return null;
-      }
+      const context = await resolveApiKeyPrincipal(db, presented);
 
-      return { organizationId: resolved.organizationId };
+      return context === null ? null : { context };
     },
   };
 }

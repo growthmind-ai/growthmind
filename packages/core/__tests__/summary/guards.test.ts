@@ -8,6 +8,7 @@ import {
 } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import { measuredCount } from "../../src/counts/measured-count";
 import { detectErrorEvent } from "../../src/detect/error-event";
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
 import type {
@@ -25,6 +26,7 @@ import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 import { detectorNameSchema, findingClassSchema } from "../../src/rules/types";
+import { renderFixSpec } from "../../src/fixes/fix-spec";
 import { renderFloorSummary } from "../../src/summary/floor";
 import { FLOOR_TOKENS, placeholdersIn } from "../../src/summary/substitute";
 import type { FloorSummary } from "../../src/summary/types";
@@ -422,11 +424,23 @@ describe("floor summary guards", () => {
     }
   });
 
-  test("a CandidateFinding carries no struggling-cohort count for the renderer to conflate", () => {
+  test("a struggling-cohort count never reaches a rendered sentence", () => {
     const ruleSet = ruleSetV1();
     const source = firstCandidateOf(detectFunnelDropoff(firingFunnelCorpus(ruleSet), ruleSet));
     const sampleSize = source.counts[0];
     if (!sampleSize) throw new Error("a detector candidate must carry at least one count");
+
+    const allowed = new Set<string>();
+    for (const count of source.counts) {
+      allowed.add(String(count.numerator));
+      allowed.add(String(count.denominator));
+    }
+
+    // A cohort size the renderer has no licence to print: inside the basis, outside
+    // every count the sentences may substitute from.
+    let strugglers = sampleSize.denominator;
+    while (strugglers > 0 && allowed.has(String(strugglers))) strugglers -= 1;
+    if (strugglers === 0) throw new Error("no struggling-cohort size outside the allowed digits");
 
     const parsed = candidateFindingSchema.parse({
       detector: source.detector,
@@ -450,10 +464,49 @@ describe("floor summary guards", () => {
       thresholdRuleSetVersion: ruleSet.version,
       ranking: { sampleSize, confidenceBasis: "threshold_met" },
       coverage: source.coverage,
-      signals: [{ kind: "struggle", sessionIds: ["t1gd-struggler"] }],
+      signals: [
+        {
+          kind: "struggle",
+          subkind: "repeated_attempt",
+          surface: source.surface,
+          attempts: 4,
+          strugglingSessions: measuredCount({
+            numerator: strugglers,
+            denominator: sampleSize.denominator,
+            unit: sampleSize.unit,
+            timeframe: sampleSize.timeframe,
+            basis: sampleSize.basis,
+          }),
+        },
+      ],
     });
 
-    expect(Object.keys(parsed)).not.toContain("signals");
+    expect(parsed.signals).toHaveLength(1);
+    expect(allowed.has(String(strugglers))).toBe(false);
+
+    const mask = (text: string): string =>
+      text
+        .replaceAll(parsed.surface, "<surface>")
+        .replaceAll(parsed.timeframe.start.toISOString().slice(0, 10), "<start>")
+        .replaceAll(parsed.timeframe.end.toISOString().slice(0, 10), "<end>");
+
+    // renderFixSpec is the renderer that actually reads signals (fix-spec.ts:239).
+    // Asserting only on the floor summary would pass vacuously: packages/core/src/summary
+    // never references signals, so it cannot print the planted count whatever it is.
+    const spec = renderFixSpec({ candidate: parsed, signals: parsed.signals });
+    expect(spec.sentences.length).toBeGreaterThan(0);
+    expect(bareDigitOffenders(mask(spec.sentences.join(" ")), allowed)).toHaveLength(0);
+
+    const floor = elementsOf(
+      renderFloorSummary({ candidate: parsed, source: "floor_no_key_configured" }),
+    ).join(" ");
+    expect(bareDigitOffenders(mask(floor), allowed)).toHaveLength(0);
+  });
+
+  test("the cohort scanner reports a struggling count planted into a rendered sentence", () => {
+    const allowed = new Set(["3", "40"]);
+
+    expect(bareDigitOffenders("47 of 83 people kept trying.", allowed)).toContain("47");
   });
 
   test("no floor template contains a third-person plural pronoun", () => {

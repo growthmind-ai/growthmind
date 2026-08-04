@@ -13,6 +13,8 @@ export { apiKeys } from "./api-keys";
 
 export * from "./analysis-runs";
 export * from "./findings";
+export * from "./finding-payloads";
+export * from "./fixes";
 export * from "./analysis-model-calls";
 
 export * from "./slack-connections";

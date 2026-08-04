@@ -89,6 +89,20 @@ export function deliveryFailureSentence(code: PostFailureCode): string {
   return clause === null ? fact : `${fact} ${clause}`;
 }
 
+export const FIX_QUEUED_ACKNOWLEDGEMENT =
+  "Right — this one is queued for your coding agent. Ask it to work on your open fixes.";
+
+// Said on a second press, never on a repeated delivery of one press: the interactivity
+// route separates the two on the payload's identity.
+export const FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT =
+  "Already queued. Ask your coding agent to work on your open fixes.";
+
+export const FIX_DETAIL_MISSING_REFUSAL =
+  "This one was found before we started keeping the detail a coding agent needs. The next check will produce one that works.";
+
+export const SLACK_INTERACTION_UNCONFIGURED_REFUSAL =
+  "Slack is not finished being connected here yet, so this button cannot do anything. Whoever set Slack up can finish that, and then pressing it will work.";
+
 // Matched structurally by `DeliveryVocabulary` in `packages/core` (arrow is one-way).
 export const DELIVERY_VOCABULARY = {
   nothingTodayLead: NOTHING_TODAY_LEAD,
@@ -101,6 +115,10 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
     [
       NOTHING_TODAY_LEAD,
       NO_RATE_SENTENCE,
+      FIX_QUEUED_ACKNOWLEDGEMENT,
+      FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
+      FIX_DETAIL_MISSING_REFUSAL,
+      SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
       ...Object.values(DELIVERY_DECISION_MESSAGES),
       ...Object.values(NOTHING_TODAY_REASON_MESSAGES),
       ...Object.values(DELIVERY_STATUS_MESSAGES),

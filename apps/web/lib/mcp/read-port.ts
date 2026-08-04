@@ -1,5 +1,10 @@
 import type { FixSpecInput } from "@growthmind/core";
-import type { FindingEvidence, FixStatus, McpMeasuredCount } from "@growthmind/shared";
+import type {
+  FindingEvidence,
+  FixStatus,
+  McpMeasuredCount,
+  TenantContext,
+} from "@growthmind/shared";
 
 export interface OpenFixRow {
   readonly fixId: string;
@@ -48,7 +53,7 @@ export interface FindingRecord {
 }
 
 export interface ListOpenFixesQuery {
-  readonly organizationId: string;
+  readonly principal: TenantContext;
 
   readonly projectId: string | null;
 
@@ -56,12 +61,12 @@ export interface ListOpenFixesQuery {
 }
 
 export interface GetFixQuery {
-  readonly organizationId: string;
+  readonly principal: TenantContext;
   readonly fixId: string;
 }
 
 export interface GetFindingQuery {
-  readonly organizationId: string;
+  readonly principal: TenantContext;
   readonly findingId: string;
 }
 

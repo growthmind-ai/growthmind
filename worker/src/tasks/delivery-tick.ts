@@ -1,5 +1,5 @@
 import type { DeliveryCandidate, DeliveryLaneState, SlackMessageInput } from "@growthmind/core";
-import { decideDelivery, renderSlackMessage, scanResidualPii } from "@growthmind/core";
+import { decideDelivery, renderSlackMessage, scanResidualPii, toBlockKit } from "@growthmind/core";
 import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
@@ -121,11 +121,15 @@ function prepare(
 ): PreparedPost {
   let request: PostRequest;
   try {
-    const message = renderSlackMessage(finding.message, DELIVERY_VOCABULARY);
+    const message = renderSlackMessage(
+      { ...finding.message, findingId: finding.findingId },
+      DELIVERY_VOCABULARY,
+    );
     request = {
       channelId: lane.channelId,
-      blocks: message.blocks,
-       
+      // Slack is handed Block Kit, never Growthmind's intermediate model.
+      blocks: toBlockKit(message.blocks),
+
       fallbackText: message.text,
     };
   } catch (error) {
@@ -309,10 +313,21 @@ async function runLane(
       );
     }
   } catch (error) {
-     
+
     deps.logger.error(
       `delivery tick: finding ${chosen.findingId} posted, but the delivery could not be recorded as posted — ${describeDriverError(error)}`,
     );
+    // A delivery left `pending` is spoken for by the lane source forever and carries no
+    // message reference, so nothing a reader presses on the live message resolves it.
+    // `failed` is the only terminal state still reachable here, and it is the same answer
+    // the throwing-poster branch gives: the next tick re-posts and the finding is
+    // actionable again, at the cost of one repeated message.
+    await recordFailed(deps, deliveries, {
+      findingId: chosen.findingId,
+      channelId: lane.channelId,
+      reason: COULD_NOT_POST,
+    });
+    return "failed";
   }
 
   return "posted";

@@ -10,6 +10,14 @@ export const COUNT_ROLES = {
   error_event: ["affected_sessions"],
 } as const satisfies Record<DetectorName, readonly CountRole[]>;
 
+// The role whose count names the harm, not the exposure. `satisfies` makes a new
+// detector a compile error until its impact role is named.
+export const IMPACT_ROLE = {
+  funnel_dropoff: "left_without_continuing",
+
+  error_event: "affected_sessions",
+} as const satisfies Record<DetectorName, CountRole>;
+
 export type ResolvedCounts = {
   readonly [D in DetectorName]: {
     readonly detector: D;

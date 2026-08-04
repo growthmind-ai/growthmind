@@ -10,8 +10,8 @@ import {
   WRONG_CONTENT_TYPE,
   WRONG_METHOD,
   refusalResponse,
-  type McpRefusal,
 } from "./refusals";
+import { readBoundedBody } from "../http/bounded-body";
 import { renderMcpWire } from "./wire";
 import { MCP_HEADER } from "./wire-constants";
 
@@ -48,9 +48,9 @@ export async function handleMcpRequest(request: Request, deps: McpServerDeps): P
   }
 
   try {
-    const body = await readBoundedBody(request);
+    const body = await readBoundedBody(request, MAX_BODY_BYTES);
     if (!body.ok) {
-      return refusalResponse(body.refusal);
+      return refusalResponse(BODY_TOO_LARGE);
     }
 
     if (opensAnArray(body.bytes)) {
@@ -92,52 +92,6 @@ function declaresSomethingOtherThanJson(request: Request): boolean {
 
   const mediaType = (declared.split(";")[0] ?? "").trim().toLowerCase();
   return mediaType !== JSON_MEDIA_TYPE;
-}
-
-type BoundedBody =
-  | { readonly ok: true; readonly bytes: Uint8Array<ArrayBuffer> }
-  | { readonly ok: false; readonly refusal: McpRefusal };
-
-async function readBoundedBody(request: Request): Promise<BoundedBody> {
-  const stream = request.body;
-  if (stream === null) {
-    return { ok: true, bytes: new Uint8Array(0) };
-  }
-
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  try {
-    for (;;) {
-      // eslint-disable-next-line no-await-in-loop
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (value === undefined) {
-        continue;
-      }
-
-      total += value.byteLength;
-      if (total > MAX_BODY_BYTES) {
-        // eslint-disable-next-line no-await-in-loop
-        await reader.cancel();
-        return { ok: false, refusal: BODY_TOO_LARGE };
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(new ArrayBuffer(total));
-  let at = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, at);
-    at += chunk.byteLength;
-  }
-  return { ok: true, bytes };
 }
 
 function opensAnArray(bytes: Uint8Array): boolean {

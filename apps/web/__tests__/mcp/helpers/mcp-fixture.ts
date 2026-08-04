@@ -1,6 +1,11 @@
 import type { CandidateFinding, DetectorCoverage, MeasuredCount } from "@growthmind/core";
 import { candidateFindingSchema, measuredCount, traceEntry } from "@growthmind/core";
-import { createApiKeysRepo, type ScopedDb } from "@growthmind/db";
+import {
+  createApiKeysRepo,
+  API_KEY_ACTOR_PREFIX,
+  API_KEY_ACTOR_ROLE,
+  type ScopedDb,
+} from "@growthmind/db";
 import type { McpMeasuredCount, TenantContext } from "@growthmind/shared";
 import { mcpMeasuredCountSchema } from "@growthmind/shared";
 
@@ -131,11 +136,22 @@ export function findingRecordFor(input: {
   };
 }
 
+export function credentialFor(organizationId: string): McpCredential {
+  return {
+    context: {
+      userId: `${API_KEY_ACTOR_PREFIX}fixture-${organizationId}`,
+      organizationId,
+      organizationName: `Organization ${organizationId}`,
+      role: API_KEY_ACTOR_ROLE,
+    },
+  };
+}
+
 export function fakeCredentials(byMaterial: Readonly<Record<string, string>>): McpCredentialSource {
   return {
     resolve(presented: string): Promise<McpCredential | null> {
       const organizationId = byMaterial[presented];
-      return Promise.resolve(organizationId === undefined ? null : { organizationId });
+      return Promise.resolve(organizationId === undefined ? null : credentialFor(organizationId));
     },
   };
 }
@@ -197,11 +213,11 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
 
   const port: McpReadPort = {
     listOpenFixes(query: ListOpenFixesQuery): Promise<OpenFixPage> {
-      organizationsAsked.push(query.organizationId);
+      organizationsAsked.push(query.principal.organizationId);
 
       const matching = openFixes.filter(
         (stored) =>
-          stored.organizationId === query.organizationId &&
+          stored.organizationId === query.principal.organizationId &&
           (query.projectId === null || stored.projectId === query.projectId),
       );
 
@@ -216,19 +232,20 @@ export function fakeReadPort(store: FakeReadStore = {}): RecordingReadPort {
     },
 
     getFix(query: GetFixQuery): Promise<FixRecord | null> {
-      organizationsAsked.push(query.organizationId);
+      organizationsAsked.push(query.principal.organizationId);
       const found = fixes.find(
         (stored) =>
-          stored.organizationId === query.organizationId && stored.record.fixId === query.fixId,
+          stored.organizationId === query.principal.organizationId &&
+          stored.record.fixId === query.fixId,
       );
       return Promise.resolve(found?.record ?? null);
     },
 
     getFinding(query: GetFindingQuery): Promise<FindingRecord | null> {
-      organizationsAsked.push(query.organizationId);
+      organizationsAsked.push(query.principal.organizationId);
       const found = findings.find(
         (stored) =>
-          stored.organizationId === query.organizationId &&
+          stored.organizationId === query.principal.organizationId &&
           stored.record.findingId === query.findingId,
       );
       return Promise.resolve(found?.record ?? null);

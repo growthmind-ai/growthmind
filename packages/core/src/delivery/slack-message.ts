@@ -1,4 +1,10 @@
-import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
+import {
+  FINDING_BLOCK_ID_PREFIX,
+  GET_IT_FIXED_ACTION_ID,
+  GET_IT_FIXED_LABEL,
+  SUMMARY_SOURCE_MESSAGES,
+  nothingTodayReasonSchema,
+} from "@growthmind/shared";
 import type { NothingTodayReason } from "@growthmind/shared";
 import { z } from "zod";
 
@@ -80,17 +86,32 @@ export type SlackMessageInput =
       readonly surfacePath: string;
       readonly observations: readonly Observation[];
       readonly explanation: DeliveredExplanation;
+
+      readonly findingId?: string;
     }
   | {
       readonly decision: "nothing_today";
       readonly reason: NothingTodayReason;
     };
 
-export type SlackBlock = {
-  readonly kind: "section" | "context";
-
-  readonly text: string;
+export type SlackAction = {
+  readonly actionId: string;
+  readonly label: string;
+  readonly value: string;
+  readonly style: "primary" | null;
 };
+
+export type SlackTextBlock =
+  | { readonly kind: "section"; readonly text: string }
+  | { readonly kind: "context"; readonly text: string };
+
+export type SlackActionsBlock = {
+  readonly kind: "actions";
+  readonly blockId: string;
+  readonly actions: readonly SlackAction[];
+};
+
+export type SlackBlock = SlackTextBlock | SlackActionsBlock;
 
 export type SlackMessage = {
   readonly blocks: readonly SlackBlock[];
@@ -125,6 +146,7 @@ const deliverInputSchema = z
     surfacePath: z.string().min(1),
     observations: z.array(observationSchema).min(1).max(MAX_OBSERVATIONS),
     explanation: deliveredExplanationSchema,
+    findingId: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     const [first, ...rest] = value.observations;
@@ -228,9 +250,9 @@ type MessageParts = {
   readonly window: string | null;
 };
 
-function blocksOf(parts: MessageParts): SlackBlock[] {
+function blocksOf(parts: MessageParts): SlackTextBlock[] {
   const lead = parts.headline === null ? parts.heading : `${parts.heading}\n${parts.headline}`;
-  const blocks: SlackBlock[] = [{ kind: "section", text: lead }];
+  const blocks: SlackTextBlock[] = [{ kind: "section", text: lead }];
 
   const bullet = parts.observations.length > 1 ? "• " : "";
   blocks.push({
@@ -250,14 +272,14 @@ function blocksOf(parts: MessageParts): SlackBlock[] {
   return blocks;
 }
 
-function plainTextOf(blocks: readonly SlackBlock[]): string {
+function plainTextOf(blocks: readonly SlackTextBlock[]): string {
   return blocks
     .map((block) => block.text)
     .join("\n")
     .replaceAll("*", "");
 }
 
-function fits(blocks: readonly SlackBlock[]): boolean {
+function fits(blocks: readonly SlackTextBlock[]): boolean {
   const text = plainTextOf(blocks);
   return (
     text.length <= SLACK_MESSAGE_CHARACTER_BUDGET &&
@@ -265,8 +287,8 @@ function fits(blocks: readonly SlackBlock[]): boolean {
   );
 }
 
-function clampToBudget(blocks: readonly SlackBlock[]): SlackBlock[] {
-  const kept: SlackBlock[] = [...blocks];
+function clampToBudget(blocks: readonly SlackTextBlock[]): SlackTextBlock[] {
+  const kept: SlackTextBlock[] = [...blocks];
 
   while (kept.length > 1 && !fits(kept)) {
     kept.pop();
@@ -283,12 +305,34 @@ function clampToBudget(blocks: readonly SlackBlock[]): SlackBlock[] {
   return kept;
 }
 
-function messageOf(blocks: readonly SlackBlock[]): SlackMessage {
+// The actions block joins after the budget has been settled: a button carries no sentence a
+// reader has to get through, so counting it would cost the message a line of explanation.
+function messageOf(
+  blocks: readonly SlackTextBlock[],
+  actions: SlackActionsBlock | null,
+): SlackMessage {
   const text = plainTextOf(blocks);
   return {
-    blocks,
+    blocks: actions === null ? blocks : [...blocks, actions],
     text,
     legibility: { characters: text.length, lines: text.split("\n").length },
+  };
+}
+
+function actionsFor(findingId: string | undefined): SlackActionsBlock | null {
+  if (findingId === undefined) return null;
+
+  return {
+    kind: "actions",
+    blockId: `${FINDING_BLOCK_ID_PREFIX}${findingId}`,
+    actions: [
+      {
+        actionId: GET_IT_FIXED_ACTION_ID,
+        label: GET_IT_FIXED_LABEL,
+        value: findingId,
+        style: "primary",
+      },
+    ],
   };
 }
 
@@ -299,13 +343,18 @@ export function renderSlackMessage(
   slackMessageInputSchema.parse(input);
 
   if (input.decision === "nothing_today") {
-    return messageOf([
-      {
-        kind: "section",
-        text: `${vocabulary.nothingTodayLead}\n${vocabulary.nothingToday[input.reason]}`,
-      },
-    ]);
+    return messageOf(
+      [
+        {
+          kind: "section",
+          text: `${vocabulary.nothingTodayLead}\n${vocabulary.nothingToday[input.reason]}`,
+        },
+      ],
+      null,
+    );
   }
+
+  const actions = actionsFor(input.findingId);
 
   const explanation: DeliveredExplanation =
     input.explanation.source === "model_rendered" &&
@@ -343,11 +392,11 @@ export function renderSlackMessage(
 
   for (const rung of ladder) {
     const blocks = blocksOf(rung);
-    if (fits(blocks)) return messageOf(blocks);
+    if (fits(blocks)) return messageOf(blocks, actions);
   }
 
   const last = ladder[ladder.length - 1] ?? parts;
-  return messageOf(clampToBudget(blocksOf(last)));
+  return messageOf(clampToBudget(blocksOf(last)), actions);
 }
 
 function shortened(explanation: string | null): string | null {

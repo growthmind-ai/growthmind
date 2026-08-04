@@ -1,4 +1,8 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
+import { FINDING_BLOCK_ID_PREFIX, GET_IT_FIXED_ACTION_ID } from "@growthmind/shared";
 import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
 import type { ExclusionReason, NothingTodayReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -19,8 +23,20 @@ import {
 import type {
   DeliveryVocabulary,
   Observation,
+  SlackActionsBlock,
+  SlackBlock,
   SlackMessageInput,
+  SlackTextBlock,
 } from "../../src/delivery/slack-message";
+
+function isTextBlock(block: SlackBlock | undefined): block is SlackTextBlock {
+  return block !== undefined && block.kind !== "actions";
+}
+
+function textAt(blocks: readonly SlackBlock[], index: number): string {
+  const block = blocks[index];
+  return isTextBlock(block) ? block.text : "";
+}
 
 const FIXTURE_WINDOW = {
   start: new Date("2026-06-01T00:00:00.000Z"),
@@ -154,7 +170,9 @@ describe("renderSlackMessage — the deliver arm", () => {
     );
     expect(message.text).toContain("Sessions from 1 June 2026 to 8 June 2026.");
     expect(message.blocks.length).toBeGreaterThan(1);
-    expect(message.blocks.every((block) => block.text.trim().length > 0)).toBe(true);
+    expect(message.blocks.filter(isTextBlock).every((block) => block.text.trim().length > 0)).toBe(
+      true,
+    );
   });
 
   test("renders each count as its own sentence with its own denominator", () => {
@@ -167,7 +185,7 @@ describe("renderSlackMessage — the deliver arm", () => {
 
     const observationBlock = message.blocks[1];
     expect(observationBlock).toBeDefined();
-    const lines = String(observationBlock?.text).split("\n");
+    const lines = textAt(message.blocks, 1).split("\n");
     expect(lines).toHaveLength(2);
     for (const line of lines) {
       expect(line).toContain("of 28 sessions");
@@ -191,7 +209,9 @@ describe("renderSlackMessage — the deliver arm", () => {
     expect(message.text).toContain(SUMMARY_SOURCE_MESSAGES.floor_no_key_configured);
     expect(message.text.trim().endsWith(".")).toBe(true);
     expect(message.text).not.toContain("\n\n");
-    expect(message.blocks.every((block) => block.text.trim().length > 0)).toBe(true);
+    expect(message.blocks.filter(isTextBlock).every((block) => block.text.trim().length > 0)).toBe(
+      true,
+    );
   });
 
   test("should not spend a line saying an explanation exists when the explanation is right there", () => {
@@ -233,7 +253,7 @@ describe("renderSlackMessage — the deliver arm", () => {
     const path = `/checkout/${"very-long-segment/".repeat(12)}step-two`;
     const message = renderSlackMessage(deliver({ surfacePath: path }), VOCABULARY);
 
-    const heading = String(message.blocks[0]?.text).split("\n")[0];
+    const heading = textAt(message.blocks, 0).split("\n")[0];
     expect(String(heading).length).toBeLessThanOrEqual(SURFACE_PATH_BUDGET + 2);
     expect(message.text).toContain("/checkout/");
     expect(message.text).toContain("step-two");
@@ -299,7 +319,7 @@ describe("renderSlackMessage — the deliver arm", () => {
     const message = renderSlackMessage(deliver({}), VOCABULARY);
 
     expect(message.text).not.toContain("*");
-    expect(message.blocks[0]?.text.startsWith("*")).toBe(true);
+    expect(textAt(message.blocks, 0).startsWith("*")).toBe(true);
   });
 });
 
@@ -419,5 +439,52 @@ describe("describesPeople — the gate on prose that would re-label a session", 
     expect(
       renderSlackMessage(deliver({ surfacePath: "/users/profile" }), VOCABULARY).text,
     ).toContain("/users/profile");
+  });
+});
+
+const ACTION_FINDING_ID = "fnd-t1sm-get-it-fixed";
+
+const DELIVERY_SRC_DIR = join(import.meta.dir, "..", "..", "src", "delivery");
+
+function deliverWithFinding(): SlackMessageInput {
+  return { ...deliver({}), findingId: ACTION_FINDING_ID };
+}
+
+function actionsBlockOf(blocks: readonly SlackBlock[]): SlackActionsBlock | undefined {
+  return blocks.find((block): block is SlackActionsBlock => block.kind === "actions");
+}
+
+function deliverySources(): readonly { readonly file: string; readonly source: string }[] {
+  return readdirSync(DELIVERY_SRC_DIR)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => ({
+      file: name,
+      source: readFileSync(join(DELIVERY_SRC_DIR, name), "utf8"),
+    }));
+}
+
+describe("renderSlackMessage — the affordance that turns a finding into a fix", () => {
+  test("names the interactivity action id from an exported constant", () => {
+    const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
+
+    expect(actions).toBeDefined();
+    expect(actions?.actions.map((action) => action.actionId)).toEqual([GET_IT_FIXED_ACTION_ID]);
+
+    const sources = deliverySources();
+    expect(sources.length).toBeGreaterThan(1);
+    expect(sources.some((entry) => entry.source.includes("GET_IT_FIXED_ACTION_ID"))).toBe(true);
+
+    const inlined = sources
+      .filter((entry) => entry.source.includes(GET_IT_FIXED_ACTION_ID))
+      .map((entry) => entry.file);
+    expect(inlined).toEqual([]);
+  });
+
+  test("carries the finding identity in the rendered action block", () => {
+    const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
+
+    expect(actions).toBeDefined();
+    expect(actions?.blockId).toBe(`${FINDING_BLOCK_ID_PREFIX}${ACTION_FINDING_ID}`);
+    expect(actions?.actions.map((action) => action.value)).toEqual([ACTION_FINDING_ID]);
   });
 });

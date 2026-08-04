@@ -1,10 +1,16 @@
-import type { DeliveryStatus, TenantContext } from "@growthmind/shared";
+import {
+  SLACK_INTERACTION_ACTOR,
+  SLACK_INTERACTION_ROLE,
+  type DeliveryStatus,
+  type TenantContext,
+} from "@growthmind/shared";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 
+import { organization } from "../schema/auth";
 import { deliveries } from "../schema/deliveries";
 import { orgCrud } from "./crud";
 import type { SignatureHex } from "../signatures/hex";
-import type { ScopedExecutor } from "./types";
+import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type DeliveryRecord = typeof deliveries.$inferSelect;
 
@@ -155,5 +161,54 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         orderBy: [desc(deliveries.claimedAt)],
       });
     },
+  };
+}
+
+export interface InteractionPrincipal {
+  readonly context: TenantContext;
+  readonly findingId: string;
+  readonly projectId: string;
+  readonly deliveryId: string;
+}
+
+// The pair is a value Growthmind wrote, under a globally unique partial index, so it
+// resolves to one organization. Nothing a Slack payload names reaches the context.
+export async function resolveDeliveryForInteraction(
+  db: ScopedDb,
+  args: { channelId: string; messageRef: string },
+): Promise<InteractionPrincipal | null> {
+  if (args.channelId === "" || args.messageRef === "") {
+    return null;
+  }
+
+  const [row] = await db
+    .select({
+      deliveryId: deliveries.id,
+      findingId: deliveries.findingId,
+      projectId: deliveries.projectId,
+      organizationId: deliveries.organizationId,
+      organizationName: organization.name,
+    })
+    .from(deliveries)
+    .innerJoin(organization, eq(deliveries.organizationId, organization.id))
+    .where(
+      and(eq(deliveries.channelId, args.channelId), eq(deliveries.messageRef, args.messageRef)),
+    )
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    context: {
+      userId: SLACK_INTERACTION_ACTOR,
+      organizationId: row.organizationId,
+      organizationName: row.organizationName,
+      role: SLACK_INTERACTION_ROLE,
+    },
+    findingId: row.findingId,
+    projectId: row.projectId,
+    deliveryId: row.deliveryId,
   };
 }

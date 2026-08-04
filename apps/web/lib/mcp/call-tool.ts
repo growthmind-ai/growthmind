@@ -98,7 +98,7 @@ async function listOpenFixes(
   credential: McpCredential,
 ): Promise<McpToolOutcome> {
   const page = await reads.listOpenFixes({
-    organizationId: credential.organizationId,
+    principal: credential.context,
     projectId: input.projectId ?? null,
     limit: input.limit,
   });
@@ -147,7 +147,7 @@ async function getFix(
   reads: McpReadPort,
   credential: McpCredential,
 ): Promise<McpToolOutcome> {
-  const record = await reads.getFix({ organizationId: credential.organizationId, fixId });
+  const record = await reads.getFix({ principal: credential.context, fixId });
   if (record === null) {
     return { ok: false, refusal: NOT_FOUND };
   }
@@ -178,7 +178,7 @@ async function getFinding(
   credential: McpCredential,
 ): Promise<McpToolOutcome> {
   const record = await reads.getFinding({
-    organizationId: credential.organizationId,
+    principal: credential.context,
     findingId,
   });
   if (record === null) {

@@ -82,6 +82,27 @@ const CLAIMS: readonly {
     holdsWhen: () => !existsSync(`${ROOT}/skills`),
     because: "a skills/ directory now exists",
   },
+  {
+    file: "docs/decisions/0007-mcp-route-surface.md",
+    claim: /No table records a finding or a fix/i,
+    holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),
+    because: "packages/db/src/schema/fixes.ts exists — a fix is recorded",
+  },
+  {
+    file: "docs/decisions/0007-mcp-route-surface.md",
+    claim: /All three tools read real rows/i,
+    holdsWhen: () => read("apps/web/app/api/mcp/route.ts").includes("createLiveReadPort"),
+    because: "the mounted route no longer binds the live read port",
+  },
+  {
+    file: "docs/decisions/0007-mcp-route-surface.md",
+    claim: /resolved by `resolveApiKeyPrincipal`/,
+    holdsWhen: () =>
+      read("packages/db/src/repositories/api-keys.repo.ts").includes(
+        "export async function resolveApiKeyPrincipal",
+      ),
+    because: "packages/db no longer defines the credential resolver this record names",
+  },
 ];
 
 describe("documentation links", () => {

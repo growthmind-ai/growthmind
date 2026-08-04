@@ -165,4 +165,13 @@ describe("repository contract — no organization id parameter", () => {
       expect(files).toContain(expected);
     }
   });
+
+  it("covers the fixes repository, so the invariant cannot pass by scanning nothing", () => {
+    const repositories = readdirSync(REPOSITORIES_DIR);
+    for (const expected of ["fixes.repo.ts", "finding-payloads.repo.ts"]) {
+      expect(repositories).toContain(expected);
+    }
+
+    expect(readdirSync(SERVICES_DIR)).toContain("fixes.service.ts");
+  });
 });

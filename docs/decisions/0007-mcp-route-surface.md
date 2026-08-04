@@ -2,6 +2,9 @@
 
 **Status: Decided.** Recorded 2026-08-01, extracted verbatim-in-substance from the
 file header of `apps/web/app/api/mcp/route.ts` when long-form rationale moved to docs.
+**Amended 2026-08-04** (O-020): the read port went live. The sections below marked
+_Amended_ replace what they say; nothing above them has been rewritten to look
+prescient.
 
 **Decides:** what the mounted read-only machine surface serves on this installation
 today, which protocol eras it speaks, and the one thing it still cannot answer.
@@ -26,30 +29,49 @@ itself needs a test, or a correct credential source can sit beside a route still
 to the wrong one with the whole suite green
 (`apps/web/__tests__/mcp/wiring.test.ts`).
 
-## What works now
+## What works now — _Amended 2026-08-04_
 
 A person mints a read credential in one command (`bun scripts/mint-api-key.ts`) and
 hands it to their coding agent. The agent presents it as
 `Authorization: Bearer gmak_...`, and the route authenticates it against a real
 organization-scoped credential store: the `api_keys` table (`docs/architecture.md`),
-resolved by `resolveApiKeyForRead`. Every read is scoped to the organization that
-credential resolves to and never to anything the request said, and revoking a key takes
-effect on the very next request because nothing here caches. The public write-key family
-is refused at the format check, before any database access at all;
-`apps/web/lib/mcp/credentials.ts` carries that argument in full.
+resolved by `resolveApiKeyPrincipal`. That resolver reads the organization out of the
+database keyed by the digest of the presented secret, and returns the whole tenant
+context the request then acts in, so no caller can name the tenancy it reads from. It
+replaced `resolveApiKeyForRead`, which returned an organization id alone; both existed
+for one sprint and only one does now, because a correct credential path beside a wrong
+one is exactly the failure `resolveMcpDeps` is exported to make testable.
 
-## The one thing still missing, and why the route cannot invent it
+Every read is scoped to the organization that credential resolves to and never to
+anything the request said, and revoking a key takes effect on the very next request
+because nothing here caches. The public write-key family is refused at the format check,
+before any database access at all; `apps/web/lib/mcp/credentials.ts` carries that
+argument in full.
 
-No table records a finding or a fix. `packages/db/src/schema/` holds finding signatures,
-dismissals and deliveries (the ledger and the delivery record) and nothing a finding is
-stored in. So the read port is the absent one: `list_open_fixes` answers with an empty
-list and a truthful window, and both id lookups answer exactly as an unknown id does. It
-does not crash, and it does not fabricate a row. See `apps/web/lib/mcp/read-port.ts`.
-The `findings` table is another sprint's deliverable, and building a second one here
-would be the worst outcome available.
+## The one thing that was missing, and what shipped instead — _Amended 2026-08-04_
 
-A half-true endpoint is worse than an absent one; the truthful-empty answers are an
-acceptance criterion rather than a gap.
+**As recorded on 2026-08-01:** no table recorded a finding or a fix, so the read port was
+the absent one — `list_open_fixes` answered an empty list with a truthful window, and
+both id lookups answered exactly as an unknown id does. A half-true endpoint is worse
+than an absent one, and the truthful-empty answers were an acceptance criterion rather
+than a gap.
+
+**What shipped in O-020:** the `fixes` and `finding_payloads` tables, an org-scoped
+repository and `FixesService` over them (`packages/db`), and
+`createLiveReadPort` (`apps/web/lib/mcp/read-port-live.ts`), which `resolveMcpDeps`
+now returns. All three tools read real rows. `createAbsentReadPort` remains in
+`apps/web/lib/mcp/read-port.ts` as the self-host-with-no-data path and has no production
+caller, which is asserted by a scan rather than by inspection
+(`apps/web/__tests__/mcp/wiring.test.ts`, "binds no absent read port in the production
+route").
+
+**What is still honestly absent.** A finding carries the payload a fix spec is rendered
+from only if it was written after this sprint's lane change. A finding written before it
+has no payload row, so `get_fix` cannot be minted for it and `get_finding` derives no
+observations from it — both answer the same typed not-found an id that never existed
+answers. That is a refusal, not a fault, and the difference is load-bearing: the port
+returns `null` rather than handing `call-tool.ts` a record whose `evidence` array would
+fail the schema's `.min(1)` and surface as an internal error.
 
 ## Both protocol eras, from one handler
 
@@ -85,22 +107,26 @@ the modern leg. The legacy leg (the one a stock client meets) shows our sentence
 verbatim, and every other refusal path is a `tools/call`, including a credential revoked
 mid-session, so all of them are unaffected on both legs.
 
-## The honest summary
+## The honest summary — _Amended 2026-08-04_
 
 The definition of done (three tools exposed, every call organization-scoped and
 authenticated against a credential a person minted) is met, and so is the clause that
 used to fail: a program nobody here wrote can now connect and call all three. The
 cross-tenant identity guarantee, the fail-closed credential gate, the read-only shape,
 the graceful-absence answers and a real client's whole session all have named tests.
-What this surface does not yet have is data to answer with.
+What this surface lacked on 2026-08-01 was data to answer with; it has that now, for
+findings written after O-020's lane change and not for the ones before it.
 
-## What unblocks it, one line of the route
+## The obligation, and where it is asserted — _Amended 2026-08-04_
 
-A `findings` table (with fixes and evidence) plus an org-scoped repository implementing
-`McpReadPort`; return it from `resolveMcpDeps` instead of `createAbsentReadPort`. Its
-one hard obligation is written in the header of `apps/web/lib/mcp/read-port.ts`: filter
-by organization in the same query as the id, so a foreign row is `null` and not a slower
-`null`.
+The read port's one hard obligation was written as a header comment in
+`apps/web/lib/mcp/read-port.ts` while nothing implemented it: filter by organization in
+the same query as the id, so a foreign row is `null` and not a slower `null`. It is now
+structural — `createLiveReadPort` composes `createFixesService`, whose reads go through
+`orgCrud.maybe`, which is `and(org(table), eq(id, …))` — and it is asserted rather than
+described, by `apps/web/__tests__/mcp/cross-tenant-real-keys.test.ts` ("refuses org B's
+fix to org A's key on every tool"), which proves the refusal is byte-identical to the
+one for an id that never existed.
 
-Nothing else in `apps/web/lib/mcp` changes when it lands, because nothing else names a
-table, and only `apps/web/lib/mcp/wire.ts` names a transport.
+Nothing else in `apps/web/lib/mcp` names a table, and only `apps/web/lib/mcp/wire.ts`
+names a transport.

@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 
 import { callTool } from "../../lib/mcp/call-tool";
 import type { McpCredential } from "../../lib/mcp/credentials";
-import { fakeReadPort, throwingReadPort } from "./helpers/mcp-fixture";
+import { credentialFor, fakeReadPort, throwingReadPort } from "./helpers/mcp-fixture";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -95,7 +95,7 @@ describe("WIRE-S2 — callTool takes the credential separately and reads the org
 
   test("asks the read port only about the credential's organization, on all three tools", async () => {
     const spy = fakeReadPort();
-    const credential: McpCredential = { organizationId: CREDENTIAL_ORG };
+    const credential: McpCredential = credentialFor(CREDENTIAL_ORG);
 
     await callTool(MCP_TOOL.LIST_OPEN_FIXES, { organizationId: FOREIGN_ORG }, spy.port, credential);
     await callTool(
@@ -151,7 +151,7 @@ describe("WIRE-S4 — the SDK is named in exactly one source file", () => {
 });
 
 describe("WIRE-S5 — callTool returns a refusal union and never a Response, and never throws", () => {
-  const credential: McpCredential = { organizationId: "org-s5" };
+  const credential: McpCredential = credentialFor("org-s5");
 
   const cases: readonly { readonly name: string; readonly run: () => Promise<unknown> }[] = [
     {

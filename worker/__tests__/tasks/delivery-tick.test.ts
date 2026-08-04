@@ -12,7 +12,7 @@ import type {
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
 import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
-import { deliveryFailureSentence } from "@growthmind/shared";
+import { GET_IT_FIXED_ACTION_ID, deliveryFailureSentence } from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../../src/task-names";
@@ -94,8 +94,10 @@ interface FakeLedger {
   rowFor: (findingId: string) => DeliveryRecord | undefined;
    
   seed: (row: Partial<DeliveryRecord> & { findingId: string; status: DeliveryRecord["status"] }) => void;
-   
+
   breakProject: (projectId: string) => void;
+
+  failMarkPostedOnce: () => void;
 }
 
 function keyOf(organizationId: string, findingId: string, channelId: string): string {
@@ -106,6 +108,7 @@ function createFakeLedger(): FakeLedger {
   const stored = new Map<string, DeliveryRecord>();
   const broken = new Set<string>();
   let nextId = 1;
+  let markPostedFailures = 0;
 
   function guard(projectId: string): void {
     if (broken.has(projectId)) {
@@ -138,6 +141,9 @@ function createFakeLedger(): FakeLedger {
     rows: () => [...stored.values()],
     rowFor: (findingId) => [...stored.values()].find((row) => row.findingId === findingId),
     breakProject: (projectId) => broken.add(projectId),
+    failMarkPostedOnce: () => {
+      markPostedFailures += 1;
+    },
     seed: (row) => {
       const full: DeliveryRecord = {
         id: `delivery-seed-${row.findingId}`,
@@ -186,6 +192,11 @@ function createFakeLedger(): FakeLedger {
       },
 
       markPosted(input: MarkPostedInput): Promise<DeliveryRecord | null> {
+        if (markPostedFailures > 0) {
+          markPostedFailures -= 1;
+          throw new Error("the ledger refused the write that records the post");
+        }
+
         const key = keyOf(ctx.organizationId, input.findingId, input.channelId);
         const existing = stored.get(key);
         if (!existing) return Promise.resolve(null);
@@ -346,6 +357,34 @@ test("a deliverable finding with clean text is claimed, posted, and recorded pos
   expect(row?.failureReason).toBeNull();
 });
 
+// `PostRequest.blocks` is `readonly unknown[]`, so the intermediate model reaching Slack
+// verbatim typechecks. Only an assertion on the posted shape can see it.
+test("carries the delivered blocks through the Block Kit converter", async () => {
+  const scene = harness({ lanes: [lane()] });
+
+  await scene.run();
+
+  expect(scene.posted).toHaveLength(1);
+
+  const blocks = scene.posted[0]?.blocks ?? [];
+  expect(blocks.length).toBeGreaterThan(0);
+
+  for (const block of blocks) {
+    const type = (block as { type?: unknown }).type;
+    expect({ block, typeOfType: typeof type }).toEqual({ block, typeOfType: "string" });
+    expect(block).not.toHaveProperty("kind");
+  }
+
+  const actions = blocks.find((block) => (block as { type?: unknown }).type === "actions") as
+    | { readonly block_id?: unknown; readonly elements?: readonly { action_id?: unknown }[] }
+    | undefined;
+
+  expect(actions).toBeDefined();
+  expect((actions?.elements ?? []).map((element) => element.action_id)).toContain(
+    GET_IT_FIXED_ACTION_ID,
+  );
+});
+
 test("a second tick over an already-posted finding posts nothing and leaves the row untouched", async () => {
    
   const scene = harness({ lanes: [lane()] });
@@ -448,6 +487,42 @@ test("a poster that throws still reaches a terminal failed state and never escap
   expect(scene.logs.error.some((line) => line.includes("socket hang up"))).toBe(true);
 });
 
+// The message is live in the channel with a button on it, and a `pending` row carries no
+// message reference: the interactivity route resolves nothing, and the lane source counts the
+// finding as spoken for forever, so the press is silently dead and the finding never returns.
+test("a post the ledger cannot record leaves no delivery pending and the finding still reaches the channel", async () => {
+  const ledger = createFakeLedger();
+  ledger.failMarkPostedOnce();
+
+  const scene = harness({ lanes: [lane()], ledger });
+
+  const summary = await scene.run();
+
+  expect(scene.posted.length).toBe(1);
+  expect(summary.failed).toBe(1);
+  expect(summary.posted).toBe(0);
+
+  const row = ledger.rowFor("finding-1");
+  expect(row?.status).not.toBe("pending");
+  expect(row?.status).toBe("failed");
+
+  expect(row?.messageRef).toBeNull();
+  expect(
+    scene.logs.error.some((line) => line.includes("could not be recorded as posted")),
+  ).toBe(true);
+
+  // "Still reaches the channel" is a claim about the next tick, so take one: the row is
+  // re-claimable, and the message it posts carries a reference a press can resolve.
+  const second = await scene.run();
+  expect(second.posted).toBe(1);
+  expect(scene.posted.length).toBe(2);
+
+  const recovered = ledger.rowFor("finding-1");
+  expect(recovered?.status).toBe("posted");
+  expect(recovered?.messageRef).toBe("1753952400.000100");
+  expect(recovered?.attempts).toBe(2);
+});
+
 test("no lane can leave a delivery stuck pending, whatever the poster does", async () => {
    
   const answers: (() => PostResult)[] = [
@@ -494,6 +569,33 @@ test("generated text carrying personal data is never posted and the recorded rea
   }
 });
 
+function stringsAt(value: unknown): readonly string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value !== "object" || value === null) return [];
+  const nested = (value as { readonly text?: unknown }).text;
+  return typeof nested === "string" ? [nested] : [];
+}
+
+// Block Kit spreads one message's text across three positions: a section's at `text.text`, a
+// context's at `elements[].text`, a button's label at `elements[].text.text`. All of it, plus
+// the ids Growthmind mints into `block_id` and a button's `value`, is bytes on the wire.
+function deliveredStringsIn(block: unknown): readonly string[] {
+  const shape = block as {
+    readonly block_id?: unknown;
+    readonly text?: unknown;
+    readonly elements?: readonly unknown[];
+  };
+
+  const found: string[] = [...stringsAt(shape.block_id), ...stringsAt(shape.text)];
+
+  for (const element of shape.elements ?? []) {
+    const part = element as { readonly text?: unknown; readonly value?: unknown };
+    found.push(...stringsAt(part.text), ...stringsAt(part.value));
+  }
+
+  return found;
+}
+
 test("the residual gate scans the exact text the poster is handed", async () => {
    
   const scene = harness({ lanes: [lane()] });
@@ -506,9 +608,19 @@ test("the residual gate scans the exact text the poster is handed", async () => 
   expect(scanned.text).not.toBeNull();
   expect(scanned.text).toContain((request as PostRequest).fallbackText);
 
-  for (const block of (request as PostRequest).blocks) {
-    const text = (block as { text: string }).text;
-    expect(scanned.text).toContain(JSON.stringify(text).slice(1, -1));
+  const blocks = (request as PostRequest).blocks;
+  expect(blocks.length).toBeGreaterThan(0);
+
+  for (const block of blocks) {
+    const strings = deliveredStringsIn(block);
+
+    // A block the reader cannot see into is the failure this test exists to catch: it would
+    // otherwise pass with nothing asserted while unscanned text went to Slack.
+    expect({ block, readable: strings.length > 0 }).toEqual({ block, readable: true });
+
+    for (const text of strings) {
+      expect(scanned.text).toContain(JSON.stringify(text).slice(1, -1));
+    }
   }
 });
 
