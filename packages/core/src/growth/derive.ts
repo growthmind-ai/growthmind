@@ -4,17 +4,15 @@ import { z } from "zod";
 
 import { ROLED_SURFACE_LIMIT, type RoledSurface } from "./context";
 
-// A role is a proposal until a person agrees with it, and a wrong one distorts the queue
-// without ever reporting a fault. Every threshold below is a floor on how much has to have
-// been seen before this will say anything at all.
+// Floors on how much must have been seen before this says anything: a wrong role distorts
+// the queue without reporting a fault.
 export const DERIVE_MIN_SESSIONS = 5;
 
 export const DERIVE_MIN_SHARE = 0.3;
 
-// Narrow on purpose, and NOT the §5 deny list. That list is broad because over-refusing a
-// fix is cheap; this one decides a weight of 8, where a false positive quietly promotes a
-// blog post above a real problem. `/blog/pricing-strategy` is refused by the deny list and
-// roled `unknown` by this.
+// Narrow, and deliberately not the §5 deny list: that one is broad because over-refusing a
+// fix is cheap, this one sets a weight of 8. `/blog/pricing-strategy` is refused there and
+// roled `unknown` here.
 export const MONEY_SEGMENTS: readonly string[] = [
   "checkout",
   "billing",
@@ -34,14 +32,12 @@ export const surfaceObservationSchema = z.object({
 
   sessions: z.number().int().nonnegative(),
 
-  // Visits made during an identity's own first session, by identities that came back.
   firstSessionVisitsByReturners: z.number().int().nonnegative(),
 
   visitsByReturningIdentities: z.number().int().nonnegative(),
 
-  // Sessions that reached this surface and a money surface in the same visit. Co-occurrence,
-  // not order: proving one came before the other needs the funnel understanding the model
-  // tier supplies, and this tier only ever proposes.
+  // Co-occurrence, not order: proving order needs the funnel understanding the model tier
+  // supplies, and this tier only proposes.
   sessionsAlsoReachingMoney: z.number().int().nonnegative(),
 });
 
@@ -64,9 +60,8 @@ export type RoleProposal = {
   readonly basis: WorthBasis;
 };
 
-// Every branch that cannot clear its floor falls through to `unknown`, which weighs 1 and
-// leaves the ordering as it was. That is the safe direction: a miss costs a better ranking,
-// a guess costs a wrong one that nobody can see.
+// Unmatched falls through to `unknown` at weight 1: a miss costs a better ranking, a guess
+// costs a wrong one nobody can see.
 export function proposeRole(observation: SurfaceObservation): RoleProposal {
   const seen = surfaceObservationSchema.parse(observation);
 

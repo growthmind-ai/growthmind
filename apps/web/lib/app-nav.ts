@@ -6,8 +6,7 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  // Null for the one group that needs no heading — a single entry above the rule reads as
-  // the root, and "Home / Home" reads as a mistake.
+  // Null for the group that needs no heading: "Home / Home" reads as a mistake.
   readonly label: string | null;
   readonly items: readonly NavItem[];
 }
@@ -17,8 +16,8 @@ const ROOT: NavGroup = {
   items: [{ href: ROUTES.home, label: "Home" }],
 };
 
-// Slack sits first because that is where the work actually arrives (product decisions §10).
-// The rest of this group is the record it leaves behind, in the order it accumulates.
+// Slack first: that is where the work arrives (product decisions §10). The rest is the
+// record it leaves behind, in the order it accumulates.
 const WORK: NavGroup = {
   label: "Work",
   items: [
