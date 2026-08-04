@@ -2,8 +2,14 @@ import {
   growthContext as toGrowthContext,
   growthContextSchema,
   type GrowthContext,
+  type RoledSurface,
 } from "@growthmind/core";
-import { logger, type TenantContext } from "@growthmind/shared";
+import {
+  URL_PATH_NORMALISATION_VERSION,
+  logger,
+  type SurfaceRole,
+  type TenantContext,
+} from "@growthmind/shared";
 import { eq, inArray, sql } from "drizzle-orm";
 
 import { growthContext } from "../schema/growth-context";
@@ -17,6 +23,17 @@ export interface SaveGrowthContextInput {
   readonly projectId: string;
   readonly surfaces: unknown;
   readonly confirmedChangeable: unknown;
+}
+
+export interface StatePageRoleInput {
+  readonly projectId: string;
+  readonly surface: string;
+  readonly role: SurfaceRole;
+  readonly statedAt: Date;
+
+  // Undefined leaves the §5 override as it is; a boolean sets it. Nothing derived may pass
+  // anything but undefined here.
+  readonly changeable?: boolean;
 }
 
 export interface GrowthContextSnapshot {
@@ -44,7 +61,14 @@ export interface GrowthContextRepo {
   // the row moved underneath it and nothing was written — a person confirming a role between
   // the read and the write must not have that confirmation derived away.
   saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean>;
+
+  // One page, stated by a person. A whole-list write from a page loaded before last night's
+  // run would revert everything that run added, so the merge happens here against the row as
+  // it is now rather than against whatever the browser last saw.
+  statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow>;
 }
+
+export const STATE_PAGE_ROLE_ATTEMPTS = 3;
 
 const notOurProject = (): Error =>
   new Error("growth context: the project named is not this organization's");
@@ -158,6 +182,61 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       );
 
       return claimed.claimed;
+    },
+
+    // The whole list is rewritten to change one entry, so two people answering different
+    // pages at the same moment would each write the other's stale value back and one answer
+    // would vanish with nothing said. Every attempt re-reads and re-merges against the row
+    // as it is now, and only writes if it has not moved since.
+    async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      for (let attempt = 0; attempt < STATE_PAGE_ROLE_ATTEMPTS; attempt += 1) {
+        const snapshot = await this.snapshotForProject(input.projectId);
+        const existing = snapshot?.context ?? null;
+
+        const stated: RoledSurface = {
+          surface: input.surface,
+          role: input.role,
+          basis: "stated_by_customer",
+          confirmedAt: input.statedAt,
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
+        };
+
+        const surfaces = [
+          ...[...(existing?.bySurface.values() ?? [])].filter(
+            (roled) => roled.surface !== input.surface,
+          ),
+          stated,
+        ];
+
+        const changeable = new Set(existing?.confirmedChangeable ?? []);
+        if (input.changeable === true) changeable.add(input.surface);
+        if (input.changeable === false) changeable.delete(input.surface);
+
+        const written = await this.saveIfUnchanged(
+          {
+            projectId: input.projectId,
+            surfaces,
+            confirmedChangeable: [...changeable],
+          },
+          snapshot?.updatedAt ?? null,
+        );
+
+        if (written) {
+          const row = s.maybe(
+            await db
+              .select()
+              .from(growthContext)
+              .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)))
+              .limit(1),
+          );
+
+          if (row !== null) return row;
+        }
+      }
+
+      throw new Error("growth context: this page kept being answered by someone else mid-write");
     },
 
     async save(input: SaveGrowthContextInput): Promise<GrowthContextRow> {

@@ -16,8 +16,7 @@ const ROOT: NavGroup = {
   items: [{ href: ROUTES.home, label: "Home" }],
 };
 
-// Slack first: that is where the work arrives (product decisions §10). The rest is the
-// record it leaves behind, in the order it accumulates.
+// Slack first: that is where the work arrives (product decisions §10).
 const WORK: NavGroup = {
   label: "Work",
   items: [
@@ -38,13 +37,8 @@ const PRODUCT: NavGroup = {
   ],
 };
 
-// Settings and the profile are not here: they hang off the account block at the foot of the
-// rail, which is where a signed-in person looks for their own things. Listing them twice makes
-// the nav answer "where do I work" and "who am I" in one column, and neither answer reads.
-//
-// The nav is built from what the viewer can actually open. Someone off the preview allow list
-// gets `notFound` on every Work and Your-product route, so offering them the links would be a
-// sidebar of nine dead ends — they get Home, and the account menu that has always been there.
+// Settings and the profile hang off the account block at the foot of the rail, not here.
+// Off the preview allow list every Work and Your-product route is a `notFound`.
 export function navGroupsFor(canSeePreview: boolean): readonly NavGroup[] {
   return canSeePreview ? [ROOT, WORK, PRODUCT] : [ROOT];
 }

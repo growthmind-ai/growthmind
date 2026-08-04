@@ -7,18 +7,21 @@ import {
   ANALYTICS_STEP,
   isAnalyticsAttached,
   ONBOARDING_MESSAGES,
+  PAGES_SECTION_TITLE,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
   type StepView,
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
+import { PageRoles } from "@/components/settings/PageRoles";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { SlackConnection } from "@/components/slack/SlackConnection";
 import { SlackDeliveryControls } from "@/components/slack/SlackDeliveryControls";
 import { AnchorLink } from "@/components/ui/Links";
 import { getDb } from "@/lib/db";
 import { ROUTES } from "@/lib/routes";
+import { readPageRoles, type PageRoleView } from "@/lib/settings/pages";
 import { readSettingsView, type SettingsView } from "@/lib/settings/view";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -124,6 +127,14 @@ function Excluded({ view }: { view: SettingsView }) {
   );
 }
 
+function Pages({ view, pages }: { view: SettingsView; pages: readonly PageRoleView[] }) {
+  return (
+    <Section title={PAGES_SECTION_TITLE}>
+      <PageRoles pages={pages} sourceAttached={isAnalyticsAttached(view.source.status)} />
+    </Section>
+  );
+}
+
 export default async function SettingsPage() {
   const ctx = await getTenantContext();
   if (!ctx) {
@@ -133,6 +144,7 @@ export default async function SettingsPage() {
   const db = getDb();
   const { projectId } = await ensureProject(db, ctx);
   const view = await readSettingsView(db, ctx, projectId);
+  const pages = await readPageRoles(db, ctx, projectId);
 
   return (
     <Stack gap="lg" maw={640}>
@@ -147,6 +159,10 @@ export default async function SettingsPage() {
       <Delivery view={view} />
       <Divider />
       <Excluded view={view} />
+      <Divider />
+
+      {/* Last: what the pages are for only means something once something is reading them. */}
+      <Pages view={view} pages={pages} />
 
       <AnchorLink href={ROUTES.home} size="sm">
         {ONBOARDING_MESSAGES.settingsBack}

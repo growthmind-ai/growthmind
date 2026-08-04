@@ -1,7 +1,8 @@
-// The first-run route input schemas (AD-16a). Here, not beside their routes,
-// because `apps/web` declares no `zod` (WIRE-Z1). Every one is `z.strictObject`
-// and takes no tenancy key — a plain `z.object` strips one and answers 200.
+// The first-run route input schemas (AD-16a), here because `apps/web` declares no `zod`
+// (WIRE-Z1). Every one is `z.strictObject`: a plain `z.object` strips a tenancy key and 200s.
 import { z } from "zod";
+
+import { surfaceRoleSchema } from "../growth/types";
 
 export const firstRunStatusInputSchema = z.strictObject({});
 
@@ -23,9 +24,8 @@ export type FirstRunAnalyticsConnectInput = z.infer<typeof firstRunAnalyticsConn
 
 export const firstRunAnalyticsDisconnectInputSchema = z.strictObject({});
 
-// `.trim()` is load-bearing: a bare `.min(1)` accepts `"   "`, and the delivery
-// guard then refuses that row for good while the screen says "chosen". One home,
-// because the two routes that take an address had drifted to different rules.
+// `.trim()` is load-bearing: a bare `.min(1)` accepts `"   "`, and the delivery guard then
+// refuses that row for good while the screen says "chosen".
 const channelIdField = z.string().trim().min(1);
 
 export const firstRunSlackConnectInputSchema = z.strictObject({
@@ -58,3 +58,14 @@ export const firstRunSlackSkipInputSchema = z.strictObject({});
 export const firstRunArmInputSchema = z.strictObject({});
 
 export const firstRunDismissInputSchema = z.strictObject({});
+
+// One page at a time: a whole-list write from a stale page reverts the nightly derivation.
+export const settingsPageRoleInputSchema = z.strictObject({
+  surface: z.string().min(1).max(512),
+
+  role: surfaceRoleSchema,
+
+  // Only for a page §5 refuses, and only ever set by a person.
+  changeable: z.boolean().optional(),
+});
+export type SettingsPageRoleInput = z.infer<typeof settingsPageRoleInputSchema>;

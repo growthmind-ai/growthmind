@@ -686,6 +686,7 @@ export {
   firstRunDismissInputSchema,
   firstRunSlackChannelInputSchema,
   settingsSlackChannelInputSchema,
+  settingsPageRoleInputSchema,
   firstRunSlackChannelsInputSchema,
   firstRunSlackConnectInputSchema,
   firstRunSlackOAuthCallbackInputSchema,
@@ -757,5 +758,20 @@ export {
   type SurfaceRole,
   type WorthBasis,
 } from "./growth/types";
-export { SURFACE_ROLE_NOTES, NOTHING_KNOWN_YET_NOTE, ALL_GROWTH_MESSAGES } from "./growth/messages";
+export {
+  SURFACE_ROLE_NOTES,
+  NOTHING_KNOWN_YET_NOTE,
+  ALL_GROWTH_MESSAGES,
+  PAGES_SECTION_TITLE,
+  PAGES_SECTION_LEAD,
+  PAGES_NONE_YET,
+  PAGES_NONE_YET_NO_SOURCE,
+  PAGES_CONFIRMED_BY_A_PERSON,
+  PAGES_OUR_GUESS,
+  PAGES_ROLE_CHOICES,
+  PAGES_OFF_LIMITS_NOTE,
+  PAGES_CHANGEABLE_LABEL,
+  PAGES_SAVED,
+  PAGES_SAVE_FAILED,
+} from "./growth/messages";
 export { FIX_SURFACE_FORBIDDEN_REFUSALS } from "./delivery/messages";
