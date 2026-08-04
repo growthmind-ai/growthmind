@@ -12,10 +12,7 @@ import {
 } from "./messages";
 
 export type LandingAttentionReason =
-  | "source_failing"
-  | "source_disconnected"
-  | "source_not_connected"
-  | "no_delivery_target";
+  "source_failing" | "source_disconnected" | "source_not_connected" | "no_delivery_target";
 
 export interface LandingAttention {
   readonly reason: LandingAttentionReason;

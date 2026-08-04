@@ -288,7 +288,8 @@ export const SETTINGS_CHANNEL_CHANGE_CONSEQUENCE =
 export const SETTINGS_CHANNEL_MOVED_TEMPLATE =
   "Findings now go to #{channel}. Nothing already sent was moved or sent a second time.";
 
-export const SETTINGS_CHANNEL_UNCHANGED_LINE = "That is already where findings go. Nothing changed.";
+export const SETTINGS_CHANNEL_UNCHANGED_LINE =
+  "That is already where findings go. Nothing changed.";
 
 export const SETTINGS_CHANNEL_MOVE_REFUSED =
   "That channel could not be set. Findings still go where they went before.";
