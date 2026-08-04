@@ -1,23 +1,7 @@
+import type { ReplayFailure } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import { mapRrwebFailure } from "../../src/rrweb/errors";
-
-// TODO(production): packages/shared/src/replay-source/types.ts does not exist yet.
-// This mirrors the six-code enum from ADD o-027's Core Abstractions section so this
-// file typechecks standalone; swap for the real `ReplayFailureCode` import once
-// packages/shared lands it.
-type ReplayFailureCode =
-  | "invalid_credentials"
-  | "missing_read_scope"
-  | "recording_not_found"
-  | "unreachable"
-  | "rate_limited"
-  | "misconfigured";
-
-interface ReplayFailure {
-  readonly code: ReplayFailureCode;
-  readonly message: string;
-}
 
 type ReplayFailureContext = "validate" | "events";
 
