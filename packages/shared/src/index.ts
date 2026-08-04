@@ -151,6 +151,7 @@ export {
   replayListRequestSchema,
   replayListStopSchema,
   replayListResultSchema,
+  replayEventsStopSchema,
   replayEventsResultSchema,
   replaySourceValidationSchema,
   type ReplaySourceKind,
@@ -161,6 +162,7 @@ export {
   type ReplayListRequest,
   type ReplayListStop,
   type ReplayListResult,
+  type ReplayEventsStop,
   type ReplayEventsResult,
   type ReplaySourceValidation,
 } from "./replay-source/types";

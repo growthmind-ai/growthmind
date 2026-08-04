@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   replayEventsResultSchema,
+  replayEventsStopSchema,
   replayFailureCodeSchema,
   replayListResultSchema,
   replayRecordingSummarySchema,
@@ -198,14 +199,43 @@ describe("replayListResultSchema", () => {
   });
 });
 
+describe("replayEventsStopSchema", () => {
+  test("its options are exactly page_cap and exhausted, no watermark", () => {
+    expect(replayEventsStopSchema.options.toSorted()).toEqual(
+      (["page_cap", "exhausted"] as const).toSorted(),
+    );
+  });
+
+  test("rejects watermark, which is a listRecordings-only stop reason", () => {
+    expect(replayEventsStopSchema.safeParse("watermark").success).toBe(false);
+  });
+});
+
 describe("replayEventsResultSchema", () => {
-  test("accepts an ok result carrying rrweb events and telemetry", () => {
-    const result = { ok: true, events: [VALID_EVENT], ...TELEMETRY };
+  test("accepts an ok result that exhausted its pages with a null resumeCursor", () => {
+    const result = {
+      ok: true,
+      events: [VALID_EVENT],
+      stop: "exhausted",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+    expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
+  });
+
+  test("accepts an ok result that stopped on the page cap with a resume cursor", () => {
+    const result = {
+      ok: true,
+      events: [],
+      stop: "page_cap",
+      resumeCursor: "cursor-123",
+      ...TELEMETRY,
+    };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
   test("accepts an ok result with zero events", () => {
-    const result = { ok: true, events: [], ...TELEMETRY };
+    const result = { ok: true, events: [], stop: "exhausted", resumeCursor: null, ...TELEMETRY };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
@@ -214,13 +244,42 @@ describe("replayEventsResultSchema", () => {
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
+  test("rejects an ok result missing its stop field", () => {
+    const result = { ok: true, events: [], resumeCursor: null, ...TELEMETRY };
+    expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
+  });
+
+  test("rejects an ok result with a watermark stop, which pullEvents never produces", () => {
+    const result = {
+      ok: true,
+      events: [],
+      stop: "watermark",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+    expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
+  });
+
   test("rejects negative telemetry on the ok arm", () => {
-    const result = { ok: true, events: [], ...TELEMETRY, eventsReceived: -1 };
+    const result = {
+      ok: true,
+      events: [],
+      stop: "exhausted",
+      resumeCursor: null,
+      ...TELEMETRY,
+      eventsReceived: -1,
+    };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
   });
 
   test("rejects an ok result whose events array contains a malformed event", () => {
-    const result = { ok: true, events: [{ ...VALID_EVENT, type: -1 }], ...TELEMETRY };
+    const result = {
+      ok: true,
+      events: [{ ...VALID_EVENT, type: -1 }],
+      stop: "exhausted",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
   });
 

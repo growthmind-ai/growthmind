@@ -67,6 +67,10 @@ describe("REPLAY_CAPTURE_CONFIG", () => {
     expect(strings.some((value) => value.includes("gm-replay-unmasked"))).toBe(false);
   });
 
+  test("carries no meta key today, so a future addition is forced through this file's PII check", () => {
+    expect("meta" in REPLAY_CAPTURE_CONFIG).toBe(false);
+  });
+
   test("meta, when present, names no email-like or name-like field", () => {
     const meta = (REPLAY_CAPTURE_CONFIG as Record<string, unknown>).meta;
     const suspicious =

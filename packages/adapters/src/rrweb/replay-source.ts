@@ -128,7 +128,19 @@ export function createRrwebReplaySource(
         PAGE_LIMIT,
       );
 
-      while (cursor !== null && pagesFetched < MAX_EVENT_PAGES) {
+      while (cursor !== null) {
+        if (pagesFetched >= MAX_EVENT_PAGES) {
+          return {
+            ok: true,
+            events,
+            stop: "page_cap",
+            resumeCursor: cursor,
+            pagesFetched,
+            droppedMalformed,
+            eventsReceived: events.length,
+          };
+        }
+
         const response = await client.getEventsPage(cursor);
         if (!response.ok) {
           return {
@@ -154,6 +166,8 @@ export function createRrwebReplaySource(
       return {
         ok: true,
         events,
+        stop: "exhausted",
+        resumeCursor: null,
         pagesFetched,
         droppedMalformed,
         eventsReceived: events.length,

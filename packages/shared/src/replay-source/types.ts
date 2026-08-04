@@ -46,6 +46,11 @@ export type ReplayListRequest = z.infer<typeof replayListRequestSchema>;
 export const replayListStopSchema = z.enum(["watermark", "page_cap", "exhausted"]);
 export type ReplayListStop = z.infer<typeof replayListStopSchema>;
 
+// No watermark stop here: pullEvents walks one recording's event pages, it has
+// no sinceAt to compare against, so only the cap and natural end are reachable.
+export const replayEventsStopSchema = z.enum(["page_cap", "exhausted"]);
+export type ReplayEventsStop = z.infer<typeof replayEventsStopSchema>;
+
 const replayTelemetry = {
   pagesFetched: z.number().int().nonnegative(),
 
@@ -76,6 +81,8 @@ export const replayEventsResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     events: z.array(rrwebEventSchema),
+    stop: replayEventsStopSchema,
+    resumeCursor: z.string().nullable(),
     ...replayTelemetry,
   }),
   z.object({

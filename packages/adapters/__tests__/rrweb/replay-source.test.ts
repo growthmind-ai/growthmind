@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ReplaySource } from "../../src/replay-source";
+import { MAX_EVENT_PAGES } from "../../src/rrweb/constants";
 import type { FetchLike, RrwebSourceConfig, RrwebSourceDeps } from "../../src/rrweb/deps";
 import { createRrwebReplaySource } from "../../src/rrweb/replay-source";
 
@@ -300,6 +301,48 @@ describe("createRrwebReplaySource", () => {
       if (!result.ok) return;
       expect(result.events).toEqual([]);
       expect(result.pagesFetched).toBe(1);
+    });
+
+    test("stops with exhausted and a null resumeCursor when the final page's cursor is null", async () => {
+      const fake = createPagedFetch([
+        {
+          status: 200,
+          body: eventsPage([eventItem({ type: 4, timestamp: 1722600000000 })], NEXT_EVENTS_PAGE_2),
+        },
+        { status: 200, body: eventsPage([eventItem({ type: 2, timestamp: 1722600001000 })], null) },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents(RECORDING_ID);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("exhausted");
+      expect(result.resumeCursor).toBeNull();
+      expect(result.pagesFetched).toBe(2);
+    });
+
+    test("a recording longer than MAX_EVENT_PAGES stops with page_cap and a resumeCursor pointing at the next-unfetched page, not a silently truncated ok result", async () => {
+      const pages: FakeResponseSpec[] = [];
+      for (let page = 1; page <= MAX_EVENT_PAGES; page += 1) {
+        const next = `${RRWEB_HOST}/recordings/${RECORDING_ID}/events?cursor=rrweb-fake-events-cursor-${page + 1}`;
+        pages.push({
+          status: 200,
+          body: eventsPage([eventItem({ type: 3, timestamp: 1722600000000 + page })], next),
+        });
+      }
+      const fake = createPagedFetch(pages);
+
+      const result = await buildSource(fake.fetch).pullEvents(RECORDING_ID);
+
+      expect(fake.requests).toHaveLength(MAX_EVENT_PAGES);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("page_cap");
+      expect(result.resumeCursor).toBe(
+        `${RRWEB_HOST}/recordings/${RECORDING_ID}/events?cursor=rrweb-fake-events-cursor-${MAX_EVENT_PAGES + 1}`,
+      );
+      expect(result.pagesFetched).toBe(MAX_EVENT_PAGES);
+      expect(result.events).toHaveLength(MAX_EVENT_PAGES);
     });
 
     test("a mid-walk 429 exhaustion returns ok:false with partialEvents carrying pages already parsed", async () => {
