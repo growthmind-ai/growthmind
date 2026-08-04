@@ -37,6 +37,14 @@ export const SECOND_CHANNEL: FirstRunGateRefusal = Object.freeze({
   status: 409,
 });
 
+export const SITE_DOMAIN_UNREADABLE: FirstRunGateRefusal = Object.freeze({
+  code: "site_domain_unreadable",
+  message:
+    "That does not look like a website address. Give us the domain on its own, like " +
+    "growthmind.ai, and we will read what is on it.",
+  status: 400,
+});
+
 export const NO_CHANNEL_CONNECTED: FirstRunGateRefusal = Object.freeze({
   code: "no_channel_connected",
   message:

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
+import { RESEARCH_STATUSES } from "@growthmind/shared";
+
 import { organization } from "./auth";
 import { projects } from "./projects";
 
@@ -23,6 +25,21 @@ export const growthContext = pgTable(
     surfaces: jsonb("surfaces").notNull().default([]),
 
     confirmedChangeable: jsonb("confirmed_changeable").notNull().default([]),
+
+    // The site the ICP is researched from. Proposed from the org creator's email domain and
+    // corrected by a person, never crawled without one of the two having said so.
+    siteDomain: text("site_domain"),
+
+    icp: jsonb("icp").notNull().default({ beliefs: [] }),
+
+    // A person waits on this, so every exit path records where it got to.
+    researchStatus: text("research_status", { enum: RESEARCH_STATUSES })
+      .notNull()
+      .default("never_run"),
+
+    researchedAt: timestamp("researched_at", { withTimezone: true }),
+
+    researchFailure: text("research_failure"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

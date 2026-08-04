@@ -1,3 +1,5 @@
+import { ICP_RESEARCH_TASK } from "@growthmind/shared";
+
 export const TASK = {
   HEARTBEAT: "heartbeat",
 
@@ -12,6 +14,8 @@ export const TASK = {
   PROVIDER_INTEREST_TICK: "provider-interest:tick",
 
   GROWTH_CONTEXT_TICK: "growth-context:tick",
+
+  ICP_RESEARCH: ICP_RESEARCH_TASK,
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

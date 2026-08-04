@@ -5,8 +5,12 @@ import {
   type RoledSurface,
 } from "@growthmind/core";
 import {
+  EMPTY_ICP,
   URL_PATH_NORMALISATION_VERSION,
+  icpModelSchema,
   logger,
+  type IcpModel,
+  type ResearchStatus,
   type SurfaceRole,
   type TenantContext,
 } from "@growthmind/shared";
@@ -36,6 +40,14 @@ export interface StatePageRoleInput {
   readonly changeable?: boolean;
 }
 
+export interface SiteResearchRow {
+  readonly siteDomain: string | null;
+  readonly icp: IcpModel;
+  readonly researchStatus: ResearchStatus;
+  readonly researchedAt: Date | null;
+  readonly researchFailure: string | null;
+}
+
 export interface GrowthContextSnapshot {
   readonly context: GrowthContext;
 
@@ -61,6 +73,20 @@ export interface GrowthContextRepo {
   // the row moved underneath it and nothing was written — a person confirming a role between
   // the read and the write must not have that confirmation derived away.
   saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean>;
+
+  // The site the ICP is read from, and where the research got to. Read together because a
+  // domain with no outcome beside it is a screen that cannot say whether anything happened.
+  readSiteResearch(projectId: string): Promise<SiteResearchRow | null>;
+
+  // A person naming the site. Clears the previous outcome: the beliefs on the row describe
+  // the domain that was there before, and leaving them beside a new one is a lie of layout.
+  stateSiteDomain(input: { projectId: string; siteDomain: string | null }): Promise<void>;
+
+  markResearchRunning(projectId: string): Promise<void>;
+
+  recordResearch(input: { projectId: string; icp: IcpModel; researchedAt: Date }): Promise<void>;
+
+  recordResearchFailure(input: { projectId: string; failure: string }): Promise<void>;
 
   // One page, stated by a person. A whole-list write from a page loaded before last night's
   // run would revert everything that run added, so the merge happens here against the row as
@@ -237,6 +263,92 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       }
 
       throw new Error("growth context: this page kept being answered by someone else mid-write");
+    },
+
+    async readSiteResearch(projectId: string): Promise<SiteResearchRow | null> {
+      const rows = await db
+        .select()
+        .from(growthContext)
+        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
+        .limit(1);
+
+      const row = s.maybe(rows);
+      if (row === null) return null;
+
+      const parsed = icpModelSchema.safeParse(row.icp);
+
+      return {
+        siteDomain: row.siteDomain,
+        // An unreadable model reads as no beliefs rather than throwing: the rest of the
+        // settings page is what someone mid-setup actually came for.
+        icp: parsed.success ? parsed.data : EMPTY_ICP,
+        researchStatus: row.researchStatus,
+        researchedAt: row.researchedAt,
+        researchFailure: row.researchFailure,
+      };
+    },
+
+    async stateSiteDomain(input: { projectId: string; siteDomain: string | null }): Promise<void> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      await c.insertOrFetch(
+        {
+          projectId: input.projectId,
+          siteDomain: input.siteDomain,
+          icp: EMPTY_ICP,
+          researchStatus: "never_run",
+          researchedAt: null,
+          researchFailure: null,
+        },
+        {
+          target: [growthContext.organizationId, growthContext.projectId],
+          set: {
+            siteDomain: input.siteDomain,
+            icp: EMPTY_ICP,
+            researchStatus: "never_run",
+            researchedAt: null,
+            researchFailure: null,
+            updatedAt: new Date(),
+          },
+          fetch: [eq(growthContext.projectId, input.projectId)],
+        },
+      );
+    },
+
+    async markResearchRunning(projectId: string): Promise<void> {
+      await db
+        .update(growthContext)
+        .set({ researchStatus: "running", researchFailure: null, updatedAt: new Date() })
+        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)));
+    },
+
+    async recordResearch(input: {
+      projectId: string;
+      icp: IcpModel;
+      researchedAt: Date;
+    }): Promise<void> {
+      await db
+        .update(growthContext)
+        .set({
+          icp: input.icp,
+          researchStatus: "done",
+          researchedAt: input.researchedAt,
+          researchFailure: null,
+          updatedAt: new Date(),
+        })
+        .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
+    },
+
+    // Every exit path records where it got to, so nothing sits on "running" forever (D8).
+    async recordResearchFailure(input: { projectId: string; failure: string }): Promise<void> {
+      await db
+        .update(growthContext)
+        .set({
+          researchStatus: "failed",
+          researchFailure: input.failure,
+          updatedAt: new Date(),
+        })
+        .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
     },
 
     async save(input: SaveGrowthContextInput): Promise<GrowthContextRow> {

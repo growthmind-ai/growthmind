@@ -283,3 +283,11 @@ export {
   type RoleProposal,
   type DeriveInput,
 } from "./growth/derive";
+
+export {
+  ICP_REFUSALS,
+  admitIcpStatement,
+  admitIcpBeliefs,
+  type IcpRefusal,
+  type IcpAdmission,
+} from "./growth/icp-admission";

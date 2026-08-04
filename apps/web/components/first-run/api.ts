@@ -30,6 +30,7 @@ export const FIRST_RUN_API = {
 export const SETTINGS_API = {
   slackChannel: "/api/settings/slack/channel",
   pageRole: "/api/settings/pages/role",
+  site: "/api/settings/site",
 } as const;
 
 export interface PostAnswer {

@@ -39,6 +39,12 @@ function answerFor(overrides: {
     lastSeenAt: Date;
   }[];
   declined?: readonly { headline: string; declinedAt: Date }[];
+  audience?: readonly {
+    kind: "who_it_is_for";
+    statement: string;
+    statedByAPerson: boolean;
+    readFrom: string | null;
+  }[];
 }): GrowthContextAnswer {
   return {
     outcome: "answered",
@@ -49,6 +55,7 @@ function answerFor(overrides: {
       whatMatters: overrides.whatMatters ?? [],
       knownProblems: overrides.knownProblems ?? [],
       declined: overrides.declined ?? [],
+      audience: overrides.audience ?? [],
     }),
   };
 }

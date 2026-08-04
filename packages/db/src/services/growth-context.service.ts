@@ -9,6 +9,7 @@ import {
 import {
   logger,
   type ForbiddenReason,
+  type IcpBeliefKind,
   type SurfaceRole,
   type TenantContext,
 } from "@growthmind/shared";
@@ -43,6 +44,13 @@ export interface DeclinedIdeaRow {
   readonly declinedAt: Date;
 }
 
+export interface AudienceBeliefRow {
+  readonly kind: IcpBeliefKind;
+  readonly statement: string;
+  readonly statedByAPerson: boolean;
+  readonly readFrom: string | null;
+}
+
 export interface GrowthContextReadModel {
   readonly projectId: string;
   readonly surface: string | null;
@@ -53,6 +61,7 @@ export interface GrowthContextReadModel {
   readonly whatMatters: readonly RoledSurfaceNote[];
   readonly knownProblems: readonly KnownProblemRow[];
   readonly declined: readonly DeclinedIdeaRow[];
+  readonly audience: readonly AudienceBeliefRow[];
 }
 
 export interface ReadGrowthContextInput {
@@ -110,6 +119,7 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
   return {
     async read(input: ReadGrowthContextInput): Promise<GrowthContextReadModel> {
       const context = await growth.findForProject(input.projectId);
+      const site = await growth.readSiteResearch(input.projectId);
 
       const changeable =
         input.surface === null
@@ -186,6 +196,14 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         declined: declinedRows.map((row) => ({
           headline: row.headline,
           declinedAt: row.dismissedAt,
+        })),
+        // Not narrowed by surface: who the product is for is true of the product, not of
+        // one page, and an agent asking about `/checkout` still wants to know who arrives.
+        audience: (site?.icp.beliefs ?? []).slice(0, GROWTH_CONTEXT_ITEM_LIMIT).map((belief) => ({
+          kind: belief.kind,
+          statement: belief.statement,
+          statedByAPerson: belief.provenance.source === "stated_by_customer",
+          readFrom: belief.provenance.citation,
         })),
       };
     },

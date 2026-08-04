@@ -8,6 +8,7 @@ import {
   isAnalyticsAttached,
   ONBOARDING_MESSAGES,
   PAGES_SECTION_TITLE,
+  SITE_SECTION_TITLE,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
   type StepView,
@@ -15,6 +16,7 @@ import {
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
 import { PageRoles } from "@/components/settings/PageRoles";
+import { SiteResearch } from "@/components/settings/SiteResearch";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { SlackConnection } from "@/components/slack/SlackConnection";
 import { SlackDeliveryControls } from "@/components/slack/SlackDeliveryControls";
@@ -22,6 +24,7 @@ import { AnchorLink } from "@/components/ui/Links";
 import { getDb } from "@/lib/db";
 import { ROUTES } from "@/lib/routes";
 import { readPageRoles, type PageRoleView } from "@/lib/settings/pages";
+import { readSiteResearch, type SiteResearchView } from "@/lib/settings/site";
 import { readSettingsView, type SettingsView } from "@/lib/settings/view";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -135,6 +138,14 @@ function Pages({ view, pages }: { view: SettingsView; pages: readonly PageRoleVi
   );
 }
 
+function Site({ site }: { site: SiteResearchView }) {
+  return (
+    <Section title={SITE_SECTION_TITLE}>
+      <SiteResearch view={site} />
+    </Section>
+  );
+}
+
 export default async function SettingsPage() {
   const ctx = await getTenantContext();
   if (!ctx) {
@@ -145,6 +156,7 @@ export default async function SettingsPage() {
   const { projectId } = await ensureProject(db, ctx);
   const view = await readSettingsView(db, ctx, projectId);
   const pages = await readPageRoles(db, ctx, projectId);
+  const site = await readSiteResearch(db, ctx, projectId);
 
   return (
     <Stack gap="lg" maw={640}>
@@ -161,8 +173,12 @@ export default async function SettingsPage() {
       <Excluded view={view} />
       <Divider />
 
-      {/* Last: what the pages are for only means something once something is reading them. */}
+      {/* Last: what the pages are for only means something once something is reading them,
+          and who they are for is what makes a page worth anything at all. */}
       <Pages view={view} pages={pages} />
+      <Divider />
+
+      <Site site={site} />
 
       <AnchorLink href={ROUTES.home} size="sm">
         {ONBOARDING_MESSAGES.settingsBack}

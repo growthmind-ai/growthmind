@@ -255,6 +255,7 @@ export {
   type GrowthContextRow,
   type GrowthContextSnapshot,
   type StatePageRoleInput,
+  type SiteResearchRow,
   type SaveGrowthContextInput,
 } from "./repositories/growth-context.repo";
 export {
@@ -273,3 +274,4 @@ export {
   type SurfaceObservationsService,
   type ObserveSurfacesInput,
 } from "./services/surface-observations.service";
+export { enqueueJob } from "./jobs/enqueue";

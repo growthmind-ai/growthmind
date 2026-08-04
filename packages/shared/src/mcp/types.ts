@@ -270,6 +270,20 @@ export const declinedIdeaSchema = z.object({
 });
 export type DeclinedIdea = z.infer<typeof declinedIdeaSchema>;
 
+export const audienceBeliefSchema = z.object({
+  // Plain English for the agent, matching the three questions the model is asked.
+  about: z.enum(["who it is for", "what they believe", "what they are trying to do"]),
+
+  statement: z.string().min(1),
+
+  // Where the claim came from, so an agent can weigh it. "the people who run this product"
+  // outranks a page we read.
+  toldToUs: z.boolean(),
+
+  readFrom: z.string().nullable(),
+});
+export type AudienceBelief = z.infer<typeof audienceBeliefSchema>;
+
 export const getGrowthContextOutputSchema = z
   .object({
     projectId: mcpIdSchema,
@@ -283,6 +297,9 @@ export const getGrowthContextOutputSchema = z
     knownProblems: z.array(knownProblemSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
 
     declined: z.array(declinedIdeaSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
+
+    // Who the product is for. Empty until someone names their site and it is read.
+    audience: z.array(audienceBeliefSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
 
     nothingKnownYet: z.boolean(),
   })
@@ -304,7 +321,10 @@ export const getGrowthContextOutputSchema = z
     }
 
     const known =
-      value.whatMatters.length > 0 || value.knownProblems.length > 0 || value.declined.length > 0;
+      value.whatMatters.length > 0 ||
+      value.knownProblems.length > 0 ||
+      value.declined.length > 0 ||
+      value.audience.length > 0;
     if (value.nothingKnownYet && known) {
       ctx.addIssue({
         code: "custom",
