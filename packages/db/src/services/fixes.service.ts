@@ -15,7 +15,7 @@ import {
   type FindingEvidence,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { orgCrud } from "../repositories/crud";
 import {
@@ -251,22 +251,19 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
         s.org(findingPayloads),
       );
 
+      // One pass answers both numbers. Whether a stored payload can be read back is decided
+      // here and not in SQL, so a separate `count(*)` counts rows the page has already
+      // dropped: bump the payload version and every fix written under the old one leaves
+      // `rows` while the total still claims them, describing a slice that can never fill.
       const joined = await db
         .select({ fix: fixes, payload: findingPayloads, headline: findings.headline })
         .from(fixes)
         .innerJoin(findingPayloads, payloadJoin)
         .innerJoin(findings, and(eq(findings.id, fixes.findingId), s.org(findings)))
         .where(where)
-        .orderBy(asc(fixes.resultsBy), asc(fixes.openedAt))
-        .limit(input.limit);
+        .orderBy(asc(fixes.resultsBy), asc(fixes.openedAt));
 
-      const [counted] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(fixes)
-        .innerJoin(findingPayloads, payloadJoin)
-        .where(where);
-
-      const rows: OpenFixReadModel[] = [];
+      const readable: OpenFixReadModel[] = [];
       for (const row of joined) {
         const spec = specOf(row.payload);
         const impact = spec ? impactOf(spec.candidate) : null;
@@ -274,7 +271,7 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
           continue;
         }
 
-        rows.push({
+        readable.push({
           fixId: row.fix.id,
           findingId: row.fix.findingId,
           summary: row.headline,
@@ -284,7 +281,7 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
         });
       }
 
-      return { rows, totalOpen: Number(counted?.count ?? 0) };
+      return { rows: readable.slice(0, input.limit), totalOpen: readable.length };
     },
   };
 }

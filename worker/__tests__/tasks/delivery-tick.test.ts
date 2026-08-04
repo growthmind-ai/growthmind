@@ -94,8 +94,10 @@ interface FakeLedger {
   rowFor: (findingId: string) => DeliveryRecord | undefined;
    
   seed: (row: Partial<DeliveryRecord> & { findingId: string; status: DeliveryRecord["status"] }) => void;
-   
+
   breakProject: (projectId: string) => void;
+
+  failMarkPostedOnce: () => void;
 }
 
 function keyOf(organizationId: string, findingId: string, channelId: string): string {
@@ -106,6 +108,7 @@ function createFakeLedger(): FakeLedger {
   const stored = new Map<string, DeliveryRecord>();
   const broken = new Set<string>();
   let nextId = 1;
+  let markPostedFailures = 0;
 
   function guard(projectId: string): void {
     if (broken.has(projectId)) {
@@ -138,6 +141,9 @@ function createFakeLedger(): FakeLedger {
     rows: () => [...stored.values()],
     rowFor: (findingId) => [...stored.values()].find((row) => row.findingId === findingId),
     breakProject: (projectId) => broken.add(projectId),
+    failMarkPostedOnce: () => {
+      markPostedFailures += 1;
+    },
     seed: (row) => {
       const full: DeliveryRecord = {
         id: `delivery-seed-${row.findingId}`,
@@ -186,6 +192,11 @@ function createFakeLedger(): FakeLedger {
       },
 
       markPosted(input: MarkPostedInput): Promise<DeliveryRecord | null> {
+        if (markPostedFailures > 0) {
+          markPostedFailures -= 1;
+          throw new Error("the ledger refused the write that records the post");
+        }
+
         const key = keyOf(ctx.organizationId, input.findingId, input.channelId);
         const existing = stored.get(key);
         if (!existing) return Promise.resolve(null);
@@ -474,6 +485,42 @@ test("a poster that throws still reaches a terminal failed state and never escap
   expect(row?.failureReason).not.toContain("slack.com");
   expect(row?.failureReason).not.toContain("T0123");
   expect(scene.logs.error.some((line) => line.includes("socket hang up"))).toBe(true);
+});
+
+// The message is live in the channel with a button on it, and a `pending` row carries no
+// message reference: the interactivity route resolves nothing, and the lane source counts the
+// finding as spoken for forever, so the press is silently dead and the finding never returns.
+test("a post the ledger cannot record leaves no delivery pending and the finding still reaches the channel", async () => {
+  const ledger = createFakeLedger();
+  ledger.failMarkPostedOnce();
+
+  const scene = harness({ lanes: [lane()], ledger });
+
+  const summary = await scene.run();
+
+  expect(scene.posted.length).toBe(1);
+  expect(summary.failed).toBe(1);
+  expect(summary.posted).toBe(0);
+
+  const row = ledger.rowFor("finding-1");
+  expect(row?.status).not.toBe("pending");
+  expect(row?.status).toBe("failed");
+
+  expect(row?.messageRef).toBeNull();
+  expect(
+    scene.logs.error.some((line) => line.includes("could not be recorded as posted")),
+  ).toBe(true);
+
+  // "Still reaches the channel" is a claim about the next tick, so take one: the row is
+  // re-claimable, and the message it posts carries a reference a press can resolve.
+  const second = await scene.run();
+  expect(second.posted).toBe(1);
+  expect(scene.posted.length).toBe(2);
+
+  const recovered = ledger.rowFor("finding-1");
+  expect(recovered?.status).toBe("posted");
+  expect(recovered?.messageRef).toBe("1753952400.000100");
+  expect(recovered?.attempts).toBe(2);
 });
 
 test("no lane can leave a delivery stuck pending, whatever the poster does", async () => {

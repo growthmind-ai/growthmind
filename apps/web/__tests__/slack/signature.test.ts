@@ -85,4 +85,24 @@ describe("verifySlackSignature", () => {
     expect(result.ok).toBe(false);
     expect(["missing", "mismatch"]).toContain(result.ok ? "" : result.reason);
   });
+
+  test("rejects a version prefix carrying no signature at all", () => {
+    expect(verify({ signature: `${SLACK_SIGNATURE_VERSION}=` })).toEqual({
+      ok: false,
+      reason: "mismatch",
+    });
+
+    expect(verify({ signature: `${SLACK_SIGNATURE_VERSION}=00` })).toEqual({
+      ok: false,
+      reason: "mismatch",
+    });
+  });
+
+  test("rejects an interactivity request timestamped into the future", () => {
+    const aheadBeyondTolerance = TIMESTAMP_MS - SLACK_TIMESTAMP_TOLERANCE_MS - 1;
+    expect(verify({ nowMs: aheadBeyondTolerance })).toEqual({ ok: false, reason: "stale" });
+
+    const aheadWithinTolerance = TIMESTAMP_MS - SLACK_TIMESTAMP_TOLERANCE_MS + 1;
+    expect(verify({ nowMs: aheadWithinTolerance })).toEqual({ ok: true });
+  });
 });

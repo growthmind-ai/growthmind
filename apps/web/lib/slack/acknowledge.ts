@@ -4,6 +4,8 @@ const ACKNOWLEDGEMENT_PROTOCOL = "https:";
 
 const ACKNOWLEDGEMENT_HOST = "hooks.slack.com";
 
+const ACKNOWLEDGEMENT_TIMEOUT_MS = 5000;
+
 // `response_url` arrives inside the Slack payload, so it is an attacker-influenced address
 // this server would otherwise POST to. A substring test accepts `hooks.slack.com.evil.test`.
 export function isSlackAcknowledgementUrl(candidate: string): boolean {
@@ -35,10 +37,13 @@ export async function postSlackAcknowledgement(input: SlackAcknowledgement): Pro
     return;
   }
 
+  // Following a redirect would move the post to an address the allow-list never saw.
   const response = await fetch(input.responseUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ response_type: "in_channel", text: input.text }),
+    redirect: "manual",
+    signal: AbortSignal.timeout(ACKNOWLEDGEMENT_TIMEOUT_MS),
   });
 
   if (!response.ok) {

@@ -479,6 +479,47 @@ describe("POST /api/slack/interactivity", () => {
     expect(acknowledgements).toHaveLength(0);
   });
 
+  test("refuses a body larger than a press could ever be, before it verifies anything", async () => {
+    const POST = await loadRoute();
+    const org = await freshOrg();
+    await seedPayloadFor(org);
+
+    const request = new Request(INTERACTIVITY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `payload=${"x".repeat(64 * 1024 + 1)}`,
+    });
+
+    const response = await POST(request);
+
+    // An unsigned request that reached the signature check would be a 401, so the 413 is the
+    // evidence the ceiling is enforced ahead of it rather than behind it.
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe("");
+
+    expect((await openFixesFor(org.ctx)).totalOpen).toBe(0);
+    expect(acknowledgements).toHaveLength(0);
+  });
+
+  test("mints once when two identical presses arrive at the same time", async () => {
+    const POST = await loadRoute();
+    const org = await freshOrg();
+    await seedPayloadFor(org);
+
+    const payloadText = blockActionsPayload({ org });
+
+    const [first, second] = await Promise.all([
+      POST(signedRequest({ payloadText })),
+      POST(signedRequest({ payloadText })),
+    ]);
+
+    expect(first?.status).toBe(200);
+    expect(second?.status).toBe(200);
+
+    expect((await openFixesFor(org.ctx)).totalOpen).toBe(1);
+    expect(acknowledgements).toHaveLength(1);
+  });
+
   test("refuses interactivity when no signing secret is configured", async () => {
     const POST = await loadRoute();
     const org = await freshOrg();
@@ -500,11 +541,14 @@ describe("POST /api/slack/interactivity", () => {
       const response = await POST(signedRequest({ payloadText: blockActionsPayload({ org }) }));
 
       expect(dbTouches).toBe(0);
-      expect(response.status).toBeLessThan(500);
+      expect(response.status).toBe(200);
 
+      // Empty on purpose. Slack documents only the empty acknowledgement for an
+      // interactivity request; a non-empty body's treatment is undocumented, and the
+      // nearest documented sibling renders it as a message — which here would replace
+      // the finding card the button sits on. The operator is told through the log.
       const said = await response.text();
-      expect(said.length).toBeGreaterThan(0);
-      expect(said).not.toMatch(/SLACK_SIGNING_SECRET|undefined|Error/);
+      expect(said).toBe("");
     } finally {
       globalForDb.__growthmindDb = handle.db;
       process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;

@@ -23,6 +23,8 @@ const REFUSED: readonly string[] = [
   "https://evil.test/?next=https://hooks.slack.com/actions/T0/1/a",
   "https://hooks.slack.com@evil.test/actions/T0/1/a",
   "https://HOOKS.SLACK.COM.evil.test/actions/T0/1/a",
+  "https://hooks.slack.com:8443/actions/T0/1/a",
+  "https://hooks.slack.com./actions/T0/1/a",
   "",
   "not-a-url",
 ];

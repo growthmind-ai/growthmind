@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { FIX_SPEC_PAYLOAD_VERSION } from "@growthmind/core";
 import {
   FIX_RESULTS_RULE_VERSION,
   FIX_RESULTS_WINDOW_DAYS,
@@ -9,7 +10,7 @@ import {
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 import {
   fixSpecPayload,
@@ -22,7 +23,6 @@ import { createFindingPayloadsRepo } from "../../src/repositories/finding-payloa
 import { createFindingsRepo } from "../../src/repositories/findings.repo";
 import { createFixesRepo } from "../../src/repositories/fixes.repo";
 import { createFixesService } from "../../src/services/fixes.service";
-import * as schema from "../../src/schema";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import {
@@ -57,6 +57,8 @@ interface SeedOptions {
   readonly label: string;
   readonly surface?: string;
   readonly withPayload?: boolean;
+
+  readonly projectId?: string;
 }
 
 async function seedFinding(db: TestDb, options: SeedOptions): Promise<SeededFinding> {
@@ -74,15 +76,19 @@ async function seedFindingIn(
   org: SeededOrgWithOwner,
   options: SeedOptions,
 ): Promise<SeededFinding> {
-  const project = await seedProject(db, {
-    organizationId: org.organizationId,
-    name: NAMES.projectName(options.label),
-  });
-  const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId: project.id });
+  const projectId =
+    options.projectId ??
+    (
+      await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName(options.label),
+      })
+    ).id;
+  const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId });
   const surface = options.surface ?? RENDERABLE_SURFACE;
 
   const finding = await createFindingsRepo(db, org.ctx).persist({
-    projectId: project.id,
+    projectId,
     runId: run.id,
     signature: sha256Hex(`fixes.service.test:${options.label}`),
     signatureVersion: 1,
@@ -108,7 +114,7 @@ async function seedFindingIn(
     });
   }
 
-  return { org, projectId: project.id, findingId: finding.id };
+  return { org, projectId, findingId: finding.id };
 }
 
 async function teammateContextFor(db: TestDb, org: SeededOrgWithOwner): Promise<TenantContext> {
@@ -378,27 +384,43 @@ describe("fixes service", () => {
     expect(result.fix.status).toBe("open");
   });
 
-  it("keeps the fix identity stable across a re-derivation of its inputs", async () => {
+  // B-031's churn, as production can actually perform it: `persist` is insert-or-fetch on
+  // (organization_id, project_id, signature) and the repo declares no update, so a re-derived
+  // signature arrives as a new finding row, never as a mutation of the old one. The fix identity
+  // is (organization_id, finding_id), so the fork gets its own fix — correct, because a fix
+  // points at the finding that evidences it and the forked row carries its own evidence. The
+  // cost B-031 names is here in the assertions: one problem, two open fixes.
+  it("mints a second fix when a re-derived finding forks into a new row, never attaching it to the old fix", async () => {
     const seeded = await seedFinding(db, { label: "identity-churn" });
     const service = createFixesService(db, seeded.org.ctx);
 
     const first = await service.openFor(seeded.findingId);
     if (first.outcome !== "opened") throw new Error("expected the first press to open a fix");
 
-    // B-031's churn event: the derived signature forks, the finding's primary key does not.
-    await db
-      .update(schema.findings)
-      .set({ signature: sha256Hex("fixes.service.test:identity-churn:re-derived") })
-      .where(eq(schema.findings.id, seeded.findingId));
+    const forked = await seedFindingIn(db, seeded.org, {
+      label: "identity-churn-re-derived",
+      projectId: seeded.projectId,
+    });
+    expect(forked.findingId).not.toBe(seeded.findingId);
 
-    const afterChurn = await service.openFor(seeded.findingId);
+    const afterFork = await service.openFor(forked.findingId);
 
-    expect(afterChurn.outcome).toBe("already_open");
-    if (afterChurn.outcome !== "already_open") {
-      throw new Error("expected the fix to survive the re-derivation");
+    expect(afterFork.outcome).toBe("opened");
+    if (afterFork.outcome !== "opened") {
+      throw new Error("expected the forked finding to mint its own fix");
     }
-    expect(afterChurn.fix.id).toBe(first.fix.id);
-    expect(await createFixesRepo(db, seeded.org.ctx).countOpen({ projectId: null })).toBe(1);
+    expect(afterFork.fix.id).not.toBe(first.fix.id);
+    expect(afterFork.fix.findingId).toBe(forked.findingId);
+
+    const repo = createFixesRepo(db, seeded.org.ctx);
+    expect((await repo.findForFinding(seeded.findingId))?.id).toBe(first.fix.id);
+    expect(await repo.countOpen({ projectId: null })).toBe(2);
+
+    const page = await service.listOpen({ projectId: null, limit: 25 });
+    expect(page.totalOpen).toBe(2);
+    expect(page.rows.map((row) => row.findingId).toSorted()).toEqual(
+      [seeded.findingId, forked.findingId].toSorted(),
+    );
   });
 
   it("omits a fix whose payload has gone from both the list and its total", async () => {
@@ -426,5 +448,50 @@ describe("fixes service", () => {
     expect(after.totalOpen).toBe(1);
     expect(after.rows.length).toBeLessThanOrEqual(after.totalOpen);
     expect(after.rows.map((row) => row.findingId)).toEqual([kept.findingId]);
+  });
+
+  it("omits a fix whose payload this build cannot read from both the list and its total", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("payload-unreadable"),
+      userName: NAMES.userName("payload-unreadable"),
+      email: NAMES.email("payload-unreadable"),
+    });
+    const first = await seedFindingIn(db, org, { label: "payload-unreadable-first" });
+    const second = await seedFindingIn(db, org, { label: "payload-unreadable-second" });
+    const stale = await seedFindingIn(db, org, { label: "payload-unreadable-stale" });
+
+    const service = createFixesService(db, org.ctx);
+    for (const seeded of [first, second, stale]) {
+      await service.openFor(seeded.findingId);
+    }
+
+    const before = await service.listOpen({ projectId: null, limit: 25 });
+    expect(before.rows).toHaveLength(3);
+    expect(before.totalOpen).toBe(3);
+
+    // What a `FIX_SPEC_PAYLOAD_VERSION` bump leaves behind: the row is present and readable
+    // by Postgres, and rehydration refuses it. That is what separates this from a deleted
+    // payload, which SQL can see is gone.
+    await db.execute(
+      sql`update finding_payloads set payload_version = ${FIX_SPEC_PAYLOAD_VERSION + 1} where finding_id = ${stale.findingId}`,
+    );
+    expect(
+      await createFindingPayloadsRepo(db, org.ctx).findForFinding(stale.findingId),
+    ).not.toBeNull();
+
+    const after = await service.listOpen({ projectId: null, limit: 25 });
+
+    expect(after.rows.map((row) => row.findingId).toSorted()).toEqual(
+      [first.findingId, second.findingId].toSorted(),
+    );
+    expect(after.totalOpen).toBe(2);
+    expect(after.rows.length).toBeLessThanOrEqual(after.totalOpen);
+
+    // A total the page cannot fill is the reported symptom, so ask for a page it must fill:
+    // the one row returned is readable, and the total counts only the readable rows behind it.
+    const paged = await service.listOpen({ projectId: null, limit: 1 });
+    expect(paged.rows).toHaveLength(1);
+    expect(paged.totalOpen).toBe(2);
+    expect(paged.rows.map((row) => row.findingId)).not.toContain(stale.findingId);
   });
 });

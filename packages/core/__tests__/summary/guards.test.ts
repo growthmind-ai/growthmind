@@ -26,6 +26,7 @@ import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 import { detectorNameSchema, findingClassSchema } from "../../src/rules/types";
+import { renderFixSpec } from "../../src/fixes/fix-spec";
 import { renderFloorSummary } from "../../src/summary/floor";
 import { FLOOR_TOKENS, placeholdersIn } from "../../src/summary/substitute";
 import type { FloorSummary } from "../../src/summary/types";
@@ -480,20 +481,32 @@ describe("floor summary guards", () => {
       ],
     });
 
-    // Signals persist on the candidate now (fix specs render from them), so the
-    // guarantee moved rather than held: the cohort count exists, and no sentence prints it.
     expect(parsed.signals).toHaveLength(1);
     expect(allowed.has(String(strugglers))).toBe(false);
 
-    const rendered = elementsOf(
-      renderFloorSummary({ candidate: parsed, source: "floor_no_key_configured" }),
-    )
-      .join(" ")
-      .replaceAll(parsed.surface, "<surface>")
-      .replaceAll(parsed.timeframe.start.toISOString().slice(0, 10), "<start>")
-      .replaceAll(parsed.timeframe.end.toISOString().slice(0, 10), "<end>");
+    const mask = (text: string): string =>
+      text
+        .replaceAll(parsed.surface, "<surface>")
+        .replaceAll(parsed.timeframe.start.toISOString().slice(0, 10), "<start>")
+        .replaceAll(parsed.timeframe.end.toISOString().slice(0, 10), "<end>");
 
-    expect(bareDigitOffenders(rendered, allowed)).toHaveLength(0);
+    // renderFixSpec is the renderer that actually reads signals (fix-spec.ts:239).
+    // Asserting only on the floor summary would pass vacuously: packages/core/src/summary
+    // never references signals, so it cannot print the planted count whatever it is.
+    const spec = renderFixSpec({ candidate: parsed, signals: parsed.signals });
+    expect(spec.sentences.length).toBeGreaterThan(0);
+    expect(bareDigitOffenders(mask(spec.sentences.join(" ")), allowed)).toHaveLength(0);
+
+    const floor = elementsOf(
+      renderFloorSummary({ candidate: parsed, source: "floor_no_key_configured" }),
+    ).join(" ");
+    expect(bareDigitOffenders(mask(floor), allowed)).toHaveLength(0);
+  });
+
+  test("the cohort scanner reports a struggling count planted into a rendered sentence", () => {
+    const allowed = new Set(["3", "40"]);
+
+    expect(bareDigitOffenders("47 of 83 people kept trying.", allowed)).toContain("47");
   });
 
   test("no floor template contains a third-person plural pronoun", () => {
