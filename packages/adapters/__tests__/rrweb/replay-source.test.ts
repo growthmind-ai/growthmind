@@ -210,7 +210,7 @@ describe("createRrwebReplaySource", () => {
       ]);
     });
 
-    test("stops with watermark when the oldest recording on a page is at or before sinceAt", async () => {
+    test("stops with watermark when a page crosses sinceAt, and excludes the at-or-before recording from the result", async () => {
       const sinceAt = new Date("2026-08-01T00:03:00.000Z");
       const fake = createPagedFetch([
         {
@@ -231,10 +231,81 @@ describe("createRrwebReplaySource", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.stop).toBe("watermark");
-      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
-        "rec-1",
-        "rec-2",
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-1"]);
+    });
+
+    test("filters every at-or-before-sinceAt recording out of the returned array, not just the page's last item", async () => {
+      const sinceAt = new Date("2026-08-01T00:05:00.000Z");
+      const fake = createPagedFetch([
+        {
+          status: 200,
+          body: recordingsPage(
+            [
+              recordingItem({ id: "rec-a", startedAt: "2026-08-01T00:10:00.000Z" }),
+              recordingItem({ id: "rec-mid-stale", startedAt: "2026-08-01T00:01:00.000Z" }),
+              recordingItem({ id: "rec-b", startedAt: "2026-08-01T00:20:00.000Z" }),
+            ],
+            null,
+          ),
+        },
       ]);
+
+      const result = await buildSource(fake.fetch).listRecordings({ sinceAt, maxPages: 10 });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("exhausted");
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-a",
+        "rec-b",
+      ]);
+    });
+
+    test("retains a startedAt:null recording even when sinceAt is set, since unknown age is not evidence of being old", async () => {
+      const sinceAt = new Date("2026-08-01T00:05:00.000Z");
+      const fake = createPagedFetch([
+        { status: 200, body: recordingsPage([{ id: "rec-unknown-age" }], null) },
+      ]);
+
+      const result = await buildSource(fake.fetch).listRecordings({ sinceAt, maxPages: 10 });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("exhausted");
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-unknown-age",
+      ]);
+    });
+
+    test("an oldest-first page ordering does not cause a silent single-page watermark stop that loses newer recordings", async () => {
+      const sinceAt = new Date("2026-08-01T00:05:00.000Z");
+      const fake = createPagedFetch([
+        {
+          status: 200,
+          body: recordingsPage(
+            [
+              recordingItem({ id: "rec-old-1", startedAt: "2026-07-01T00:00:00.000Z" }),
+              recordingItem({ id: "rec-old-2", startedAt: "2026-07-01T00:01:00.000Z" }),
+            ],
+            NEXT_RECORDINGS_PAGE_2,
+          ),
+        },
+        {
+          status: 200,
+          body: recordingsPage(
+            [recordingItem({ id: "rec-new-1", startedAt: "2026-08-02T00:00:00.000Z" })],
+            null,
+          ),
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).listRecordings({ sinceAt, maxPages: 10 });
+
+      expect(fake.requests).toHaveLength(2);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("exhausted");
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-new-1"]);
     });
 
     test("telemetry (pagesFetched, droppedMalformed, eventsReceived) is populated on the exhausted arm", async () => {

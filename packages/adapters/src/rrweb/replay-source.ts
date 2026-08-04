@@ -81,17 +81,32 @@ export function createRrwebReplaySource(
         const page = parseRecordingsPage(response.value, config.host);
         droppedMalformed += page.droppedMalformed;
         for (const recording of page.recordings) {
-          recordings.push(recording);
+          const isAtOrBeforeWatermark =
+            sinceAt !== null &&
+            recording.startedAt !== null &&
+            recording.startedAt.getTime() <= sinceAt.getTime();
+          if (!isAtOrBeforeWatermark) {
+            recordings.push(recording);
+          }
         }
 
-        // Pages arrive newest-first, so the last item on a page is the oldest seen so far.
+        // Recording order (newest-first vs oldest-first) is UNVERIFIED — see
+        // scripts/spikes/notes/rrweb-read-api.md. The stop below only fires when a
+        // page's first item is after sinceAt and its last is at-or-before it; an
+        // oldest-first page that is entirely stale cannot produce that shape, so a
+        // reversed order falls through to MAX_PAGES_PER_RUN's stop: "page_cap"
+        // rather than a false "watermark" that would silently drop every later page.
         if (sinceAt !== null) {
-          const oldestOnPage = page.recordings[page.recordings.length - 1];
-          if (
-            oldestOnPage !== undefined &&
-            oldestOnPage.startedAt !== null &&
-            oldestOnPage.startedAt.getTime() <= sinceAt.getTime()
-          ) {
+          const firstOnPage = page.recordings[0];
+          const lastOnPage = page.recordings[page.recordings.length - 1];
+          const crossesWatermark =
+            firstOnPage !== undefined &&
+            firstOnPage.startedAt !== null &&
+            firstOnPage.startedAt.getTime() > sinceAt.getTime() &&
+            lastOnPage !== undefined &&
+            lastOnPage.startedAt !== null &&
+            lastOnPage.startedAt.getTime() <= sinceAt.getTime();
+          if (crossesWatermark) {
             return {
               ok: true,
               recordings,
