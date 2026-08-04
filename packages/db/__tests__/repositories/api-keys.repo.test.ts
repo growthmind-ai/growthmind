@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import {
   API_KEY_DISPLAY_PREFIX_LENGTH,
@@ -9,8 +12,10 @@ import {
   hashApiKeyMaterial,
   isApiKeyFormat,
   isWriteKeyFormat,
+  type TenantContext,
 } from "@growthmind/shared";
 
+import * as apiKeysRepoModule from "../../src/repositories/api-keys.repo";
 import {
   createApiKeysRepo,
   resolveApiKeyPrincipal,
@@ -27,6 +32,106 @@ import { laneNames } from "../../src/testing";
 import { seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("apikey");
+
+const REPO_EXPORTS: Record<string, unknown> = { ...apiKeysRepoModule };
+
+const REPO_SOURCE_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "src",
+  "repositories",
+  "api-keys.repo.ts",
+);
+
+const READ_TOKENS = [".select(", "select ", "findFirst", "findMany"] as const;
+
+type StampApiKeyUse = (scoped: TestDb, keyId: string) => Promise<void>;
+
+interface ApiKeyUseSummary {
+  readonly liveCount: number;
+  readonly anyUsed: boolean;
+}
+
+function repoExport<T>(name: string, owner: string): T {
+  const value = REPO_EXPORTS[name];
+  if (value === undefined) {
+    throw new Error(`api-keys.repo exports no \`${name}\` yet (${owner}).`);
+  }
+  return value as T;
+}
+
+function stampApiKeyUse(): StampApiKeyUse {
+  return repoExport<StampApiKeyUse>("stampApiKeyUse", "O-026 D-2");
+}
+
+function stampIntervalSeconds(): number {
+  return repoExport<number>("API_KEY_USE_STAMP_INTERVAL_SECONDS", "O-026 D-2");
+}
+
+function apiKeyIdOf(ctx: TenantContext): string | null {
+  return repoExport<(context: TenantContext) => string | null>("apiKeyIdOf", "O-026 D-2 (c)")(ctx);
+}
+
+function liveKeyUse(db: TestDb, ctx: TenantContext): Promise<ApiKeyUseSummary> {
+  const repo = createApiKeysRepo(db, ctx) as unknown as Record<string, unknown>;
+  const read = repo.liveKeyUse;
+  if (typeof read !== "function") {
+    throw new Error("ApiKeysRepo has no `liveKeyUse` method yet (O-026 D-6).");
+  }
+  return (read as () => Promise<ApiKeyUseSummary>).call(repo);
+}
+
+function stampSource(): string {
+  const source = readFileSync(REPO_SOURCE_PATH, "utf8");
+  const from = source.indexOf("export async function stampApiKeyUse");
+  if (from === -1) {
+    throw new Error("api-keys.repo declares no `stampApiKeyUse` (O-026 D-2).");
+  }
+  const end = source.indexOf("\n}", from);
+  const body = source.slice(from, end === -1 ? source.length : end + 2);
+
+  return body
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .map((line) => line.replace(/\s\/\/.*$/, ""))
+    .join("\n");
+}
+
+function readTokensIn(source: string): readonly string[] {
+  return READ_TOKENS.filter((token) => source.includes(token));
+}
+
+async function apiKeyRow(db: TestDb, keyId: string): Promise<Record<string, unknown>> {
+  const result = (await db.execute(
+    sql`select last_used_at, revoked_at from api_keys where id = ${keyId}`,
+  )) as unknown as { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
+
+  const rows = Array.isArray(result) ? result : (result.rows ?? []);
+  const row = rows[0];
+  if (row === undefined) {
+    throw new Error(`api-keys stamp fixture: no api_keys row for ${keyId}`);
+  }
+  return row;
+}
+
+function asDate(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") return new Date(value);
+
+  throw new Error("api-keys stamp fixture: a timestamp came back in a shape this test cannot read");
+}
+
+async function lastUsedAtOf(db: TestDb, keyId: string): Promise<Date | null> {
+  return asDate((await apiKeyRow(db, keyId)).last_used_at);
+}
+
+async function backdateStamp(db: TestDb, keyId: string, seconds: number): Promise<void> {
+  await db.execute(
+    sql`update api_keys set last_used_at = now() - make_interval(secs => ${seconds}) where id = ${keyId}`,
+  );
+}
 
 describe("api-keys repository and resolver", () => {
   let db: TestDb;
@@ -345,5 +450,204 @@ describe("api-keys repository and resolver", () => {
     const revoked = await repo.mint({ name: "principal agent revoked" });
     await repo.revoke(revoked.key.id);
     expect(await resolveApiKeyPrincipal(db, revoked.raw)).toBeNull();
+  });
+
+  it("should stamp a key the first time it is used, with no interval to wait out", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-first"),
+      userName: NAMES.userName("stamp-first"),
+      email: NAMES.email("stamp-first"),
+    });
+    const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "stamp-first agent" });
+
+    expect(await lastUsedAtOf(db, minted.key.id)).toBeNull();
+
+    await stampApiKeyUse()(db, minted.key.id);
+
+    expect(await lastUsedAtOf(db, minted.key.id)).toBeInstanceOf(Date);
+  });
+
+  it("should leave the stamp untouched on a second use inside the interval", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-window"),
+      userName: NAMES.userName("stamp-window"),
+      email: NAMES.email("stamp-window"),
+    });
+    const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "stamp-window agent" });
+    const stamp = stampApiKeyUse();
+
+    await stamp(db, minted.key.id);
+    const first = await lastUsedAtOf(db, minted.key.id);
+    if (first === null) {
+      throw new Error("expected the first use to stamp last_used_at");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await stamp(db, minted.key.id);
+
+    expect((await lastUsedAtOf(db, minted.key.id))?.getTime()).toBe(first.getTime());
+  });
+
+  it("should rewrite a stamp that has aged past the interval", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-aged"),
+      userName: NAMES.userName("stamp-aged"),
+      email: NAMES.email("stamp-aged"),
+    });
+    const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "stamp-aged agent" });
+    const stamp = stampApiKeyUse();
+
+    await stamp(db, minted.key.id);
+    await backdateStamp(db, minted.key.id, stampIntervalSeconds() + 60);
+
+    const aged = await lastUsedAtOf(db, minted.key.id);
+    if (aged === null) {
+      throw new Error("expected the backdated fixture to leave a stamp in place");
+    }
+
+    await stamp(db, minted.key.id);
+
+    const rewritten = await lastUsedAtOf(db, minted.key.id);
+    expect(rewritten?.getTime()).toBeGreaterThan(aged.getTime());
+  });
+
+  it("should leave one coherent value when two uses of one key race", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-race"),
+      userName: NAMES.userName("stamp-race"),
+      email: NAMES.email("stamp-race"),
+    });
+    const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "stamp-race agent" });
+    const stamp = stampApiKeyUse();
+    const before = Date.now();
+
+    await Promise.all([stamp(db, minted.key.id), stamp(db, minted.key.id)]);
+
+    const settled = await lastUsedAtOf(db, minted.key.id);
+    expect(settled).toBeInstanceOf(Date);
+    expect(settled?.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("should be one update statement with no read standing in front of it", () => {
+    const source = stampSource();
+
+    expect(readTokensIn(source)).toEqual([]);
+    expect(source.split(".update(").length - 1).toBe(1);
+    expect(source).toContain("API_KEY_USE_STAMP_INTERVAL_SECONDS");
+  });
+
+  it("the read-token scan does fire on a stamp that reads before it writes", () => {
+    const planted = [
+      "export async function stampApiKeyUse(db, keyId) {",
+      "  const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, keyId));",
+      "  await db.update(apiKeys).set({ lastUsedAt: sql`now()` });",
+      "}",
+    ].join("\n");
+
+    expect(readTokensIn(planted)).toEqual([".select("]);
+  });
+
+  it("should never stamp a key that has already been revoked", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-revoked"),
+      userName: NAMES.userName("stamp-revoked"),
+      email: NAMES.email("stamp-revoked"),
+    });
+    const repo = createApiKeysRepo(db, org.ctx);
+    const minted = await repo.mint({ name: "stamp-revoked agent" });
+
+    const revoked = await repo.revoke(minted.key.id);
+    const revokedAt = revoked?.revokedAt;
+    if (!(revokedAt instanceof Date)) {
+      throw new Error("expected the revoke to stamp revokedAt");
+    }
+
+    await stampApiKeyUse()(db, minted.key.id);
+
+    expect(await lastUsedAtOf(db, minted.key.id)).toBeNull();
+    expect(asDate((await apiKeyRow(db, minted.key.id)).revoked_at)?.getTime()).toBe(
+      revokedAt.getTime(),
+    );
+  });
+
+  it("should count only this organization's live keys", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("use-count-a"),
+      userName: NAMES.userName("use-count-a"),
+      email: NAMES.email("use-count-a"),
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("use-count-b"),
+      userName: NAMES.userName("use-count-b"),
+      email: NAMES.email("use-count-b"),
+    });
+
+    const repoA = createApiKeysRepo(db, orgA.ctx);
+    await repoA.mint({ name: "use-count agent live" });
+    const dead = await repoA.mint({ name: "use-count agent revoked" });
+    await repoA.revoke(dead.key.id);
+    await createApiKeysRepo(db, orgB.ctx).mint({ name: "use-count agent foreign" });
+
+    expect(await liveKeyUse(db, orgA.ctx)).toEqual({ liveCount: 1, anyUsed: false });
+  });
+
+  it("should report the organization used when any one live key carries a stamp", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("use-any"),
+      userName: NAMES.userName("use-any"),
+      email: NAMES.email("use-any"),
+    });
+    const repo = createApiKeysRepo(db, org.ctx);
+    const first = await repo.mint({ name: "use-any agent one" });
+    await repo.mint({ name: "use-any agent two" });
+
+    expect(await liveKeyUse(db, org.ctx)).toEqual({ liveCount: 2, anyUsed: false });
+
+    await stampApiKeyUse()(db, first.key.id);
+
+    expect(await liveKeyUse(db, org.ctx)).toEqual({ liveCount: 2, anyUsed: true });
+  });
+
+  it("should carry the last-used stamp in metadata and still omit the digest", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("stamp-metadata"),
+      userName: NAMES.userName("stamp-metadata"),
+      email: NAMES.email("stamp-metadata"),
+    });
+    const repo = createApiKeysRepo(db, org.ctx);
+    const minted = await repo.mint({ name: "stamp-metadata agent" });
+
+    const mintedKeys = Object.keys(minted.key);
+    expect(mintedKeys).toContain("lastUsedAt");
+    expect(mintedKeys).not.toContain("keyHash");
+    expect((minted.key as unknown as Record<string, unknown>).lastUsedAt).toBeNull();
+
+    await stampApiKeyUse()(db, minted.key.id);
+
+    const listed = (await repo.list()).find((key) => key.id === minted.key.id);
+    expect(Object.keys(listed ?? {})).not.toContain("keyHash");
+    expect((listed as unknown as Record<string, unknown> | undefined)?.lastUsedAt).toBeInstanceOf(
+      Date,
+    );
+  });
+
+  it("should decode the key id the resolver encoded, and nothing else", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("actor-decode"),
+      userName: NAMES.userName("actor-decode"),
+      email: NAMES.email("actor-decode"),
+    });
+    const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "actor-decode agent" });
+
+    const principal = await resolveApiKeyPrincipal(db, minted.raw);
+    if (principal === null) {
+      throw new Error("expected the minted material to resolve to a principal");
+    }
+
+    expect(principal.userId).toBe(`${API_KEY_ACTOR_PREFIX}${minted.key.id}`);
+    expect(apiKeyIdOf(principal)).toBe(minted.key.id);
+
+    expect(apiKeyIdOf(org.ctx)).toBeNull();
+    expect(apiKeyIdOf({ ...principal, userId: API_KEY_ACTOR_PREFIX })).toBeNull();
   });
 });
