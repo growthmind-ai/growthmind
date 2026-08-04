@@ -17,6 +17,9 @@ import {
   PASSWORD_TOO_LONG_MESSAGE,
   PASSWORD_TOO_SHORT_MESSAGE,
   readErrorCode,
+  readSignInEmail,
+  SIGN_IN_EMAIL_PARAM,
+  signInHref,
   signInSubmitErrors,
   signUpSubmitErrors,
   validateSignIn,
@@ -24,6 +27,7 @@ import {
   type SignInErrors,
   type SignUpErrors,
 } from "../../lib/auth-forms";
+import { ROUTES } from "../../lib/routes";
 
 const VALID_SIGN_UP = { name: "Ada", email: "ada@example.com", password: "longenough" };
 const VALID_SIGN_IN = { email: "ada@example.com", password: "longenough" };
@@ -223,6 +227,54 @@ describe("sign-in submit failures", () => {
         form: NETWORK_FAILURE_MESSAGE,
       });
     }
+  });
+});
+
+// Driven from both ends. A producer test plus a consumer test would not prove the wire
+// between them, which is the whole failure this hand-off exists to avoid.
+// Next hands a missing param over as undefined, never as null.
+const param = (href: string): string | undefined =>
+  new URL(href, "http://localhost").searchParams.get(SIGN_IN_EMAIL_PARAM) ?? undefined;
+
+describe("the duplicate-account hand-off to the sign-in screen", () => {
+  test("an address survives the round trip out to the link and back off the param", () => {
+    for (const email of [
+      "ada@example.com",
+      "ada+work@example.com",
+      "a.b-c_d@sub.example.co.uk",
+      "UPPER@Example.COM",
+    ]) {
+      expect(readSignInEmail(param(signInHref(email)))).toBe(email);
+    }
+  });
+
+  test("the plus sign an address is allowed to carry is not decoded back as a space", () => {
+    const href = signInHref("ada+work@example.com");
+
+    expect(href).toContain("%2B");
+    expect(param(href)).toBe("ada+work@example.com");
+  });
+
+  test("an address that is not one lands on the bare screen, carrying nothing", () => {
+    for (const notAnEmail of ["", "   ", "not-an-email", "ada@", "@example.com"]) {
+      expect(signInHref(notAnEmail)).toBe(ROUTES.signIn);
+    }
+  });
+
+  test("the reader takes only a single well-formed address, and never renders junk", () => {
+    for (const value of [
+      undefined,
+      ["ada@example.com", "eve@example.com"],
+      ["ada@example.com"],
+      "",
+      "not-an-email",
+      "<script>alert(1)</script>",
+      "ada@example.com, eve@example.com",
+    ]) {
+      expect(readSignInEmail(value)).toBe("");
+    }
+
+    expect(readSignInEmail("ada@example.com")).toBe("ada@example.com");
   });
 });
 

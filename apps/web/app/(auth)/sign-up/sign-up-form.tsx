@@ -3,7 +3,7 @@
 import { Anchor, Button, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 
 import { signUp } from "@/lib/auth-client";
 import {
@@ -18,6 +18,8 @@ import {
   type SignUpErrors,
 } from "@/lib/auth-forms";
 import { ROUTES } from "@/lib/routes";
+
+import { DuplicateAccountNotice } from "../duplicate-account-notice";
 
 const PENDING_LABEL = "Creating your workspace…";
 
@@ -59,17 +61,9 @@ export function SignUpForm() {
     }
   }
 
-  const emailErrorNode: ReactNode =
-    errors.email === DUPLICATE_EMAIL ? (
-      <>
-        That email is already in use —{" "}
-        <Anchor component={Link} href={ROUTES.signIn} size="xs">
-          sign in instead?
-        </Anchor>
-      </>
-    ) : (
-      errors.email
-    );
+  // The message moves to a block above the button; the field keeps only its invalid
+  // styling, so the same sentence is not on the screen twice.
+  const isDuplicate = errors.email === DUPLICATE_EMAIL;
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -98,7 +92,7 @@ export function SignUpForm() {
             setEmail(event.currentTarget.value);
             setErrors((current) => clearField(current, "email"));
           }}
-          error={emailErrorNode}
+          error={isDuplicate ? true : errors.email}
           disabled={isPending}
           autoComplete="email"
         />
@@ -120,6 +114,7 @@ export function SignUpForm() {
             {errors.form}
           </Text>
         ) : null}
+        {isDuplicate ? <DuplicateAccountNotice email={email} /> : null}
         <Button type="submit" size="md" fullWidth loading={isPending}>
           {isPending ? PENDING_LABEL : "Create account"}
         </Button>

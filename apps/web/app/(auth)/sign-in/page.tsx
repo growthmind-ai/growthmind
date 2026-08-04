@@ -2,6 +2,7 @@ import { Stack, Title } from "@mantine/core";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { readSignInEmail, SIGN_IN_EMAIL_PARAM } from "@/lib/auth-forms";
 import { LAST_LOGIN_METHOD_COOKIE, resolveLastLoginBadge } from "@/lib/last-login-method";
 import { ROUTES } from "@/lib/routes";
 import { configuredSocialProviders } from "@/lib/social-auth";
@@ -10,26 +11,29 @@ import { getTenantContext } from "@/lib/tenant";
 import { SocialButtons } from "../social-buttons";
 import { SignInForm } from "./sign-in-form";
 
-// Which providers exist is a RUNTIME fact. Prerendered, this screen would bake in whatever
-// was configured on the build machine and keep showing it after the deployment changed.
+// Which providers exist is a runtime fact; prerendering would bake in the build machine's.
 export const dynamic = "force-dynamic";
 
-export default async function SignInPage() {
+interface SignInPageProps {
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function SignInPage({ searchParams }: SignInPageProps) {
   const tenantContext = await getTenantContext();
   if (tenantContext) {
     redirect(ROUTES.home);
   }
 
-  // Resolved here, server-side, and handed down as a list. The button must never read the
-  // credentials itself: a NEXT_PUBLIC_ twin would publish them to every browser.
+  // Server-side: a NEXT_PUBLIC_ twin would publish the credentials to every browser.
   const providers = configuredSocialProviders(process.env);
 
-  // Read here rather than from document.cookie in the button: the server would render no
-  // badge and the browser would then add one, which is a hydration mismatch and a flash.
+  // Read here, not from document.cookie: a browser-added badge is a hydration mismatch.
   const lastUsed = resolveLastLoginBadge(
     (await cookies()).get(LAST_LOGIN_METHOD_COOKIE)?.value,
     providers,
   );
+
+  const initialEmail = readSignInEmail((await searchParams)[SIGN_IN_EMAIL_PARAM]);
 
   return (
     <Stack gap="lg">
@@ -37,7 +41,7 @@ export default async function SignInPage() {
         Sign in
       </Title>
       <SocialButtons providers={providers} lastUsed={lastUsed} />
-      <SignInForm lastUsed={lastUsed} />
+      <SignInForm lastUsed={lastUsed} initialEmail={initialEmail} />
     </Stack>
   );
 }

@@ -3,9 +3,11 @@ import { z } from "zod";
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 72;
 
+export const emailSchema = z.email("Enter a valid email address");
+
 export const signUpSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(200, "That name is too long"),
-  email: z.email("Enter a valid email address"),
+  email: emailSchema,
   password: z
     .string()
     .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
@@ -15,7 +17,7 @@ export const signUpSchema = z.object({
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
 export const signInSchema = z.object({
-  email: z.email("Enter a valid email address"),
+  email: emailSchema,
   password: z.string().min(1, "Enter your password"),
 });
 

@@ -57,6 +57,7 @@ export { WRITE_KEY_PREFIX, isWriteKeyFormat, hashWriteKeyMaterial } from "./writ
 export { originForKind, attributeWriteKey } from "./write-keys/attribution";
 
 export {
+  emailSchema,
   signUpSchema,
   signInSchema,
   workspaceNameSchema,
