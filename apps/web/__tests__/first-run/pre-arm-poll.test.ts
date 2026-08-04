@@ -164,7 +164,7 @@ function pollEffect(code: string): string {
 
 // Terminal and deliveryState are REQUIRED properties: a call site that forgets to say
 // what it knows is a compile error rather than a branch nobody wired.
-const WATCHING = { terminal: false, deliveryState: "none" } as const;
+const WATCHING = { terminal: false, deliveryState: "none", agentWaiting: false } as const;
 
 describe("resolvePollCadenceMs", () => {
   test("the pre-arm cadence is slower than the armed cadence", () => {
@@ -189,6 +189,7 @@ describe("resolvePollCadenceMs", () => {
         armed: true,
         terminal: true,
         deliveryState: "unposted",
+        agentWaiting: false,
       }),
     ).toBe(DELIVERY_WATCH_POLL_MS);
 
@@ -198,6 +199,7 @@ describe("resolvePollCadenceMs", () => {
         armed: true,
         terminal: true,
         deliveryState: "unposted",
+        agentWaiting: false,
       }),
     ).toBe(DELIVERY_WATCH_POLL_MS);
   });
@@ -205,7 +207,13 @@ describe("resolvePollCadenceMs", () => {
   test("a terminal stage with nothing left to watch stops, and only then", () => {
     for (const deliveryState of ["none", "posted", "failed"] as const) {
       expect(
-        resolvePollCadenceMs({ attached: true, armed: true, terminal: true, deliveryState }),
+        resolvePollCadenceMs({
+          attached: true,
+          armed: true,
+          terminal: true,
+          deliveryState,
+          agentWaiting: false,
+        }),
       ).toBeNull();
     }
   });
@@ -213,7 +221,13 @@ describe("resolvePollCadenceMs", () => {
   test("a finding on a project nobody armed keeps the setup cadence, findings and all", () => {
     for (const deliveryState of ["none", "unposted", "posted", "failed"] as const) {
       expect(
-        resolvePollCadenceMs({ attached: true, armed: false, terminal: true, deliveryState }),
+        resolvePollCadenceMs({
+          attached: true,
+          armed: false,
+          terminal: true,
+          deliveryState,
+          agentWaiting: false,
+        }),
       ).toBe(PRE_ARM_POLL_MS);
     }
 
@@ -223,6 +237,7 @@ describe("resolvePollCadenceMs", () => {
         armed: false,
         terminal: true,
         deliveryState: "unposted",
+        agentWaiting: false,
       }),
     ).toBeNull();
   });
