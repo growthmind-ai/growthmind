@@ -7,6 +7,7 @@ export const apiKeyMetadataSchema = z.object({
   name: z.string(),
   keyPrefix: z.string(),
 
+  lastUsedAt: z.date().nullable(),
   revokedAt: z.date().nullable(),
   createdAt: z.date(),
 });

@@ -10,6 +10,7 @@ import {
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 import {
+  createApiKeysRepo,
   createFindingsRepo,
   createSlackConnectionsRepo,
   eq,
@@ -394,21 +395,13 @@ const BLIND_READ_SQL =
 
 const BLIND_DRIVER_MESSAGE = "the delivery record for this finding could not be read";
 
-function dbThatCannotReadDeliveries(realDb: ScopedDb, bound: readonly string[]): ScopedDb {
-  const refuse = (): never => {
-    throw driverQueryError({
-      sql: BLIND_READ_SQL,
-      params: [...bound],
-      driverMessage: BLIND_DRIVER_MESSAGE,
-    });
-  };
-
+function dbBlindTo(realDb: ScopedDb, table: unknown, refuse: () => never): ScopedDb {
   const wrapBuilder = (builder: object): object =>
     new Proxy(builder, {
       get(target, prop) {
         if (prop === "from") {
           return (arg: unknown) => {
-            if (arg === schema.deliveries) refuse();
+            if (arg === table) refuse();
             const from = Reflect.get(target, prop, target) as (a: unknown) => unknown;
             return from.call(target, arg);
           };
@@ -434,6 +427,33 @@ function dbThatCannotReadDeliveries(realDb: ScopedDb, bound: readonly string[]):
         : value;
     },
   }) as ScopedDb;
+}
+
+function dbThatCannotReadDeliveries(realDb: ScopedDb, bound: readonly string[]): ScopedDb {
+  return dbBlindTo(realDb, schema.deliveries, () => {
+    throw driverQueryError({
+      sql: BLIND_READ_SQL,
+      params: [...bound],
+      driverMessage: BLIND_DRIVER_MESSAGE,
+    });
+  });
+}
+
+// The shape migration 0015 leaves behind when it has not run: the read names every
+// column of the table, so the column it added is the one the driver refuses on.
+const KEY_READ_SQL =
+  'select * from "api_keys" where "organization_id" = $1 and "revoked_at" is null';
+
+const KEY_DRIVER_MESSAGE = 'column "last_used_at" does not exist';
+
+function dbThatCannotReadApiKeys(realDb: ScopedDb, organizationId: string): ScopedDb {
+  return dbBlindTo(realDb, schema.apiKeys, () => {
+    throw driverQueryError({
+      sql: KEY_READ_SQL,
+      params: [organizationId],
+      driverMessage: KEY_DRIVER_MESSAGE,
+    });
+  });
 }
 
 beforeAll(async () => {
@@ -814,6 +834,67 @@ describe("the delivery read may never cost the screen", () => {
     for (const value of bound) {
       expect(reasons).not.toContain(value);
     }
+  });
+
+  test("an unreadable key table costs the assistant step, not the whole screen", async () => {
+    // A migration that has not reached the deploy target is not hypothetical here,
+    // and this read enumerates the column the newest one adds. The key minted below
+    // is the control: with the table readable the same call answers `waiting`, so a
+    // degraded `none` cannot be mistaken for an org that simply has no key.
+    await createApiKeysRepo(bed.db, orgA.scope.ctx).mint({ name: "blind-read-control" });
+
+    const readable = await buildFirstRunStatus({
+      db: bed.db,
+      ctx: orgA.scope.ctx,
+      projectId: orgA.projectId,
+      facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
+    });
+    expect(readable.agentConnection).toEqual({ kind: "waiting" });
+
+    const blind = dbThatCannotReadApiKeys(bed.db, orgA.scope.organizationId);
+
+    // The read itself still throws — the payload below survives because the call is
+    // caught, not because the blind proxy stopped biting.
+    await expect(createApiKeysRepo(blind, orgA.scope.ctx).liveKeyUse()).rejects.toThrow();
+
+    const written: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      written.push(record);
+    });
+
+    let payload: Awaited<ReturnType<typeof buildFirstRunStatus>>;
+    try {
+      payload = await buildFirstRunStatus({
+        db: blind,
+        ctx: orgA.scope.ctx,
+        projectId: orgA.projectId,
+        facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
+      });
+    } finally {
+      restore();
+    }
+
+    // The step reads "not connected yet"; every other lane on the page still built.
+    expect(payload.agentConnection).toEqual({ kind: "none" });
+    expect(payload.finding).not.toBeNull();
+    expect(payload.counter).not.toBeUndefined();
+    expect(payload.mcpUrl).toContain("/api/mcp");
+    expect(payload.agentProviderOrder.length).toBeGreaterThan(0);
+
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain(KEY_READ_SQL);
+    expect(serialized).not.toContain("select ");
+
+    const logged = JSON.stringify(written);
+    expect(written.length).toBeGreaterThan(0);
+    expect(logged).not.toContain(KEY_READ_SQL);
+    expect(logged).not.toContain("select ");
+
+    const reasons = written
+      .map((record) => (typeof record.fields.reason === "string" ? record.fields.reason : ""))
+      .join("\n");
+    expect(reasons).toContain(KEY_DRIVER_MESSAGE);
+    expect(reasons).not.toContain(orgA.scope.organizationId);
   });
 
   test("the pre-arm poll adds no database read", async () => {

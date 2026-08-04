@@ -28,6 +28,10 @@ const CLOCK = clockAt(new Date("2026-08-03T10:00:00.000Z"));
 
 const LIVE_PROVIDER = "posthog";
 const UNKNOWN_PROVIDER = "jira";
+
+// D-8 flips these five to live, so registering interest in one becomes a
+// refusal. Every fixture below picks a provider that stays non-live.
+const LIVE_ASSISTANTS = ["claude-code", "cursor", "copilot", "codex", "windsurf"] as const;
 const WEBHOOK_ENV = "INTEREST_SLACK_WEBHOOK";
 
 // AD-6's event seam: the route calls it only when the insert claimed, inside
@@ -142,6 +146,18 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
     }
   });
 
+  test("a now-live coding assistant refuses with a plain 400 and writes no row (D-8, AC-34)", async () => {
+    const handle = await loadRouteHandler(INTEREST);
+    const scope = await bed.member("live-assistant");
+
+    for (const provider of LIVE_ASSISTANTS) {
+      const response = await handle(routeRequest(INTEREST, { provider }), depsFor(scope));
+      await expectPlainRefusal(response, provider);
+
+      expect(await interestRows(scope.organizationId, provider)).toHaveLength(0);
+    }
+  });
+
   test("a malformed body and a missing provider each refuse with 400, never a 500", async () => {
     const handle = await loadRouteHandler(INTEREST);
 
@@ -206,7 +222,7 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
     };
 
     const first = await handle(
-      routeRequest(INTEREST, { provider: "claude-code" }),
+      routeRequest(INTEREST, { provider: "amplitude" }),
       depsFor(scope, record),
     );
     expect(first.status).toBe(200);
@@ -214,11 +230,11 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
     expect(calls[0]).toEqual({
       organizationId: scope.organizationId,
       userId: scope.userId,
-      provider: "claude-code",
+      provider: "amplitude",
     });
 
     const repeat = await handle(
-      routeRequest(INTEREST, { provider: "claude-code" }),
+      routeRequest(INTEREST, { provider: "amplitude" }),
       depsFor(scope, record),
     );
     expect(repeat.status).toBe(200);
@@ -230,7 +246,7 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
     const scope = await bed.member("event-throwing");
 
     const response = await handle(
-      routeRequest(INTEREST, { provider: "cursor" }),
+      routeRequest(INTEREST, { provider: "mixpanel" }),
       depsFor(scope, () => {
         throw new Error("the capture client fell over");
       }),
@@ -238,7 +254,7 @@ describe("POST /api/first-run/interest — the register-interest wire (AD-6)", (
 
     expect(response.status).toBe(200);
     expect(await bodyOf(response)).toEqual({ noted: true });
-    expect(await interestRows(scope.organizationId, "cursor")).toHaveLength(1);
+    expect(await interestRows(scope.organizationId, "mixpanel")).toHaveLength(1);
   });
 
   test("a teammate reads the noted provider from the status payload (W-24, D1)", async () => {

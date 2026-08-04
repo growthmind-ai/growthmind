@@ -52,6 +52,86 @@ async function everyOnboardingMessage(): Promise<string[]> {
   return registered.filter((entry): entry is string => typeof entry === "string");
 }
 
+// UX §8.2, verbatim: the exported constant and the key components read.
+const AGENT_COPY: readonly (readonly [string, string])[] = [
+  ["STEP_AGENT_HELPER", "stepAgentHelper"],
+  ["AGENT_PICK_PROMPT", "agentPickPrompt"],
+  ["AGENT_PRE_MINT_LINE", "agentPreMintLine"],
+  ["AGENT_PASTE_INTO_TEMPLATE", "agentPasteIntoTemplate"],
+  ["AGENT_RUN_ANYWHERE_LINE", "agentRunAnywhereLine"],
+  ["AGENT_MINT_TEMPLATE", "agentMintTemplate"],
+  ["AGENT_MINT_PENDING", "agentMintPending"],
+  ["AGENT_MINT_AGAIN_LABEL", "agentMintAgainLabel"],
+  ["AGENT_MINT_FAILED_LINE", "agentMintFailedLine"],
+  ["AGENT_KEY_ONCE_NOTICE", "agentKeyOnceNotice"],
+  ["AGENT_KEY_LABEL", "agentKeyLabel"],
+  ["AGENT_COPY_KEY_LABEL", "agentCopyKeyLabel"],
+  ["AGENT_COPY_BLOCK_TEMPLATE", "agentCopyBlockTemplate"],
+  ["AGENT_KEY_GONE_NOTICE", "agentKeyGoneNotice"],
+  ["AGENT_KEY_HOLE_NOTICE", "agentKeyHoleNotice"],
+  ["AGENT_WAITING_LINE", "agentWaitingLine"],
+  ["AGENT_WAITING_NEXT", "agentWaitingNext"],
+  ["AGENT_CONNECTED_LINE", "agentConnectedLine"],
+  ["AGENT_CONNECTED_ORG_LINE", "agentConnectedOrgLine"],
+  ["AGENT_EMPTY_IS_FINE_LINE", "agentEmptyIsFineLine"],
+  ["AGENT_COPILOT_PROMPTED_NOTE", "agentCopilotPromptedNote"],
+  ["AGENT_COPILOT_USER_SCOPE_TEMPLATE", "agentCopilotUserScopeTemplate"],
+  ["AGENT_CODEX_ENV_VAR_NOTE", "agentCodexEnvVarNote"],
+  ["AGENT_CLAUDE_FILE_DISCLOSURE", "agentClaudeFileDisclosure"],
+  ["AGENT_CLAUDE_ENV_VAR_NOTE", "agentClaudeEnvVarNote"],
+  ["AGENT_CLAUDE_TYPE_TRAP", "agentClaudeTypeTrap"],
+  ["AGENT_CLAUDE_APPROVAL_NOTE", "agentClaudeApprovalNote"],
+  ["AGENT_REVOKE_LABEL", "agentRevokeLabel"],
+  ["AGENT_REVOKE_CONSEQUENCE", "agentRevokeConsequence"],
+  ["AGENT_REVOKE_CONFIRM_LABEL", "agentRevokeConfirmLabel"],
+  ["AGENT_REVOKE_CANCEL_LABEL", "agentRevokeCancelLabel"],
+  ["AGENT_REVOKED_LINE", "agentRevokedLine"],
+  ["AGENT_REVOKE_FAILED_LINE", "agentRevokeFailedLine"],
+  ["AGENT_MINTED_ANNOUNCEMENT", "agentMintedAnnouncement"],
+  ["AGENT_KEY_COPIED_ANNOUNCEMENT", "agentKeyCopiedAnnouncement"],
+  ["AGENT_BLOCK_COPIED_ANNOUNCEMENT", "agentBlockCopiedAnnouncement"],
+];
+
+const RETIRED_AGENT_STUB_LINE =
+  "When this is built, your coding agent will be able to ask Growthmind what is open and pull a fix to work on.";
+
+// Every one of these is a typed part of a config block. A copy string carrying one
+// is a second home for a vendor literal, and the two drift.
+const VENDOR_LITERALS = [
+  "GROWTHMIND_API_KEY",
+  "MCP: Open User Configuration",
+  "mcp.json",
+  "config.toml",
+  "mcpServers",
+  "serverUrl",
+  "bearer_token_env_var",
+  "${input:",
+  "YOUR_KEY_HERE",
+  "VS Code",
+  ".vscode",
+  ".cursor",
+  ".codeium",
+  "Authorization",
+] as const;
+
+function messageTable(namespace: Record<string, unknown>): Record<string, unknown> {
+  const table = namespace.ONBOARDING_MESSAGES;
+  if (typeof table !== "object" || table === null || Array.isArray(table)) {
+    throw new Error(
+      "NOT IMPLEMENTED YET: onboarding/messages.ts exports no ONBOARDING_MESSAGES object. " +
+        "Components read their copy through it, so a constant with no key here is a string " +
+        "no surface can render.",
+    );
+  }
+  return table as Record<string, unknown>;
+}
+
+function agentStrings(namespace: Record<string, unknown>): string[] {
+  return AGENT_COPY.map(([name]) => namespace[name]).filter(
+    (value): value is string => typeof value === "string",
+  );
+}
+
 const DURATION = /\d+\s*(s|secs?|seconds?|m|mins?|minutes?|h|hours?)\b/i;
 
 const HEDGE = /\babout\b|\busually\b|\btypically\b|\bapprox|~/i;
@@ -369,5 +449,88 @@ describe("rulings settled by the copy wave", () => {
       if (overlap.length > 0) secondTables.push(`${name} re-keys ${overlap.join(", ")}`);
     }
     expect(secondTables).toEqual([]);
+  });
+});
+
+describe("the coding-assistant panel's copy — O-026, UX §8.2, §8.3", () => {
+  test("every string the panel renders is an exported constant in the audit", async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = new Set(await everyOnboardingMessage());
+
+    const missingExports = AGENT_COPY.filter(([name]) => typeof namespace[name] !== "string").map(
+      ([name]) => name,
+    );
+    expect(missingExports).toEqual([]);
+
+    const unregistered = AGENT_COPY.filter(
+      ([name]) => !registered.has(namespace[name] as string),
+    ).map(([name]) => name);
+    expect(unregistered).toEqual([]);
+  });
+
+  test("every panel string has the key the components read it by", async () => {
+    const namespace = await loadOnboardingMessages();
+    const table = messageTable(namespace);
+
+    const missingKeys = AGENT_COPY.filter(
+      ([name, key]) => typeof table[key] !== "string" || table[key] !== namespace[name],
+    ).map(([, key]) => key);
+    expect(missingKeys).toEqual([]);
+  });
+
+  test("the block copy control's accessible label has a registered home", async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = new Set(await everyOnboardingMessage());
+
+    expect(typeof namespace.SLACK_COPY_INVITE_LABEL).toBe("string");
+    expect(registered.has(namespace.SLACK_COPY_INVITE_LABEL as string)).toBe(true);
+  });
+
+  test("the stub sentence the panel replaces is retired, not left registered", async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = await everyOnboardingMessage();
+    const table = messageTable(namespace);
+
+    expect(Object.keys(namespace)).not.toContain("STEP_AGENT_WHAT_IT_WILL_DO");
+    expect(Object.keys(table)).not.toContain("stepAgentWhatItWillDo");
+    expect(registered).not.toContain(RETIRED_AGENT_STUB_LINE);
+  });
+
+  test("the panel's copy introduces no new proper noun", async () => {
+    const namespace = await loadOnboardingMessages();
+    const allowList = Array.isArray(namespace.ONBOARDING_PROPER_NOUNS)
+      ? namespace.ONBOARDING_PROPER_NOUNS.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [];
+
+    expect(allowList).toHaveLength(11);
+    expect(allowList).not.toContain("VS Code");
+
+    const strings = agentStrings(namespace);
+    expect(strings).toHaveLength(AGENT_COPY.length);
+
+    const allowed = new Set([...allowList, "Growthmind"]);
+    const offenders = strings.flatMap((message) => properNounOffenders(message, allowed));
+    expect(offenders).toEqual([]);
+  });
+
+  test("every vendor literal lives in the block, never in the prose", async () => {
+    const namespace = await loadOnboardingMessages();
+
+    const planted = "Paste this into ~/.cursor/mcp.json and set GROWTHMIND_API_KEY.";
+    expect(VENDOR_LITERALS.filter((literal) => planted.includes(literal)).length).toBeGreaterThan(
+      0,
+    );
+
+    const strings = agentStrings(namespace);
+    expect(strings).toHaveLength(AGENT_COPY.length);
+
+    const offenders = strings.flatMap((message) =>
+      VENDOR_LITERALS.filter((literal) => message.includes(literal)).map(
+        (literal) => `${literal} in: ${message}`,
+      ),
+    );
+    expect(offenders).toEqual([]);
   });
 });

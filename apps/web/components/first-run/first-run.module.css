@@ -221,6 +221,30 @@
 }
 
 /* --------------------------------------------------------------------------
+ * The agent panel's entrance (T2, T3, T9, T10 of the O-026 storyboard).
+ *
+ * Carried by a wrapper that only takes the class on a render following a press.
+ * A poll, a reload and a teammate's first arrival mount without it, because
+ * replaying an entrance claims something just happened that did not (T5).
+ * -------------------------------------------------------------------------- */
+
+.agentEnter {
+  animation: agentEnter 200ms cubic-bezier(0.22, 0.7, 0.24, 1) 50ms both;
+}
+
+@keyframes agentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
  * REDUCED MOTION — everything stops except the payoff's fade.
  *
  * The carve-out is deliberate and it is the reason this block re-declares a
@@ -241,7 +265,8 @@
 
   .appear,
   .foldIn,
-  .foldOut {
+  .foldOut,
+  .agentEnter {
     animation: none;
   }
 

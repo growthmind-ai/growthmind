@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  AGENT_PANEL,
+  AGENT_PANEL_BODY,
   anyMatch,
   blankComments,
+  COPYABLE_BLOCK,
   COUNTER_GRID,
   FIRST_RUN_TREE,
   fixture,
@@ -326,6 +329,15 @@ describe("render purity and the reducer wire — AD-1, AD-3, AD-5, AC-O11b", () 
     readFirstRun(COUNTER_GRID);
 
     expect(offenders(webSources(), BANNED_FIELD, "raw")).toEqual([]);
+  });
+
+  test("the agent panel trio authors no customer-facing sentence and calls no clock", () => {
+    const trio = readAll([AGENT_PANEL, AGENT_PANEL_BODY, COPYABLE_BLOCK]);
+
+    expect(inlineSentences(trio)).toEqual([]);
+    expect(clockInRender(trio)).toEqual([]);
+
+    expect(anyMatch(trio, /@growthmind\/shared/)).toBe(true);
   });
 
   test("no component authors a customer-facing sentence inline", () => {

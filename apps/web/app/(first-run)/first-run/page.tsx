@@ -9,11 +9,13 @@ import {
   displayOrdinal,
   isDeliveryAddress,
   LIVE_STEP_DESCRIPTORS,
+  type StepDescriptor,
   type StepSequenceFacts,
   type StepView,
   type WorkStep,
 } from "@growthmind/shared";
 
+import { AgentPanel } from "@/components/first-run/AgentPanel";
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
 import { CounterGrid } from "@/components/first-run/CounterGrid";
 import { FirstRunClient } from "@/components/first-run/FirstRunClient";
@@ -96,6 +98,38 @@ function workBody(input: WorkBodyInput): ReactNode {
   );
 }
 
+interface StepBodyInput {
+  readonly descriptor: StepDescriptor;
+  readonly view: StepView;
+  readonly status: FirstRunStatusPayload;
+}
+
+// The panel owns its own controls, so the sequence hands it three payload facts
+// and nothing else. A `stage` row's body is the client island's, above.
+function stepBody(input: StepBodyInput): ReactNode {
+  const { descriptor, view, status } = input;
+
+  if (descriptor.kind === "work") {
+    return workBody({ step: descriptor, view, status });
+  }
+
+  if (descriptor.kind === "panel") {
+    return (
+      <AgentPanel
+        connection={status.agentConnection}
+        mcpUrl={status.mcpUrl}
+        providerOrder={status.agentProviderOrder}
+      />
+    );
+  }
+
+  return null;
+}
+
+function helperOf(descriptor: StepDescriptor): string | null {
+  return descriptor.kind === "work" || descriptor.kind === "panel" ? descriptor.helper : null;
+}
+
 export default async function FirstRunPage() {
   const ctx = await getTenantContext();
   if (!ctx) {
@@ -119,6 +153,7 @@ export default async function FirstRunPage() {
     slackSkipped: status.slackSkippedAt !== null,
 
     slackTestPostFailed: false,
+    agentConnected: status.agentConnection.kind === "connected",
     armedAt: status.armedAt,
     reopenedReadOnly: false,
   };
@@ -150,11 +185,11 @@ export default async function FirstRunPage() {
                   key={descriptor.id}
                   ordinal={displayOrdinal(descriptor.id)}
                   title={descriptor.title}
-                  helper={descriptor.kind === "work" ? descriptor.helper : null}
+                  helper={helperOf(descriptor)}
                   state={view.state}
                   open={view.open}
                 >
-                  {descriptor.kind === "work" ? workBody({ step: descriptor, view, status }) : null}
+                  {stepBody({ descriptor, view, status })}
                 </StepRow>
               );
             },

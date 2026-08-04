@@ -12,7 +12,9 @@ import {
 
 import {
   COMING_NEXT_DESCRIPTORS,
+  displayOrdinal,
   FIELD_PERSONAL_KEY_LABEL,
+  LIVE_STEP_DESCRIPTORS,
   ROADMAP_LEAD,
   STEP_DESCRIPTORS,
   STEP_SLACK_TITLE,
@@ -277,7 +279,11 @@ const CLEAN_PING_CHIP = fixture(
 const NAV_MARKUP = /<a[\s>]|\bhref=|<input/;
 
 describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
-  test("both soon cards render after every live card, and the scanner fails a planted inversion", async () => {
+  test("one soon card still renders after every live card, and the scanner fails a planted inversion", async () => {
+    // O-026 promotes the assistant card out of the section, so the guard now runs
+    // against a single-card Roadmap. The inversion fixture is what keeps it honest.
+    expect(COMING_NEXT_DESCRIPTORS.map((step) => step.id)).toEqual(["repo"]);
+
     expect(leadAfterLiveMarkers(readMarkup(PLANTED_INVERSION).text).ok).toBe(false);
     expect(leadAfterLiveMarkers(readMarkup(PLANTED_INVERSION).text).why).toContain(
       "before the key field",
@@ -332,6 +338,58 @@ describe("the soon-card contract — W-34..W-39 (AD-7.1, AD-8)", () => {
 
     const verdict = leadAfterLiveMarkers(readMarkup(html).text);
     if (!verdict.ok) throw new Error(verdict.why);
+  });
+
+  test("the coding-assistant rail is live: no soon badge, and the roadmap names none of the five", async () => {
+    const catalogue = await loadCatalogue();
+    const assistants = catalogue.filter((provider) => provider.rail === "coding-assistant");
+
+    expect(assistants).toHaveLength(5);
+    expect(assistants.filter((provider) => !provider.live).map((provider) => provider.id)).toEqual(
+      [],
+    );
+
+    const badge = await loadMessage("PROVIDER_SOON_BADGE");
+    const { card } = await renderRoadmap({ providerInterest: [], interestPingAvailable: true });
+
+    expect(card.text).not.toContain(badge);
+
+    for (const assistant of assistants) {
+      expect({ id: assistant.id, onTheRoadmap: card.text.includes(assistant.displayName) }).toEqual(
+        {
+          id: assistant.id,
+          onTheRoadmap: false,
+        },
+      );
+    }
+  });
+
+  test("the promoted step joins the ordinal walk — the live steps read 1, 2, 3, 4", () => {
+    expect(LIVE_STEP_DESCRIPTORS.map((descriptor) => descriptor.id)).toEqual([
+      "analytics",
+      "slack",
+      "agent",
+      "moment",
+    ]);
+
+    expect(LIVE_STEP_DESCRIPTORS.map((descriptor) => displayOrdinal(descriptor.id))).toEqual([
+      1, 2, 3, 4,
+    ]);
+
+    expect(COMING_NEXT_DESCRIPTORS.map((step) => displayOrdinal(step.id))).not.toContain(3);
+  });
+
+  test("the roadmap's soon-chip count is re-derived from the catalogue and reads two", async () => {
+    const catalogue = await loadCatalogue();
+    const soon = catalogue.filter((provider) => !provider.live && provider.rail !== "analytics");
+
+    expect(soon.map((provider) => provider.id)).toEqual(["github", "gitlab"]);
+    expect(await roadmapSoonChipCount()).toBe(soon.length);
+
+    const { card } = await renderRoadmap({ providerInterest: [], interestPingAvailable: true });
+    const pingLabel = await loadMessage("INTEREST_PING_LABEL");
+
+    expect(card.controls.filter((label) => label.includes(pingLabel))).toHaveLength(soon.length);
   });
 
   test("soon cards carry no ordinal — not in source, not on the screen", async () => {

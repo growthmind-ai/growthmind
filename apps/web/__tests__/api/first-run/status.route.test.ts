@@ -1,4 +1,10 @@
-import { createFindingsRepo, eq, schema, type MeasuredCountRow } from "@growthmind/db";
+import {
+  createApiKeysRepo,
+  createFindingsRepo,
+  eq,
+  schema,
+  type MeasuredCountRow,
+} from "@growthmind/db";
 import { CONNECTION_STATE_MESSAGES } from "@growthmind/shared";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -481,5 +487,118 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
     expect(raw).not.toContain("credentialCiphertext");
     expect(raw).not.toContain("credential_ciphertext");
     expect(raw).not.toContain("credentialKeyId");
+  });
+});
+
+const AGENT_PROVIDER_COUNT = 5;
+
+async function mintKeyFor(scope: SeededMemberScope, name: string): Promise<string> {
+  const minted = await createApiKeysRepo(bed.db, scope.ctx).mint({ name });
+  return minted.raw;
+}
+
+async function keyRowsFor(organizationId: string): Promise<Record<string, unknown>[]> {
+  const result = (await bed.db.execute(
+    `select id, name, key_hash, key_prefix from api_keys where organization_id = '${organizationId}'`,
+  )) as unknown as { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
+  return Array.isArray(result) ? result : (result.rows ?? []);
+}
+
+// D-3's column. Absent until the 0015 migration lands, so this names itself
+// rather than surfacing as an opaque SQL error.
+async function stampEveryKeyOf(organizationId: string): Promise<void> {
+  try {
+    await bed.db.execute(
+      `update api_keys set last_used_at = now() where organization_id = '${organizationId}'`,
+    );
+  } catch (error) {
+    throw new Error(
+      `NOT IMPLEMENTED YET: api_keys carries no last_used_at column, so first contact cannot be ` +
+        `stamped. ADD O-026 D-3 (packages/db/src/schema/api-keys.ts + migration 0015) owns it. ` +
+        `This is a Wave 0 red for the RIGHT reason.`,
+      { cause: error },
+    );
+  }
+}
+
+function agentConnectionOf(body: Record<string, unknown>): unknown {
+  return body.agentConnection;
+}
+
+describe("GET /api/first-run/status — the agent panel's payload (D-6, AC-36)", () => {
+  test("carries mcpUrl, agentConnection and agentProviderOrder as required fields on a fresh org", async () => {
+    const handle = await loadRouteHandler(STATUS);
+    const fresh = await bed.member("agent-fresh");
+
+    const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(fresh)));
+
+    expect(typeof body.mcpUrl).toBe("string");
+    expect(String(body.mcpUrl).length).toBeGreaterThan(0);
+
+    expect(agentConnectionOf(body)).toEqual({ kind: "none" });
+
+    expect(Array.isArray(body.agentProviderOrder)).toBe(true);
+    expect(body.agentProviderOrder as readonly string[]).toHaveLength(AGENT_PROVIDER_COUNT);
+  });
+
+  test("never carries raw key material, a key hash, a prefix, an id or a name (AC-3, AC-46)", async () => {
+    const handle = await loadRouteHandler(STATUS);
+    const scope = await bed.member("agent-secrecy");
+
+    const raw = await mintKeyFor(scope, "Cursor (2026-08-04)");
+
+    const response = await handle(routeRequest(STATUS), depsFor(scope));
+    const body = await bodyOf(response);
+
+    // The precondition: a live key with no stamp reads waiting, so the payload
+    // is provably describing this key when the leak scan runs.
+    expect(agentConnectionOf(body)).toEqual({ kind: "waiting" });
+
+    const serialized = JSON.stringify(body);
+    expect(leaks(serialized, raw)).toBeNull();
+
+    const rows = await keyRowsFor(scope.organizationId);
+    for (const column of ["id", "name", "key_hash", "key_prefix"] as const) {
+      const value = String(rows[0]?.[column]);
+      expect(`${column} leaked: ${serialized.includes(value)}`).toBe(`${column} leaked: false`);
+    }
+    expect(serialized).not.toContain("keyHash");
+    expect(serialized).not.toContain("key_hash");
+  });
+
+  test("reads connected for a teammate who minted nothing (AC-19, D1/D2)", async () => {
+    const handle = await loadRouteHandler(STATUS);
+    const minter = await bed.member("agent-minter");
+    const teammate = await bed.member("agent-teammate", minter.organizationId);
+
+    await mintKeyFor(minter, "Codex (2026-08-04)");
+    await stampEveryKeyOf(minter.organizationId);
+
+    const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(teammate)));
+
+    expect(agentConnectionOf(body)).toEqual({ kind: "connected" });
+  });
+
+  test("reads none for a member of another org, with nothing of theirs in the payload (AC-20, D7)", async () => {
+    const handle = await loadRouteHandler(STATUS);
+    const connected = await bed.member("agent-other-connected");
+    const outsider = await bed.member("agent-outsider");
+
+    const raw = await mintKeyFor(connected, "Windsurf (2026-08-04)");
+    await stampEveryKeyOf(connected.organizationId);
+
+    const body = await bodyOf(await handle(routeRequest(STATUS), depsFor(outsider)));
+
+    expect(agentConnectionOf(body)).toEqual({ kind: "none" });
+
+    const serialized = JSON.stringify(body);
+    expect(leaks(serialized, raw)).toBeNull();
+    expect(serialized).not.toContain(connected.organizationId);
+
+    const rows = await keyRowsFor(connected.organizationId);
+    for (const column of ["id", "name", "key_prefix"] as const) {
+      const value = String(rows[0]?.[column]);
+      expect(`${column} leaked: ${serialized.includes(value)}`).toBe(`${column} leaked: false`);
+    }
   });
 });

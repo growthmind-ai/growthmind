@@ -15,7 +15,12 @@ import {
 } from "@growthmind/shared";
 
 import { Stage } from "../../components/first-run/Stage";
-import { resolvePollCadenceMs } from "../../lib/first-run/poll-cadence";
+import {
+  agentStillWatched,
+  ARMED_POLL_MS,
+  PRE_ARM_POLL_MS,
+  resolvePollCadenceMs,
+} from "../../lib/first-run/poll-cadence";
 import { blankComments, readExisting } from "./helpers/first-run-source";
 import { readMarkup } from "./helpers/rendered-markup";
 
@@ -52,6 +57,9 @@ const stageMarkup = (findingUnavailable: boolean): string =>
 const CLIENT = "apps/web/components/first-run/FirstRunClient.tsx";
 const clientCode = (): string => blankComments(readExisting(CLIENT).source);
 
+const AGENT_PANEL_FILE = "apps/web/components/first-run/AgentPanel.tsx";
+const ANALYTICS_FORM_FILE = "apps/web/components/first-run/ConnectAnalyticsForm.tsx";
+
 describe("B-040 — a found-but-unrenderable row is a terminal state", () => {
   test("the fault owns the heading, so the screen stops claiming it is still reading", () => {
     const rendered = readMarkup(stageMarkup(true));
@@ -82,15 +90,125 @@ describe("B-040 — a found-but-unrenderable row is a terminal state", () => {
       /const terminal =[\s\S]{0,120}?kind === "ended"[\s\S]{0,40}?\|\|\s*findingUnavailable/,
     );
 
-    expect(code).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,120}?terminal,/);
+    expect(code).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,160}?terminal,/);
     expect(
-      resolvePollCadenceMs({ attached: true, armed: true, terminal: true, deliveryState: "none" }),
+      resolvePollCadenceMs({
+        attached: true,
+        armed: true,
+        terminal: true,
+        deliveryState: "none",
+        agentWaiting: false,
+      }),
     ).toBeNull();
 
     // Control - not-terminal still polls, so the row above is not vacuous.
     expect(
-      resolvePollCadenceMs({ attached: true, armed: true, terminal: false, deliveryState: "none" }),
+      resolvePollCadenceMs({
+        attached: true,
+        armed: true,
+        terminal: false,
+        deliveryState: "none",
+        agentWaiting: false,
+      }),
     ).not.toBeNull();
+  });
+});
+
+describe("O-026 — a key that has never been called is still being watched", () => {
+  test("a founder waiting for first contact keeps polling with nothing else left to watch", () => {
+    // Every other dimension says stop: unarmed, unattached, terminal, delivered.
+    const settled = {
+      attached: false,
+      armed: false,
+      terminal: true,
+      deliveryState: "none",
+    } as const;
+
+    expect(resolvePollCadenceMs({ ...settled, agentWaiting: false })).toBeNull();
+    expect(resolvePollCadenceMs({ ...settled, agentWaiting: true })).toBe(PRE_ARM_POLL_MS);
+  });
+
+  test("waiting never slows a lane that was already polling faster", () => {
+    expect(
+      resolvePollCadenceMs({
+        attached: true,
+        armed: true,
+        terminal: false,
+        deliveryState: "none",
+        agentWaiting: true,
+      }),
+    ).toBe(ARMED_POLL_MS);
+  });
+
+  test("the client passes the agent dimension rather than defaulting it", () => {
+    expect(clientCode()).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,200}?agentWaiting/);
+  });
+});
+
+describe("O-026 — the founder who just minted is watched, not deadlocked", () => {
+  // The payload that rendered the page was served when the org had no key at all,
+  // so `{ kind: "none" }` is the connection every fresh mint is pressed against.
+  const UNAWARE = { kind: "none" } as const;
+
+  test("a key minted in this tab is in flight, even though the payload predates it", () => {
+    expect(agentStillWatched({ connection: UNAWARE, heldKey: null })).toBe(false);
+    expect(agentStillWatched({ connection: UNAWARE, heldKey: "gmak_7f3c9a1b" })).toBe(true);
+  });
+
+  test("first contact ends the watch rather than extending it for as long as the key is held", () => {
+    expect(agentStillWatched({ connection: { kind: "waiting" }, heldKey: null })).toBe(true);
+    expect(agentStillWatched({ connection: { kind: "connected" }, heldKey: "gmak_7f3c9a1b" })).toBe(
+      false,
+    );
+  });
+
+  test("the two settled screens a founder mints from start polling once a key is held", () => {
+    // Unarmed with nothing connected, and armed at a terminal stage with delivery
+    // settled: both resolve to `null` while the payload is the only thing asked.
+    const unarmed = {
+      attached: false,
+      armed: false,
+      terminal: true,
+      deliveryState: "none",
+    } as const;
+    const settled = {
+      attached: true,
+      armed: true,
+      terminal: true,
+      deliveryState: "posted",
+    } as const;
+
+    for (const screen of [unarmed, settled]) {
+      const beforeMint = agentStillWatched({ connection: UNAWARE, heldKey: null });
+      const afterMint = agentStillWatched({ connection: UNAWARE, heldKey: "gmak_7f3c9a1b" });
+
+      expect(resolvePollCadenceMs({ ...screen, agentWaiting: beforeMint })).toBeNull();
+      expect(resolvePollCadenceMs({ ...screen, agentWaiting: afterMint })).toBe(PRE_ARM_POLL_MS);
+    }
+  });
+
+  test("the client derives the dimension from the key it holds, not from the payload alone", () => {
+    const code = clientCode();
+
+    expect(code).toMatch(/agentStillWatched\(\{[\s\S]{0,120}?heldKey:\s*hold\.rawKey/);
+    expect(code).toMatch(/const agentWaiting = agentStillWatched\(/);
+
+    // The hold is the client's own state, so the mint that fills it re-renders the
+    // component that owns the cadence — no callback to sever (D11).
+    expect(code).toMatch(/useState<AgentPanelHold>\(EMPTY_HOLD\)/);
+    expect(code).toMatch(/held=\{\{ hold, setHold \}\}/);
+  });
+
+  test("the panel asks the screen to re-read itself on both writes, the way the analytics card does", () => {
+    const panel = blankComments(readExisting(AGENT_PANEL_FILE).source);
+    const analytics = blankComments(readExisting(ANALYTICS_FORM_FILE).source);
+
+    expect(analytics).toMatch(/router\.refresh\(\)/);
+    expect([...panel.matchAll(/router\.refresh\(\)/g)]).toHaveLength(2);
+
+    expect(panel).toMatch(
+      /setHold\(\{ rawKey: key, provider \}\);[\s\S]{0,400}?router\.refresh\(\)/,
+    );
   });
 });
 

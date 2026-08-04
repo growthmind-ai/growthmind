@@ -127,7 +127,15 @@ describe("apiKeyMetadataSchema", () => {
   test("should describe metadata with no secret field", () => {
     const keys = Object.keys(apiKeyMetadataSchema.shape).toSorted();
 
-    expect(keys).toEqual(["createdAt", "id", "keyPrefix", "name", "organizationId", "revokedAt"]);
+    expect(keys).toEqual([
+      "createdAt",
+      "id",
+      "keyPrefix",
+      "lastUsedAt",
+      "name",
+      "organizationId",
+      "revokedAt",
+    ]);
 
     expect(keys).not.toContain("keyHash");
     expect(keys).not.toContain("projectId");

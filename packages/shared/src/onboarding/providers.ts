@@ -1,13 +1,15 @@
 import { z } from "zod";
 
+import { AGENT_PROVIDER_IDS, type AgentProviderId } from "./agent-blocks";
+
 export const PROVIDER_RAILS = ["analytics", "code", "coding-assistant"] as const;
 
 export type ProviderRail = (typeof PROVIDER_RAILS)[number];
 
-// Zod's enum needs a literal tuple, so the soon subset cannot be derived from
-// the catalogue at the type level; providers.test.ts asserts the two homes
-// agree (AD-4, W-1). `posthog` is deliberately not here: registering interest
-// in a live provider is a refusal, not a no-op.
+// Zod's enum needs a literal tuple, so this cannot be derived from the
+// catalogue; providers.test.ts asserts the two homes agree (AD-4, W-1). The
+// five coding assistants stay after going live (D-8): persisted rows are typed
+// by this enum, and narrowing it would make them unparseable.
 export const INTEREST_PROVIDER_IDS = [
   "github",
   "gitlab",
@@ -32,31 +34,103 @@ export type ProviderDescriptor = {
   readonly live: boolean;
 };
 
+// `satisfies` is what makes `providerDisplayName` total: a new `ProviderId`
+// with no name here is a compile error, not a chip labelled with its own id.
+const PROVIDER_DISPLAY_NAMES = {
+  posthog: "PostHog",
+  github: "GitHub",
+  gitlab: "GitLab",
+  "claude-code": "Claude Code",
+  cursor: "Cursor",
+  copilot: "Copilot",
+  codex: "Codex",
+  windsurf: "Windsurf",
+  amplitude: "Amplitude",
+  mixpanel: "Mixpanel",
+  "growthmind-analytics": "Growthmind AI Analytics",
+} as const satisfies Record<ProviderId, string>;
+
 // The one compile-time home for the eleven identities (AD-4). No second
 // provider list may exist anywhere.
 export const PROVIDER_CATALOGUE: readonly ProviderDescriptor[] = Object.freeze([
-  { id: "posthog", displayName: "PostHog", rail: "analytics", live: true },
-  { id: "github", displayName: "GitHub", rail: "code", live: false },
-  { id: "gitlab", displayName: "GitLab", rail: "code", live: false },
-  { id: "claude-code", displayName: "Claude Code", rail: "coding-assistant", live: false },
-  { id: "cursor", displayName: "Cursor", rail: "coding-assistant", live: false },
-  { id: "copilot", displayName: "Copilot", rail: "coding-assistant", live: false },
-  { id: "codex", displayName: "Codex", rail: "coding-assistant", live: false },
-  { id: "windsurf", displayName: "Windsurf", rail: "coding-assistant", live: false },
-  { id: "amplitude", displayName: "Amplitude", rail: "analytics", live: false },
-  { id: "mixpanel", displayName: "Mixpanel", rail: "analytics", live: false },
+  { id: "posthog", displayName: PROVIDER_DISPLAY_NAMES.posthog, rail: "analytics", live: true },
+  { id: "github", displayName: PROVIDER_DISPLAY_NAMES.github, rail: "code", live: false },
+  { id: "gitlab", displayName: PROVIDER_DISPLAY_NAMES.gitlab, rail: "code", live: false },
+  {
+    id: "claude-code",
+    displayName: PROVIDER_DISPLAY_NAMES["claude-code"],
+    rail: "coding-assistant",
+    live: true,
+  },
+  {
+    id: "cursor",
+    displayName: PROVIDER_DISPLAY_NAMES.cursor,
+    rail: "coding-assistant",
+    live: true,
+  },
+  {
+    id: "copilot",
+    displayName: PROVIDER_DISPLAY_NAMES.copilot,
+    rail: "coding-assistant",
+    live: true,
+  },
+  { id: "codex", displayName: PROVIDER_DISPLAY_NAMES.codex, rail: "coding-assistant", live: true },
+  {
+    id: "windsurf",
+    displayName: PROVIDER_DISPLAY_NAMES.windsurf,
+    rail: "coding-assistant",
+    live: true,
+  },
+  {
+    id: "amplitude",
+    displayName: PROVIDER_DISPLAY_NAMES.amplitude,
+    rail: "analytics",
+    live: false,
+  },
+  { id: "mixpanel", displayName: PROVIDER_DISPLAY_NAMES.mixpanel, rail: "analytics", live: false },
   {
     id: "growthmind-analytics",
-    displayName: "Growthmind AI Analytics",
+    displayName: PROVIDER_DISPLAY_NAMES["growthmind-analytics"],
     rail: "analytics",
     live: false,
   },
 ]);
 
+export function providerDisplayName(id: ProviderId): string {
+  return PROVIDER_DISPLAY_NAMES[id];
+}
+
+const LIVE_PROVIDER_IDS: ReadonlySet<string> = new Set(
+  PROVIDER_CATALOGUE.filter((entry) => entry.live).map((entry) => entry.id),
+);
+
+export function isLiveProvider(id: ProviderId): boolean {
+  return LIVE_PROVIDER_IDS.has(id);
+}
+
+// Membership only — never the order the rows came back in (UX §3.7). An
+// unrecognised id removes nobody: the result is always the five, and fails open.
+export function agentProviderOrder(noted: readonly string[]): readonly AgentProviderId[] {
+  const notedIds = new Set(noted);
+
+  return [
+    ...AGENT_PROVIDER_IDS.filter((id) => notedIds.has(id)),
+    ...AGENT_PROVIDER_IDS.filter((id) => !notedIds.has(id)),
+  ];
+}
+
+// Parses PERSISTED rows as well as input, so it carries no live-provider
+// refusal: a refinement here would make a stored row for a now-live assistant
+// unparseable and silently starve the read that orders the panel (D-8, D5).
 export const interestProviderIdSchema = z.enum(INTEREST_PROVIDER_IDS);
 
-export const firstRunInterestInputSchema = z.strictObject({
-  provider: interestProviderIdSchema,
-});
+export const firstRunInterestInputSchema = z
+  .strictObject({
+    provider: interestProviderIdSchema,
+  })
+  .refine(({ provider }) => !isLiveProvider(provider), {
+    path: ["provider"],
+    message: "that one is already connectable, so there is nothing to note",
+  });
 
 export type FirstRunInterestInput = z.infer<typeof firstRunInterestInputSchema>;

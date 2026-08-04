@@ -12,6 +12,8 @@ import { loadUnderConstruction, loadValueUnderConstruction } from "./module-unde
 
 const OWNER = "ADD Wave 1, the onboarding/steps.ts task";
 
+const OWNER_O026 = "ADD O-026 D-9, the panel-step task on onboarding/steps.ts";
+
 type EnumSchemaShape = { readonly options: readonly string[] };
 
 const loadStepStateSchema = (): Promise<EnumSchemaShape> =>
@@ -35,6 +37,27 @@ const loadDeriveStepStates = (): Promise<DeriveStepStates> =>
     ownedBy: OWNER,
   });
 
+const loadLiveStepDescriptors = (): Promise<readonly StepDescriptor[]> =>
+  loadValueUnderConstruction<readonly StepDescriptor[]>({
+    modulePath: "../../src/onboarding/steps",
+    exportName: "LIVE_STEP_DESCRIPTORS",
+    ownedBy: OWNER_O026,
+  });
+
+const loadComingNextDescriptors = (): Promise<readonly StepDescriptor[]> =>
+  loadValueUnderConstruction<readonly StepDescriptor[]>({
+    modulePath: "../../src/onboarding/steps",
+    exportName: "COMING_NEXT_DESCRIPTORS",
+    ownedBy: OWNER_O026,
+  });
+
+const loadDisplayOrdinal = (): Promise<(id: StepId) => number> =>
+  loadUnderConstruction<(id: StepId) => number>({
+    modulePath: "../../src/onboarding/steps",
+    exportName: "displayOrdinal",
+    ownedBy: OWNER_O026,
+  });
+
 const descriptorFor = (descriptors: readonly StepDescriptor[], id: StepId): StepDescriptor => {
   const found = descriptors.find((descriptor) => descriptor.id === id);
   if (found === undefined) throw new Error(`no descriptor for step id "${id}"`);
@@ -54,6 +77,7 @@ const CONNECTED: StepSequenceFacts = {
   slackConnected: true,
   slackSkipped: false,
   slackTestPostFailed: false,
+  agentConnected: false,
   armedAt: null,
   reopenedReadOnly: false,
 };
@@ -63,11 +87,13 @@ const FRESH: StepSequenceFacts = {
   slackConnected: false,
   slackSkipped: false,
   slackTestPostFailed: false,
+  agentConnected: false,
   armedAt: null,
   reopenedReadOnly: false,
 };
 
-const STUB_IDS: readonly StepId[] = ["repo", "agent"];
+// `agent` left this set with O-026 D-9: it is a live panel step now, asserted below.
+const STUB_IDS: readonly StepId[] = ["repo"];
 
 describe("the step sequence — AD-19, FR-O3, FR-O15, FR-O23", () => {
   test("the step state union has exactly five members including coming-next", async () => {
@@ -204,7 +230,9 @@ describe("the step sequence — AD-19, FR-O3, FR-O15, FR-O23", () => {
 
     expect(stateOf(after, "analytics")).toBe("pending");
 
-    for (const id of ["repo", "slack", "agent", "moment"] as const) {
+    // `agent` is downstream of analytics in the walk after D-9, so it moves with it
+    // and is asserted separately below rather than held still here.
+    for (const id of ["repo", "slack", "moment"] as const) {
       expect(stateOf(after, id)).toBe(stateOf(before, id));
     }
   });
@@ -381,5 +409,130 @@ describe("orphan checklist rows — assertions taken from the UX Expected-UI col
       expect(stateOf(disconnectedWhileWatching, id)).not.toBe("active");
       expect(stateOf(reopened, id)).not.toBe("active");
     }
+  });
+});
+
+// The stage carries a standing "active" of its own, so every count of active steps
+// here is over the steps a founder acts on.
+const activeWorkSteps = (
+  live: readonly StepDescriptor[],
+  views: readonly StepView[],
+): readonly StepId[] =>
+  live
+    .filter((descriptor) => descriptor.kind !== "stage")
+    .filter((descriptor) => stateOf(views, descriptor.id) === "active")
+    .map((descriptor) => descriptor.id);
+
+describe("the agent step joins the walk — O-026 D-9, AC-27", () => {
+  test("the agent step is a panel declaring no fields, actions or confirmations", async () => {
+    const descriptors = await loadStepDescriptors();
+    const agent = descriptorFor(descriptors, "agent");
+
+    expect(agent.kind).toBe("panel");
+
+    expect(Object.keys(agent).toSorted()).toEqual(
+      ["helper", "id", "kind", "ordinal", "title"].toSorted(),
+    );
+
+    const keys = Object.keys(agent);
+    expect(keys).not.toContain("fields");
+    expect(keys).not.toContain("actions");
+    expect(keys).not.toContain("confirmations");
+    expect(keys).not.toContain("whatItWillDo");
+  });
+
+  test("the live steps read one, two, three, four with the agent third", async () => {
+    const live = await loadLiveStepDescriptors();
+    const displayOrdinal = await loadDisplayOrdinal();
+
+    expect(live.map((descriptor) => descriptor.id)).toEqual([
+      "analytics",
+      "slack",
+      "agent",
+      "moment",
+    ]);
+    expect(live).toHaveLength(4);
+
+    expect(displayOrdinal("analytics")).toBe(1);
+    expect(displayOrdinal("slack")).toBe(2);
+    expect(displayOrdinal("agent")).toBe(3);
+    expect(displayOrdinal("moment")).toBe(4);
+  });
+
+  test("one soon card is left in the roadmap", async () => {
+    const comingNext = await loadComingNextDescriptors();
+
+    expect(comingNext.map((descriptor) => descriptor.id)).toEqual(["repo"]);
+    expect(comingNext).toHaveLength(1);
+  });
+
+  test("a connected assistant marks the agent step done", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+
+    const views = deriveStepStates({ ...CONNECTED, agentConnected: true });
+
+    expect(stateOf(views, "agent")).toBe("done");
+  });
+
+  test("the stage opens without waiting for the agent step", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+    const live = await loadLiveStepDescriptors();
+
+    expect(live.map((descriptor) => descriptor.id)).toContain("agent");
+
+    const views = deriveStepStates({ ...CONNECTED, agentConnected: false });
+
+    expect(viewFor(views, "moment").open).toBe(true);
+    expect(stateOf(views, "agent")).not.toBe("done");
+  });
+
+  test("the agent step becomes active once analytics and slack resolve", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+    const live = await loadLiveStepDescriptors();
+
+    const views = deriveStepStates({ ...CONNECTED, agentConnected: false });
+
+    expect(stateOf(views, "agent")).toBe("active");
+    expect(activeWorkSteps(live, views)).toEqual(["agent"]);
+  });
+
+  test("no step is active when a later step resolved before an earlier one", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+    const live = await loadLiveStepDescriptors();
+
+    const views = deriveStepStates({
+      ...CONNECTED,
+      slackConnected: false,
+      agentConnected: true,
+    });
+
+    expect(activeWorkSteps(live, views)).toEqual([]);
+
+    for (const id of ["analytics", "slack", "agent"] as const) {
+      expect(viewFor(views, id).open).toBe(true);
+    }
+  });
+
+  test("the agent step is open and interactive", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+
+    const views = deriveStepStates({ ...CONNECTED, agentConnected: false });
+
+    expect(viewFor(views, "agent").open).toBe(true);
+    expect(viewFor(views, "agent").interactive).toBe(true);
+  });
+
+  test("the agent step follows analytics back when it disconnects", async () => {
+    const deriveStepStates = await loadDeriveStepStates();
+
+    const before = deriveStepStates({ ...CONNECTED, agentConnected: false });
+    const after = deriveStepStates({
+      ...CONNECTED,
+      connectionStatus: "disconnected",
+      agentConnected: false,
+    });
+
+    expect(stateOf(before, "agent")).toBe("active");
+    expect(stateOf(after, "agent")).toBe("pending");
   });
 });

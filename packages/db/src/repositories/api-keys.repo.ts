@@ -6,6 +6,7 @@ import {
   hashApiKeyMaterial,
   isApiKeyFormat,
   type ApiKeyMetadata,
+  type ApiKeyUseSummary,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -23,6 +24,7 @@ function toMetadata(row: ApiKeyRow): ApiKeyMetadata {
     organizationId: row.organizationId,
     name: row.name,
     keyPrefix: row.keyPrefix,
+    lastUsedAt: row.lastUsedAt,
     revokedAt: row.revokedAt,
     createdAt: row.createdAt,
   };
@@ -42,7 +44,11 @@ export interface ApiKeysRepo {
 
   list(): Promise<ApiKeyMetadata[]>;
 
+  liveKeyUse(): Promise<ApiKeyUseSummary>;
+
   revoke(id: string): Promise<ApiKeyMetadata | null>;
+
+  revokeEveryLive(): Promise<boolean>;
 }
 
 export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKeysRepo {
@@ -65,6 +71,15 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
       return rows.map(toMetadata);
     },
 
+    async liveKeyUse(): Promise<ApiKeyUseSummary> {
+      const rows = await c.list({ where: isNull(apiKeys.revokedAt) });
+
+      return {
+        liveCount: rows.length,
+        anyUsed: rows.some((row) => row.lastUsedAt !== null),
+      };
+    },
+
     async revoke(id: string): Promise<ApiKeyMetadata | null> {
       // `coalesce` so a second revoke keeps the first revocation's timestamp.
       const row = await c.update(
@@ -74,12 +89,52 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
 
       return row ? toMetadata(row) : null;
     },
+
+    // No id parameter: `orgCrud.update` injects the organisation filter, so there is
+    // nowhere for a caller-supplied key id to enter this path.
+    async revokeEveryLive(): Promise<boolean> {
+      const row = await c.update(
+        { revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` },
+        isNull(apiKeys.revokedAt),
+      );
+
+      return row !== null;
+    },
   };
 }
 
 export const API_KEY_ACTOR_PREFIX = "api-key:";
 
 export const API_KEY_ACTOR_ROLE = "api_key";
+
+export const API_KEY_USE_STAMP_INTERVAL_SECONDS = 300;
+
+// The other half of the `api-key:<id>` encoding two lines up, so no call site slices
+// the prefix off by hand.
+export function apiKeyIdOf(ctx: TenantContext): string | null {
+  if (!ctx.userId.startsWith(API_KEY_ACTOR_PREFIX)) {
+    return null;
+  }
+
+  const id = ctx.userId.slice(API_KEY_ACTOR_PREFIX.length);
+
+  return id.length > 0 ? id : null;
+}
+
+// Unconditional in the application, conditional in the statement: the first call on a
+// key always writes, and the database decides every call after that.
+export async function stampApiKeyUse(db: ScopedDb, keyId: string): Promise<void> {
+  await db
+    .update(apiKeys)
+    .set({ lastUsedAt: sql`now()` })
+    .where(
+      and(
+        eq(apiKeys.id, keyId),
+        isNull(apiKeys.revokedAt),
+        sql`(${apiKeys.lastUsedAt} is null or ${apiKeys.lastUsedAt} < now() - make_interval(secs => ${API_KEY_USE_STAMP_INTERVAL_SECONDS}))`,
+      ),
+    );
+}
 
 // The organization is read out of the database, keyed by the digest of an unforgeable
 // secret, so no caller can name the tenancy it acts in.

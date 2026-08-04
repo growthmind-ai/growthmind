@@ -66,6 +66,25 @@ describe("a label may not claim a step count the panel beneath it does not rende
     expect(messagesMiscountingSteps(ALL_ONBOARDING_MESSAGES, LIVE_ROWS)).toEqual([]);
   });
 
+  test("the live-step count is derived from the descriptors and reads four", () => {
+    expect(LIVE_STEP_DESCRIPTORS.map((descriptor) => descriptor.id)).toEqual([
+      "analytics",
+      "slack",
+      "agent",
+      "moment",
+    ]);
+    expect(LIVE_ROWS).toBe(4);
+
+    expect(
+      messagesMiscountingSteps([`Setup done — show the ${LIVE_ROWS} steps`], LIVE_ROWS),
+    ).toEqual([]);
+    expect(messagesMiscountingSteps(["Setup done — show the 3 steps"], LIVE_ROWS)).toEqual([
+      "Setup done — show the 3 steps",
+    ]);
+
+    expect(messagesMiscountingSteps(ALL_ONBOARDING_MESSAGES, LIVE_ROWS)).toEqual([]);
+  });
+
   test("the invariant still holds when both stubs are filled", () => {
     expect(FILLED_STUB_ROWS).toBe(5);
     expect(FILLED_STUB_ROWS).not.toBe(LIVE_ROWS);

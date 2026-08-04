@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  agentConnectionSchema,
   canArm,
   deriveStepStates,
   displayOrdinal,
@@ -16,7 +17,9 @@ import {
   reduceStage,
   SLACK_CONNECTION_FIELDS,
   STAGE_RETIRE_CLOSURE,
+  type AgentConnection,
   type OnboardingCounterView,
+  type PanelStep,
   type SetupFacts,
   type StagePersistedFacts,
   type StepSequenceFacts,
@@ -26,12 +29,20 @@ import { SlackConnection } from "@/components/slack/SlackConnection";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
-import { resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
+import { agentStillWatched, resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
+import { AgentPanel } from "./AgentPanel";
 import { FIRST_RUN_API, postJson } from "./api";
 import styles from "./first-run.module.css";
+import {
+  EMPTY_HOLD,
+  HeldAgentPanelContext,
+  LiveAgentConnection,
+  type AgentPanelHold,
+  type HeldAgentPanel,
+} from "./live-agent";
 import { SetupStage } from "./SetupStage";
 import { Stage } from "./Stage";
 import { StepRow } from "./StepRow";
@@ -54,6 +65,11 @@ function seedClock(status: FirstRunStatusPayload): number {
 // whole screen down, and an unreadable answer is worth no claim rather than a crash.
 const deliveryStateOf = firstRunDeliveryStateSchema.catch("none");
 
+// Same reason, one sprint later: the old instance's payload carries no
+// `agentConnection` at all, and an unparsed `undefined` reaches the panel's
+// resolver as a shape it has no branch for.
+const agentConnectionOf = agentConnectionSchema.catch({ kind: "none" });
+
 function readStatus(body: unknown): FirstRunStatusPayload | null {
   if (typeof body !== "object" || body === null) {
     return null;
@@ -71,6 +87,7 @@ function readStatus(body: unknown): FirstRunStatusPayload | null {
     deliveryState: deliveryStateOf.parse(record.deliveryState),
     deliveryFailureReason:
       typeof record.deliveryFailureReason === "string" ? record.deliveryFailureReason : null,
+    agentConnection: agentConnectionOf.parse(record.agentConnection),
   };
 }
 
@@ -91,6 +108,31 @@ export function useLiveCounter(fallback: OnboardingCounterView): OnboardingCount
   return useContext(LiveCounter) ?? fallback;
 }
 
+interface LiveProps {
+  readonly counter: OnboardingCounterView;
+  readonly agent: AgentConnection;
+  readonly held: HeldAgentPanel;
+  readonly children: ReactNode;
+}
+
+// One home for every fact the poll has to push into the frozen server subtree, so
+// the next one added does not re-indent the whole screen below.
+function Live(props: LiveProps) {
+  return (
+    <LiveCounter value={props.counter}>
+      <LiveAgentConnection value={props.agent}>
+        <HeldAgentPanelContext value={props.held}>{props.children}</HeldAgentPanelContext>
+      </LiveAgentConnection>
+    </LiveCounter>
+  );
+}
+
+// Found, not hardcoded: the row this card stands in for is the descriptor's, so
+// its ordinal and title cannot drift from the sequence the founder just left.
+const AGENT_STEP = LIVE_STEP_DESCRIPTORS.find(
+  (descriptor): descriptor is PanelStep => descriptor.kind === "panel",
+);
+
 interface FirstRunClientProps {
   readonly status: FirstRunStatusPayload;
 
@@ -107,6 +149,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const [lost, setLost] = useState(false);
   const [reopened, setReopened] = useState(false);
   const [folding, setFolding] = useState(false);
+
+  // Held HERE, not in the panel: arming swaps which of the two panels is mounted,
+  // and a one-time key kept inside either instance is destroyed by that swap.
+  const [hold, setHold] = useState<AgentPanelHold>(EMPTY_HOLD);
 
   const current = polled ?? props.status;
 
@@ -133,6 +179,17 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const attached = isAnalyticsAttached(
     connectionState.status === "not_connected" ? null : connectionState.status,
   );
+
+  // Connection is read off the payload on every visit — a teammate who minted
+  // nothing reads the same fact. Whether there is anything left to WATCH is the
+  // other question: the payload that rendered this page was served before the
+  // press, so a key minted in this tab is one the payload cannot know about, and
+  // waiting for it to say so is waiting for a poll that never starts.
+  const agentConnected = current.agentConnection.kind === "connected";
+  const agentWaiting = agentStillWatched({
+    connection: current.agentConnection,
+    heldKey: hold.rawKey,
+  });
 
   // Every member is a persisted row or stamp, so a second tab, a reload and a
   // return tomorrow all land on the sentence the database describes.
@@ -190,6 +247,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
     armed,
     terminal,
     deliveryState: current.deliveryState,
+    agentWaiting,
   });
 
   useEffect(() => {
@@ -271,6 +329,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
     slackSkipped: current.slackSkippedAt !== null,
 
     slackTestPostFailed: false,
+    agentConnected,
     armedAt: facts.armedAt,
 
     reopenedReadOnly: true,
@@ -280,8 +339,12 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const notice = resolveOfflineNotice({ lost, armed, terminal });
 
+  // The one switch: the server sequence and the armed phase's own agent card are
+  // the two sides of it, so neither can ever mount beside the other.
+  const sequenceGone = armed && !folding;
+
   return (
-    <LiveCounter value={current.counter}>
+    <Live counter={current.counter} agent={current.agentConnection} held={{ hold, setHold }}>
       <Stack gap="md">
         {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.
@@ -322,6 +385,28 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Box>
         ) : null}
 
+        {/* THE ONE LIVE CARD THAT SURVIVES ARMING. The assistant step does not
+          gate the stage, so a founder can arm with it unfinished — and the
+          sequence carrying it is gone by then, which left the browser mint
+          unreachable and sent that founder back to a repo checkout they do not
+          have. It goes when first contact lands, because the row below then
+          says so. */}
+        {sequenceGone && !agentConnected && AGENT_STEP !== undefined ? (
+          <StepRow
+            ordinal={displayOrdinal(AGENT_STEP.id)}
+            title={AGENT_STEP.title}
+            helper={AGENT_STEP.helper}
+            state={resolved.get(AGENT_STEP.id)?.state ?? "pending"}
+            open
+          >
+            <AgentPanel
+              connection={current.agentConnection}
+              mcpUrl={props.status.mcpUrl}
+              providerOrder={props.status.agentProviderOrder}
+            />
+          </StepRow>
+        ) : null}
+
         {armed ? (
           <Collapse expanded={reopened}>
             <Stack gap="md">
@@ -348,7 +433,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Collapse>
         ) : null}
 
-        {armed && !folding ? null : (
+        {sequenceGone ? null : (
           <Box className={folding ? styles.foldOut : undefined}>{props.children}</Box>
         )}
 
@@ -431,6 +516,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
           </Group>
         ) : null}
       </Stack>
-    </LiveCounter>
+    </Live>
   );
 }

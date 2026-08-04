@@ -202,6 +202,10 @@ export const SLACK_PRIVATE_CHANNEL_HINT =
 
 export const SLACK_INVITE_COMMAND = "/invite @Growthmind";
 
+// The copy control's accessible name. "Copy" alone tells a screen reader which
+// button it is and never which of them it is.
+export const SLACK_COPY_INVITE_LABEL = "Copy the invite command";
+
 export const REFRESH_CHANNELS_LABEL = "Refresh channels";
 
 export const COPY_LABEL = "Copy";
@@ -329,8 +333,103 @@ export const ROADMAP_LEAD = "Still being built";
 
 export const STEP_AGENT_TITLE = "Connect your coding assistant";
 
-export const STEP_AGENT_WHAT_IT_WILL_DO =
-  "When this is built, your coding agent will be able to ask Growthmind what is open and pull a fix to work on.";
+// Every vendor literal — the paths, the key names, the command — lives in the
+// config templates in `agent-blocks.ts`, never in a sentence here, so the two
+// cannot drift (UX §8.3). Where a sentence would name Claude Code mid-clause it
+// says "your assistant" instead: the panel already names the one it is showing.
+export const STEP_AGENT_HELPER =
+  "Whoever writes the code here gives their coding assistant a key. After that it can ask Growthmind what is open and pull a fix to work on, without anyone opening this screen again.";
+
+export const AGENT_PICK_PROMPT = "Which assistant writes your code?";
+
+export const AGENT_PRE_MINT_LINE =
+  "The key goes in one config file on your machine. Nothing is installed, and nothing here changes your code.";
+
+export const AGENT_PASTE_INTO_TEMPLATE = "Paste this into {path}";
+
+// "Anywhere" holds only because the command beside it is user-scoped; the flag that
+// makes it so is in `agent-blocks.ts`, and `get-started-truth.test.ts` pins the pair.
+export const AGENT_RUN_ANYWHERE_LINE =
+  "Run this once, anywhere on your machine. It goes in your own config rather than this project's, so your assistant finds it in every project.";
+
+export const AGENT_MINT_TEMPLATE = "Create a key for {assistant}";
+
+export const AGENT_MINT_PENDING = "Creating a key…";
+
+export const AGENT_MINT_AGAIN_LABEL = "Create another key";
+
+export const AGENT_MINT_FAILED_LINE =
+  "That did not go through, and nothing was created. Try that again.";
+
+export const AGENT_KEY_ONCE_NOTICE =
+  "This is the only time this key is shown. Copy it now — it is not stored anywhere you can read it back from.";
+
+export const AGENT_KEY_LABEL = "Your key";
+
+export const AGENT_COPY_KEY_LABEL = "Copy your key";
+
+export const AGENT_COPY_BLOCK_TEMPLATE = "Copy the whole block for {assistant}";
+
+export const AGENT_KEY_GONE_NOTICE =
+  "The key was shown once and this screen cannot show it again. If you no longer have it, create another one.";
+
+export const AGENT_KEY_HOLE_NOTICE =
+  "The block below has a space where the key goes. Put yours in when you paste it.";
+
+export const AGENT_WAITING_LINE =
+  "A key exists for this workspace, and nothing has called us with it yet.";
+
+export const AGENT_WAITING_NEXT =
+  "Ask your assistant what is open. This step ticks itself the moment a call arrives — there is nothing here to press.";
+
+export const AGENT_CONNECTED_LINE = "Connected. Your coding assistant has called us with this key.";
+
+export const AGENT_CONNECTED_ORG_LINE =
+  "The key belongs to this workspace, so it is connected for everyone here. There is nothing for you to set up.";
+
+export const AGENT_EMPTY_IS_FINE_LINE =
+  "If your assistant says nothing is open yet, that is the honest answer and not a fault — it tells you the window it looked at.";
+
+export const AGENT_COPILOT_PROMPTED_NOTE =
+  "This file gets committed with your code, so the block asks your editor for the key instead of holding it. Copilot asks you for it the first time, and remembers it after that.";
+
+export const AGENT_COPILOT_USER_SCOPE_TEMPLATE =
+  "To use it in every project rather than this one, run {command} from your editor's command palette and paste it there instead.";
+
+export const AGENT_CODEX_ENV_VAR_NOTE =
+  "Codex reads the key from an environment variable rather than from the file. Set the variable named in the block to the key above, wherever your shell sets variables, then paste this in.";
+
+export const AGENT_CLAUDE_FILE_DISCLOSURE = "Prefer a file you can commit?";
+
+export const AGENT_CLAUDE_ENV_VAR_NOTE =
+  "This file gets committed with your code, so the block reads the key from an environment variable instead of holding it. Set the variable named in the block to the key above, wherever your shell sets variables, before you start your assistant.";
+
+export const AGENT_CLAUDE_TYPE_TRAP =
+  "The type line is not optional. Without it, your assistant reads the entry as a local command to launch, so it skips the server and never calls us.";
+
+export const AGENT_CLAUDE_APPROVAL_NOTE =
+  "A server declared in a project file needs approving once, the first time your assistant starts in that project.";
+
+export const AGENT_REVOKE_LABEL = "Revoke every key";
+
+export const AGENT_REVOKE_CONSEQUENCE =
+  "Revoking turns off every key this workspace has, not just this one. Anything else set up with a key from here — another machine, a build that runs on its own — stops calling us too. This step goes back to needing a key, and you can create a new one straight away.";
+
+export const AGENT_REVOKE_CONFIRM_LABEL = "Yes, revoke it";
+
+export const AGENT_REVOKE_CANCEL_LABEL = "Keep it";
+
+export const AGENT_REVOKED_LINE =
+  "That key is revoked and nothing can call us with it. Create another whenever you want to connect again.";
+
+export const AGENT_REVOKE_FAILED_LINE =
+  "That key could not be revoked, and it is still working. Try that again.";
+
+export const AGENT_MINTED_ANNOUNCEMENT = "A key was created. It is shown once, on the screen now.";
+
+export const AGENT_KEY_COPIED_ANNOUNCEMENT = "Your key is on the clipboard.";
+
+export const AGENT_BLOCK_COPIED_ANNOUNCEMENT = "The whole block is on the clipboard.";
 
 export const PROVIDER_SOON_BADGE = "Coming soon";
 
@@ -484,6 +583,7 @@ export const ONBOARDING_MESSAGES = {
   slackNoChannelsVisible: SLACK_NO_CHANNELS_VISIBLE,
   slackPrivateChannelHint: SLACK_PRIVATE_CHANNEL_HINT,
   slackInviteCommand: SLACK_INVITE_COMMAND,
+  slackCopyInviteLabel: SLACK_COPY_INVITE_LABEL,
   refreshChannels: REFRESH_CHANNELS_LABEL,
   copy: COPY_LABEL,
   copied: COPIED_LABEL,
@@ -529,7 +629,42 @@ export const ONBOARDING_MESSAGES = {
   landingNothingToCheck: LANDING_NOTHING_TO_CHECK_LINE,
 
   stepAgentTitle: STEP_AGENT_TITLE,
-  stepAgentWhatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
+  stepAgentHelper: STEP_AGENT_HELPER,
+  agentPickPrompt: AGENT_PICK_PROMPT,
+  agentPreMintLine: AGENT_PRE_MINT_LINE,
+  agentPasteIntoTemplate: AGENT_PASTE_INTO_TEMPLATE,
+  agentRunAnywhereLine: AGENT_RUN_ANYWHERE_LINE,
+  agentMintTemplate: AGENT_MINT_TEMPLATE,
+  agentMintPending: AGENT_MINT_PENDING,
+  agentMintAgainLabel: AGENT_MINT_AGAIN_LABEL,
+  agentMintFailedLine: AGENT_MINT_FAILED_LINE,
+  agentKeyOnceNotice: AGENT_KEY_ONCE_NOTICE,
+  agentKeyLabel: AGENT_KEY_LABEL,
+  agentCopyKeyLabel: AGENT_COPY_KEY_LABEL,
+  agentCopyBlockTemplate: AGENT_COPY_BLOCK_TEMPLATE,
+  agentKeyGoneNotice: AGENT_KEY_GONE_NOTICE,
+  agentKeyHoleNotice: AGENT_KEY_HOLE_NOTICE,
+  agentWaitingLine: AGENT_WAITING_LINE,
+  agentWaitingNext: AGENT_WAITING_NEXT,
+  agentConnectedLine: AGENT_CONNECTED_LINE,
+  agentConnectedOrgLine: AGENT_CONNECTED_ORG_LINE,
+  agentEmptyIsFineLine: AGENT_EMPTY_IS_FINE_LINE,
+  agentCopilotPromptedNote: AGENT_COPILOT_PROMPTED_NOTE,
+  agentCopilotUserScopeTemplate: AGENT_COPILOT_USER_SCOPE_TEMPLATE,
+  agentCodexEnvVarNote: AGENT_CODEX_ENV_VAR_NOTE,
+  agentClaudeFileDisclosure: AGENT_CLAUDE_FILE_DISCLOSURE,
+  agentClaudeEnvVarNote: AGENT_CLAUDE_ENV_VAR_NOTE,
+  agentClaudeTypeTrap: AGENT_CLAUDE_TYPE_TRAP,
+  agentClaudeApprovalNote: AGENT_CLAUDE_APPROVAL_NOTE,
+  agentRevokeLabel: AGENT_REVOKE_LABEL,
+  agentRevokeConsequence: AGENT_REVOKE_CONSEQUENCE,
+  agentRevokeConfirmLabel: AGENT_REVOKE_CONFIRM_LABEL,
+  agentRevokeCancelLabel: AGENT_REVOKE_CANCEL_LABEL,
+  agentRevokedLine: AGENT_REVOKED_LINE,
+  agentRevokeFailedLine: AGENT_REVOKE_FAILED_LINE,
+  agentMintedAnnouncement: AGENT_MINTED_ANNOUNCEMENT,
+  agentKeyCopiedAnnouncement: AGENT_KEY_COPIED_ANNOUNCEMENT,
+  agentBlockCopiedAnnouncement: AGENT_BLOCK_COPIED_ANNOUNCEMENT,
   roadmapLead: ROADMAP_LEAD,
   providerSoonBadge: PROVIDER_SOON_BADGE,
   interestPingLabel: INTEREST_PING_LABEL,
@@ -623,6 +758,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SLACK_NO_CHANNELS_VISIBLE,
   SLACK_PRIVATE_CHANNEL_HINT,
   SLACK_INVITE_COMMAND,
+  SLACK_COPY_INVITE_LABEL,
   REFRESH_CHANNELS_LABEL,
   COPY_LABEL,
   COPIED_LABEL,
@@ -667,7 +803,42 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SETTINGS_CHANNEL_MOVE_REFUSED,
 
   STEP_AGENT_TITLE,
-  STEP_AGENT_WHAT_IT_WILL_DO,
+  STEP_AGENT_HELPER,
+  AGENT_PICK_PROMPT,
+  AGENT_PRE_MINT_LINE,
+  AGENT_PASTE_INTO_TEMPLATE,
+  AGENT_RUN_ANYWHERE_LINE,
+  AGENT_MINT_TEMPLATE,
+  AGENT_MINT_PENDING,
+  AGENT_MINT_AGAIN_LABEL,
+  AGENT_MINT_FAILED_LINE,
+  AGENT_KEY_ONCE_NOTICE,
+  AGENT_KEY_LABEL,
+  AGENT_COPY_KEY_LABEL,
+  AGENT_COPY_BLOCK_TEMPLATE,
+  AGENT_KEY_GONE_NOTICE,
+  AGENT_KEY_HOLE_NOTICE,
+  AGENT_WAITING_LINE,
+  AGENT_WAITING_NEXT,
+  AGENT_CONNECTED_LINE,
+  AGENT_CONNECTED_ORG_LINE,
+  AGENT_EMPTY_IS_FINE_LINE,
+  AGENT_COPILOT_PROMPTED_NOTE,
+  AGENT_COPILOT_USER_SCOPE_TEMPLATE,
+  AGENT_CODEX_ENV_VAR_NOTE,
+  AGENT_CLAUDE_FILE_DISCLOSURE,
+  AGENT_CLAUDE_ENV_VAR_NOTE,
+  AGENT_CLAUDE_TYPE_TRAP,
+  AGENT_CLAUDE_APPROVAL_NOTE,
+  AGENT_REVOKE_LABEL,
+  AGENT_REVOKE_CONSEQUENCE,
+  AGENT_REVOKE_CONFIRM_LABEL,
+  AGENT_REVOKE_CANCEL_LABEL,
+  AGENT_REVOKED_LINE,
+  AGENT_REVOKE_FAILED_LINE,
+  AGENT_MINTED_ANNOUNCEMENT,
+  AGENT_KEY_COPIED_ANNOUNCEMENT,
+  AGENT_BLOCK_COPIED_ANNOUNCEMENT,
   ROADMAP_LEAD,
   PROVIDER_SOON_BADGE,
   INTEREST_PING_LABEL,

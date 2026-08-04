@@ -371,3 +371,96 @@ describe("the read surface answers a credential a person minted, and nothing els
     expect(control).toContain(raw);
   });
 });
+
+import * as sharedModule from "@growthmind/shared";
+
+interface ApiKeyUseSummary {
+  readonly liveCount: number;
+  readonly anyUsed: boolean;
+}
+
+interface AgentConnection {
+  readonly kind: string;
+}
+
+const SHARED_EXPORTS: Record<string, unknown> = { ...sharedModule };
+
+function toAgentConnection(use: ApiKeyUseSummary): AgentConnection {
+  const derive = SHARED_EXPORTS.toAgentConnection;
+  if (typeof derive !== "function") {
+    throw new Error("@growthmind/shared exports no `toAgentConnection` yet (O-026 D-6).");
+  }
+  return (derive as (summary: ApiKeyUseSummary) => AgentConnection)(use);
+}
+
+function liveKeyUseOf(ctx: TenantContext): Promise<ApiKeyUseSummary> {
+  const repo: Record<string, unknown> = createApiKeysRepo(authCtx.db, ctx) as unknown as Record<
+    string,
+    unknown
+  >;
+  const read = repo.liveKeyUse;
+  if (typeof read !== "function") {
+    throw new Error("ApiKeysRepo has no `liveKeyUse` method yet (O-026 D-6).");
+  }
+  return (read as () => Promise<ApiKeyUseSummary>).call(repo);
+}
+
+async function lastUsedAtOf(keyId: string): Promise<unknown> {
+  const result = (await authCtx.db.execute(
+    `select last_used_at from api_keys where id = '${keyId}'`,
+  )) as unknown as { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
+
+  const rows = Array.isArray(result) ? result : (result.rows ?? []);
+  const row = rows[0];
+  if (row === undefined) {
+    throw new Error(`WIRE-A8: no api_keys row for the key just minted (${keyId}).`);
+  }
+  return row.last_used_at;
+}
+
+async function freshOrganizationWithOneKey(
+  label: string,
+): Promise<{ readonly ctx: TenantContext; readonly key: MintedTestApiKey }> {
+  const org = await seedOrgWithOwner(authCtx.db, {
+    orgName: `Org Mcpak ${label}`,
+    userName: `Owner Mcpak ${label}`,
+    email: `owner-mcpak-${label}@example.com`,
+  });
+  const key = await mintRealApiKey(authCtx.db, org.ctx, `agent-${label}`);
+
+  return { ctx: org.ctx, key };
+}
+
+describe("the step completes on first contact, derived from the key's own last-used stamp", () => {
+  test("WIRE-A8 — should stamp the key on the first call that presents it", async () => {
+    const { key } = await freshOrganizationWithOneKey("first-contact");
+
+    expect(await lastUsedAtOf(key.id)).toBeNull();
+
+    const print = await fingerprint(await catalogueWith(key.raw));
+    expect(print.status).toBe(200);
+
+    expect(await lastUsedAtOf(key.id)).not.toBeNull();
+  });
+
+  test("WIRE-A8 — should read waiting before that call and connected after it", async () => {
+    const { ctx, key } = await freshOrganizationWithOneKey("connection-flip");
+
+    expect(toAgentConnection(await liveKeyUseOf(ctx))).toEqual({ kind: "waiting" });
+
+    const print = await fingerprint(await catalogueWith(key.raw));
+    expect(print.status).toBe(200);
+
+    expect(toAgentConnection(await liveKeyUseOf(ctx))).toEqual({ kind: "connected" });
+  });
+
+  test("WIRE-A8 — should leave a neighbouring organization's step unconnected", async () => {
+    const mine = await freshOrganizationWithOneKey("stamp-mine");
+    const theirs = await freshOrganizationWithOneKey("stamp-theirs");
+
+    expect((await fingerprint(await catalogueWith(mine.key.raw))).status).toBe(200);
+
+    expect(await lastUsedAtOf(theirs.key.id)).toBeNull();
+    expect(toAgentConnection(await liveKeyUseOf(theirs.ctx))).toEqual({ kind: "waiting" });
+  });
+});

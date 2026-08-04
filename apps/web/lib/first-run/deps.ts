@@ -2,6 +2,7 @@ import type { CreateSourceFn, ScopedDb } from "@growthmind/db";
 import { createSlackConnectionsRepo } from "@growthmind/db";
 import type { DiscoveryInput, DiscoveryResult } from "@growthmind/adapters";
 import type {
+  AgentProviderId,
   CredentialKey,
   CredentialKeyResolution,
   DeliveryPoster,
@@ -50,6 +51,13 @@ export type RecordInterestNoted = (input: {
   readonly provider: InterestProviderId;
 }) => void;
 
+// D-14's seam, the sibling of `recordInterestNoted`. First contact fires nothing:
+// the stamp is the observation, and the panel already reads it.
+export type RecordAgentKeyMinted = (input: {
+  readonly organizationId: string;
+  readonly provider: AgentProviderId;
+}) => void;
+
 export interface FirstRunRouteDeps {
   readonly db: ScopedDb;
 
@@ -70,6 +78,8 @@ export interface FirstRunRouteDeps {
   readonly channelsFor?: FirstRunChannelsFor | undefined;
 
   readonly recordInterestNoted?: RecordInterestNoted | undefined;
+
+  readonly recordAgentKeyMinted?: RecordAgentKeyMinted | undefined;
 
   // AD-8's one seam: the routes have to be drivable with no network.
   readonly fetch?: typeof globalThis.fetch | undefined;
@@ -218,6 +228,15 @@ export function resolveFirstRunDeps(db: ScopedDb = getDb()): FirstRunRouteDeps {
       posthog.capture({
         distinctId: organizationId,
         event: "registered interest in a coming-soon connection",
+        properties: { provider },
+      });
+    },
+    recordAgentKeyMinted: ({ organizationId, provider }) => {
+      const posthog = getPostHogClient();
+      if (!posthog) return;
+      posthog.capture({
+        distinctId: organizationId,
+        event: "created a key for a coding assistant",
         properties: { provider },
       });
     },

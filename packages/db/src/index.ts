@@ -144,8 +144,11 @@ export {
 export {
   createApiKeysRepo,
   resolveApiKeyPrincipal,
+  apiKeyIdOf,
+  stampApiKeyUse,
   API_KEY_ACTOR_PREFIX,
   API_KEY_ACTOR_ROLE,
+  API_KEY_USE_STAMP_INTERVAL_SECONDS,
   type ApiKeysRepo,
   type MintedApiKey,
   type ApiKeyRow,

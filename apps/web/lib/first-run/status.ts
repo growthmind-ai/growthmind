@@ -1,5 +1,6 @@
 import type { FirstRunStatusFacts, ScopedDb } from "@growthmind/db";
 import {
+  createApiKeysRepo,
   createDeliveriesRepo,
   createEventsCounterService,
   createFirstRunRepo,
@@ -10,6 +11,9 @@ import {
   isDeliveryTarget,
 } from "@growthmind/db";
 import type {
+  AgentConnection,
+  AgentProviderId,
+  ApiKeyUseSummary,
   DeliveryStatus,
   FirstRunDeliveryState,
   FirstRunStatus,
@@ -17,6 +21,7 @@ import type {
   TenantContext,
 } from "@growthmind/shared";
 import {
+  agentProviderOrder,
   channelLabel,
   CONNECTION_STATE_MESSAGES,
   isDeliveryAddress,
@@ -25,9 +30,11 @@ import {
   interestPingConfigured,
   logger,
   parseWebEnv,
+  toAgentConnection,
   toOnboardingCounterView,
 } from "@growthmind/shared";
 
+import { mcpPublicUrl } from "@/lib/mcp/public-url";
 import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
 export type FirstRunStatusPayload = FirstRunStatus & {
@@ -61,6 +68,11 @@ export type FirstRunStatusPayload = FirstRunStatus & {
   readonly providerInterest: readonly InterestProviderId[];
 
   readonly interestPingAvailable: boolean;
+
+  // Server-derived per read, so connection is never client state or a live signal (D4).
+  readonly mcpUrl: string;
+  readonly agentConnection: AgentConnection;
+  readonly agentProviderOrder: readonly AgentProviderId[];
 };
 
 export interface BuildFirstRunStatusInput {
@@ -144,16 +156,36 @@ async function resolveDelivery(input: {
   }
 }
 
+const NO_KEY_USE: ApiKeyUseSummary = { liveCount: 0, anyUsed: false };
+
+// The delivery lane's shape, for its reason: this read names every column of a table
+// a pending migration may not have widened, and one unreadable step may not cost the page.
+async function resolveKeyUse(input: {
+  readonly db: ScopedDb;
+  readonly ctx: TenantContext;
+}): Promise<ApiKeyUseSummary> {
+  try {
+    return await createApiKeysRepo(input.db, input.ctx).liveKeyUse();
+  } catch (error) {
+    logger.error("onboarding status: whether a key has been used could not be read", {
+      organizationId: input.ctx.organizationId,
+      reason: describeDriverError(error),
+    });
+    return NO_KEY_USE;
+  }
+}
+
 export async function buildFirstRunStatus(
   input: BuildFirstRunStatusInput,
 ): Promise<FirstRunStatusPayload> {
   const { db, ctx, projectId, facts } = input;
 
-  const [counter, slack, state, providerInterest] = await Promise.all([
+  const [counter, slack, state, providerInterest, keyUse] = await Promise.all([
     createEventsCounterService(db, ctx).read(projectId),
     createSlackConnectionsRepo(db, ctx).getActiveForOrg(),
     createFirstRunRepo(db, ctx).readState(projectId),
     createProviderInterestRepo(db, ctx).listNotedProviders(),
+    resolveKeyUse({ db, ctx }),
   ]);
 
   const view = toOnboardingCounterView(counter);
@@ -195,6 +227,9 @@ export async function buildFirstRunStatus(
     slackOAuthAvailable: slackOAuthConfigured(env),
     interestPingAvailable: interestPingConfigured(env),
     providerInterest,
+    mcpUrl: mcpPublicUrl(env),
+    agentConnection: toAgentConnection(keyUse),
+    agentProviderOrder: agentProviderOrder(providerInterest),
     deliveryState: delivery.state,
     deliveryFailureReason: delivery.failureReason,
   };

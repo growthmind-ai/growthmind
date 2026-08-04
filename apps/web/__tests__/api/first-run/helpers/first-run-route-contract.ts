@@ -74,6 +74,9 @@ const DISCOVER_ROUTE = "ADD Wave 2 (apps/web/app/api/first-run/analytics/discove
 const SLACK_OAUTH_ROUTES = "ADD Wave 5, tasks 5.2-5.5 (the Slack OAuth and channel routes)";
 const INTEREST_ROUTE =
   "ADD O-024 AD-6 (apps/web/app/api/first-run/interest/route.ts, the register-interest route)";
+const AGENT_ROUTES =
+  "ADD O-026 D-5 (apps/web/app/api/first-run/agent/key/route.ts and agent/revoke/route.ts, the " +
+  "mint and revoke routes)";
 
 /** Every route on this surface, ordered top-down. One added under
  *  `app/api/first-run/` without an entry here fails the on-disk row. */
@@ -249,6 +252,31 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     declaredKeys: ["provider"],
     validBody: { provider: "mixpanel" },
     ownedBy: INTEREST_ROUTE,
+  },
+  {
+    id: "agent-key",
+    path: "/api/first-run/agent/key",
+    method: "POST",
+    modulePath: "apps/web/app/api/first-run/agent/key/route",
+    sourcePath: "apps/web/app/api/first-run/agent/key/route.ts",
+    // `firstRunAgentMintInputSchema` (D-5): one of the FIVE coding-assistant
+    // ids, never the ten interest ids. NO tenancy key — the organization comes
+    // from the resolved context, and the body has nowhere to put one.
+    declaredKeys: ["provider"],
+    validBody: { provider: "cursor" },
+    ownedBy: AGENT_ROUTES,
+  },
+  {
+    id: "agent-revoke",
+    path: "/api/first-run/agent/revoke",
+    method: "POST",
+    modulePath: "apps/web/app/api/first-run/agent/revoke/route",
+    sourcePath: "apps/web/app/api/first-run/agent/revoke/route.ts",
+    // `z.strictObject({})`: D7 answered by a signature with nowhere to put a
+    // key id, not by a check that could be removed.
+    declaredKeys: [],
+    validBody: {},
+    ownedBy: AGENT_ROUTES,
   },
 ]);
 

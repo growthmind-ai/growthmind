@@ -47,6 +47,15 @@ function brokenLinksIn(file: string): string[] {
   return broken;
 }
 
+// Regression guards, both dormant: these two sentences left docs/get-started.md
+// when setup started minting keys and the tools started reading real rows. They
+// stay armed so neither can come back while the code contradicts it, and `\s+`
+// rather than a literal space is what let the first one match the mid-phrase wrap
+// the document gave it.
+const GET_STARTED_NO_KEY_SCREEN = /no key-management\s+screen/i;
+
+const GET_STARTED_NO_FINDINGS_TABLE = /no table\s+of\s+findings/i;
+
 /**
  * Claims the repository can check about itself. Each is a sentence a reader would
  * act on, paired with the condition that makes it true. Entries under `.ai/` are
@@ -81,6 +90,19 @@ const CLAIMS: readonly {
     claim: /No skills directory exists here today/i,
     holdsWhen: () => !existsSync(`${ROOT}/skills`),
     because: "a skills/ directory now exists",
+  },
+  {
+    file: "docs/get-started.md",
+    claim: GET_STARTED_NO_KEY_SCREEN,
+    holdsWhen: () => !existsSync(`${ROOT}/apps/web/app/api/first-run/agent/key/route.ts`),
+    because:
+      "apps/web/app/api/first-run/agent/key/route.ts exists — /first-run mints a key in the browser",
+  },
+  {
+    file: "docs/get-started.md",
+    claim: GET_STARTED_NO_FINDINGS_TABLE,
+    holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),
+    because: "packages/db/src/schema/fixes.ts exists — the tools have read real rows since O-020",
   },
   {
     file: ".ai/decisions/0007-mcp-route-surface.md",
@@ -132,5 +154,26 @@ describe("documentation claims", () => {
   test("the ledger bites — a claim present with its condition false is reported", () => {
     const planted = { claim: /Growthmind/, holdsWhen: (): boolean => false };
     expect(planted.claim.test(read("README.md")) && !planted.holdsWhen()).toBe(true);
+  });
+
+  test("the key-screen needle matches the wrap the document gave it, and neither sentence is in the document now", () => {
+    // Both paragraphs verbatim from the commit that removed them (420b06c), wrap included.
+    const keyScreen =
+      "This surface reads with a key you mint yourself. There is no key-management\nscreen yet, it is one command, run from the repo root against a started stack:";
+    const findingsTable =
+      "There is no table of findings behind these tools yet. That is a separate piece\nof work, so every answer is honestly empty rather than absent.";
+
+    expect(GET_STARTED_NO_KEY_SCREEN.test(keyScreen)).toBe(true);
+    expect(/no key-management screen/i.test(keyScreen)).toBe(false);
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test(findingsTable)).toBe(true);
+
+    const page = read("docs/get-started.md");
+    expect(GET_STARTED_NO_KEY_SCREEN.test(page)).toBe(false);
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test(page)).toBe(false);
+
+    expect(GET_STARTED_NO_KEY_SCREEN.test("the key screen lists every key")).toBe(false);
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test("a table of findings exists")).toBe(false);
+
+    expect(CLAIMS.filter((entry) => entry.file === "docs/get-started.md")).toHaveLength(2);
   });
 });
