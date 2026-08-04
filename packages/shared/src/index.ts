@@ -365,6 +365,7 @@ export {
   isApiKeyFormat,
   hashApiKeyMaterial,
 } from "./api-keys/material";
+export { apiKeyNameFor, API_KEY_DEFAULT_LABEL, type ApiKeyNameInput } from "./api-keys/naming";
 
 export {
   onboardingCountSchema,
@@ -578,6 +579,35 @@ export {
   type TestPostInput,
   type TestPostOutcome,
 } from "./onboarding/slack-test";
+
+export {
+  agentConnectionSchema,
+  toAgentConnection,
+  firstRunAgentMintInputSchema,
+  type AgentConnection,
+  type ApiKeyUseSummary,
+  type FirstRunAgentMintInput,
+} from "./onboarding/agent";
+
+export {
+  AGENT_PROVIDER_IDS,
+  agentProviderIdSchema,
+  AGENT_SERVER_NAME,
+  AGENT_BEARER_HEADER,
+  AGENT_KEY_PLACEHOLDER,
+  AGENT_CODEX_ENV_VAR,
+  AGENT_COPILOT_INPUT_ID,
+  AGENT_COPILOT_INPUT_DESCRIPTION,
+  AGENT_COPILOT_USER_SCOPE_COMMAND,
+  AGENT_CONFIG_PATHS,
+  AGENT_PROVIDER_CONFIGS,
+  agentProviderConfig,
+  type AgentProviderId,
+  type AgentBlockFormat,
+  type AgentBlockInput,
+  type AgentProviderConfig,
+  type KeyDelivery,
+} from "./onboarding/agent-blocks";
 
 export {
   PROVIDER_RAILS,
