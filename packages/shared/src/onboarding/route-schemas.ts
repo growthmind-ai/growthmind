@@ -45,6 +45,12 @@ export const firstRunSlackChannelInputSchema = z.strictObject({
 });
 export type FirstRunSlackChannelInput = z.infer<typeof firstRunSlackChannelInputSchema>;
 
+// Separate from the first-run schema: that route fills an address, this one moves it.
+export const settingsSlackChannelInputSchema = z.strictObject({
+  channelId: channelIdField,
+});
+export type SettingsSlackChannelInput = z.infer<typeof settingsSlackChannelInputSchema>;
+
 export const firstRunSlackTestInputSchema = z.strictObject({});
 
 export const firstRunSlackSkipInputSchema = z.strictObject({});

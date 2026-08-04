@@ -5,7 +5,7 @@ import {
   NON_ADDRESS_VALUES,
   TRIMMED_WHITESPACE,
 } from "@growthmind/shared";
-import { eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import { orgCrud } from "./crud";
@@ -31,6 +31,9 @@ export interface SlackConnectionSummary {
   readonly workspaceName: string | null;
 
   readonly isActive: boolean;
+
+  // `null` until the address has moved. Delivery reads it as "send nothing older than this".
+  readonly deliveryCutoverAt: Date | null;
 
   readonly connectedByUserId: string | null;
   readonly connectedAt: Date;
@@ -63,10 +66,22 @@ export interface SlackConnectionsRepo {
     channelName: string | null,
   ): Promise<SlackConnectionSummary | null>;
 
+  // Moves an address already set, which `attachChannel` refuses. `null` = nothing matched:
+  // no active row, no address to move, or it is already the channel asked for.
+  repointChannel(input: RepointChannelInput): Promise<SlackConnectionSummary | null>;
+
   // Org-wide revocation, never a DELETE: the row survives so history outlives a reconnect.
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
 
   openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null>;
+}
+
+export interface RepointChannelInput {
+  readonly channelId: string;
+  readonly channelName: string | null;
+
+  // Same statement as the address: a gap leaves the new channel live with no cutover.
+  readonly cutoverAt: Date;
 }
 
 export class SlackConnectionWriteError extends RepoWriteError {}
@@ -87,6 +102,7 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
     channelName: row.channelName,
     workspaceName: row.workspaceName,
     isActive: row.isActive,
+    deliveryCutoverAt: row.deliveryCutoverAt,
     connectedByUserId: row.connectedByUserId,
     connectedAt: row.connectedAt,
   };
@@ -94,13 +110,21 @@ export function toSlackConnectionSummary(row: SlackConnectionRow): SlackConnecti
 
 const activeRow = () => eq(slackConnections.isActive, true);
 
-// `isDeliveryAddress` inverted, in SQL, over the shared list — and over the shared
-// TRIM SET, because one-argument `btrim` removes only U+0020 and would disagree with
-// the predicate on a tab, a newline and every Unicode space.
+// `isDeliveryAddress` inverted, in SQL, over the shared list — and over the shared TRIM
+// SET, because one-argument `btrim` removes only U+0020 and would disagree on a tab.
 const noAddressYet = () =>
   or(
     isNull(slackConnections.channelId),
     inArray(sql`lower(btrim(${slackConnections.channelId}, ${TRIMMED_WHITESPACE}))`, [
+      ...NON_ADDRESS_VALUES,
+    ]),
+  );
+
+// Not `not(noAddressYet())`: NULL in a negated IN is NULL, which a WHERE discards.
+const addressAlready = () =>
+  and(
+    isNotNull(slackConnections.channelId),
+    notInArray(sql`lower(btrim(${slackConnections.channelId}, ${TRIMMED_WHITESPACE}))`, [
       ...NON_ADDRESS_VALUES,
     ]),
   );
@@ -145,10 +169,29 @@ export function createSlackConnectionsRepo(
         return null;
       }
 
-      // A FILL, NEVER A RE-POINT: the delivery dedup key is
-      // `(organization_id, finding_id, channel_id)`, so moving a chosen channel forks every
-      // recorded identity and replays the org backlog. Filling a sentinel forks nothing.
+      // A FILL, NEVER A RE-POINT: moving a chosen channel forks every recorded delivery
+      // identity. Filling a sentinel forks nothing; moving is `repointChannel`'s job.
       const row = await c.update({ channelId, channelName }, activeRow(), noAddressYet());
+
+      return row ? toSlackConnectionSummary(row) : null;
+    },
+
+    async repointChannel(input: RepointChannelInput): Promise<SlackConnectionSummary | null> {
+      if (!isDeliveryAddress(input.channelId)) {
+        return null;
+      }
+
+      // `ne`: a cutover stamped for a no-op move suppresses every undelivered finding.
+      const row = await c.update(
+        {
+          channelId: input.channelId,
+          channelName: input.channelName,
+          deliveryCutoverAt: input.cutoverAt,
+        },
+        activeRow(),
+        addressAlready(),
+        ne(slackConnections.channelId, input.channelId),
+      );
 
       return row ? toSlackConnectionSummary(row) : null;
     },

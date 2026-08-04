@@ -1,0 +1,1 @@
+ALTER TABLE "slack_connections" ADD COLUMN "delivery_cutover_at" timestamp with time zone;

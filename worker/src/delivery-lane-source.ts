@@ -165,6 +165,13 @@ function isSpokenFor(delivery: DeliveryRecord | null): boolean {
   return delivery !== null && delivery.status !== "failed";
 }
 
+// The other half of a channel re-point. The delivery dedup key is `(finding, channel)`, so
+// against a channel that has just replaced another EVERY earlier finding looks undelivered
+// and the whole backlog would post again. `null` means the address has never moved.
+export function isBeforeCutover(finding: { readonly createdAt: Date }, at: Date | null): boolean {
+  return at !== null && finding.createdAt.getTime() <= at.getTime();
+}
+
 function wasPostedInWindow(delivery: DeliveryRecord | null, windowStart: Date, at: Date): boolean {
   if (delivery === null || delivery.status !== "posted" || delivery.postedAt === null) {
     return false;
@@ -203,6 +210,12 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       let deliveredThisWeek = 0;
 
       for (const finding of recent) {
+        // Before the dedup read, not after: the read is what would come back empty for a
+        // finding the OLD channel already received.
+        if (isBeforeCutover(finding, organization.deliveryCutoverAt)) {
+          continue;
+        }
+
         // Keyed on the same `(finding, channel)` tuple the claim conflicts on. This is
         // why `findFor` still takes a `string` (AD-4 row 7): a null channel would not
         // error, it would match zero rows, so `isSpokenFor` answers false and the tick

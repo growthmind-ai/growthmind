@@ -121,6 +121,30 @@ export const LANDING_LIVENESS_DISCONNECTED =
 export const LANDING_LIVENESS_NOT_CONNECTED =
   "No analytics account is attached to this project yet.";
 
+export const LANDING_RUNNING_LINE = "Growthmind is running.";
+
+export const LANDING_DELIVERY_TEMPLATE = "Findings go to #{channel}.";
+
+// §10, stated to the founder rather than only to us: a surface that rewards checking is a
+// dashboard. This sentence is the promise that opening this page on a Tuesday buys nothing.
+export const LANDING_NOTHING_TO_CHECK_LINE = "There is nothing here to come back and check.";
+
+// The headlines of the block that REPLACES the running line when something is wrong. The
+// detail sentences are the existing liveness lines, so a fault is described once.
+export const ATTENTION_SOURCE_FAILING_HEADLINE = "Growthmind is not reading your analytics.";
+
+export const ATTENTION_SOURCE_STOPPED_HEADLINE = "Growthmind has nothing to read.";
+
+export const ATTENTION_NO_DELIVERY_HEADLINE = "What we find has nowhere to arrive.";
+
+export const ATTENTION_NO_DELIVERY_DETAIL =
+  "No Slack channel is connected. We are still watching, and nothing we find reaches your team until one is.";
+
+// A named next action per fault: the button below the block is labelled with a destination.
+export const ATTENTION_SOURCE_ACTION = "Reconnect it to start reading again:";
+
+export const ATTENTION_NO_DELIVERY_ACTION = "Connect a channel to start receiving findings:";
+
 export const RECEIPT_PATHS_LINE =
   "We keep the address of each page as a tidied-up pattern, never the raw address with your customers' own details in it.";
 
@@ -219,24 +243,55 @@ export const SLACK_MUST_INVITE_THE_BOT =
 export const SLACK_SKIPPED_NOTICE =
   "You can still see the next part on this screen. But nothing will arrive anywhere after that until Slack is connected.";
 
-// The post-setup home for the delivery connection. Setup retires and takes its
-// screen with it (deviation 1), so the sentences that name a missing channel need
-// somewhere permanent to point at.
-export const SETTINGS_TITLE = "Where what we find arrives";
+// The one door off the landing page, and the heading of what is behind it. Both halves
+// are this string: a link whose label differs from its destination's heading reads as a
+// different place, and this page is the only place setup's seven decisions can be changed.
+export const SETTINGS_TITLE = "What Growthmind is connected to";
 
 // "goes to", not "is posted to": a failed last post does not unstamp the address.
 export const SETTINGS_POSTING_TEMPLATE = "What we find goes to #{channel}.";
 
 // The success moment, which is otherwise a confirmation with no next action.
 export const SETTINGS_SETTLED_LINE =
-  "That is everything we need. What we find arrives there from now on, and there is nothing here to come back and check.";
-
-// The D12 consequence, said out loud rather than left as an absent control.
-export const SETTINGS_CHANNEL_FIXED_LINE =
-  "The channel is chosen once and does not move. What we already sent would otherwise arrive a second time somewhere new.";
+  "That is everything we need. What we find arrives there from now on.";
 
 export const SETTINGS_NO_DELIVERY_LINE =
   "No Slack channel is connected, so what we find has nowhere to arrive. Connect one below and it goes where your team already works.";
+
+// The three things setup configured, in the order they matter: nothing to read makes
+// everything downstream moot, and who is excluded only means something once both exist.
+export const SETTINGS_SOURCE_GROUP_TITLE = "What it reads";
+
+export const SETTINGS_DELIVERY_GROUP_TITLE = "Where findings go";
+
+export const SETTINGS_EXCLUDED_GROUP_TITLE = "Who is not counted";
+
+// The group still renders with nothing attached: an absent section reads as a thing that
+// went missing, and this says what will fill it without claiming it already has.
+export const SETTINGS_EXCLUDED_PENDING_LINE =
+  "Once analytics is connected we work out which sign-ins are yours, and leave them out of every count.";
+
+export const SETTINGS_SOURCE_CONNECTED_TEMPLATE = "Reading {host}, project {project}.";
+
+export const SETTINGS_SOURCE_NONE_LINE =
+  "No analytics account is attached, so there are no sessions to find anything in. Connect one below.";
+
+export const SETTINGS_CHANNEL_CHANGE_LABEL = "Change channel";
+
+export const SETTINGS_CHANNEL_CHANGE_CANCEL = "Keep this channel";
+
+// Replaces the line that declared the channel frozen. The freeze was the D12 answer;
+// the cutover is a better one, and this is the consequence it trades for.
+export const SETTINGS_CHANNEL_CHANGE_CONSEQUENCE =
+  "Anything we found before the change stays with the old channel — we will not send it again. Everything we find from then on goes to the new one.";
+
+export const SETTINGS_CHANNEL_MOVED_TEMPLATE =
+  "Findings now go to #{channel}. Nothing already sent was moved or sent a second time.";
+
+export const SETTINGS_CHANNEL_UNCHANGED_LINE = "That is already where findings go. Nothing changed.";
+
+export const SETTINGS_CHANNEL_MOVE_REFUSED =
+  "That channel could not be set. Findings still go where they went before.";
 
 export const SETTINGS_BACK_LABEL = "Back to your workspace";
 
@@ -455,9 +510,24 @@ export const ONBOARDING_MESSAGES = {
   settingsTitle: SETTINGS_TITLE,
   settingsPostingTemplate: SETTINGS_POSTING_TEMPLATE,
   settingsSettled: SETTINGS_SETTLED_LINE,
-  settingsChannelFixed: SETTINGS_CHANNEL_FIXED_LINE,
   settingsNoDelivery: SETTINGS_NO_DELIVERY_LINE,
   settingsBack: SETTINGS_BACK_LABEL,
+  settingsSourceGroup: SETTINGS_SOURCE_GROUP_TITLE,
+  settingsDeliveryGroup: SETTINGS_DELIVERY_GROUP_TITLE,
+  settingsExcludedGroup: SETTINGS_EXCLUDED_GROUP_TITLE,
+  settingsExcludedPending: SETTINGS_EXCLUDED_PENDING_LINE,
+  settingsSourceConnectedTemplate: SETTINGS_SOURCE_CONNECTED_TEMPLATE,
+  settingsSourceNone: SETTINGS_SOURCE_NONE_LINE,
+  settingsChannelChange: SETTINGS_CHANNEL_CHANGE_LABEL,
+  settingsChannelChangeCancel: SETTINGS_CHANNEL_CHANGE_CANCEL,
+  settingsChannelChangeConsequence: SETTINGS_CHANNEL_CHANGE_CONSEQUENCE,
+  settingsChannelMovedTemplate: SETTINGS_CHANNEL_MOVED_TEMPLATE,
+  settingsChannelUnchanged: SETTINGS_CHANNEL_UNCHANGED_LINE,
+  settingsChannelMoveRefused: SETTINGS_CHANNEL_MOVE_REFUSED,
+
+  landingRunning: LANDING_RUNNING_LINE,
+  landingDeliveryTemplate: LANDING_DELIVERY_TEMPLATE,
+  landingNothingToCheck: LANDING_NOTHING_TO_CHECK_LINE,
 
   stepAgentTitle: STEP_AGENT_TITLE,
   stepAgentWhatItWillDo: STEP_AGENT_WHAT_IT_WILL_DO,
@@ -524,6 +594,15 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   LANDING_LIVENESS_FAILING,
   LANDING_LIVENESS_DISCONNECTED,
   LANDING_LIVENESS_NOT_CONNECTED,
+  LANDING_RUNNING_LINE,
+  LANDING_DELIVERY_TEMPLATE,
+  LANDING_NOTHING_TO_CHECK_LINE,
+  ATTENTION_SOURCE_FAILING_HEADLINE,
+  ATTENTION_SOURCE_STOPPED_HEADLINE,
+  ATTENTION_NO_DELIVERY_HEADLINE,
+  ATTENTION_NO_DELIVERY_DETAIL,
+  ATTENTION_SOURCE_ACTION,
+  ATTENTION_NO_DELIVERY_ACTION,
 
   RECEIPT_PATHS_LINE,
   RECEIPT_INTERNAL_DOMAIN_TEMPLATE,
@@ -573,9 +652,20 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SETTINGS_TITLE,
   SETTINGS_POSTING_TEMPLATE,
   SETTINGS_SETTLED_LINE,
-  SETTINGS_CHANNEL_FIXED_LINE,
   SETTINGS_NO_DELIVERY_LINE,
   SETTINGS_BACK_LABEL,
+  SETTINGS_SOURCE_GROUP_TITLE,
+  SETTINGS_DELIVERY_GROUP_TITLE,
+  SETTINGS_EXCLUDED_GROUP_TITLE,
+  SETTINGS_EXCLUDED_PENDING_LINE,
+  SETTINGS_SOURCE_CONNECTED_TEMPLATE,
+  SETTINGS_SOURCE_NONE_LINE,
+  SETTINGS_CHANNEL_CHANGE_LABEL,
+  SETTINGS_CHANNEL_CHANGE_CANCEL,
+  SETTINGS_CHANNEL_CHANGE_CONSEQUENCE,
+  SETTINGS_CHANNEL_MOVED_TEMPLATE,
+  SETTINGS_CHANNEL_UNCHANGED_LINE,
+  SETTINGS_CHANNEL_MOVE_REFUSED,
 
   STEP_AGENT_TITLE,
   STEP_AGENT_WHAT_IT_WILL_DO,

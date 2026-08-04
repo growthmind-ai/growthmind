@@ -572,6 +572,140 @@ describe("slack_connections — the org's credential, and the teammate who set n
       await readRawScalar(db, sql`select channel_id from slack_connections where id = ${first.id}`),
     ).toBe(CHANNEL_ID);
   });
+
+  test("repointChannel moves a chosen address and stamps the cutover in the same write", async () => {
+    // The move `attachChannel` refuses. It is only safe because the cutover lands with it:
+    // the delivery lane sends nothing found at or before that instant, so the backlog the
+    // old channel already received is not replayed into the new one (D12). A move that
+    // wrote the address and left the cutover null would be the fork, with no error.
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "repoint");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const inserted = await repo.insertActive({
+      channelId: PICKED_CHANNEL,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    expect(inserted.deliveryCutoverAt).toBeNull();
+
+    const cutoverAt = new Date("2026-08-03T10:00:00.000Z");
+    const moved = await repo.repointChannel({
+      channelId: MOVED_CHANNEL,
+      channelName: "moved",
+      cutoverAt,
+    });
+
+    expect(moved?.id).toBe(inserted.id);
+    expect(moved?.channelId).toBe(MOVED_CHANNEL);
+    expect(moved?.deliveryCutoverAt?.toISOString()).toBe(cutoverAt.toISOString());
+
+    // Read back through SQL, so a guard applied to the returned object rather than to the
+    // statement cannot pass this.
+    expect(
+      await readRawScalar(
+        db,
+        sql`select channel_id from slack_connections where id = ${inserted.id}`,
+      ),
+    ).toBe(MOVED_CHANNEL);
+
+    // And a teammate who moved nothing sees the new address.
+    expect((await createSlackConnectionsRepo(db, org.teammate).getActiveForOrg())?.channelId).toBe(
+      MOVED_CHANNEL,
+    );
+  });
+
+  test("repointChannel refuses the same channel, so confirming does not stamp a cutover", async () => {
+    // A founder who opens the picker and re-picks what is already set has changed nothing.
+    // Stamping a cutover for that would silently suppress every finding still waiting to be
+    // delivered — a data-loss bug with a success message on top of it.
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "repoint-same");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const inserted = await repo.insertActive({
+      channelId: PICKED_CHANNEL,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    expect(
+      await repo.repointChannel({
+        channelId: PICKED_CHANNEL,
+        channelName: PICKED_CHANNEL_NAME,
+        cutoverAt: new Date("2026-08-03T10:00:00.000Z"),
+      }),
+    ).toBeNull();
+
+    expect(
+      await readRawScalar(
+        db,
+        sql`select delivery_cutover_at from slack_connections where id = ${inserted.id}`,
+      ),
+    ).toBeNull();
+  });
+
+  test("repointChannel has nothing to move before an address is chosen", async () => {
+    // Filling a sentinel is `attachChannel`'s job and forks nothing, so it must not stamp a
+    // cutover — findings found before the first channel existed are still owed.
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "repoint-empty");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    for (const channelId of [null, "", " ", "null", "undefined"]) {
+      const row = await repo.insertActive({
+        channelId,
+        workspaceName: WORKSPACE_NAME,
+        credentialCiphertext: slackEnvelopeFor(org.organizationId),
+        credentialKeyId: keyIdOf(KEY),
+        connectedByUserId: org.ownerUserId,
+        connectedAt: CONNECTED_AT,
+      });
+
+      expect(
+        await repo.repointChannel({
+          channelId: MOVED_CHANNEL,
+          channelName: "moved",
+          cutoverAt: new Date("2026-08-03T10:00:00.000Z"),
+        }),
+      ).toBeNull();
+
+      await repo.deactivate(row.id);
+    }
+  });
+
+  test("repointChannel cannot reach another organization's row", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const orgA = await seedOrgWithTeammate(db, "repoint-tenant-a");
+    const orgB = await seedOrgWithTeammate(db, "repoint-tenant-b");
+
+    const theirs = await createSlackConnectionsRepo(db, orgA.owner).insertActive({
+      channelId: PICKED_CHANNEL,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(orgA.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: orgA.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    expect(
+      await createSlackConnectionsRepo(db, orgB.owner).repointChannel({
+        channelId: MOVED_CHANNEL,
+        channelName: "moved",
+        cutoverAt: new Date("2026-08-03T10:00:00.000Z"),
+      }),
+    ).toBeNull();
+
+    expect(
+      await readRawScalar(db, sql`select channel_id from slack_connections where id = ${theirs.id}`),
+    ).toBe(PICKED_CHANNEL);
+  });
 });
 
 const CLEAN_SURFACE_FIXTURE = `

@@ -30,6 +30,9 @@ export type SlackConnectionSummary = {
 
   readonly isActive: boolean;
 
+  // `null` until the delivery address has been moved at least once.
+  readonly deliveryCutoverAt: Date | null;
+
   readonly connectedByUserId: string | null;
   readonly connectedAt: Date;
 };
@@ -57,6 +60,14 @@ export interface SlackConnectionsRepo {
     channelId: string,
     channelName: string | null,
   ): Promise<SlackConnectionSummary | null>;
+
+  // Moves an address `attachChannel` refuses to move, stamping the cutover that keeps the
+  // backlog out of the new channel.
+  repointChannel(input: {
+    readonly channelId: string;
+    readonly channelName: string | null;
+    readonly cutoverAt: Date;
+  }): Promise<SlackConnectionSummary | null>;
 
   deactivate(id: string): Promise<SlackConnectionSummary | null>;
 }

@@ -20,6 +20,11 @@ export const FIRST_RUN_API = {
   slackChannel: "/api/first-run/slack/channel",
 } as const;
 
+// Separate write: this one MOVES a chosen address and stamps the delivery cutover.
+export const SETTINGS_API = {
+  slackChannel: "/api/settings/slack/channel",
+} as const;
+
 export interface PostAnswer {
   readonly ok: boolean;
   readonly body: unknown;
@@ -47,6 +52,12 @@ export interface DiscoveryAnswer {
 export interface SlackChannelChoice {
   readonly id: string;
   readonly name: string;
+}
+
+// `moved: false` is a 200: re-picking the channel already set is not a refusal.
+export interface ChannelMoveAnswer {
+  readonly moved: boolean;
+  readonly sentence: string;
 }
 
 // A 200 even when the post itself failed (D8).
@@ -168,6 +179,16 @@ export function readChannelList(body: unknown): readonly SlackChannelChoice[] | 
 
 // `retryable` decides whether a retry is offered: two of the four failures can
 // never succeed on a second press.
+export function readChannelMoveAnswer(body: unknown): ChannelMoveAnswer | null {
+  const record = asRecord(body);
+  if (record === null) return null;
+
+  const sentence = record.sentence;
+  if (typeof sentence !== "string") return null;
+
+  return { moved: record.moved === true, sentence };
+}
+
 export function readTestPostAnswer(body: unknown): TestPostAnswer | null {
   const record = asRecord(body);
   if (record === null) return null;
