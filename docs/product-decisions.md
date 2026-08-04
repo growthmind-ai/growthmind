@@ -59,7 +59,7 @@
 
 ## 7. Findings: volume, memory and backpressure
 
-- Must apply backpressure. One thing at a time, not a ranked list of twelve. A ranked list is a dashboard with extra steps, and it violates the time-scarce constraint.
+- Must apply backpressure. One thing at a time, not a ranked list of twelve. A ranked list hands the prioritising back to the customer, and it violates the time-scarce constraint.
 - Must be hard rate-limited. A ceiling on findings per week, enforced, even when there are more.
 - Must have a "nothing worth telling you today" state and actually use it. A daily digest that always finds something is a daily digest that is padding.
 - Every finding must be dismissible. A dismissal is a signal, must be remembered, and must suppress that signature permanently.
@@ -84,12 +84,12 @@
 
 ## 10. Surface and interaction model
 
-- Only power users use dashboards, so the approach must be non-dashboard.
-- Must be fully legible in a single Slack message with no click-through. If it needs a link to be understood, you have built a dashboard with extra steps.
-- Must not require anyone to remember to check anything. If it needs a habit, it is a dashboard with extra steps.
+- Findings must be pushed, not pulled. Value must never depend on the customer remembering to check something.
+- Must be fully legible in a single Slack message with no click-through. The link is for checking us, not for understanding us.
 - Must never require the customer to babysit a running process or keep anything open.
+- The web app is a first-class product surface, not an afterthought. It carries the account and its app shell — profile, sign-out, organisation switching, navigation — alongside connections, settings, billing, the audit log, and the findings record. Push delivery is what makes checking the app unnecessary; it is not a reason to build the app badly.
 - The same artefact must be readable by a non-technical founder and parseable by a coding agent. One output, two audiences, no translation layer.
-- Must not require the customer to learn new vocabulary. Scouts, signals, reports: that is a product taxonomy, and taxonomy is a dashboard in prose form.
+- Must not require the customer to learn new vocabulary. Scouts, signals, reports: that is a product taxonomy nobody asked to learn.
 
 ## 11. Architecture and ecosystem position
 

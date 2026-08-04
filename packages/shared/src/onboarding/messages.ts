@@ -125,8 +125,6 @@ export const LANDING_RUNNING_LINE = "Growthmind is running.";
 
 export const LANDING_DELIVERY_TEMPLATE = "Findings go to #{channel}.";
 
-// §10, stated to the founder rather than only to us: a surface that rewards checking is a
-// dashboard. This sentence is the promise that opening this page on a Tuesday buys nothing.
 export const LANDING_NOTHING_TO_CHECK_LINE = "There is nothing here to come back and check.";
 
 // The headlines of the block that REPLACES the running line when something is wrong. The

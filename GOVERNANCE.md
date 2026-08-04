@@ -70,7 +70,7 @@ public for the next person.
 ## What will never be accepted
 
 Anything that violates a published product decision. Concretely, and these are
-the ones people try: a dashboard or a ranked list of twelve findings (§10, §7),
+the ones people try: a ranked list of twelve findings (§7),
 requiring a tracking plan or an activation definition up front (§1, §3),
 anything that puts PII in the event stream (§5), Growthmind writing code into
 a customer's repository (§1, §8), touching pricing, billing, auth, consent or

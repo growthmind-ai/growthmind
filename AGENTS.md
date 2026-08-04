@@ -72,7 +72,7 @@ documents each variable. Auth schema changes: edit `apps/web/lib/auth.ts`, then
 ## Repo layout
 
 ```
-apps/web/          # Next.js dashboard-less app (findings, settings, billing)
+apps/web/          # Next.js app (findings, settings, billing)
 packages/sdk-js/   # the event package — capture, masking, exclusions
 packages/db/       # Drizzle schema + migrations (+ generated auth schema)
 packages/shared/   # Zod schemas, shared types (env validation lives here)
@@ -115,7 +115,7 @@ because they are the ways an agent's work goes wrong here while looking fine.
    [docs/product-decisions.md](docs/product-decisions.md) §1–§12 is not a style
    guide, a change that violates a published decision is declined regardless of
    how good the code is, and [GOVERNANCE.md](GOVERNANCE.md) lists the ones people
-   try most (a dashboard, a ranked list, PII in the event stream, writing into a
+   try most (a ranked list, PII in the event stream, writing into a
    customer's repo, an external SaaS with no self-host path). If the task you were
    given requires one of those, **say so and stop** rather than building it well.
    The route to changing a decision is an issue, before the code.
