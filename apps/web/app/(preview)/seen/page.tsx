@@ -108,8 +108,6 @@ export default async function SeenPage() {
         {overview.window} · not a queue, and nothing here needs you today
       </PageHeader>
 
-      {/* The account of ourselves, before any claim about them. It stays prose with the
-          denominators inside sentences — as figures in boxes it becomes a dashboard. */}
       <SurfaceCard>
         <Stack gap="xs">
           <Text>{coverageSentences(overview.coverage).join(" ")}</Text>
