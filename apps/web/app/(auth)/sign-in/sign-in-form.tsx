@@ -21,18 +21,25 @@ import { ROUTES } from "@/lib/routes";
 
 const PENDING_LABEL = "Signing you in…";
 
+export const RETURNING_NOTICE = "Welcome back — your password is all that is left.";
+
 interface SignInFormProps {
   readonly lastUsed: LastLoginMethod | null;
+  readonly initialEmail: string;
 }
 
-export function SignInForm({ lastUsed }: SignInFormProps) {
+export function SignInForm({ lastUsed, initialEmail }: SignInFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<SignInErrors>(NO_SIGN_IN_ERRORS);
   const [isPending, setIsPending] = useState(false);
   const badgeId = useId();
   const isLastUsed = lastUsed === "email";
+
+  // Derived, not synced: editing the address away means the sentence no longer describes
+  // what is on the screen, so it goes.
+  const arrivedWithEmail = initialEmail !== "" && email === initialEmail;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,6 +74,7 @@ export function SignInForm({ lastUsed }: SignInFormProps) {
   return (
     <form onSubmit={handleSubmit} noValidate>
       <Stack gap="md">
+        {arrivedWithEmail ? <Text size="sm">{RETURNING_NOTICE}</Text> : null}
         <TextInput
           label="Email"
           type="email"

@@ -1,4 +1,5 @@
 import {
+  emailSchema,
   NETWORK_FAILURE_NOTICE,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -7,6 +8,8 @@ import {
   type SignInInput,
   type SignUpInput,
 } from "@growthmind/shared";
+
+import { ROUTES } from "./routes";
 
 export const NAME_PLACEHOLDER = "First and last name";
 
@@ -181,6 +184,26 @@ export function signInSubmitErrors(error: unknown): SignInErrors {
     form:
       code === "INVALID_EMAIL_OR_PASSWORD" ? CREDENTIAL_MISMATCH_MESSAGE : NETWORK_FAILURE_MESSAGE,
   };
+}
+
+export const SIGN_IN_EMAIL_PARAM = "email";
+
+// Both ends of the hand-off live here so the param name cannot drift between the screen
+// that writes it and the screen that reads it.
+export function signInHref(email: string): string {
+  if (!emailSchema.safeParse(email).success) {
+    return ROUTES.signIn;
+  }
+
+  return `${ROUTES.signIn}?${new URLSearchParams({ [SIGN_IN_EMAIL_PARAM]: email }).toString()}`;
+}
+
+export function readSignInEmail(value: string | readonly string[] | undefined): string {
+  if (typeof value !== "string" || !emailSchema.safeParse(value).success) {
+    return "";
+  }
+
+  return value;
 }
 
 export function clearField<E extends FormLevel>(errors: E, field: Exclude<keyof E, "form">): E {

@@ -1,13 +1,10 @@
 import { SOCIAL_PROVIDERS, type SocialProviderId } from "./social-auth";
 
-// Passed to the plugin that writes it AND read by the pages, so the two ends cannot
-// drift apart on a string. It is the Better Auth default; naming it keeps it ours.
+// The Better Auth default, named so the writer and the readers cannot drift apart.
 export const LAST_LOGIN_METHOD_COOKIE = "better-auth.last_used_login_method";
 
 export type LastLoginMethod = SocialProviderId | "email";
 
-// The plugin also writes "passkey", "magic-link" and "siwe" for methods this app does
-// not offer. An unrecognised value badges nothing rather than guessing a control.
 function parse(value: string | undefined): LastLoginMethod | null {
   if (value === undefined) return null;
   if (value === "email") return "email";
@@ -16,9 +13,7 @@ function parse(value: string | undefined): LastLoginMethod | null {
     : null;
 }
 
-// Email and password is enabled unconditionally, so only the social half can name a
-// method whose control is no longer on the screen — pulling GITHUB_CLIENT_ID must not
-// leave a badge floating where its button used to be.
+// A provider can leave the screen, and its badge must not outlive its button.
 export function resolveLastLoginBadge(
   cookieValue: string | undefined,
   providers: readonly SocialProviderId[],
