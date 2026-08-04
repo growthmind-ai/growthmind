@@ -352,10 +352,7 @@ function ConnectedBody(props: { readonly onRevoke: () => void }) {
   );
 }
 
-function ConfirmBody(props: {
-  readonly onConfirm: () => void;
-  readonly onCancel: () => void;
-}) {
+function ConfirmBody(props: { readonly onConfirm: () => void; readonly onCancel: () => void }) {
   return (
     <Stack gap="sm">
       <Text size="sm">{AGENT_REVOKE_CONSEQUENCE}</Text>

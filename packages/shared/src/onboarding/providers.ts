@@ -81,7 +81,12 @@ export const PROVIDER_CATALOGUE: readonly ProviderDescriptor[] = Object.freeze([
     rail: "coding-assistant",
     live: true,
   },
-  { id: "amplitude", displayName: PROVIDER_DISPLAY_NAMES.amplitude, rail: "analytics", live: false },
+  {
+    id: "amplitude",
+    displayName: PROVIDER_DISPLAY_NAMES.amplitude,
+    rail: "analytics",
+    live: false,
+  },
   { id: "mixpanel", displayName: PROVIDER_DISPLAY_NAMES.mixpanel, rail: "analytics", live: false },
   {
     id: "growthmind-analytics",

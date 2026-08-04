@@ -40,8 +40,7 @@ function depsFor(scope: SeededMemberScope | null): FirstRunRouteDeps {
 
 async function rawRows(query: string): Promise<Record<string, unknown>[]> {
   const result = (await bed.db.execute(query)) as unknown as
-    | { rows?: Record<string, unknown>[] }
-    | Record<string, unknown>[];
+    { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
   return Array.isArray(result) ? result : (result.rows ?? []);
 }
 

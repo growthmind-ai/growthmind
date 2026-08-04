@@ -69,13 +69,7 @@ const loadAgentProviderIds = (): Promise<readonly string[]> =>
   });
 
 // The five that stayed non-live after O-026 flipped the coding-assistant rail.
-const SOON_IDS = [
-  "github",
-  "gitlab",
-  "amplitude",
-  "mixpanel",
-  "growthmind-analytics",
-] as const;
+const SOON_IDS = ["github", "gitlab", "amplitude", "mixpanel", "growthmind-analytics"] as const;
 
 const AGENT_IDS = ["claude-code", "cursor", "copilot", "codex", "windsurf"] as const;
 

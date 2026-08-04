@@ -456,9 +456,9 @@ describe("the coding-assistant panel's copy — O-026, UX §8.2, §8.3", () => {
     const namespace = await loadOnboardingMessages();
     const registered = new Set(await everyOnboardingMessage());
 
-    const missingExports = AGENT_COPY.filter(
-      ([name]) => typeof namespace[name] !== "string",
-    ).map(([name]) => name);
+    const missingExports = AGENT_COPY.filter(([name]) => typeof namespace[name] !== "string").map(
+      ([name]) => name,
+    );
     expect(missingExports).toEqual([]);
 
     const unregistered = AGENT_COPY.filter(
