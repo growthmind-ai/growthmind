@@ -4,6 +4,7 @@ import { Button, Divider, Stack, Text } from "@mantine/core";
 import { useId, useState } from "react";
 
 import { LastUsedBadge } from "@/components/ui/LastUsedBadge";
+import { PROVIDER_MARKS } from "@/components/ui/ProviderMarks";
 import { signIn } from "@/lib/auth-client";
 import type { LastLoginMethod } from "@/lib/last-login-method";
 import { ROUTES } from "@/lib/routes";
@@ -57,6 +58,7 @@ export function SocialButtons({ providers, lastUsed }: SocialButtonsProps) {
         {providers.map((provider) => {
           const isLastUsed = lastUsed === provider;
           const badgeId = `${badgeIdPrefix}-${provider}`;
+          const Mark = PROVIDER_MARKS[provider];
 
           return (
             <LastUsedBadge key={provider} badgeId={badgeId} lastUsed={isLastUsed}>
@@ -64,6 +66,7 @@ export function SocialButtons({ providers, lastUsed }: SocialButtonsProps) {
                 variant="default"
                 size="md"
                 fullWidth
+                leftSection={<Mark />}
                 loading={pending === provider}
                 disabled={pending !== null && pending !== provider}
                 onClick={() => void handleClick(provider)}
