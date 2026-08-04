@@ -60,6 +60,7 @@ export function AgentPanel(props: AgentPanelProps) {
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [action, setAction] = useState<AgentPanelAction>("idle");
   const [revokeFailed, setRevokeFailed] = useState(false);
+  const [fileFormOpen, setFileFormOpen] = useState(false);
 
   const panel = useRef<HTMLDivElement>(null);
   const confirming = useRef(false);
@@ -140,6 +141,13 @@ export function AgentPanel(props: AgentPanelProps) {
     setAction("confirming-revoke");
   }
 
+  // Closed again on every switch: the disclosure belongs to the block it opened,
+  // and the next assistant may not have one at all (UX §5.3).
+  function pickProvider(id: AgentProviderId): void {
+    setFileFormOpen(false);
+    setProvider(id);
+  }
+
   // A render nobody pressed for is at rest: a reload, a poll and a teammate's
   // first visit all mount settled, and only a press animates (T5).
   const moved = action !== "idle" || rawKey !== null;
@@ -153,11 +161,13 @@ export function AgentPanel(props: AgentPanelProps) {
           mcpUrl={props.mcpUrl}
           rawKey={rawKey}
           providerOrder={props.providerOrder}
-          onPickProvider={setProvider}
+          onPickProvider={pickProvider}
           onMint={() => void mint()}
           onRevoke={openConfirm}
           onConfirmRevoke={() => void confirmRevoke()}
           onCancelRevoke={() => setAction("idle")}
+          fileFormOpen={fileFormOpen}
+          onToggleFileForm={() => setFileFormOpen((open) => !open)}
         />
       </Box>
 

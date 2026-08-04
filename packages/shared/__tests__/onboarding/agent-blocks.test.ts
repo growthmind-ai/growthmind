@@ -13,6 +13,7 @@ const MCP_URL = "https://app.example.com/api/mcp";
 const RAW_KEY = "gmak_wave0-agent-blocks-fixture-key-000000000000";
 const PLACEHOLDER = "YOUR_KEY_HERE";
 const SERVER_NAME = "growthmind";
+const ENV_VAR_REFERENCE = "${GROWTHMIND_API_KEY}";
 
 type AgentBlockInput = {
   readonly url: string;
@@ -107,7 +108,11 @@ describe("the D9 gate — every block carries the key names its vendor documents
     expect(entry["type"]).toBe("http");
     expect(entry["url"]).toBe(MCP_URL);
     expect(Object.keys(entry)).not.toContain("serverUrl");
-    expect(authorizationHeader(entry)).toBe(`Bearer ${RAW_KEY}`);
+
+    // `.mcp.json` is the project-root file a repo commits, so the header names a
+    // variable the file expands — the key itself never reaches it.
+    expect(block).not.toContain(RAW_KEY);
+    expect(authorizationHeader(entry)).toBe(`Bearer ${ENV_VAR_REFERENCE}`);
 
     expect(filled(claudeCode)).toContain(`Authorization: Bearer ${RAW_KEY}`);
   });
@@ -284,6 +289,32 @@ describe("what every one of the five blocks must and must not carry", () => {
     }
 
     expect(drifted).toEqual([]);
+  });
+
+  test("should keep the key out of every block that lands in a file a repo commits", async () => {
+    const configs = await loadConfigs();
+
+    const committed = configs.filter((config) => !config.path.startsWith("~/"));
+    expect(committed.map((config) => config.id).toSorted()).toEqual(["claude-code", "copilot"]);
+
+    const offenders: string[] = [];
+
+    for (const config of committed) {
+      // The block that lands in `config.path`: for the provider whose primary
+      // form is a CLI one-liner, that file is its disclosure.
+      const fileBlock = config.format === "command" ? config.disclosure : config.render;
+
+      if (fileBlock === null) {
+        offenders.push(`${config.id} renders no file form for ${config.path}`);
+        continue;
+      }
+
+      if (fileBlock({ url: MCP_URL, key: RAW_KEY }).includes(RAW_KEY)) {
+        offenders.push(`${config.id} writes the key into ${config.path}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 
   test("should carry the supplied url into every block", async () => {

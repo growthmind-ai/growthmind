@@ -1,11 +1,12 @@
 "use client";
 
-import { Button, CopyButton, Group, NativeSelect, Stack, Text } from "@mantine/core";
+import { Button, Collapse, CopyButton, Group, NativeSelect, Stack, Text } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
   agentProviderConfig,
   AGENT_CLAUDE_APPROVAL_NOTE,
+  AGENT_CLAUDE_ENV_VAR_NOTE,
   AGENT_CLAUDE_FILE_DISCLOSURE,
   AGENT_CLAUDE_TYPE_TRAP,
   AGENT_CODEX_ENV_VAR_NOTE,
@@ -62,6 +63,8 @@ interface AgentPanelBodyProps {
   readonly onRevoke: () => void;
   readonly onConfirmRevoke: () => void;
   readonly onCancelRevoke: () => void;
+  readonly fileFormOpen: boolean;
+  readonly onToggleFileForm: () => void;
 }
 
 // One polite region, always mounted, carrying whichever sentence the state
@@ -163,9 +166,14 @@ function DeliveryNote(props: { readonly config: AgentProviderConfig }): ReactNod
   return null;
 }
 
+// The one disclosure in the panel (UX D-9, §5.3). Closed at rest keeps the
+// primary path a single block, and the open flag is the island's, so this stays
+// hook-free.
 function FileForm(props: {
   readonly config: AgentProviderConfig;
   readonly filled: AgentBlockInput;
+  readonly open: boolean;
+  readonly onToggle: () => void;
 }): ReactNode {
   const render = props.config.disclosure;
 
@@ -175,22 +183,39 @@ function FileForm(props: {
 
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={600}>
-        {AGENT_CLAUDE_FILE_DISCLOSURE}
-      </Text>
-      <Text size="sm" c="dimmed">
-        {AGENT_CLAUDE_TYPE_TRAP}
-      </Text>
-      <Text size="sm" c="dimmed">
-        {AGENT_CLAUDE_APPROVAL_NOTE}
-      </Text>
-      <Text size="sm" c="dimmed">
-        {withPath(AGENT_PASTE_INTO_TEMPLATE, props.config.path)}
-      </Text>
-      <CopyableBlock
-        block={render(props.filled)}
-        copyLabel={withName(AGENT_COPY_BLOCK_TEMPLATE, props.config.path)}
-      />
+      <Group justify="flex-start">
+        <Button
+          variant="subtle"
+          color="gray"
+          size="compact-sm"
+          aria-expanded={props.open}
+          onClick={props.onToggle}
+          style={tapTargetStyle}
+        >
+          {AGENT_CLAUDE_FILE_DISCLOSURE}
+        </Button>
+      </Group>
+
+      <Collapse expanded={props.open}>
+        <Stack gap="xs">
+          <Text size="sm" c="dimmed">
+            {AGENT_CLAUDE_TYPE_TRAP}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {AGENT_CLAUDE_ENV_VAR_NOTE}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {AGENT_CLAUDE_APPROVAL_NOTE}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {withPath(AGENT_PASTE_INTO_TEMPLATE, props.config.path)}
+          </Text>
+          <CopyableBlock
+            block={render(props.filled)}
+            copyLabel={withName(AGENT_COPY_BLOCK_TEMPLATE, props.config.path)}
+          />
+        </Stack>
+      </Collapse>
     </Stack>
   );
 }
@@ -199,6 +224,8 @@ function BlockSection(props: {
   readonly provider: AgentProviderId;
   readonly mcpUrl: string;
   readonly rawKey: string | null;
+  readonly fileFormOpen: boolean;
+  readonly onToggleFileForm: () => void;
 }) {
   const config = agentProviderConfig(props.provider);
   const filled = { url: props.mcpUrl, key: props.rawKey ?? AGENT_KEY_PLACEHOLDER };
@@ -216,7 +243,12 @@ function BlockSection(props: {
 
       <DeliveryNote config={config} />
 
-      <FileForm config={config} filled={filled} />
+      <FileForm
+        config={config}
+        filled={filled}
+        open={props.fileFormOpen}
+        onToggle={props.onToggleFileForm}
+      />
     </Stack>
   );
 }
@@ -291,12 +323,20 @@ function RevealBody(props: {
   readonly provider: AgentProviderId;
   readonly mcpUrl: string;
   readonly rawKey: string | null;
+  readonly fileFormOpen: boolean;
+  readonly onToggleFileForm: () => void;
 }) {
   return (
     <Stack gap="sm">
       {props.rawKey === null ? null : <KeyRow rawKey={props.rawKey} />}
 
-      <BlockSection provider={props.provider} mcpUrl={props.mcpUrl} rawKey={props.rawKey} />
+      <BlockSection
+        provider={props.provider}
+        mcpUrl={props.mcpUrl}
+        rawKey={props.rawKey}
+        fileFormOpen={props.fileFormOpen}
+        onToggleFileForm={props.onToggleFileForm}
+      />
 
       <Text size="sm" c="dimmed">
         {AGENT_WAITING_NEXT}
@@ -310,6 +350,8 @@ function WaitingBody(props: {
   readonly mcpUrl: string;
   readonly onMint: () => void;
   readonly onRevoke: () => void;
+  readonly fileFormOpen: boolean;
+  readonly onToggleFileForm: () => void;
 }) {
   return (
     <Stack gap="sm">
@@ -320,7 +362,13 @@ function WaitingBody(props: {
         {AGENT_KEY_HOLE_NOTICE}
       </Text>
 
-      <BlockSection provider={props.provider} mcpUrl={props.mcpUrl} rawKey={null} />
+      <BlockSection
+        provider={props.provider}
+        mcpUrl={props.mcpUrl}
+        rawKey={null}
+        fileFormOpen={props.fileFormOpen}
+        onToggleFileForm={props.onToggleFileForm}
+      />
 
       <Group justify="flex-start">
         <Button variant="default" size="compact-sm" onClick={props.onMint} style={tapTargetStyle}>
@@ -372,7 +420,15 @@ function ConfirmBody(props: { readonly onConfirm: () => void; readonly onCancel:
 function stateBody(props: AgentPanelBodyProps): ReactNode {
   switch (props.state) {
     case "reveal":
-      return <RevealBody provider={props.provider} mcpUrl={props.mcpUrl} rawKey={props.rawKey} />;
+      return (
+        <RevealBody
+          provider={props.provider}
+          mcpUrl={props.mcpUrl}
+          rawKey={props.rawKey}
+          fileFormOpen={props.fileFormOpen}
+          onToggleFileForm={props.onToggleFileForm}
+        />
+      );
 
     case "waiting":
       return (
@@ -381,6 +437,8 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
           mcpUrl={props.mcpUrl}
           onMint={props.onMint}
           onRevoke={props.onRevoke}
+          fileFormOpen={props.fileFormOpen}
+          onToggleFileForm={props.onToggleFileForm}
         />
       );
 

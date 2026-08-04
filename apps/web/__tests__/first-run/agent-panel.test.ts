@@ -63,6 +63,8 @@ interface AgentPanelBodyProps {
   readonly onRevoke: () => void;
   readonly onConfirmRevoke: () => void;
   readonly onCancelRevoke: () => void;
+  readonly fileFormOpen: boolean;
+  readonly onToggleFileForm: () => void;
 }
 
 interface AgentBlockInput {
@@ -178,9 +180,12 @@ const FIXTURES: readonly (readonly [PanelInput, AgentPanelState])[] = [
   [CONFIRMING, "revoke-confirm"],
 ];
 
+// `fileFormOpen` defaults to false everywhere, so every row below that does not
+// name it renders the panel exactly as a founder first meets it.
 async function panelMarkup(
   input: PanelInput,
   provider: AgentProviderId = "cursor",
+  fileFormOpen = false,
 ): Promise<string> {
   const resolve = await loadResolver();
   const Body = await loadBody();
@@ -197,6 +202,8 @@ async function panelMarkup(
       onRevoke: NOOP,
       onConfirmRevoke: NOOP,
       onCancelRevoke: NOOP,
+      fileFormOpen,
+      onToggleFileForm: NOOP,
     }),
   );
 }
@@ -424,7 +431,7 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
   });
 
   test("Claude Code leads with the CLI line and names the type trap as a symptom", async () => {
-    const html = await panelMarkup(REVEAL, "claude-code");
+    const html = await panelMarkup(REVEAL, "claude-code", true);
     const blocks = codeBlocks(html);
 
     expect(blocks[0] ?? "").toContain("claude mcp add");
@@ -441,6 +448,61 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect(trap).not.toMatch(/expected string/i);
     expect(trap).not.toMatch(/\bv?\d+\.\d+\.\d+\b/);
     expect(trap).not.toMatch(/\b\d{3}\b/);
+  });
+
+  test("the committed-file form is closed at rest behind one toggle that says whether it is open", async () => {
+    const atRest = await panelMarkup(REVEAL, "claude-code");
+    const disclosed = await panelMarkup(REVEAL, "claude-code", true);
+
+    const label = await message("AGENT_CLAUDE_FILE_DISCLOSURE");
+
+    const toggleOf = (html: string): RenderedButton => {
+      const found = buttons(html).filter((button) => button.text.includes(label));
+      expect(found).toHaveLength(1);
+      const only = found[0];
+      if (only === undefined) throw new Error("unreachable — asserted above");
+      return only;
+    };
+
+    expect(toggleOf(atRest).attrs).toContain('aria-expanded="false"');
+    expect(toggleOf(disclosed).attrs).toContain('aria-expanded="true"');
+
+    expect(codeBlocks(atRest)).toHaveLength(1);
+    expect(codeBlocks(atRest)[0] ?? "").toContain("claude mcp add");
+    expect(atRest).not.toContain("mcpServers");
+    expect(codeBlocks(disclosed)).toHaveLength(2);
+
+    const copyAtRest = buttons(atRest).filter((button) => button.text.includes(COPY_LABEL));
+    const copyDisclosed = buttons(disclosed).filter((button) => button.text.includes(COPY_LABEL));
+    expect(copyAtRest).toHaveLength(2);
+    expect(copyDisclosed).toHaveLength(3);
+
+    const trap = await message("AGENT_CLAUDE_TYPE_TRAP");
+    expect(textOf(atRest)).not.toContain(trap);
+    expect(textOf(disclosed)).toContain(trap);
+  });
+
+  test("no committed-file block hands the founder the key to commit", async () => {
+    const configs = await loadConfigs();
+    const committed = configs.filter((config) => !config.path.startsWith("~/"));
+
+    expect(committed.map((config) => config.id).toSorted()).toEqual(["claude-code", "copilot"]);
+
+    for (const config of committed) {
+      const html = await panelMarkup(REVEAL, config.id, true);
+      const fileBlock = blockContaining(html, '"headers"');
+
+      expect({ id: config.id, carriesTheKey: fileBlock.includes(RAW_KEY) }).toEqual({
+        id: config.id,
+        carriesTheKey: false,
+      });
+    }
+  });
+
+  test("the file form names the variable convention rather than a second copy of it", async () => {
+    const html = await panelMarkup(REVEAL, "claude-code", true);
+
+    expect(textOf(html)).toContain(await message("AGENT_CLAUDE_ENV_VAR_NOTE"));
   });
 
   test("no rendered block prints localhost when the payload carries a real address", async () => {

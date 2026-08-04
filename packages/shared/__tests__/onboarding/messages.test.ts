@@ -78,6 +78,7 @@ const AGENT_COPY: readonly (readonly [string, string])[] = [
   ["AGENT_COPILOT_USER_SCOPE_TEMPLATE", "agentCopilotUserScopeTemplate"],
   ["AGENT_CODEX_ENV_VAR_NOTE", "agentCodexEnvVarNote"],
   ["AGENT_CLAUDE_FILE_DISCLOSURE", "agentClaudeFileDisclosure"],
+  ["AGENT_CLAUDE_ENV_VAR_NOTE", "agentClaudeEnvVarNote"],
   ["AGENT_CLAUDE_TYPE_TRAP", "agentClaudeTypeTrap"],
   ["AGENT_CLAUDE_APPROVAL_NOTE", "agentClaudeApprovalNote"],
   ["AGENT_REVOKE_LABEL", "agentRevokeLabel"],

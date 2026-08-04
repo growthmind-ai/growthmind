@@ -398,6 +398,9 @@ export const AGENT_CODEX_ENV_VAR_NOTE =
 
 export const AGENT_CLAUDE_FILE_DISCLOSURE = "Prefer a file you can commit?";
 
+export const AGENT_CLAUDE_ENV_VAR_NOTE =
+  "This file gets committed with your code, so the block reads the key from an environment variable instead of holding it. Set the variable named in the block to the key above, wherever your shell sets variables, before you start your assistant.";
+
 export const AGENT_CLAUDE_TYPE_TRAP =
   "The type line is not optional. Without it, your assistant reads the entry as a local command to launch, so it skips the server and never calls us.";
 
@@ -407,7 +410,7 @@ export const AGENT_CLAUDE_APPROVAL_NOTE =
 export const AGENT_REVOKE_LABEL = "Revoke this key";
 
 export const AGENT_REVOKE_CONSEQUENCE =
-  "Revoking stops your assistant calling us, for everyone in this workspace. This step goes back to needing a key, and you can create a new one straight away.";
+  "Revoking turns off every key this workspace has, not just this one. Anything else set up with a key from here — another machine, a build that runs on its own — stops calling us too. This step goes back to needing a key, and you can create a new one straight away.";
 
 export const AGENT_REVOKE_CONFIRM_LABEL = "Yes, revoke it";
 
@@ -647,6 +650,7 @@ export const ONBOARDING_MESSAGES = {
   agentCopilotUserScopeTemplate: AGENT_COPILOT_USER_SCOPE_TEMPLATE,
   agentCodexEnvVarNote: AGENT_CODEX_ENV_VAR_NOTE,
   agentClaudeFileDisclosure: AGENT_CLAUDE_FILE_DISCLOSURE,
+  agentClaudeEnvVarNote: AGENT_CLAUDE_ENV_VAR_NOTE,
   agentClaudeTypeTrap: AGENT_CLAUDE_TYPE_TRAP,
   agentClaudeApprovalNote: AGENT_CLAUDE_APPROVAL_NOTE,
   agentRevokeLabel: AGENT_REVOKE_LABEL,
@@ -820,6 +824,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   AGENT_COPILOT_USER_SCOPE_TEMPLATE,
   AGENT_CODEX_ENV_VAR_NOTE,
   AGENT_CLAUDE_FILE_DISCLOSURE,
+  AGENT_CLAUDE_ENV_VAR_NOTE,
   AGENT_CLAUDE_TYPE_TRAP,
   AGENT_CLAUDE_APPROVAL_NOTE,
   AGENT_REVOKE_LABEL,

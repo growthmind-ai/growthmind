@@ -15,7 +15,7 @@ export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_IDS);
 export const AGENT_SERVER_NAME = "growthmind";
 export const AGENT_BEARER_HEADER = "Authorization";
 export const AGENT_KEY_PLACEHOLDER = "YOUR_KEY_HERE";
-export const AGENT_CODEX_ENV_VAR = "GROWTHMIND_API_KEY";
+export const AGENT_KEY_ENV_VAR = "GROWTHMIND_API_KEY";
 export const AGENT_COPILOT_INPUT_ID = "growthmind-key";
 export const AGENT_COPILOT_INPUT_DESCRIPTION = "Growthmind API key";
 export const AGENT_COPILOT_USER_SCOPE_COMMAND = "MCP: Open User Configuration";
@@ -59,18 +59,23 @@ const HEADER = quoted(AGENT_BEARER_HEADER);
 
 const COPILOT_KEY_REFERENCE = `\${input:${AGENT_COPILOT_INPUT_ID}}`;
 
+const ENV_VAR_KEY_REFERENCE = `\${${AGENT_KEY_ENV_VAR}}`;
+
 function claudeCodeCommand(input: AgentBlockInput): string {
   return `claude mcp add --transport http ${AGENT_SERVER_NAME} ${input.url} \\
   --header ${quoted(`${AGENT_BEARER_HEADER}: Bearer ${input.key}`)}`;
 }
 
+// This file sits in the project root and is committed with the code, so the
+// header names a variable the file expands at read time rather than carrying
+// the key itself — the same reason the Copilot block prompts instead.
 function claudeCodeFile(input: AgentBlockInput): string {
   return `{
   "mcpServers": {
     ${SERVER}: {
       "type": "http",
       "url": ${quoted(input.url)},
-      "headers": { ${HEADER}: ${bearer(input.key)} }
+      "headers": { ${HEADER}: ${bearer(ENV_VAR_KEY_REFERENCE)} }
     }
   }
 }`;
@@ -110,7 +115,7 @@ function copilotFile(input: AgentBlockInput): string {
 function codexFile(input: AgentBlockInput): string {
   return `[mcp_servers.${AGENT_SERVER_NAME}]
 url = ${quoted(input.url)}
-bearer_token_env_var = ${quoted(AGENT_CODEX_ENV_VAR)}`;
+bearer_token_env_var = ${quoted(AGENT_KEY_ENV_VAR)}`;
 }
 
 function windsurfFile(input: AgentBlockInput): string {
