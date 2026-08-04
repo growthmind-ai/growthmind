@@ -60,6 +60,12 @@ export { createAnthropicSessionSummariser } from "./anthropic/summariser";
 export type { SessionSummariser, SummariseInput } from "./anthropic/summariser";
 export { DEFAULT_COLDSTART_MODEL } from "./anthropic/constants";
 
+export type { ReplaySource } from "./replay-source";
+
+export { createRrwebReplaySource } from "./rrweb/replay-source";
+export { RRWEB_SOURCE_KIND } from "./rrweb/constants";
+export type { RrwebSourceConfig, RrwebSourceDeps } from "./rrweb/deps";
+
 export { createAnthropicModel } from "./anthropic/model";
 export type { AnthropicModelConfig } from "./anthropic/model";
 export {
