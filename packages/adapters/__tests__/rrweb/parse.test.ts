@@ -1,13 +1,7 @@
+import type { ReplayRecordingSummary } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import { parseEventsPage, parseRecordingsPage } from "../../src/rrweb/parse";
-
-// TODO(production): packages/adapters/src/rrweb/parse.ts does not exist yet (Wave 0).
-// Placeholder shape for the module's real return type, matched to AD-4 and
-// packages/shared's replayRecordingSummarySchema (recordingId, startedAt, lastActivityAt).
-interface AdRecordingSummary {
-  readonly recordingId: string;
-}
 
 const AD_HOST = "https://replay.ad-fake.invalid";
 const AD_OTHER_ORIGIN_HOST = "https://evil.ad-fake.invalid";
@@ -18,7 +12,7 @@ const AD_RECORDING_2 = "ad-recording-2";
 describe("parseRecordingsPage", () => {
   test("reads items from a bare array envelope", () => {
     const parsed = parseRecordingsPage([{ id: AD_RECORDING_1 }], AD_HOST);
-    expect(parsed.recordings.map((recording: AdRecordingSummary) => recording.recordingId)).toEqual(
+    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
       [AD_RECORDING_1],
     );
     expect(parsed.droppedMalformed).toBe(0);
@@ -29,7 +23,7 @@ describe("parseRecordingsPage", () => {
     (key) => {
       const parsed = parseRecordingsPage({ [key]: [{ id: AD_RECORDING_1 }] }, AD_HOST);
       expect(
-        parsed.recordings.map((recording: AdRecordingSummary) => recording.recordingId),
+        parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId),
       ).toEqual([AD_RECORDING_1]);
       expect(parsed.droppedMalformed).toBe(0);
     },
@@ -64,7 +58,7 @@ describe("parseRecordingsPage", () => {
       [{ startedAt: "2026-07-30T17:00:00.000Z" }, { id: AD_RECORDING_2 }],
       AD_HOST,
     );
-    expect(parsed.recordings.map((recording: AdRecordingSummary) => recording.recordingId)).toEqual(
+    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
       [AD_RECORDING_2],
     );
     expect(parsed.droppedMalformed).toBe(1);
@@ -72,7 +66,7 @@ describe("parseRecordingsPage", () => {
 
   test("never throws on a non-object item in the page", () => {
     const parsed = parseRecordingsPage([null, "ad-not-an-object", { id: AD_RECORDING_1 }], AD_HOST);
-    expect(parsed.recordings.map((recording: AdRecordingSummary) => recording.recordingId)).toEqual(
+    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
       [AD_RECORDING_1],
     );
     expect(parsed.droppedMalformed).toBe(2);
@@ -140,7 +134,7 @@ describe("parseRecordingsPage", () => {
     );
     expect(parsed.next).toBeNull();
     expect(parsed.droppedMalformed).toBe(1);
-    expect(parsed.recordings.map((recording: AdRecordingSummary) => recording.recordingId)).toEqual(
+    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
       [AD_RECORDING_1],
     );
   });
