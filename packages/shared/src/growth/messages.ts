@@ -1,3 +1,4 @@
+import type { IcpBeliefKind } from "./icp";
 import type { SurfaceRole } from "./types";
 
 // One sentence per role, written to be read by a founder and parsed by an agent — §10's
@@ -50,6 +51,37 @@ export const PAGES_SAVED = "Saved.";
 
 export const PAGES_SAVE_FAILED = "That did not save. Try again.";
 
+export const SITE_SECTION_TITLE = "Who your product is for";
+
+export const SITE_SECTION_LEAD =
+  "Tell us your website and we will read it to work out who you are building for. You can correct anything we get wrong.";
+
+export const SITE_DOMAIN_LABEL = "Your website";
+
+export const SITE_DOMAIN_PLACEHOLDER = "growthmind.ai";
+
+export const SITE_READ_ACTION = "Read my site";
+
+export const SITE_READ_AGAIN_ACTION = "Read it again";
+
+export const SITE_RUNNING =
+  "Reading your site now. This takes about a minute — you can leave this page.";
+
+export const SITE_NEVER_RUN = "Nothing read yet.";
+
+export const SITE_NOTHING_FOUND =
+  "We read your site and could not tell who it is for from what is on it. Saying so here is more use than guessing.";
+
+export const SITE_READ_FROM = "Read from";
+
+export const SITE_TOLD_TO_US = "You told us";
+
+export const ICP_BELIEF_HEADINGS: Record<IcpBeliefKind, string> = {
+  who_it_is_for: "Who it is for",
+  what_they_believe: "What they believe",
+  what_they_are_trying_to_do: "What they are trying to do",
+};
+
 export const ALL_GROWTH_MESSAGES: readonly string[] = [
   ...Object.values(SURFACE_ROLE_NOTES),
   NOTHING_KNOWN_YET_NOTE,
@@ -64,4 +96,15 @@ export const ALL_GROWTH_MESSAGES: readonly string[] = [
   PAGES_SAVED,
   PAGES_SAVE_FAILED,
   ...PAGES_ROLE_CHOICES.map((choice) => choice.label),
+  SITE_SECTION_TITLE,
+  SITE_SECTION_LEAD,
+  SITE_DOMAIN_LABEL,
+  SITE_READ_ACTION,
+  SITE_READ_AGAIN_ACTION,
+  SITE_RUNNING,
+  SITE_NEVER_RUN,
+  SITE_NOTHING_FOUND,
+  SITE_READ_FROM,
+  SITE_TOLD_TO_US,
+  ...Object.values(ICP_BELIEF_HEADINGS),
 ];

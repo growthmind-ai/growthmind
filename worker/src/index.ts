@@ -4,7 +4,9 @@ import {
   DEFAULT_COLDSTART_MODEL,
   createAnthropicModel,
   createAnthropicSessionSummariser,
+  createIcpResearcher,
   createSlackDeliveryPoster,
+  fetchSite,
 } from "@growthmind/adapters";
 import { modelSummaryOutputSchema } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
@@ -19,14 +21,26 @@ import {
   createSlackConnectionsRepo,
   createSurfaceObservationsService,
 } from "@growthmind/db";
-import { existsAnyActiveSlackConnection } from "@growthmind/db/system";
+import {
+  SYSTEM_ACTOR,
+  existsAnyActiveSlackConnection,
+  findAnalysableProject,
+  systemContextFor,
+} from "@growthmind/db/system";
 import type { WorkerEnv } from "@growthmind/shared";
-import { logger, parseWorkerEnv, resolveCredentialKey } from "@growthmind/shared";
+import {
+  icpReadOutputSchema,
+  icpResearchPayloadSchema,
+  logger,
+  parseWorkerEnv,
+  resolveCredentialKey,
+} from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { createDeliveryLaneSource } from "./delivery-lane-source";
 import { createGrowthContextLaneSource } from "./growth-context-lane-source";
+
 import { TASK } from "./task-names";
 import { taskLoggerFor } from "./task-logger";
 import type {
@@ -38,6 +52,7 @@ import type {
 import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tick";
 import { runGrowthContextTick } from "./tasks/growth-context-tick";
+import { runIcpResearch, type IcpResearcherPort } from "./tasks/icp-research";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
@@ -125,6 +140,23 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
     }),
     resolvedModelId,
   };
+}
+
+// Absent key, absent researcher: the task records "no model configured" rather than
+// leaving a person watching a spinner that will never resolve.
+function resolveIcpResearcher(env: WorkerEnv): IcpResearcherPort | null {
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (apiKey === undefined) {
+    return null;
+  }
+
+  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
+
+  return createIcpResearcher({
+    model: createAnthropicModel({ apiKey, resolvedModelId }),
+    resolvedModelId,
+    outputSchema: icpReadOutputSchema,
+  });
 }
 
 function resolveAnalysisLanes(): AnalysisLaneSource | null {
@@ -259,6 +291,39 @@ export const taskList: TaskList = {
       now: () => new Date(),
       logger: taskLogger,
     });
+  },
+
+  [TASK.ICP_RESEARCH]: async (payload, helpers) => {
+    const { db, env } = resolveResources();
+    const taskLogger = taskLoggerFor(logger);
+
+    const parsed = icpResearchPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      helpers.logger.error("icp research: a job arrived with a payload this task cannot read");
+      return;
+    }
+
+    const project = await findAnalysableProject(db, parsed.data.projectId);
+    if (project === null) {
+      taskLogger.error(
+        `icp research: project ${parsed.data.projectId} has no readable organization, so nothing was read`,
+      );
+      return;
+    }
+
+    await runIcpResearch(
+      {
+        growthFor: (ctx) => createGrowthContextRepo(db, ctx),
+        fetchSite: (domain) => fetchSite({ fetch: globalThis.fetch }, domain),
+        researcher: resolveIcpResearcher(env),
+        now: () => new Date(),
+        logger: taskLogger,
+      },
+      {
+        ctx: systemContextFor(SYSTEM_ACTOR.ICP_RESEARCH, project),
+        projectId: parsed.data.projectId,
+      },
+    );
   },
 
   [TASK.PROVIDER_INTEREST_TICK]: async (_payload, helpers) => {

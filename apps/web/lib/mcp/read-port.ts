@@ -97,6 +97,13 @@ export interface DeclinedIdeaRow {
   readonly declinedAt: string;
 }
 
+export interface AudienceBeliefRow {
+  readonly about: "who it is for" | "what they believe" | "what they are trying to do";
+  readonly statement: string;
+  readonly toldToUs: boolean;
+  readonly readFrom: string | null;
+}
+
 export interface GrowthContextRecord {
   readonly projectId: string;
   readonly surface: string | null;
@@ -105,6 +112,7 @@ export interface GrowthContextRecord {
   readonly whatMatters: readonly SurfaceNoteRow[];
   readonly knownProblems: readonly KnownProblemRow[];
   readonly declined: readonly DeclinedIdeaRow[];
+  readonly audience: readonly AudienceBeliefRow[];
 }
 
 export interface GetGrowthContextQuery {

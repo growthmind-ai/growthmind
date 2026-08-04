@@ -69,3 +69,8 @@ export const settingsPageRoleInputSchema = z.strictObject({
   changeable: z.boolean().optional(),
 });
 export type SettingsPageRoleInput = z.infer<typeof settingsPageRoleInputSchema>;
+
+export const settingsSiteInputSchema = z.strictObject({
+  domain: z.string().min(1).max(253),
+});
+export type SettingsSiteInput = z.infer<typeof settingsSiteInputSchema>;

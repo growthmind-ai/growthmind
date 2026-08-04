@@ -14,13 +14,14 @@ can check.
 Every network destination is one you configured, using your credential, and
 Growthmind has no path to any of them:
 
-| Destination                               | Why                                           | Optional? |
-| ----------------------------------------- | --------------------------------------------- | --------- |
-| Your Postgres (`DATABASE_URL`)            | The database. Everything lives here           | Required  |
-| Your model provider (`ANTHROPIC_API_KEY`) | Session analysis. Your key, your budget (§12) | Optional  |
-| Your Slack workspace                      | Where findings are delivered (§10)            | Optional  |
-| Your analytics, if you connect one        | Reading events you already collect (§11)      | Optional  |
-| Your repo host, read-only                 | Context for fix specs. Source is never stored | Optional  |
+| Destination                               | Why                                                          | Optional? |
+| ----------------------------------------- | ------------------------------------------------------------ | --------- |
+| Your Postgres (`DATABASE_URL`)            | The database. Everything lives here                          | Required  |
+| Your model provider (`ANTHROPIC_API_KEY`) | Session analysis. Your key, your budget (§12)                | Optional  |
+| Your Slack workspace                      | Where findings are delivered (§10)                           | Optional  |
+| Your analytics, if you connect one        | Reading events you already collect (§11)                     | Optional  |
+| Your repo host, read-only                 | Context for fix specs. Source is never stored                | Optional  |
+| Your own website, read-only               | Reading who your product is for (§1). Pages are never stored | Optional  |
 
 Leave the optional ones unset and the stack still boots and runs. That is what
 "graceful absence" means in [`AGENTS.md`](../AGENTS.md). None of these routes
@@ -38,9 +39,14 @@ grep -rnE "fetch\(|https?://|sendBeacon|new WebSocket|axios" \
   --include="*.ts" --include="*.tsx" apps packages worker
 ```
 
-Today that returns three links on the landing page that a human clicks, and one
-`http://localhost:3000` default. Nothing else. There is no analytics client, no
-error-reporting SDK, and no version check in the tree to find.
+Today that returns the destinations in the table above and nothing else: your
+Slack workspace, your analytics host, your model provider, your own website, a
+few links on the landing page that a human clicks, and one
+`http://localhost:3000` default. Every one is a host you configured or your own.
+
+There is no analytics client, no error-reporting SDK, and no version check in the
+tree to find — the thing that would actually be telemetry, and the thing this
+page exists to let you disprove.
 
 **Read the entire list of environment variables.** It is a single Zod schema —
 [`packages/shared/src/env.ts`](../packages/shared/src/env.ts), and

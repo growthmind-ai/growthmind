@@ -229,11 +229,13 @@ async function getGrowthContext(
       whatMatters: record.whatMatters,
       knownProblems: record.knownProblems,
       declined: record.declined,
+      audience: record.audience,
 
       nothingKnownYet:
         record.whatMatters.length === 0 &&
         record.knownProblems.length === 0 &&
-        record.declined.length === 0,
+        record.declined.length === 0 &&
+        record.audience.length === 0,
     }),
   );
 }

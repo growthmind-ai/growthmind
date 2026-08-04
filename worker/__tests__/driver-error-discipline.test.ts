@@ -56,6 +56,11 @@ const ALLOWED: readonly Allowed[] = [
     wraps: "poster.post",
     why: "the Slack HTTP port, not the database",
   },
+  {
+    file: "tasks/icp-research.ts",
+    wraps: "deps.fetchSite",
+    why: "someone else's web server over HTTP, not the database; the write beside it uses the driver-safe describer",
+  },
 ];
 
 function sourceFiles(dir: string): string[] {

@@ -7,11 +7,18 @@ import {
   type FindingEvidence,
   type FixStatus,
   type ForbiddenReason,
+  type IcpBeliefKind,
   type McpMeasuredCount,
   type SurfaceRole,
 } from "@growthmind/shared";
 
-import type { FindingRecord, FixRecord, GrowthContextRecord, OpenFixRow } from "./read-port";
+import type {
+  AudienceBeliefRow,
+  FindingRecord,
+  FixRecord,
+  GrowthContextRecord,
+  OpenFixRow,
+} from "./read-port";
 
 // Every timestamp below is read off a persisted row, and a jsonb column carries every shape
 // ever written into it, so the declared type of one is a claim rather than a guarantee.
@@ -151,7 +158,20 @@ export interface PersistedGrowthContext {
     readonly headline: string;
     readonly declinedAt: unknown;
   }[];
+  readonly audience: readonly {
+    readonly kind: IcpBeliefKind;
+    readonly statement: string;
+    readonly statedByAPerson: boolean;
+    readonly readFrom: string | null;
+  }[];
 }
+
+// The three questions the model is asked, said the way an agent reads them.
+const ABOUT: Record<IcpBeliefKind, AudienceBeliefRow["about"]> = {
+  who_it_is_for: "who it is for",
+  what_they_believe: "what they believe",
+  what_they_are_trying_to_do: "what they are trying to do",
+};
 
 export function toGrowthContextRecord(read: PersistedGrowthContext): GrowthContextRecord {
   return {
@@ -184,6 +204,12 @@ export function toGrowthContextRecord(read: PersistedGrowthContext): GrowthConte
     declined: read.declined.map((idea) => ({
       headline: idea.headline,
       declinedAt: toIso(idea.declinedAt),
+    })),
+    audience: read.audience.map((belief) => ({
+      about: ABOUT[belief.kind],
+      statement: belief.statement,
+      toldToUs: belief.statedByAPerson,
+      readFrom: belief.readFrom,
     })),
   };
 }
