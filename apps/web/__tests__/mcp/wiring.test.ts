@@ -46,7 +46,7 @@ const UNKNOWN_BUT_WELL_FORMED = `${API_KEY_PREFIX}${"a".repeat(43)}`;
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 const PRE_SDK_CONTENT_TYPE = "application/json;charset=utf-8";
 
-const LIVE_SURFACE = "/mcpwire/pricing";
+const LIVE_SURFACE = "/mcpwire/reports";
 
 const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
 
@@ -101,8 +101,8 @@ beforeAll(async () => {
     signature: createHmac("sha256", "mcpwire").update(LIVE_SURFACE).digest("hex"),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the pricing page without going any further.",
-    context: ["We saw sessions reach the pricing page and stop there."],
+    headline: "People are leaving the reports page without going any further.",
+    context: ["We saw sessions reach the reports page and stop there."],
     finalClass: "confusing",
     surface: LIVE_SURFACE,
     surfaceNormalisationVersion: 1,

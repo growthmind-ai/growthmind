@@ -9,6 +9,7 @@ import {
 import {
   FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
   FIX_DETAIL_MISSING_REFUSAL,
+  FIX_SURFACE_FORBIDDEN_REFUSALS,
   FIX_QUEUED_ACKNOWLEDGEMENT,
   logger,
   parseWebEnv,
@@ -94,6 +95,8 @@ function sentenceFor(result: OpenFixResult): string {
     case "no_payload":
     case "unrenderable":
       return FIX_DETAIL_MISSING_REFUSAL;
+    case "surface_forbidden":
+      return FIX_SURFACE_FORBIDDEN_REFUSALS[result.reason];
   }
 }
 

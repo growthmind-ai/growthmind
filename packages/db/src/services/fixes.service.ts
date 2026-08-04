@@ -1,10 +1,16 @@
 import {
   IMPACT_ROLE,
+  compareExpectedValue,
+  expectedValueOfCount,
+  isProposableSurface,
+  proposalScopeOf,
   rehydrateFixSpecInput,
   renderFixSpec,
   resolveCounts,
   toFindingEvidence,
+  worthOf,
   type CandidateFinding,
+  type ExpectedValue,
   type FixSpecInput,
   type MeasuredCount,
 } from "@growthmind/core";
@@ -13,6 +19,7 @@ import {
   FIX_RESULTS_WINDOW_DAYS,
   logger,
   type FindingEvidence,
+  type ForbiddenReason,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, asc, eq } from "drizzle-orm";
@@ -24,6 +31,7 @@ import {
 } from "../repositories/finding-payloads.repo";
 import { findingContextSchema } from "../repositories/findings.repo";
 import { createFixesRepo, openFixesIn, type FixRow } from "../repositories/fixes.repo";
+import { createGrowthContextRepo } from "../repositories/growth-context.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { findingPayloads } from "../schema/finding-payloads";
@@ -35,7 +43,12 @@ export type OpenFixResult =
   | { readonly outcome: "already_open"; readonly fix: FixRow }
   | { readonly outcome: "finding_not_found" }
   | { readonly outcome: "no_payload" }
-  | { readonly outcome: "unrenderable" };
+  | { readonly outcome: "unrenderable" }
+  | {
+      readonly outcome: "surface_forbidden";
+      readonly reason: ForbiddenReason;
+      readonly surface: string;
+    };
 
 export interface OpenFixReadModel {
   readonly fixId: string;
@@ -144,12 +157,25 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
   const findingRows = orgCrud(db, ctx, findings);
   const payloads = createFindingPayloadsRepo(db, ctx);
   const repo = createFixesRepo(db, ctx);
+  const growth = createGrowthContextRepo(db, ctx);
 
   return {
     async openFor(findingId: string): Promise<OpenFixResult> {
       const finding = await findingRows.maybe(eq(findings.id, findingId));
       if (!finding) {
         return { outcome: "finding_not_found" };
+      }
+
+      // Product decisions §5, before any work is minted. The finding itself still exists
+      // and still delivers — what is refused is pointing a coding agent at pricing,
+      // billing, auth, consent or terms, which is the one class of change that is never
+      // ours to propose.
+      const verdict = isProposableSurface(
+        finding.surface,
+        proposalScopeOf(await growth.findForProject(finding.projectId)),
+      );
+      if (!verdict.proposable) {
+        return { outcome: "surface_forbidden", reason: verdict.reason, surface: finding.surface };
       }
 
       const payload = await payloads.findForFinding(findingId);
@@ -263,23 +289,39 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
         .where(where)
         .orderBy(asc(fixes.resultsBy), asc(fixes.openedAt));
 
-      const readable: OpenFixReadModel[] = [];
+      // The SQL order is the tiebreak, not the ranking. `list_open_fixes` tells an agent
+      // it returns the most urgent first, and a deadline is not urgency — §6 ranks by
+      // expected value, so the weighting is applied here where the impact count is
+      // already resolved.
+      const contexts = await growth.findForProjects(joined.map((row) => row.fix.projectId));
+
+      const ranked: { readonly row: OpenFixReadModel; readonly value: ExpectedValue }[] = [];
       for (const row of joined) {
         const spec = specOf(row.payload);
         const impact = spec ? impactOf(spec.candidate) : null;
-        if (!impact) {
+        if (!impact || !spec) {
           continue;
         }
 
-        readable.push({
-          fixId: row.fix.id,
-          findingId: row.fix.findingId,
-          summary: row.headline,
-          impact,
-          openedAt: row.fix.openedAt,
-          resultsBy: row.fix.resultsBy,
+        ranked.push({
+          row: {
+            fixId: row.fix.id,
+            findingId: row.fix.findingId,
+            summary: row.headline,
+            impact,
+            openedAt: row.fix.openedAt,
+            resultsBy: row.fix.resultsBy,
+          },
+          value: expectedValueOfCount(
+            impact,
+            worthOf(contexts.get(row.fix.projectId) ?? null, spec.candidate.surface),
+          ),
         });
       }
+
+      const readable = ranked
+        .toSorted((a, b) => compareExpectedValue(a.value, b.value))
+        .map((entry) => entry.row);
 
       return { rows: readable.slice(0, input.limit), totalOpen: readable.length };
     },

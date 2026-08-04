@@ -231,3 +231,49 @@ export {
   type FixSpecPayload,
 } from "./fixes/rehydrate";
 export { toFindingEvidence } from "./fixes/finding-evidence";
+
+export {
+  SURFACE_ROLES,
+  WORTH_BASES,
+  WORTH_WEIGHT_VERSION,
+  UNWEIGHTED,
+  surfaceWorth,
+  unknownWorth,
+  isSurfaceWorth,
+  weightOfRole,
+  surfaceRoleSchema,
+  worthBasisSchema,
+  surfaceWorthSchema,
+  surfaceWorthInputSchema,
+  type SurfaceRole,
+  type WorthBasis,
+  type SurfaceWorth,
+  type SurfaceWorthInput,
+} from "./growth/surface-worth";
+
+export {
+  expectedValueOf,
+  expectedValueOfCount,
+  compareExpectedValue,
+  type ExpectedValue,
+} from "./growth/expected-value";
+
+export {
+  EMPTY_PROPOSAL_SCOPE,
+  isProposableSurface,
+  type ProposalVerdict,
+  type ProposalScope,
+} from "./growth/proposable";
+
+export {
+  ROLED_SURFACE_LIMIT,
+  EMPTY_GROWTH_CONTEXT,
+  growthContext,
+  growthContextSchema,
+  roledSurfaceSchema,
+  worthOf,
+  proposalScopeOf,
+  type GrowthContext,
+  type GrowthContextInput,
+  type RoledSurface,
+} from "./growth/context";

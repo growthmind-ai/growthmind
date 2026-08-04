@@ -125,7 +125,7 @@ async function seedFinding(org: SeededOrg, surface: string): Promise<FindingReco
     signature: digestFor(`${org.label}${surface}`),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the pricing page without going any further.",
+    headline: "People are leaving the reports page without going any further.",
     context: [CONTEXT_MARKER],
     finalClass: "confusing",
     surface,
@@ -204,7 +204,7 @@ afterAll(async () => {
 describe("the MCP route reading real rows", () => {
   test("returns a real fix through the MCP route entry point, not the read port", async () => {
     const org = await freshOrg();
-    const seeded = await seedFindingWithPayload(org, "/live/pricing");
+    const seeded = await seedFindingWithPayload(org, "/live/reports");
     const fixId = await mintFix(org, seeded.finding.id);
 
     const answer = await callTool(org.key, MCP_TOOL.LIST_OPEN_FIXES);
@@ -270,7 +270,7 @@ describe("the MCP route reading real rows", () => {
 
   test("renders fix-spec sentences from a stored spec input", async () => {
     const org = await freshOrg();
-    const seeded = await seedFindingWithPayload(org, "/live/checkout");
+    const seeded = await seedFindingWithPayload(org, "/live/exports");
     const fixId = await mintFix(org, seeded.finding.id);
 
     const answer = await callTool(org.key, MCP_TOOL.GET_FIX, { fixId });

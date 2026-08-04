@@ -11,6 +11,8 @@ import {
   isDeliverable,
 } from "../../src/delivery/schedule";
 import type { DeliveryCandidate, DeliveryLaneState } from "../../src/delivery/schedule";
+import { surfaceWorth, unknownWorth } from "../../src/growth/surface-worth";
+import type { SurfaceRole } from "../../src/growth/surface-worth";
 
 const NOW = new Date("2026-07-30T09:00:00.000Z");
 
@@ -19,6 +21,7 @@ function candidate(overrides: Partial<DeliveryCandidate> = {}): DeliveryCandidat
     findingId: "f-mid",
     confidenceBasis: "threshold_met",
     sampleSize: { numerator: 5, denominator: 50 },
+    worth: unknownWorth("/checkout"),
     ...overrides,
   };
 }
@@ -454,5 +457,151 @@ describe("deliveryClaimsExpireBefore", () => {
     deliveryClaimsExpireBefore(at);
 
     expect(at.getTime()).toBe(AT.getTime());
+  });
+});
+
+function weighted(role: SurfaceRole, surface: string) {
+  return surfaceWorth({ surface, role, basis: "stated_by_customer", confirmedAt: null });
+}
+
+describe("compareDeliveryCandidates, ranking by expected value", () => {
+  test("should prefer the surface that is worth more when the counts are equal", () => {
+    const decision = decideDelivery(
+      lane({
+        candidates: [
+          candidate({ findingId: "f-settings", worth: unknownWorth("/settings") }),
+          candidate({ findingId: "f-checkout", worth: weighted("makes_money", "/checkout") }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(decision).toMatchObject({ finding: { findingId: "f-checkout" } });
+  });
+
+  test("should prefer a smaller count on a surface that is worth more", () => {
+    // §6: rage clicks on a settings page nobody monetises are not the top item.
+    const decision = decideDelivery(
+      lane({
+        candidates: [
+          candidate({
+            findingId: "f-many-on-settings",
+            sampleSize: { numerator: 40, denominator: 400 },
+            worth: unknownWorth("/settings"),
+          }),
+          candidate({
+            findingId: "f-few-on-checkout",
+            sampleSize: { numerator: 9, denominator: 90 },
+            worth: weighted("makes_money", "/checkout"),
+          }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(decision).toMatchObject({ finding: { findingId: "f-few-on-checkout" } });
+  });
+
+  test("should never let worth outrank stronger evidence", () => {
+    // Expected value sits behind confidence, never in front of it: §6 also refuses a call
+    // the evidence cannot support.
+    const decision = decideDelivery(
+      lane({
+        candidates: [
+          candidate({
+            findingId: "f-checkout-weak",
+            confidenceBasis: "at_threshold",
+            sampleSize: { numerator: 100, denominator: 1_000 },
+            worth: weighted("makes_money", "/checkout"),
+          }),
+          candidate({
+            findingId: "f-settings-proven",
+            confidenceBasis: "threshold_met",
+            sampleSize: { numerator: 2, denominator: 20 },
+            worth: unknownWorth("/settings"),
+          }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(decision).toMatchObject({ finding: { findingId: "f-settings-proven" } });
+  });
+
+  test("should rank on sessions affected when no surface has been roled", () => {
+    // The absence path every organisation is on until a growth context exists. Ranking is
+    // by who was hurt, not by which surface was busiest.
+    const decision = decideDelivery(
+      lane({
+        candidates: [
+          candidate({
+            findingId: "f-busy-surface",
+            sampleSize: { numerator: 10, denominator: 5_000 },
+            worth: unknownWorth("/a"),
+          }),
+          candidate({
+            findingId: "f-more-affected",
+            sampleSize: { numerator: 60, denominator: 200 },
+            worth: unknownWorth("/b"),
+          }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(decision).toMatchObject({ finding: { findingId: "f-more-affected" } });
+  });
+
+  test("should fall through to the denominator when expected values are equal", () => {
+    const bigger = candidate({
+      findingId: "f-bigger-sample",
+      sampleSize: { numerator: 10, denominator: 500 },
+      worth: unknownWorth("/a"),
+    });
+    const smaller = candidate({
+      findingId: "f-smaller-sample",
+      sampleSize: { numerator: 10, denominator: 100 },
+      worth: unknownWorth("/b"),
+    });
+
+    expect(compareDeliveryCandidates(bigger, smaller)).toBeLessThan(0);
+    expect(compareDeliveryCandidates(smaller, bigger)).toBeGreaterThan(0);
+  });
+
+  test("should stay total: two identical candidates order by finding id", () => {
+    const a = candidate({ findingId: "f-a", worth: unknownWorth("/x") });
+    const b = candidate({ findingId: "f-b", worth: unknownWorth("/x") });
+
+    expect(compareDeliveryCandidates(a, b)).toBeLessThan(0);
+    expect(compareDeliveryCandidates(a, a)).toBe(0);
+  });
+
+  test("should choose the same candidate for every permutation once worth is in play", () => {
+    const candidates = [
+      candidate({
+        findingId: "f-checkout",
+        sampleSize: { numerator: 9, denominator: 90 },
+        worth: weighted("makes_money", "/checkout"),
+      }),
+      candidate({
+        findingId: "f-welcome",
+        sampleSize: { numerator: 11, denominator: 110 },
+        worth: weighted("first_value", "/welcome"),
+      }),
+      candidate({
+        findingId: "f-settings",
+        sampleSize: { numerator: 40, denominator: 400 },
+        worth: unknownWorth("/settings"),
+      }),
+    ];
+
+    const chosen = new Set(
+      permutations(candidates).map((ordering) => {
+        const decision = decideDelivery(lane({ candidates: ordering }), NOW);
+        return decision.decision === "deliver" ? decision.finding.findingId : decision.reason;
+      }),
+    );
+
+    expect([...chosen]).toEqual(["f-checkout"]);
   });
 });
