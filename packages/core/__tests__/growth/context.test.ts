@@ -1,3 +1,4 @@
+import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -14,6 +15,7 @@ const CHECKOUT = {
   role: "makes_money",
   basis: "stated_by_customer",
   confirmedAt: new Date("2026-08-01T10:00:00.000Z"),
+  normalisationVersion: URL_PATH_NORMALISATION_VERSION,
 } as const;
 
 function contextWith(...surfaces: readonly (typeof CHECKOUT)[]) {

@@ -1,4 +1,9 @@
-import { isNormalisedUrlPath, surfaceRoleSchema, worthBasisSchema } from "@growthmind/shared";
+import {
+  URL_PATH_NORMALISATION_VERSION,
+  isNormalisedUrlPath,
+  surfaceRoleSchema,
+  worthBasisSchema,
+} from "@growthmind/shared";
 import { z } from "zod";
 
 import { EMPTY_PROPOSAL_SCOPE, type ProposalScope } from "./proposable";
@@ -18,6 +23,10 @@ export const roledSurfaceSchema = z.object({
   role: surfaceRoleSchema,
   basis: worthBasisSchema,
   confirmedAt: z.coerce.date().nullable(),
+
+  // Roles are matched to a finding's surface by string, so a normaliser change re-spells
+  // every stored one and none of them match again.
+  normalisationVersion: z.number().int().positive(),
 });
 
 export type RoledSurface = z.infer<typeof roledSurfaceSchema>;
@@ -55,6 +64,11 @@ export const EMPTY_GROWTH_CONTEXT: GrowthContext = {
 export function worthOf(context: GrowthContext | null, surface: string): SurfaceWorth {
   const roled = context?.bySurface.get(surface);
   if (roled === undefined) {
+    return unknownWorth(surface);
+  }
+
+  // Weighing an older spelling would rank on a coincidence of string equality.
+  if (roled.normalisationVersion !== URL_PATH_NORMALISATION_VERSION) {
     return unknownWorth(surface);
   }
 

@@ -1,4 +1,4 @@
-import { summarySourceSchema } from "@growthmind/shared";
+import { URL_PATH_NORMALISATION_VERSION, summarySourceSchema } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
@@ -142,12 +142,14 @@ describe("growth context service", () => {
           role: "first_value",
           basis: "stated_by_customer",
           confirmedAt: CONFIRMED,
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
         },
         {
           surface: "/reports",
           role: "keeps_people",
           basis: "derived_from_product",
           confirmedAt: null,
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
         },
       ],
       confirmedChangeable: [],
@@ -177,6 +179,7 @@ describe("growth context service", () => {
           role: "keeps_people",
           basis: "derived_from_product",
           confirmedAt: null,
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
         },
       ],
       confirmedChangeable: [],
@@ -269,6 +272,7 @@ describe("growth context service", () => {
           role: "first_value",
           basis: "stated_by_customer",
           confirmedAt: CONFIRMED,
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
         },
       ],
       confirmedChangeable: [],

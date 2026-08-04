@@ -8,6 +8,7 @@ import {
   FIX_RESULTS_WINDOW_DAYS,
   summarySourceSchema,
   type TenantContext,
+  URL_PATH_NORMALISATION_VERSION,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "drizzle-orm";
@@ -625,6 +626,7 @@ describe("fixes service — listOpen ranks by expected value", () => {
           role: "first_value",
           basis: "stated_by_customer",
           confirmedAt: new Date("2026-08-01T10:00:00.000Z"),
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
         },
       ],
       confirmedChangeable: [],

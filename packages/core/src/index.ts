@@ -271,3 +271,15 @@ export {
   type GrowthContextInput,
   type RoledSurface,
 } from "./growth/context";
+
+export {
+  DERIVE_MIN_SESSIONS,
+  DERIVE_MIN_SHARE,
+  MONEY_SEGMENTS,
+  proposeRole,
+  deriveRoledSurfaces,
+  surfaceObservationSchema,
+  type SurfaceObservation,
+  type RoleProposal,
+  type DeriveInput,
+} from "./growth/derive";

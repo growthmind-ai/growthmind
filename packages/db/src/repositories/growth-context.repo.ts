@@ -4,7 +4,7 @@ import {
   type GrowthContext,
 } from "@growthmind/core";
 import { logger, type TenantContext } from "@growthmind/shared";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { growthContext } from "../schema/growth-context";
 import { orgCrud } from "./crud";
@@ -19,6 +19,12 @@ export interface SaveGrowthContextInput {
   readonly confirmedChangeable: unknown;
 }
 
+export interface GrowthContextSnapshot {
+  readonly context: GrowthContext;
+
+  readonly updatedAt: Date;
+}
+
 export interface GrowthContextRepo {
   // Null is "nothing is known about this project's surfaces", which every caller answers
   // by weighing every surface the same. It is never an error.
@@ -29,7 +35,15 @@ export interface GrowthContextRepo {
   // `findForProject` gives.
   findForProjects(projectIds: readonly string[]): Promise<ReadonlyMap<string, GrowthContext>>;
 
+  // Carries the stamp a later write can check itself against.
+  snapshotForProject(projectId: string): Promise<GrowthContextSnapshot | null>;
+
   save(input: SaveGrowthContextInput): Promise<GrowthContextRow>;
+
+  // The write for anything that derived its answer from a row it read earlier. `false` means
+  // the row moved underneath it and nothing was written — a person confirming a role between
+  // the read and the write must not have that confirmation derived away.
+  saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean>;
 }
 
 const notOurProject = (): Error =>
@@ -97,6 +111,53 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       }
 
       return byProject;
+    },
+
+    async snapshotForProject(projectId: string): Promise<GrowthContextSnapshot | null> {
+      const rows = await db
+        .select()
+        .from(growthContext)
+        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
+        .limit(1);
+
+      const row = s.maybe(rows);
+      if (row === null) return null;
+
+      const context = readBack(row);
+
+      return context === null ? null : { context, updatedAt: row.updatedAt };
+    },
+
+    async saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean> {
+      const parsed = growthContextSchema.parse({
+        surfaces: input.surfaces,
+        confirmedChangeable: input.confirmedChangeable,
+      });
+
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      const claimed = await c.claim(
+        {
+          projectId: input.projectId,
+          surfaces: parsed.surfaces,
+          confirmedChangeable: parsed.confirmedChangeable,
+        },
+        {
+          target: [growthContext.organizationId, growthContext.projectId],
+          set: {
+            surfaces: parsed.surfaces,
+            confirmedChangeable: parsed.confirmedChangeable,
+            updatedAt: new Date(),
+          },
+          // `since === null` means the caller read no row at all, so a row existing now is
+          // one that appeared underneath it. `false` refuses the update rather than
+          // overwriting whatever arrived.
+          setWhere: since === null ? sql`false` : eq(growthContext.updatedAt, since),
+          fetch: [eq(growthContext.projectId, input.projectId)],
+        },
+      );
+
+      return claimed.claimed;
     },
 
     async save(input: SaveGrowthContextInput): Promise<GrowthContextRow> {

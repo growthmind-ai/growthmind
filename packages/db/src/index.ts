@@ -253,6 +253,7 @@ export {
   createGrowthContextRepo,
   type GrowthContextRepo,
   type GrowthContextRow,
+  type GrowthContextSnapshot,
   type SaveGrowthContextInput,
 } from "./repositories/growth-context.repo";
 export {
@@ -265,3 +266,9 @@ export {
   type KnownProblemRow,
   type DeclinedIdeaRow,
 } from "./services/growth-context.service";
+export {
+  createSurfaceObservationsService,
+  OBSERVED_SURFACE_LIMIT,
+  type SurfaceObservationsService,
+  type ObserveSurfacesInput,
+} from "./services/surface-observations.service";

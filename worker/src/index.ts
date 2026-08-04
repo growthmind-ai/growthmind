@@ -14,8 +14,10 @@ import {
   createDeliveriesRepo,
   createFindingPayloadsRepo,
   createFindingsRepo,
+  createGrowthContextRepo,
   createSignatureLedgerService,
   createSlackConnectionsRepo,
+  createSurfaceObservationsService,
 } from "@growthmind/db";
 import { existsAnyActiveSlackConnection } from "@growthmind/db/system";
 import type { WorkerEnv } from "@growthmind/shared";
@@ -24,6 +26,7 @@ import { logger, parseWorkerEnv, resolveCredentialKey } from "@growthmind/shared
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { createDeliveryLaneSource } from "./delivery-lane-source";
+import { createGrowthContextLaneSource } from "./growth-context-lane-source";
 import { TASK } from "./task-names";
 import { taskLoggerFor } from "./task-logger";
 import type {
@@ -34,6 +37,7 @@ import type {
 } from "./tasks/analysis-tick";
 import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tick";
+import { runGrowthContextTick } from "./tasks/growth-context-tick";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
@@ -244,6 +248,19 @@ export const taskList: TaskList = {
     await runOnboardingAnalysis(analysisDepsFor(composed, helpers.logger), payload);
   },
 
+  [TASK.GROWTH_CONTEXT_TICK]: async () => {
+    const { db } = resolveResources();
+    const taskLogger = taskLoggerFor(logger);
+
+    await runGrowthContextTick({
+      lanes: createGrowthContextLaneSource({ db, logger: taskLogger }),
+      observationsFor: (ctx) => createSurfaceObservationsService(db, ctx),
+      growthFor: (ctx) => createGrowthContextRepo(db, ctx),
+      now: () => new Date(),
+      logger: taskLogger,
+    });
+  },
+
   [TASK.PROVIDER_INTEREST_TICK]: async (_payload, helpers) => {
     const { db, env } = resolveResources();
 
@@ -263,4 +280,5 @@ export const crontab = [
   `*/15 * * * * ${TASK.DELIVERY_TICK}`,
   `0 * * * * ${TASK.ANALYSIS_TICK}`,
   `* * * * * ${TASK.PROVIDER_INTEREST_TICK}`,
+  `30 3 * * * ${TASK.GROWTH_CONTEXT_TICK}`,
 ].join("\n");
