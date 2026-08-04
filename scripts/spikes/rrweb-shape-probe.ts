@@ -89,7 +89,12 @@ async function politeRequest(state: RunState, url: string, authKey: string): Pro
     });
   } catch (error) {
     await sleep(POLITE_INTERVAL_MS);
-    return { status: 0, headers: {}, body: null, raw: error instanceof Error ? error.message : String(error) };
+    return {
+      status: 0,
+      headers: {},
+      body: null,
+      raw: error instanceof Error ? error.message : String(error),
+    };
   }
 
   const raw = await response.text();
@@ -101,7 +106,12 @@ async function politeRequest(state: RunState, url: string, authKey: string): Pro
   }
 
   await sleep(POLITE_INTERVAL_MS);
-  return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body, raw };
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body,
+    raw,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -162,7 +172,9 @@ async function probeBasePath(state: RunState): Promise<BasePathResult | undefine
     return { basePath: hit.basePath, listResponse: hit.result };
   }
 
-  const summary = attempts.map((attempt) => `${attempt.basePath}=${attempt.result.status}`).join(", ");
+  const summary = attempts
+    .map((attempt) => `${attempt.basePath}=${attempt.result.status}`)
+    .join(", ");
   pin(
     "ROW 1 Base path",
     "FAILED-TO-PIN",
@@ -191,7 +203,9 @@ async function probeRecordingsEnvelope(
       ? undefined
       : RECORDING_ID_KEYS.find((key) => stringValue(firstRecord, key) !== undefined);
   const timestampKeys =
-    firstRecord === undefined ? [] : Object.keys(firstRecord).filter((key) => TIMESTAMP_KEY_PATTERN.test(key));
+    firstRecord === undefined
+      ? []
+      : Object.keys(firstRecord).filter((key) => TIMESTAMP_KEY_PATTERN.test(key));
 
   log(state, `  envelope shape: ${shape}`);
   log(state, `  item count: ${items.length}`);
@@ -201,9 +215,8 @@ async function probeRecordingsEnvelope(
   log(state, `  id key: ${idKey ?? "(none of id|recordingId|recording_id matched)"}`);
   log(state, `  timestamp-ish keys observed on the first item: ${JSON.stringify(timestampKeys)}`);
 
-  const sampleRecordingId = idKey === undefined || firstRecord === undefined
-    ? undefined
-    : stringValue(firstRecord, idKey);
+  const sampleRecordingId =
+    idKey === undefined || firstRecord === undefined ? undefined : stringValue(firstRecord, idKey);
 
   if (idKey !== undefined && sampleRecordingId !== undefined) {
     pin(
@@ -268,7 +281,9 @@ async function probeCursor(state: RunState, listResponse: HttpResult): Promise<v
     "ROW 3 Cursor",
     followed.status === 200 ? "PINNED" : "FAILED-TO-PIN",
     `cursor key \`${key}\` is an ABSOLUTE URL; following it returned ${followed.status}` +
-      (followed.status === 200 ? " — the walk works end to end" : " — shape known, walk unconfirmed"),
+      (followed.status === 200
+        ? " — the walk works end to end"
+        : " — shape known, walk unconfirmed"),
   );
 }
 
@@ -293,14 +308,21 @@ async function probeEventsEnvelope(
   log(state, `  GET .../{recordingId}/events -> status ${result.status}`);
   if (result.status !== 200) {
     log(state, `    body: ${redact(result.raw, state.key).slice(0, 300)}`);
-    pin("ROW 4 Events envelope", "FAILED-TO-PIN", `events endpoint returned ${result.status}, not 200`);
+    pin(
+      "ROW 4 Events envelope",
+      "FAILED-TO-PIN",
+      `events endpoint returned ${result.status}, not 200`,
+    );
     return;
   }
 
   const { shape, items } = envelopeOf(result.body, EVENT_ENVELOPE_KEYS);
   const first = items[0];
   const bareRrweb =
-    isRecord(first) && typeof first.type === "number" && typeof first.timestamp === "number" && "data" in first;
+    isRecord(first) &&
+    typeof first.type === "number" &&
+    typeof first.timestamp === "number" &&
+    "data" in first;
 
   log(state, `  envelope shape: ${shape}`);
   log(state, `  item count: ${items.length}`);
@@ -368,7 +390,9 @@ function buildNotesMarkdown(state: RunState): string {
     "",
     "| Row | Status | Finding |",
     "| --- | --- | --- |",
-    ...pins.map((entry) => `| ${entry.row} | ${entry.status} | ${entry.note.replaceAll("|", "\\|")} |`),
+    ...pins.map(
+      (entry) => `| ${entry.row} | ${entry.status} | ${entry.note.replaceAll("|", "\\|")} |`,
+    ),
     "",
   ];
   return lines.join("\n");
@@ -397,7 +421,9 @@ async function main(): Promise<number> {
 
   const base = await probeBasePath(state);
   const recordingsEnvelope =
-    base === undefined ? { items: [] as readonly unknown[] } : await probeRecordingsEnvelope(state, base.listResponse);
+    base === undefined
+      ? { items: [] as readonly unknown[] }
+      : await probeRecordingsEnvelope(state, base.listResponse);
 
   if (base !== undefined) {
     await probeCursor(state, base.listResponse);
