@@ -186,6 +186,7 @@ export {
 export {
   describeHold,
   findingContextSchema,
+  joinScanned,
   readFindingText,
   type FindingText,
   type FindingTextRow,

@@ -2,6 +2,7 @@ import { reviewFindingText, type FindingText } from "@growthmind/core";
 import type { ResidualPiiKind } from "@growthmind/shared";
 import { z } from "zod";
 
+export { joinScanned } from "@growthmind/core";
 export type { FindingText, ScannedText } from "@growthmind/core";
 
 export type HeldFindingText = Extract<FindingText, { held: true }>;

@@ -4,6 +4,7 @@ import type {
   AnalysisRunsRepo,
   FindingPayloadsRepo,
   FindingsRepo,
+  ScannedText,
   SignatureLedgerService,
 } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
@@ -94,9 +95,9 @@ export type CandidateIdentity = {
 
 export type RenderedSummary = {
   readonly summarySource: SummarySource;
-  readonly headline: string;
+  readonly headline: ScannedText;
 
-  readonly context: readonly string[];
+  readonly context: readonly ScannedText[];
   readonly attribution: CallAttribution;
 };
 

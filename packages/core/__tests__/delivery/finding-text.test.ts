@@ -3,7 +3,7 @@ import { RESIDUAL_PII_KINDS } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import type { FindingText, FindingTextInput } from "../../src/delivery/finding-text";
-import { reviewFindingText } from "../../src/delivery/finding-text";
+import { joinScanned, reviewFindingText } from "../../src/delivery/finding-text";
 
 type CleanVerdict = Extract<FindingText, { held: false }>;
 type HeldVerdict = Extract<FindingText, { held: true }>;
@@ -142,5 +142,46 @@ describe("reviewFindingText", () => {
     }
 
     expect(leaked).toEqual([]);
+  });
+});
+
+describe("joinScanned", () => {
+  test("scanned parts join to the same string Array.join produces", () => {
+    const verdict = cleanVerdict(
+      reviewFindingText({ headline: CLEAN_HEADLINE, context: CLEAN_CONTEXT }),
+    );
+
+    const joined: string = joinScanned(verdict.context, " ");
+
+    expect(joined).toBe(CLEAN_CONTEXT.join(" "));
+  });
+
+  test("no parts join to an empty string rather than throwing", () => {
+    const joined: string = joinScanned([], " ");
+
+    expect(joined).toBe("");
+  });
+
+  test("a single part joins to itself, with the separator left out", () => {
+    const verdict = cleanVerdict(
+      reviewFindingText({ headline: CLEAN_HEADLINE, context: [CLEAN_CONTEXT[0]] }),
+    );
+
+    const joined: string = joinScanned(verdict.context, " | ");
+
+    expect(joined).toBe(CLEAN_CONTEXT[0]);
+  });
+
+  test("the joined result is itself scannable text a reviewer still finds clean", () => {
+    const verdict = cleanVerdict(
+      reviewFindingText({ headline: CLEAN_HEADLINE, context: CLEAN_CONTEXT }),
+    );
+
+    const rescanned = reviewFindingText({
+      headline: verdict.headline,
+      context: [joinScanned(verdict.context, " ")],
+    });
+
+    expect(rescanned.held).toBe(false);
   });
 });

@@ -20,6 +20,12 @@ export type FindingText =
   | { readonly held: true; readonly why: "residual_pii"; readonly kind: ResidualPiiKind }
   | { readonly held: true; readonly why: "unreadable" };
 
+// Concatenating scanned parts cannot introduce anything the scan refused, but `join`
+// returns a bare `string` — so the restore lives here, beside the only other assertion.
+export function joinScanned(parts: readonly ScannedText[], separator: string): ScannedText {
+  return parts.join(separator) as ScannedText;
+}
+
 export function reviewFindingText(input: FindingTextInput): FindingText {
   let scan: ResidualPiiScan;
 

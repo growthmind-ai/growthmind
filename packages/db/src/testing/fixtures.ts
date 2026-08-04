@@ -267,6 +267,7 @@ export interface SeedUnscannedFindingParams {
   readonly surface?: string;
   readonly finalClass?: string;
   readonly counts?: readonly MeasuredCountRow[];
+  readonly confidenceBasis?: string;
   readonly windowStart?: Date;
   readonly windowEnd?: Date;
   readonly evidenceShape?: string;
@@ -305,7 +306,7 @@ export async function seedUnscannedFinding(
       surface,
       surfaceNormalisationVersion: 1,
       counts: params.counts ?? [],
-      confidenceBasis: "28 kept sessions in a seven-day window",
+      confidenceBasis: params.confidenceBasis ?? "28 kept sessions in a seven-day window",
       windowStart: params.windowStart ?? UNSCANNED_WINDOW_START,
       windowEnd: params.windowEnd ?? UNSCANNED_WINDOW_END,
       evidenceShape: params.evidenceShape ?? `funnel_dropoff:surface=${surface}`,

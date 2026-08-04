@@ -55,6 +55,38 @@ function isShapeFailure(error: unknown): boolean {
   );
 }
 
+interface ShapeIssue {
+  readonly path: string;
+  readonly code: string;
+}
+
+function shapeIssuesOf(error: unknown): readonly ShapeIssue[] {
+  const raw = (error as { readonly issues?: unknown }).issues;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.map((issue: unknown) => {
+    const { path, code } = issue as { readonly path?: unknown; readonly code?: unknown };
+    return {
+      path: Array.isArray(path) ? path.map((segment: unknown) => String(segment)).join(".") : "",
+      code: typeof code === "string" ? code : "unrecognised",
+    };
+  });
+}
+
+// Path and code only. `describeDriverError` falls through to `error.message`, and a
+// `ZodError`'s message is its whole serialised issue array — `unrecognized_keys` carries
+// the offending keys in it verbatim, and a refinement's message can carry anything.
+function describeReadFailure(error: unknown): {
+  readonly reason: string;
+  readonly issues?: readonly ShapeIssue[];
+} {
+  return isShapeFailure(error)
+    ? { reason: "shape", issues: shapeIssuesOf(error) }
+    : { reason: describeDriverError(error) };
+}
+
 async function readNewestFinding(
   db: ScopedDb,
   ctx: TenantContext,
@@ -65,12 +97,12 @@ async function readNewestFinding(
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
   } catch (error) {
-    // `describeDriverError`, never the caught value: a failed query message IS the
-    // statement and its bound parameters.
+    // Never the caught value: a failed query message IS the statement and its bound
+    // parameters, and a DTO refusal arrives here as a `ZodError` rather than a driver one.
     logger.error("first-run status: could not read the newest finding for the project", {
       organizationId: ctx.organizationId,
       projectId,
-      reason: describeDriverError(error),
+      ...describeReadFailure(error),
     });
 
     // A driver failure is not a fault the screen may claim, and going terminal on one
@@ -118,17 +150,11 @@ async function readNewestFinding(
   });
 
   if (!parsed.success) {
-    // Path and code only. A Zod issue carries `received`, which on a refused column is the
-    // offending value itself.
     logger.error("first-run status: the newest finding did not satisfy the rendered shape", {
       organizationId: ctx.organizationId,
       projectId,
       findingId: record.id,
-      reason: "shape",
-      issues: parsed.error.issues.map((issue) => ({
-        path: issue.path.map((segment) => String(segment)).join("."),
-        code: issue.code,
-      })),
+      ...describeReadFailure(parsed.error),
     });
 
     // No id, so `finding === null` implies `findingId === null` (B-038).

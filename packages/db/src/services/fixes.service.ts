@@ -31,6 +31,7 @@ import {
 } from "../repositories/finding-payloads.repo";
 import {
   describeHold,
+  joinScanned,
   readFindingText,
   type HeldFindingText,
   type ScannedText,
@@ -75,10 +76,7 @@ export interface FindingReadModel {
   readonly findingId: string;
   readonly fixId: string | null;
   readonly headline: ScannedText;
-
-  // Joined from `ScannedText` parts, so it is scanned by construction; the join itself
-  // erases the brand and only the mint may restore one.
-  readonly detail: string;
+  readonly detail: ScannedText;
   readonly surface: string;
   readonly affected: MeasuredCount;
   readonly firstSeenAt: Date;
@@ -275,13 +273,13 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       }
 
       const fix = await repo.findForFinding(findingId);
-      const detail = text.context.join(" ").trim();
+      const detail = joinScanned(text.context, " ");
 
       return {
         findingId: finding.id,
         fixId: fix?.id ?? null,
         headline: text.headline,
-        detail: detail === "" ? text.headline : detail,
+        detail: detail.trim() === "" ? text.headline : detail,
         surface: finding.surface,
         affected,
         firstSeenAt: finding.windowStart,

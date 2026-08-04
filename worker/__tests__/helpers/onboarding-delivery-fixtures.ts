@@ -1,10 +1,12 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
+import { reviewFindingText } from "@growthmind/core";
 import { schema } from "@growthmind/db";
 import type { PersistFindingInput } from "@growthmind/db";
 import { createAnalysisRunsRepo, createFindingsRepo } from "@growthmind/db";
 import type { TestDb } from "@growthmind/db/testing";
+import { seedUnscannedFinding } from "@growthmind/db/testing";
 import {
   credentialAad,
   encryptSecret,
@@ -158,32 +160,61 @@ export async function seedFinding(
   const signature =
     params.signature ?? randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64);
   const surface = params.surface ?? "/checkout/payment";
+  const headline = params.headline ?? "The payment step is losing sessions";
+  const context = params.context ?? ["Sessions reached the payment step and left without finishing."];
 
-  const input: PersistFindingInput = {
-    projectId: params.projectId,
-    runId: opened.run.id,
-    signature,
-    signatureVersion: 1,
+  const counts = seededCounts(params.at);
+  const confidenceBasis = "threshold_met";
+  const windowStart = new Date(params.at.getTime() - 7 * 24 * 60 * 60 * 1_000);
+  const evidenceShape = `{"detector":"funnel_dropoff","surface":"${surface}","v":1}`;
 
-    summarySource: "model_rendered",
-    headline: params.headline ?? "The payment step is losing sessions",
-    context: params.context ?? ["Sessions reached the payment step and left without finishing."],
-    finalClass: "confusing",
-    surface,
-    surfaceNormalisationVersion: 1,
-    counts: seededCounts(params.at),
-    confidenceBasis: "threshold_met",
-    windowStart: new Date(params.at.getTime() - 7 * 24 * 60 * 60 * 1_000),
-    windowEnd: params.at,
-    evidenceShape: `{"detector":"funnel_dropoff","surface":"${surface}","v":1}`,
-    evidenceShapeVersion: 1,
+  // A dirty fixture cannot go through `persist` — its input type refuses one. It takes the
+  // seeder that writes the pre-sprint shape, and differs in nothing else.
+  const verdict = reviewFindingText({ headline, context });
 
-    resolvedModelId: "fixture-model-v1",
-    tokensIn: null,
-    tokensOut: null,
-  };
+  const findingId = verdict.held
+    ? (
+        await seedUnscannedFinding(db, {
+          ctx,
+          projectId: params.projectId,
+          runId: opened.run.id,
+          headline,
+          context,
+          signature,
+          surface,
+          finalClass: "confusing",
+          counts,
+          confidenceBasis,
+          windowStart,
+          windowEnd: params.at,
+          evidenceShape,
+        })
+      ).id
+    : (
+        await findings.persist({
+          projectId: params.projectId,
+          runId: opened.run.id,
+          signature,
+          signatureVersion: 1,
 
-  const row = await findings.persist(input);
+          summarySource: "model_rendered",
+          headline: verdict.headline,
+          context: verdict.context,
+          finalClass: "confusing",
+          surface,
+          surfaceNormalisationVersion: 1,
+          counts,
+          confidenceBasis,
+          windowStart,
+          windowEnd: params.at,
+          evidenceShape,
+          evidenceShapeVersion: 1,
+
+          resolvedModelId: "fixture-model-v1",
+          tokensIn: null,
+          tokensOut: null,
+        } satisfies PersistFindingInput)
+      ).id;
 
   await runs.close({
     runId: opened.run.id,
@@ -200,7 +231,7 @@ export async function seedFinding(
     tokensOut: null,
   } as never);
 
-  return { findingId: row.id, signature };
+  return { findingId, signature };
 }
 
 export interface RecordingPoster extends DeliveryPoster {

@@ -23,6 +23,7 @@ import {
   createGrowthContextRepo,
   createProjectsRepo,
   describeDriverError,
+  describeHold,
   isDeliveryTarget,
   isSignatureHex,
   signatureHex,
@@ -71,7 +72,12 @@ function contextFor(organization: SlackDeliveryOrganization): TenantContext {
   return systemContextFor(SYSTEM_ACTOR.DELIVERY_TICK, organization);
 }
 
-function messageInputFor(finding: FindingRecord): DeliverMessageInput | null {
+type ScannedFindingText = Extract<FindingRecord["text"], { held: false }>;
+
+function messageInputFor(
+  finding: FindingRecord,
+  text: ScannedFindingText,
+): DeliverMessageInput | null {
   const roles = ROLES_BY_ARITY.get(finding.counts.length) ?? null;
   if (roles === null) {
     return null;
@@ -95,8 +101,8 @@ function messageInputFor(finding: FindingRecord): DeliverMessageInput | null {
     };
   }
 
-  const context = finding.context.join(" ").trim();
-  if (finding.headline.trim().length === 0 || context.length === 0) {
+  const context = text.context.join(" ").trim();
+  if (text.headline.trim().length === 0 || context.length === 0) {
     return null;
   }
 
@@ -104,7 +110,7 @@ function messageInputFor(finding: FindingRecord): DeliverMessageInput | null {
     decision: "deliver",
     surfacePath: finding.surface,
     observations,
-    explanation: { source: "model_rendered", headline: finding.headline, context },
+    explanation: { source: "model_rendered", headline: text.headline, context },
   };
 }
 
@@ -149,9 +155,20 @@ function deliverableFor(
     return null;
   }
 
+  // Ahead of the `summarySource` branch below, never instead of it: a floor-rendered row
+  // is scanned on the same terms as a model-rendered one.
+  const text = finding.text;
+  if (text.held) {
+    const hold = describeHold(text);
+    logger.error(
+      `delivery lane source: finding ${finding.id} carries written text that must not be shown (${hold.reason}/${String(hold.kind)}), so it was held back`,
+    );
+    return null;
+  }
+
   let message: DeliverMessageInput | null;
   try {
-    message = messageInputFor(finding);
+    message = messageInputFor(finding, text);
   } catch (error) {
     logger.error(
       `delivery lane source: finding ${finding.id} carries counts that could not be rebuilt — ${describeError(error)}`,

@@ -12,6 +12,7 @@ import {
   candidateFindingSchema,
   measuredCount,
   renderFloorSummary,
+  reviewFindingText,
   scanResidualPii,
 } from "@growthmind/core";
 import type { CandidateFinding, MeasuredCount, TraceEntry } from "@growthmind/core";
@@ -28,6 +29,7 @@ import type {
   OpenRunResult,
   PersistFindingInput,
   RecordSignatureResult,
+  ScannedText,
   SignatureLedgerService,
   UpsertFindingPayloadInput,
 } from "@growthmind/db";
@@ -66,6 +68,21 @@ const ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE = 10_000;
 
 const CLEAN_HEADLINE = "The payment step is losing sessions";
 const CLEAN_CONTEXT = "Sessions reached the payment step and left without finishing.";
+
+// Every expectation about persisted text stays inside the brand: comparing a `ScannedText`
+// against a bare string would need a widening the sprint exists to prevent.
+function scannedFixture(
+  headline: string,
+  context: readonly string[],
+): { readonly headline: ScannedText; readonly context: readonly ScannedText[] } {
+  const verdict = reviewFindingText({ headline, context });
+  if (verdict.held) {
+    throw new Error(`scannedFixture: the text given is held as ${verdict.why}`);
+  }
+  return { headline: verdict.headline, context: verdict.context };
+}
+
+const CLEAN_TEXT = scannedFixture(CLEAN_HEADLINE, [CLEAN_CONTEXT]);
 
 const OFFENDING_CONTEXT = "47 people gave up because the payment form is broken.";
 
@@ -238,6 +255,7 @@ function createFakeFindings(): FakeFindings {
 
         const row = {
           ...input,
+          text: reviewFindingText({ headline: input.headline, context: input.context }),
           id: `o11-finding-${String(nextId)}`,
           organizationId: ctx.organizationId,
           createdAt: TICK_AT,
@@ -772,7 +790,7 @@ test("a mid-run persistence failure leaves the run row terminal and corrupts no 
 
   const first = h.findings.rowFor(signatureOf(CANDIDATE_A));
   expect(first?.summarySource).toBe("model_rendered");
-  expect(first?.headline).toBe(CLEAN_HEADLINE);
+  expect(first?.text).toEqual({ held: false, ...CLEAN_TEXT });
   expect(h.findings.rowFor(signatureOf(CANDIDATE_B))).toBeUndefined();
 });
 
@@ -1370,6 +1388,11 @@ const FLOOR_AFTER_REJECTION = renderFloorSummary({
   source: "floor_model_text_rejected",
 });
 
+const FLOOR_AFTER_REJECTION_TEXT = scannedFixture(
+  FLOOR_AFTER_REJECTION.headline,
+  FLOOR_AFTER_REJECTION.context,
+);
+
 const dirtySummariser = (): CountingSummariser =>
   countingSummariser(() => Promise.resolve(ok(CLEAN_HEADLINE, DIRTY_MODEL_CONTEXT)));
 
@@ -1383,8 +1406,8 @@ test("a candidate whose model text contains a planted PII offender persists the 
   const calls = h.findings.persistCalls();
   expect(calls).toHaveLength(1);
   expect(calls[0]?.summarySource).toBe("floor_model_text_rejected");
-  expect(calls[0]?.headline).toBe(FLOOR_AFTER_REJECTION.headline);
-  expect(calls[0]?.context).toEqual(FLOOR_AFTER_REJECTION.context);
+  expect(calls[0]?.headline).toBe(FLOOR_AFTER_REJECTION_TEXT.headline);
+  expect(calls[0]?.context).toEqual(FLOOR_AFTER_REJECTION_TEXT.context);
 
   for (const call of calls) {
     expect(JSON.stringify(call)).not.toContain(PLANTED_CREDENTIAL);
@@ -1401,8 +1424,8 @@ test("a candidate whose model text is clean persists model_rendered unchanged", 
   const calls = h.findings.persistCalls();
   expect(calls).toHaveLength(1);
   expect(calls[0]?.summarySource).toBe("model_rendered");
-  expect(calls[0]?.headline).toBe(CLEAN_HEADLINE);
-  expect(calls[0]?.context).toEqual([CLEAN_CONTEXT]);
+  expect(calls[0]?.headline).toBe(CLEAN_TEXT.headline);
+  expect(calls[0]?.context).toEqual(CLEAN_TEXT.context);
 });
 
 test("a candidate whose floor text itself is dirty withholds the summary entirely and logs at error level", async () => {
@@ -1541,13 +1564,15 @@ const REFUSES_COMPOSITION = {
 } as unknown as string;
 
 test("a scan that throws at the persist seam degrades to the floor, never persists the model text", async () => {
-  const reviewFindingText = await loadUnderConstruction<MirrorReviewFindingText>({
+  const mirrorReviewFindingText = await loadUnderConstruction<MirrorReviewFindingText>({
     modulePath: underConstructionSpecifier("packages/core/src/delivery/finding-text.ts"),
     exportName: "reviewFindingText",
     ownedBy: OWNER_GATE,
   });
 
-  expect(reviewFindingText({ headline: CLEAN_HEADLINE, context: [REFUSES_COMPOSITION] })).toEqual({
+  expect(
+    mirrorReviewFindingText({ headline: CLEAN_HEADLINE, context: [REFUSES_COMPOSITION] }),
+  ).toEqual({
     held: true,
     why: "unreadable",
   });

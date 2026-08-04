@@ -166,6 +166,7 @@ export {
   type ResidualPiiScan,
 } from "./delivery/residual-pii";
 export {
+  joinScanned,
   reviewFindingText,
   type FindingText,
   type FindingTextInput,

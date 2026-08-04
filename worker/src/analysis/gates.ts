@@ -1,6 +1,6 @@
 import type { CandidateFinding, FloorSummary, FloorSummarySource } from "@growthmind/core";
-import { SIGNATURE_TUPLE_VERSION, renderFloorSummary } from "@growthmind/core";
-import { computeFindingSignature } from "@growthmind/db";
+import { SIGNATURE_TUPLE_VERSION, renderFloorSummary, reviewFindingText } from "@growthmind/core";
+import { computeFindingSignature, describeHold } from "@growthmind/db";
 import { describeError, isNormalisedUrlPath } from "@growthmind/shared";
 
 import type { AnalysisLogger, CallAttribution, CandidateAction, CandidateIdentity } from "./types";
@@ -63,14 +63,27 @@ export function floorAction(
   floor: FloorSummary,
   attribution: CallAttribution,
   identity: CandidateIdentity,
+  logger: AnalysisLogger,
 ): CandidateAction {
+  const text = reviewFindingText({ headline: floor.headline, context: floor.context });
+
+  // Error, not info: below the floor there is nothing left to degrade to, and a
+  // deterministic template that emits this is a defect in the template.
+  if (text.held) {
+    const hold = describeHold(text);
+    logger.error(
+      `analysis tick: candidate ${identity.signature} was written up without a model and the result still could not be shown (${hold.reason}/${String(hold.kind)}), so nothing was recorded for it`,
+    );
+    return { kind: "unrenderable" };
+  }
+
   return {
     kind: "persist",
     identity,
     summary: {
       summarySource: floor.source,
-      headline: floor.headline,
-      context: floor.context,
+      headline: text.headline,
+      context: text.context,
       attribution,
     },
   };
