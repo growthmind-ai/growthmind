@@ -1,4 +1,4 @@
-import { Container, Divider, Stack, Text, Title } from "@mantine/core";
+import { Divider, Stack, Text, Title } from "@mantine/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -135,24 +135,22 @@ export default async function SettingsPage() {
   const view = await readSettingsView(db, ctx, projectId);
 
   return (
-    <Container size="sm" py="xl" px="md">
-      <Stack gap="lg">
-        <Title order={1} size="h3">
-          {SETTINGS_TITLE}
-        </Title>
+    <Stack gap="lg" maw={640}>
+      <Title order={1} size="h3">
+        {SETTINGS_TITLE}
+      </Title>
 
-        {/* Source first, then delivery, then who is excluded: with nothing to read there is
-            nothing to deliver, and exclusions only mean something once both exist. */}
-        <Source view={view} />
-        <Divider />
-        <Delivery view={view} />
-        <Divider />
-        <Excluded view={view} />
+      {/* Source first, then delivery, then who is excluded: with nothing to read there is
+          nothing to deliver, and exclusions only mean something once both exist. */}
+      <Source view={view} />
+      <Divider />
+      <Delivery view={view} />
+      <Divider />
+      <Excluded view={view} />
 
-        <AnchorLink href={ROUTES.home} size="sm">
-          {ONBOARDING_MESSAGES.settingsBack}
-        </AnchorLink>
-      </Stack>
-    </Container>
+      <AnchorLink href={ROUTES.home} size="sm">
+        {ONBOARDING_MESSAGES.settingsBack}
+      </AnchorLink>
+    </Stack>
   );
 }

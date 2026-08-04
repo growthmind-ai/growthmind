@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/Page";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readChannel } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath } from "@/lib/preview/tabs";
+import { findingPath } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +85,7 @@ export default async function ChannelPage() {
                   hasFix={state.fixes.includes(message.findingId)}
                 />
                 <ButtonLink
-                  href={evidencePath(message.findingId)}
+                  href={findingPath(message.findingId)}
                   variant="subtle"
                   size="compact-sm"
                   style={tapTargetStyle}

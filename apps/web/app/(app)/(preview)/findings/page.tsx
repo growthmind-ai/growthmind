@@ -18,7 +18,7 @@ import { ClosingNote, PageHeader } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { readOverview, readRow } from "@/lib/preview/findings";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath } from "@/lib/preview/tabs";
+import { findingPath } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +60,7 @@ function Count({ row }: { readonly row: FindingRow }) {
 
 function Row({ row }: { readonly row: FindingRow }) {
   return (
-    <Link href={evidencePath(row.id)} className={classes.rowLink}>
+    <Link href={findingPath(row.id)} className={classes.rowLink}>
       <Count row={row} />
       <Box style={{ minWidth: 0 }}>
         <Text fw={600} style={{ lineHeight: 1.4 }}>

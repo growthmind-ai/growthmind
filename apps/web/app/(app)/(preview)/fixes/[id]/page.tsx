@@ -9,7 +9,7 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readFixForFinding, readVerdictForFinding } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { evidencePath } from "@/lib/preview/tabs";
+import { findingPath } from "@/lib/paths";
 import { ROUTES } from "@/lib/routes";
 import type { CheckState } from "@/lib/preview/types";
 
@@ -118,7 +118,7 @@ export default async function FixPage({
       <Group gap="md">
         {verdict === null ? null : <VerdictButton id={id} readOut={state.readOut.includes(id)} />}
         <ButtonLink
-          href={evidencePath(id)}
+          href={findingPath(id)}
           variant="subtle"
           size="compact-sm"
           style={tapTargetStyle}

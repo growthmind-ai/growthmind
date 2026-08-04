@@ -10,7 +10,7 @@ import { blankComments, readExisting } from "../first-run/helpers/first-run-sour
 
 const NOW_MS = new Date("2026-08-03T12:00:00.000Z").getTime();
 
-const LANDING = "apps/web/app/page.tsx";
+const LANDING = "apps/web/app/(app)/page.tsx";
 const PANEL = "apps/web/components/landing/settled-panel.tsx";
 const VIEW = "apps/web/lib/landing/view.ts";
 

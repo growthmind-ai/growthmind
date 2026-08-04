@@ -3,7 +3,7 @@ import { Button } from "@mantine/core";
 import { ButtonLink } from "@/components/ui/Links";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { mintFixAction, readOutVerdictAction } from "@/lib/preview/actions";
-import { fixPath, verdictPath } from "@/lib/preview/tabs";
+import { fixPath, experimentPath } from "@/lib/paths";
 
 import { DismissMenu } from "./DismissMenu";
 
@@ -44,7 +44,7 @@ export function FindingActions({ id, hasFix }: FindingActionsProps) {
 export function VerdictButton({ id, readOut }: { readonly id: string; readonly readOut: boolean }) {
   if (readOut) {
     return (
-      <ButtonLink href={verdictPath(id)} size="compact-sm" style={tapTargetStyle}>
+      <ButtonLink href={experimentPath(id)} size="compact-sm" style={tapTargetStyle}>
         See the verdict →
       </ButtonLink>
     );

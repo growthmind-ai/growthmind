@@ -1,0 +1,109 @@
+.rail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: light-dark(var(--mantine-color-gray-0), var(--sheet-2));
+}
+
+.railTop,
+.railBottom {
+  flex-shrink: 0;
+}
+
+.railTop {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.railBottom {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.railScroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.navLink {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--mantine-radius-sm);
+  text-decoration: none;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.35;
+  color: var(--mantine-color-dimmed);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .navLink:hover {
+    background-color: var(--mantine-color-default-hover);
+    color: var(--mantine-color-text);
+  }
+}
+
+.navLink[data-active] {
+  background-color: var(--mantine-color-default);
+  color: var(--mantine-color-text);
+  font-weight: 600;
+}
+
+/* The lit rail on the left edge of the current page — the one place the brand accent is
+   load-bearing rather than decorative, because it is what answers "where am I". */
+.navLink[data-active]::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--mantine-primary-color-filled);
+}
+
+.accountButton {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .accountButton:hover {
+    background-color: var(--mantine-color-default-hover);
+  }
+}
+
+.deliveryStrip {
+  display: block;
+  padding: 8px 12px;
+  text-decoration: none;
+  color: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .deliveryStrip:hover {
+    background-color: var(--mantine-color-default-hover);
+  }
+}

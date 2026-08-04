@@ -5,20 +5,24 @@ export const ROUTES = {
 
   firstRun: "/first-run",
 
-  settings: "/settings",
-
-  // The preview surfaces. Listed here as their literal segments so the "every route has a
-  // file behind it" guard covers them; build real paths with the helpers in `preview/tabs`.
-  seen: "/seen",
-  evidence: "/evidence",
-  evidenceDetail: "/evidence/[id]",
-  channel: "/channel",
-  audience: "/audience",
-  plan: "/plan",
+  // The work: the record, what it asks of you, and how it turned out. Listed here as their
+  // literal segments so the "every route has a file behind it" guard covers them; build real
+  // paths with the helpers in `paths`.
+  findings: "/findings",
+  findingDetail: "/findings/[id]",
   fixes: "/fixes",
   fixDetail: "/fixes/[id]",
+  experiments: "/experiments",
+  experimentDetail: "/experiments/[id]",
+
+  // Standing reference about the customer's own product.
+  audience: "/audience",
+  plan: "/plan",
   agent: "/agent",
-  verdicts: "/verdicts",
-  verdictDetail: "/verdicts/[id]",
-  collect: "/collect",
+  data: "/data",
+
+  // The account.
+  channel: "/channel",
+  account: "/account",
+  settings: "/settings",
 } as const;
