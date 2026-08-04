@@ -334,7 +334,7 @@ describe("two real organizations, two real credentials, and no way from one to t
   });
 });
 
-const LIVE_SURFACE = "/mcpxk/pricing";
+const LIVE_SURFACE = "/mcpxk/reports";
 
 interface LiveFixture {
   readonly findingId: string;
@@ -354,8 +354,8 @@ async function seedLiveFixInOrgB(): Promise<LiveFixture> {
     signature: createHmac("sha256", "mcpxk").update(LIVE_SURFACE).digest("hex"),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the pricing page without going any further.",
-    context: ["We saw sessions reach the pricing page and stop there."],
+    headline: "People are leaving the reports page without going any further.",
+    context: ["We saw sessions reach the reports page and stop there."],
     finalClass: "confusing",
     surface: LIVE_SURFACE,
     surfaceNormalisationVersion: 1,

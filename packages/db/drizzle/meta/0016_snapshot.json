@@ -1,6 +1,6 @@
 {
-  "id": "45d8df5b-db64-4101-b5bd-32c2466b5fde",
-  "prevId": "24f2b8da-03a0-46bd-9e66-0b560fd9645e",
+  "id": "e4137034-3e8e-4fbd-b687-b68284610117",
+  "prevId": "45d8df5b-db64-4101-b5bd-32c2466b5fde",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -40,6 +40,12 @@
         },
         "revoked_at": {
           "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

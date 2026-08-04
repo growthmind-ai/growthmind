@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { measuredCount, type MeasuredCount } from "@growthmind/core";
+import { measuredCount, unknownWorth, type MeasuredCount } from "@growthmind/core";
 import type {
   ClaimDeliveryInput,
   ClaimDeliveryResult,
@@ -73,6 +73,7 @@ function finding(
     sampleSize: { numerator: 3, denominator: 28 },
     signature: overrides.signature ?? SIGNATURE,
     message: overrides.context === undefined ? messageInput() : messageInput(overrides.context),
+    worth: unknownWorth("/checkout/payment"),
   };
 }
 

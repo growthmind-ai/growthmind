@@ -8,10 +8,15 @@ export const PAYLOAD_WINDOW_START = "2026-07-24T00:00:00.000Z";
 
 export const PAYLOAD_WINDOW_END = "2026-07-31T00:00:00.000Z";
 
-export const RENDERABLE_SURFACE = "/checkout/payment";
+// Deliberately not a checkout or pricing path: those are refused by the §5 deny list
+// before a payload is ever read, so every test here would assert on the refusal instead of
+// the thing it is about. `FORBIDDEN_SURFACE` is what exercises that gate.
+export const RENDERABLE_SURFACE = "/projects/reports";
 
 // Neither rooted nor free of its trailing slash, so `renderFixSpec` refuses it at the mint.
-export const UNRENDERABLE_SURFACE = "checkout/payment/";
+export const UNRENDERABLE_SURFACE = "projects/reports/";
+
+export const FORBIDDEN_SURFACE = "/checkout/payment";
 
 const SET_ASIDE_COUNT = 2;
 
@@ -33,10 +38,14 @@ function persistedCount(numerator: number, denominator: number): unknown {
 
 export interface FixSpecPayloadOverrides {
   readonly surface?: string;
+
+  // The impact count `listOpen` ranks on. Overridden only by tests about that ranking.
+  readonly affected?: number | undefined;
 }
 
 export function fixSpecPayload(overrides: FixSpecPayloadOverrides = {}): FixSpecPayload {
   const surface = overrides.surface ?? RENDERABLE_SURFACE;
+  const affected = overrides.affected ?? 19;
 
   return {
     payloadVersion: FIX_SPEC_PAYLOAD_VERSION,
@@ -54,7 +63,7 @@ export function fixSpecPayload(overrides: FixSpecPayloadOverrides = {}): FixSpec
         }),
       ],
 
-      counts: [persistedCount(28, 28), persistedCount(19, 28)],
+      counts: [persistedCount(28, 28), persistedCount(affected, 28)],
       timeframe: { start: PAYLOAD_WINDOW_START, end: PAYLOAD_WINDOW_END },
       claimSubject: "surface",
       surface,

@@ -126,6 +126,18 @@ export function reportFor(result: OpenFixResult): MintReport {
           "Check the id, and check you are pointed at the right organisation with --org.",
         ],
       };
+
+    case "surface_forbidden":
+      return {
+        code: 1,
+        lines: [
+          `surface_forbidden — ${result.surface} is a ${result.reason} page, so no fix was minted.`,
+          "",
+          "Product decisions §5: we never propose changes to pricing, billing, auth, consent or terms.",
+          "The finding itself is unaffected and still delivers. The change is the customer's to make.",
+          "If this page is genuinely theirs to change, add it to the project's confirmed-changeable list.",
+        ],
+      };
   }
 }
 

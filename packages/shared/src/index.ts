@@ -733,3 +733,5 @@ export {
 } from "./findings/messages";
 
 export { evidenceForAgent } from "./findings/agent-text";
+export { FORBIDDEN_REASONS, forbiddenReasonSchema, type ForbiddenReason } from "./growth/types";
+export { FIX_SURFACE_FORBIDDEN_REFUSALS } from "./delivery/messages";
