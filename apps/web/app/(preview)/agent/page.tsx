@@ -1,17 +1,9 @@
-import {
-  Box,
-  Code,
-  Group,
-  List,
-  ListItem,
-  Paper,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Box, Code, Group, List, ListItem, SimpleGrid, Stack, Text } from "@mantine/core";
 
 import { AgentTools } from "@/components/preview/AgentTools";
+import { Eyebrow } from "@/components/ui/Eyebrow";
+import { PageHeader, RuledRow } from "@/components/ui/Page";
+import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { readAgent } from "@/lib/preview/readers";
 
 export const dynamic = "force-dynamic";
@@ -29,36 +21,25 @@ export default function AgentPage() {
 
   return (
     <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} size="h3">
-          What your coding agent sees
-        </Title>
-        <Text size="sm" c="dimmed">
-          The same findings, rendered for a machine. No second product, no translation layer —
-          one artefact, two audiences.
-        </Text>
-      </Stack>
+      <PageHeader title="What your coding agent sees">
+        The same findings, rendered for a machine. No second product, no translation layer — one
+        artefact, two audiences.
+      </PageHeader>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          How it attaches
-        </Text>
+        <Eyebrow>How it attaches</Eyebrow>
         <Block>{view.config}</Block>
       </Stack>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          The three things it can ask for — all read-only
-        </Text>
+        <Eyebrow>The three things it can ask for — all read-only</Eyebrow>
         <AgentTools tools={view.tools} />
       </Stack>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          One artefact, two audiences
-        </Text>
+        <Eyebrow>One artefact, two audiences</Eyebrow>
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-          <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+          <SurfaceCard>
             <Text size="xs" c="dimmed" mb={6}>
               what the founder reads, in Slack
             </Text>
@@ -73,7 +54,7 @@ export default function AgentPage() {
                 {line}
               </Text>
             ))}
-          </Paper>
+          </SurfaceCard>
           <Box>
             <Text size="xs" c="dimmed" mb={6}>
               what the agent reads, over the wire
@@ -84,40 +65,31 @@ export default function AgentPage() {
       </Stack>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          When it sees it — only the first is something you do on purpose
-        </Text>
+        <Eyebrow>When it sees it — only the first is something you do on purpose</Eyebrow>
         <Stack gap={0}>
           {view.moments.map((moment, index) => (
-            <Group
+            <RuledRow
               key={moment.title}
-              align="flex-start"
-              wrap="nowrap"
-              gap="md"
-              py="xs"
-              style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}
+              lead={
+                <Text ff="monospace" size="xs" c="dimmed">
+                  {String(index + 1).padStart(2, "0")}
+                </Text>
+              }
             >
-              <Text ff="monospace" size="xs" c="dimmed" style={{ flexShrink: 0 }}>
-                {String(index + 1).padStart(2, "0")}
+              <Text fw={600} size="sm">
+                {moment.title}
               </Text>
-              <Box>
-                <Text fw={600} size="sm">
-                  {moment.title}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  {moment.detail}
-                </Text>
-              </Box>
-            </Group>
+              <Text size="sm" c="dimmed">
+                {moment.detail}
+              </Text>
+            </RuledRow>
           ))}
         </Stack>
       </Stack>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What we put in your repository
-        </Text>
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+        <Eyebrow>What we put in your repository</Eyebrow>
+        <SurfaceCard>
           <Stack gap={4}>
             {view.skills.map((skill) => (
               <Group key={skill.name} gap="sm" wrap="nowrap" align="flex-start">
@@ -130,23 +102,21 @@ export default function AgentPage() {
               </Group>
             ))}
           </Stack>
-        </Paper>
+        </SurfaceCard>
         <Text size="sm" c="dimmed">
           {view.skillsNote}
         </Text>
       </Stack>
 
       <Stack gap={4}>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          What it cannot do — the boundary, on purpose
-        </Text>
-        <Paper withBorder radius="sm" p="md" bg="var(--mantine-color-default)">
+        <Eyebrow>What it cannot do — the boundary, on purpose</Eyebrow>
+        <SurfaceCard>
           <List spacing="xs" size="sm">
             {view.cannot.map((line) => (
               <ListItem key={line}>{line}</ListItem>
             ))}
           </List>
-        </Paper>
+        </SurfaceCard>
       </Stack>
     </Stack>
   );

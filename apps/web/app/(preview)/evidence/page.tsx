@@ -1,7 +1,6 @@
-import { Stack, Text, Title } from "@mantine/core";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { StartInChannel } from "@/components/preview/StartInChannel";
 import { readChannel } from "@/lib/preview/readers";
 import { evidencePath } from "@/lib/preview/tabs";
 
@@ -17,13 +16,6 @@ export default function EvidenceIndexPage() {
   }
 
   return (
-    <Stack gap="md">
-      <Title order={1} size="h3">
-        No finding is open
-      </Title>
-      <Text c="dimmed">
-        Evidence sits behind a finding. <Link href="/channel">Start in your channel.</Link>
-      </Text>
-    </Stack>
+    <StartInChannel title="No finding is open">Evidence sits behind a finding.</StartInChannel>
   );
 }

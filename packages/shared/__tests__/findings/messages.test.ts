@@ -117,7 +117,13 @@ describe("coverageSentences", () => {
   });
 
   test("a quiet week reads as a complete account, not an account with holes", () => {
-    const sentences = coverageSentences({ ...full, found: 0, explained: 0, described: 0, withheld: 0 });
+    const sentences = coverageSentences({
+      ...full,
+      found: 0,
+      explained: 0,
+      described: 0,
+      withheld: 0,
+    });
 
     expect(sentences).toHaveLength(2);
     expect(sentences[1]).toBe("We found nothing worth telling you.");

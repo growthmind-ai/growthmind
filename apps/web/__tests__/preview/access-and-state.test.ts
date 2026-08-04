@@ -56,7 +56,10 @@ describe("the preview allow list", () => {
 
 describe("the preview state cookie", () => {
   test("survives a round trip", () => {
-    const state = readOutVerdict(mintFix(dismissFinding(EMPTY_PREVIEW_STATE, "a", "too small"), "b"), "b");
+    const state = readOutVerdict(
+      mintFix(dismissFinding(EMPTY_PREVIEW_STATE, "a", "too small"), "b"),
+      "b",
+    );
 
     expect(decodePreviewState(encodePreviewState(state))).toEqual(state);
   });
@@ -68,7 +71,9 @@ describe("the preview state cookie", () => {
   });
 
   test("drops entries of the wrong shape instead of trusting them", () => {
-    const raw = encodeURIComponent(JSON.stringify({ dismissed: { a: 1, b: "ok" }, fixes: [2, "c"] }));
+    const raw = encodeURIComponent(
+      JSON.stringify({ dismissed: { a: 1, b: "ok" }, fixes: [2, "c"] }),
+    );
     const state = decodePreviewState(raw);
 
     expect(state.dismissed).toEqual({ b: "ok" });

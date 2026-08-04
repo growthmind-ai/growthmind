@@ -3,6 +3,7 @@
 import { Button, Code, Group, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 
+import { Eyebrow } from "@/components/ui/Eyebrow";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import type { AgentTool } from "@/lib/preview/types";
 
@@ -37,9 +38,7 @@ export function AgentTools({ tools }: { readonly tools: readonly AgentTool[] }) 
         <Text ff="monospace" size="xs" c="dimmed">
           {active.call}
         </Text>
-        <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-          read-only
-        </Text>
+        <Eyebrow>read-only</Eyebrow>
       </Group>
 
       <Code block style={{ fontSize: "0.75rem", lineHeight: 1.7 }}>

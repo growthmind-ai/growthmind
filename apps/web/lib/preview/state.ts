@@ -23,7 +23,9 @@ function asStringRecord(value: unknown): Record<string, string> {
 }
 
 function asStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 // Every shape this has ever been written in has to survive being read back, so nothing here

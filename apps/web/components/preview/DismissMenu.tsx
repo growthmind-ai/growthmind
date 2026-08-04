@@ -22,7 +22,12 @@ export function DismissMenu({ id }: { readonly id: string }) {
 
   if (!open) {
     return (
-      <Button variant="default" size="compact-sm" style={tapTargetStyle} onClick={() => setOpen(true)}>
+      <Button
+        variant="default"
+        size="compact-sm"
+        style={tapTargetStyle}
+        onClick={() => setOpen(true)}
+      >
         Not useful
       </Button>
     );
@@ -43,7 +48,12 @@ export function DismissMenu({ id }: { readonly id: string }) {
             </Button>
           </form>
         ))}
-        <Button variant="subtle" size="compact-sm" style={tapTargetStyle} onClick={() => setOpen(false)}>
+        <Button
+          variant="subtle"
+          size="compact-sm"
+          style={tapTargetStyle}
+          onClick={() => setOpen(false)}
+        >
           Cancel
         </Button>
       </Group>

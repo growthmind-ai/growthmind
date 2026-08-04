@@ -1,18 +1,12 @@
-// Customer-facing copy for the two evidence screens, audited by
-// `__tests__/findings/messages.test.ts`. Export a new string as a `const` AND register
-// it in `ALL_FINDINGS_MESSAGES` — the audit derives its expected set from this module's
-// exports, so an exported-but-unregistered constant escapes every scan.
-//
-// Transcript beat lines are NOT here. A beat is a record rendered as data, not copy, and
-// it is the one place a raw path or response code is allowed to reach the screen — the
-// sentence above it carries the meaning for a reader who cannot read the beat.
+// Export a new string as a `const` AND register it in `ALL_FINDINGS_MESSAGES`: the audit in
+// `__tests__/findings/messages.test.ts` derives its expected set from this module's exports,
+// so an exported-but-unregistered constant escapes every scan.
 
 import type { FindingGroup } from "./view";
 
 export const OVERVIEW_TITLE = "Everything we've seen in your product";
 
-// Removed the day this page reads a real project. Nothing else states it, and a page of
-// invented findings that does not say so is the worst thing here.
+// Removed the day this page reads a real project.
 export const EXAMPLE_CONTENT_NOTICE =
   "Example content. Nothing on this page was measured from your product.";
 
@@ -27,18 +21,12 @@ export const COVERAGE_SPLIT_TEMPLATE =
 export const COVERAGE_WITHHELD_TEMPLATE =
   "{withheld} we are not showing you, because we could not mask the recordings confidently.";
 
-// Not "nothing worth telling you about" — the copy audit reads a bare "about" as a hedge,
-// and the shorter sentence is better anyway.
+// Not "…worth telling you about": the copy audit reads a trailing "about" as a hedge.
 export const COVERAGE_FOUND_NOTHING = "We found nothing worth telling you.";
 
-// Week one is the modal state for this buyer, and it is not the same as a quiet week: one
-// has read a product and found it calm, the other has not read anything yet.
 export const COVERAGE_NOTHING_READ =
   "We have not read any sessions yet. This fills in as people use your product.";
 
-// The accountability claim, said as a number the reader can check rather than as a promise.
-// "Not readable yet" is a first-class outcome here — a scoring record with no unresolved
-// column is a scoring record somebody rounded.
 // "cannot be read yet" rather than "is/are not readable yet": the clause has to agree with
 // a count of one and a count of nine without a second template.
 export const CALIBRATION_TEMPLATE =
@@ -65,14 +53,13 @@ export const OVERVIEW_NOT_CONNECTED =
 
 export const EVIDENCE_ONE_SESSION_LINE = "One person's session below.";
 
-export const EVIDENCE_COHORT_TEMPLATE = "{count} people got through — their path diverged at {when}.";
+export const EVIDENCE_COHORT_TEMPLATE =
+  "{count} people got through — their path diverged at {when}.";
 
 export const EVIDENCE_CLAIMS_TITLE = "What we think happened";
 
 export const EVIDENCE_CITES_TEMPLATE = "from {when}";
 
-// Naming the dropped explanation is the point of the citation rule: a claim nothing in the
-// recording backs up is removed, and saying so is what makes the ones that stayed credible.
 export const EVIDENCE_CLAIM_DROPPED =
   "We had another explanation and nothing in the recording backed it up, so we left it out.";
 
@@ -90,8 +77,6 @@ export const EVIDENCE_COVERAGE_TITLE = "Coverage and confidence";
 
 export const EVIDENCE_BACK_LABEL = "Back to everything we've seen";
 
-// The buyer ships with a coding agent, so the evidence has to be able to reach it in one
-// press. Without this the founder retypes the transcript, or gives up and paraphrases it.
 export const EVIDENCE_COPY_FOR_AGENT = "Copy this for your coding agent";
 
 export const EVIDENCE_NOT_FOUND =
@@ -161,8 +146,7 @@ export interface CoverageSentenceInput {
   readonly withheld: number;
 }
 
-// One sentence per clause so a zero never renders as "0 we are not showing you" — §7's
-// quiet week has to read as a complete account, not as an account with holes in it.
+// One sentence per clause, so a zero never renders as "0 we are not showing you".
 export function coverageSentences(input: CoverageSentenceInput): readonly string[] {
   const read = fill(COVERAGE_READ_TEMPLATE, {
     read: input.sessionsRead,

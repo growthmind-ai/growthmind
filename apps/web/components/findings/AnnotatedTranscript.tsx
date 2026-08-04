@@ -26,23 +26,31 @@ function BeatRow({ beat, cited }: { readonly beat: BeatView; readonly cited: boo
           : "2px solid transparent",
       }}
     >
-      <Text ff="monospace" size="xs" c="dimmed" fw={beat.notable ? 700 : 400} style={{ flexShrink: 0 }}>
-        {beat.at}
-      </Text>
       <Text
         ff="monospace"
         size="xs"
-        className={classes.beatLine}
-        c={beat.notable ? "bright" : "dimmed"}
+        c="dimmed"
         fw={beat.notable ? 700 : 400}
+        style={{ flexShrink: 0 }}
       >
-        {beat.text}
+        {beat.at}
+      </Text>
+      <Box className={classes.beatLine}>
+        <Text
+          span
+          ff="monospace"
+          size="xs"
+          c={beat.notable ? "bright" : "dimmed"}
+          fw={beat.notable ? 700 : 400}
+        >
+          {beat.text}
+        </Text>
         {beat.attempt === null ? null : (
-          <Badge variant="default" size="xs" radius="sm" ml="xs">
+          <Badge component="span" variant="default" size="xs" radius="sm" ml="xs">
             {`attempt ${String(beat.attempt)}`}
           </Badge>
         )}
-      </Text>
+      </Box>
     </Group>
   );
 }
@@ -86,10 +94,7 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
       )}
 
       {claims.length > 0 ? null : (
-        <Box
-          className={classes.note}
-          style={{ "--note-row": "1" } as React.CSSProperties}
-        >
+        <Box className={classes.note} style={{ "--note-row": "1" } as React.CSSProperties}>
           <Stack gap={4}>
             <Text size="sm" c="dimmed">
               {FINDINGS_MESSAGES.noClaims}

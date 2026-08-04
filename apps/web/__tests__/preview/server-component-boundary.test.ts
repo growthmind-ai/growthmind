@@ -3,18 +3,16 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // Two ways a server component breaks at request time while typecheck, lint and `next build`
-// all stay green. Neither is visible until someone loads the page, so this file is the only
-// gate that can see them.
-//
+// all stay green:
 //  1. `component={Link}` — a function cannot cross into a client component as a prop.
-//     Fix: use the `ButtonLink` / `AnchorLink` primitives, or wrap the element in `<Link>`.
-//
-//  2. `<Table.Thead>`, `<List.Item>` — Mantine attaches compound members as static
-//     properties on the component, and those do NOT survive the client-reference proxy.
-//     They arrive `undefined` and React throws "Element type is invalid".
-//     Fix: import the flat export instead — `TableThead`, `ListItem`.
+//     Fix: the `ButtonLink` / `AnchorLink` primitives, or wrap the element in `<Link>`.
+//  2. `<Table.Thead>` — Mantine's compound members are static properties, and those do not
+//     survive the client-reference proxy. Fix: the flat export, `TableThead`.
 
-const ROOTS = [join(import.meta.dir, "..", "..", "app"), join(import.meta.dir, "..", "..", "components")];
+const ROOTS = [
+  join(import.meta.dir, "..", "..", "app"),
+  join(import.meta.dir, "..", "..", "components"),
+];
 
 function walk(dir: string): string[] {
   const found: string[] = [];

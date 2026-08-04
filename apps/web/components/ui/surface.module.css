@@ -1,0 +1,12 @@
+.accent {
+  border-left-width: 3px;
+  border-left-color: var(--mantine-primary-color-filled);
+}
+
+.ruled {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.closing {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
