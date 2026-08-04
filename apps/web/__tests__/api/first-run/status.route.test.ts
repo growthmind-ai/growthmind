@@ -515,7 +515,8 @@ async function stampEveryKeyOf(organizationId: string): Promise<void> {
     throw new Error(
       `NOT IMPLEMENTED YET: api_keys carries no last_used_at column, so first contact cannot be ` +
         `stamped. ADD O-026 D-3 (packages/db/src/schema/api-keys.ts + migration 0015) owns it. ` +
-        `This is a Wave 0 red for the RIGHT reason. ${String(error)}`,
+        `This is a Wave 0 red for the RIGHT reason.`,
+      { cause: error },
     );
   }
 }
