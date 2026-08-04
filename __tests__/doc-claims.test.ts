@@ -47,8 +47,11 @@ function brokenLinksIn(file: string): string[] {
   return broken;
 }
 
-// `\s+` rather than a literal space: both sentences wrap mid-phrase in the
-// document, so a single-space needle reads the file and matches nothing.
+// Regression guards, both dormant: these two sentences left docs/get-started.md
+// when setup started minting keys and the tools started reading real rows. They
+// stay armed so neither can come back while the code contradicts it, and `\s+`
+// rather than a literal space is what let the first one match the mid-phrase wrap
+// the document gave it.
 const GET_STARTED_NO_KEY_SCREEN = /no key-management\s+screen/i;
 
 const GET_STARTED_NO_FINDINGS_TABLE = /no table\s+of\s+findings/i;
@@ -153,15 +156,20 @@ describe("documentation claims", () => {
     expect(planted.claim.test(read("README.md")) && !planted.holdsWhen()).toBe(true);
   });
 
-  test("the two get-started needles survive the line wrap that hides them from a literal space", () => {
+  test("the key-screen needle matches the wrap the document gave it, and neither sentence is in the document now", () => {
+    // Both paragraphs verbatim from the commit that removed them (420b06c), wrap included.
     const keyScreen =
-      "This surface reads with a key you mint yourself. There is no key-management\nscreen yet, it is one command, run from the repo root";
+      "This surface reads with a key you mint yourself. There is no key-management\nscreen yet, it is one command, run from the repo root against a started stack:";
+    const findingsTable =
+      "There is no table of findings behind these tools yet. That is a separate piece\nof work, so every answer is honestly empty rather than absent.";
+
     expect(GET_STARTED_NO_KEY_SCREEN.test(keyScreen)).toBe(true);
     expect(/no key-management screen/i.test(keyScreen)).toBe(false);
-
-    const findingsTable =
-      "There is no table of findings behind these tools yet. That is a\nseparate";
     expect(GET_STARTED_NO_FINDINGS_TABLE.test(findingsTable)).toBe(true);
+
+    const page = read("docs/get-started.md");
+    expect(GET_STARTED_NO_KEY_SCREEN.test(page)).toBe(false);
+    expect(GET_STARTED_NO_FINDINGS_TABLE.test(page)).toBe(false);
 
     expect(GET_STARTED_NO_KEY_SCREEN.test("the key screen lists every key")).toBe(false);
     expect(GET_STARTED_NO_FINDINGS_TABLE.test("a table of findings exists")).toBe(false);

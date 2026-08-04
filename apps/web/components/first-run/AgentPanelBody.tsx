@@ -384,14 +384,20 @@ function WaitingBody(props: {
   readonly onToggleFileForm: () => void;
   readonly onCopyBlock: () => void;
 }) {
+  // Only a block that carries the key has a hole where it goes. Copilot's editor
+  // asks for it and Codex's shell supplies it, so the notice is false for both.
+  const holed = agentProviderConfig(props.provider).keyDelivery === "in-block";
+
   return (
     <Stack gap="sm">
       <Text size="sm" c="dimmed">
         {AGENT_KEY_GONE_NOTICE}
       </Text>
-      <Text size="sm" c="dimmed">
-        {AGENT_KEY_HOLE_NOTICE}
-      </Text>
+      {holed ? (
+        <Text size="sm" c="dimmed">
+          {AGENT_KEY_HOLE_NOTICE}
+        </Text>
+      ) : null}
 
       <BlockSection
         provider={props.provider}

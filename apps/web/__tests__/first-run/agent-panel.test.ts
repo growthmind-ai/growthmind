@@ -22,6 +22,7 @@ import {
   AGENT_PANEL,
   AGENT_PANEL_BODY,
   blankComments,
+  readExisting,
   readFirstRun,
 } from "./helpers/first-run-source";
 import { readMarkup } from "./helpers/rendered-markup";
@@ -552,6 +553,42 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect(html).not.toContain(RAW_KEY);
   });
 
+  test("the hole notice is shown for every block that carries the key, and for neither block that does not", async () => {
+    const notice = await message("AGENT_KEY_HOLE_NOTICE");
+    const configs = await loadConfigs();
+
+    expect(new Set(configs.map((config) => config.keyDelivery)).size).toBe(3);
+
+    for (const config of configs) {
+      const text = textOf(await panelMarkup(WAITING, config.id));
+
+      expect({ id: config.id, delivery: config.keyDelivery, shown: text.includes(notice) }).toEqual(
+        {
+          id: config.id,
+          delivery: config.keyDelivery,
+          shown: config.keyDelivery === "in-block",
+        },
+      );
+    }
+  });
+
+  test("the anywhere line stands only beside a command no directory can invalidate", async () => {
+    const anywhere = await message("AGENT_RUN_ANYWHERE_LINE");
+    const html = await panelMarkup(REVEAL, "claude-code");
+
+    expect(textOf(html)).toContain(anywhere);
+    expect(blockContaining(html, "claude mcp add")).toContain("--scope user");
+
+    for (const config of await loadConfigs()) {
+      const shown = textOf(await panelMarkup(REVEAL, config.id)).includes(anywhere);
+
+      expect({ id: config.id, shown }).toEqual({
+        id: config.id,
+        shown: config.format === "command",
+      });
+    }
+  });
+
   test("a visitor arriving after first contact renders connected, with no mint button and no key", async () => {
     const html = await panelMarkup(CONNECTED);
     const text = textOf(html);
@@ -648,6 +685,18 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
         revokeOffered: false,
       });
     }
+  });
+
+  test("the revoke label names the scope the press has, which is every key the workspace holds", async () => {
+    const label = await message("AGENT_REVOKE_LABEL");
+    const route = readExisting("apps/web/app/api/first-run/agent/revoke/route.ts").source;
+
+    expect(blankComments(route)).toContain("revokeEveryLive()");
+
+    expect(label.toLowerCase()).toContain("every key");
+    expect(label.toLowerCase()).not.toContain("this key");
+
+    expect(buttons(await panelMarkup(CONNECTED)).map((button) => button.text)).toContain(label);
   });
 
   test("the mint control renders disabled while a mint is in flight", async () => {

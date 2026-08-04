@@ -61,8 +61,10 @@ const COPILOT_KEY_REFERENCE = `\${input:${AGENT_COPILOT_INPUT_ID}}`;
 
 const ENV_VAR_KEY_REFERENCE = `\${${AGENT_KEY_ENV_VAR}}`;
 
+// `--scope user` is what makes the "run this anywhere" line beside it true: without
+// it the entry lands in whichever project the shell is standing in.
 function claudeCodeCommand(input: AgentBlockInput): string {
-  return `claude mcp add --transport http ${AGENT_SERVER_NAME} ${input.url} \\
+  return `claude mcp add --transport http --scope user ${AGENT_SERVER_NAME} ${input.url} \\
   --header ${quoted(`${AGENT_BEARER_HEADER}: Bearer ${input.key}`)}`;
 }
 

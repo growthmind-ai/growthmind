@@ -347,7 +347,10 @@ export const AGENT_PRE_MINT_LINE =
 
 export const AGENT_PASTE_INTO_TEMPLATE = "Paste this into {path}";
 
-export const AGENT_RUN_ANYWHERE_LINE = "Run this once, anywhere on your machine.";
+// "Anywhere" holds only because the command beside it is user-scoped; the flag that
+// makes it so is in `agent-blocks.ts`, and `get-started-truth.test.ts` pins the pair.
+export const AGENT_RUN_ANYWHERE_LINE =
+  "Run this once, anywhere on your machine. It goes in your own config rather than this project's, so your assistant finds it in every project.";
 
 export const AGENT_MINT_TEMPLATE = "Create a key for {assistant}";
 
@@ -407,7 +410,7 @@ export const AGENT_CLAUDE_TYPE_TRAP =
 export const AGENT_CLAUDE_APPROVAL_NOTE =
   "A server declared in a project file needs approving once, the first time your assistant starts in that project.";
 
-export const AGENT_REVOKE_LABEL = "Revoke this key";
+export const AGENT_REVOKE_LABEL = "Revoke every key";
 
 export const AGENT_REVOKE_CONSEQUENCE =
   "Revoking turns off every key this workspace has, not just this one. Anything else set up with a key from here — another machine, a build that runs on its own — stops calling us too. This step goes back to needing a key, and you can create a new one straight away.";
