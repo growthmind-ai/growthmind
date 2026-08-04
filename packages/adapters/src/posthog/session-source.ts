@@ -8,6 +8,7 @@ import type {
 } from "@growthmind/shared";
 import { CONNECT_REFUSAL_MESSAGES, deriveSessionKey, hashIdentityKey } from "@growthmind/shared";
 
+import { isSameOriginAsHost } from "../http/origin";
 import type { SessionSource } from "../session-source";
 import { createPostHogClient } from "./client";
 import {
@@ -18,7 +19,7 @@ import {
   POSTHOG_SOURCE_KIND,
 } from "./constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
-import { checkHost, isSameOriginAsHost } from "./host-guard";
+import { checkHost } from "./host-guard";
 import { createIdentityResolver, harvestEmailFromEvents } from "./identity";
 import { formatPostHogInstant } from "./instant";
 import type { RawEvent } from "./parse";

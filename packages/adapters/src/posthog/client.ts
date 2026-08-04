@@ -1,13 +1,13 @@
 import type { SourceFailure } from "@growthmind/shared";
 
-import { computeBackoffDelayMs, parseRetryAfterSeconds } from "./backoff";
+import { computeBackoffDelayMs, parseRetryAfterSeconds } from "../http/backoff";
+import { isSameOriginAsHost } from "../http/origin";
+// Own module because `discovery.ts` needs the same three bounds; a second copy would drift.
+import { readJsonBody } from "../http/read-json-body";
 import { eventsUrl, MAX_RATE_LIMIT_ATTEMPTS, personsUrl, REQUEST_TIMEOUT_MS } from "./constants";
-import { isSameOriginAsHost } from "./host-guard";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
 import { mapFailure } from "./errors";
 import { assertPostHogInstant } from "./instant";
-// Own module because `discovery.ts` needs the same three bounds; a second copy would drift.
-import { readJsonBody } from "./read-json-body";
 
 export type PostHogEndpoint = "events" | "persons";
 

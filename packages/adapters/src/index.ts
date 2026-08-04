@@ -15,7 +15,7 @@ export {
   POSTHOG_KEY_PATTERN,
   REDACTED_PLACEHOLDER,
   REASON_MAX_LENGTH,
-} from "./posthog/scrub";
+} from "./http/scrub";
 
 export { createSlackDeliveryPoster } from "./slack/poster";
 export {
