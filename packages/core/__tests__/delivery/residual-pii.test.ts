@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 
 import { isCleanForDelivery, scanResidualPii } from "../../src/delivery/residual-pii";
 
@@ -97,5 +97,22 @@ describe("scanResidualPii — data shape", () => {
     const offsets = result.findings.map((f) => f.at);
 
     expect(offsets.toSorted((x, y) => x - y)).toEqual(offsets);
+  });
+});
+
+describe("scanResidualPii — the false positive it accepts, documented rather than tuned", () => {
+  test("a 12-plus digit session id that is not a payment card still trips the bare digit-run fallback (documented near-miss)", () => {
+    const twelveDigitId = "019482736150";
+    const fourteenDigitId = "01948273615042";
+
+    expect(twelveDigitId).toHaveLength(12);
+    expect(fourteenDigitId).toHaveLength(14);
+
+    for (const sessionId of [twelveDigitId, fourteenDigitId]) {
+      const result = scanResidualPii(`session ${sessionId} ended on /checkout/payment.`);
+
+      expect(result.clean).toBe(false);
+      expect(result.findings.map((f) => f.kind)).toEqual(["payment_card"]);
+    }
   });
 });

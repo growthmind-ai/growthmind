@@ -21,6 +21,7 @@ import type {
   SessionTimeline,
   TimelineEvent,
 } from "../../src/detect/types";
+import { reviewFindingText } from "../../src/delivery/finding-text";
 import { traceEntry } from "../../src/evidence/trace";
 import type { CandidateFinding, ConfidenceBasis } from "../../src/findings/candidate";
 import { candidateFindingSchema, confidenceBasisSchema } from "../../src/findings/candidate";
@@ -649,5 +650,71 @@ describe("renderFloorSummary", () => {
     }
 
     expect(renderedText(summary)).not.toContain("%");
+  });
+});
+
+const FIVE_DIGIT_DENOMINATOR = 24_680;
+const FIVE_DIGIT_NUMERATOR = 13_579;
+
+const FLOOR_SOURCES: readonly FloorSummarySource[] = [
+  "floor_no_key_configured",
+  "floor_cap_exhausted",
+  "floor_model_call_failed",
+  "floor_model_output_invalid",
+  "floor_model_text_rejected",
+];
+
+function fiveDigitCount(numerator: number): MeasuredCount {
+  return measuredCount({
+    numerator,
+    denominator: FIVE_DIGIT_DENOMINATOR,
+    unit: "sessions",
+    timeframe: FIXTURE_WINDOW,
+    basis: { totalInWindow: FIVE_DIGIT_DENOMINATOR, kept: FIVE_DIGIT_DENOMINATOR, setAside: [] },
+  });
+}
+
+describe("renderFloorSummary — every row it produces is read through the residual-PII gate", () => {
+  test("a floor-rendered summary over a representative candidate scans clean, so the read gate does not withhold every floor row", () => {
+    const ruleSet = ruleSetV1();
+    const detected = funnelDetectorCandidate(ruleSet);
+
+    const profiles: readonly { label: string; counts: readonly MeasuredCount[] }[] = [
+      { label: "detected-counts", counts: detected.counts },
+      {
+        label: "five-digit-denominator",
+        counts: [fiveDigitCount(FIVE_DIGIT_DENOMINATOR), fiveDigitCount(FIVE_DIGIT_NUMERATOR)],
+      },
+    ];
+
+    const withheld: string[] = [];
+
+    for (const finalClass of findingClassSchema.options) {
+      for (const profile of profiles) {
+        const base = candidateFindingFrom({ source: detected, ruleSet, counts: profile.counts });
+        const candidate: CandidateFinding = candidateFindingSchema.parse({
+          ...base,
+          claimedClass: finalClass,
+          finalClass,
+          trace: [
+            traceEntry({
+              class: finalClass,
+              predicate: "t1fl-fixture-predicate",
+              predicateVersion: 1,
+              satisfied: true,
+            }),
+          ],
+        });
+
+        for (const source of FLOOR_SOURCES) {
+          const verdict = reviewFindingText(renderFloorSummary({ candidate, source }));
+          if (verdict.held) {
+            withheld.push(`${finalClass}/${profile.label}/${source}: ${verdict.why}`);
+          }
+        }
+      }
+    }
+
+    expect(withheld).toEqual([]);
   });
 });
