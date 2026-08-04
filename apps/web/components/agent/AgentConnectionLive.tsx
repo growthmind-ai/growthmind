@@ -17,13 +17,16 @@ interface AgentConnectionLiveProps {
 // a founder pastes the block, the assistant calls, and the page still reads `waiting` until
 // they think to reload — the stuck-state class this panel was built to avoid.
 export function AgentConnectionLive({ initial, children }: AgentConnectionLiveProps) {
-  const [polled, setPolled] = useState<AgentConnection | null>(null);
+  // The answer carries the server value it was asked against. A server render is newer than
+  // anything polled before it — minting and revoking both refresh — so when that value moves
+  // the stale answer stops matching and is ignored, derived here rather than reset in an
+  // effect (`react-hooks/set-state-in-effect`).
+  const [answer, setAnswer] = useState<{
+    readonly against: AgentConnection["kind"];
+    readonly value: AgentConnection;
+  } | null>(null);
 
-  // A server render is newer than anything asked for before it: minting and revoking both
-  // refresh, so the value that arrives on this prop wins and the polled one is dropped.
-  useEffect(() => setPolled(null), [initial.kind]);
-
-  const connection = polled ?? initial;
+  const connection = answer !== null && answer.against === initial.kind ? answer.value : initial;
   const watching = agentStillWatched({ connection, heldKey: null });
 
   useEffect(() => {
@@ -35,7 +38,7 @@ export function AgentConnectionLive({ initial, children }: AgentConnectionLivePr
 
     const timer = setInterval(() => {
       void readAgentConnection().then((next) => {
-        if (mounted && next !== null) setPolled(next);
+        if (mounted && next !== null) setAnswer({ against: initial.kind, value: next });
       });
     }, PRE_ARM_POLL_MS);
 
@@ -43,7 +46,7 @@ export function AgentConnectionLive({ initial, children }: AgentConnectionLivePr
       mounted = false;
       clearInterval(timer);
     };
-  }, [watching]);
+  }, [watching, initial.kind]);
 
   return <LiveAgentConnection value={connection}>{children}</LiveAgentConnection>;
 }
