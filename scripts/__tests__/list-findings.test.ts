@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 
 import { THRESHOLD_RULE_SETS } from "../../packages/core/src/rules/thresholds";
-import { describeFinding, nothingFoundYet, parseArguments } from "../list-findings";
+import {
+  describeFinding,
+  nothingFoundYet,
+  parseArguments,
+  type FindingLine,
+} from "../list-findings";
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "list-findings.ts");
 
@@ -32,33 +37,73 @@ describe("parseArguments", () => {
   });
 });
 
+function render(line: object): string {
+  return describeFinding(line as unknown as FindingLine).join("\n");
+}
+
 describe("describeFinding", () => {
+  const OFFENDER = "jane.doe@acme.example";
+
+  const WITHHELD_PLACEHOLDER = "(the written explanation for this one is not shown here)";
+
+  const CLEAN_TEXT = {
+    held: false,
+    headline: "People are leaving the pricing page without going any further.",
+    context: ["It has been happening all week."],
+  } as const;
+
   const base = {
     findingId: "finding-1",
     foundAt: new Date("2026-08-04T06:30:00.000Z"),
-    headline: "People are leaving the pricing page without going any further.",
+    text: CLEAN_TEXT,
     surface: "/pricing",
   };
 
   test("says a finding is ready when it carries the detail and has no fix", () => {
-    const rendered = describeFinding({ ...base, mintable: true, fixId: null }).join("\n");
+    const rendered = render({ ...base, mintable: true, fixId: null });
 
     expect(rendered).toContain("ready");
-    expect(rendered).toContain(base.headline);
     expect(rendered).toContain("/pricing");
   });
 
   test("names the fix a finding already has instead of offering to mint one", () => {
-    const rendered = describeFinding({ ...base, mintable: true, fixId: "fix-9" }).join("\n");
+    const rendered = render({ ...base, mintable: true, fixId: "fix-9" });
 
     expect(rendered).toContain("fix fix-9");
     expect(rendered).not.toContain("ready");
   });
 
   test("says a finding written before the detail existed cannot be minted from", () => {
-    const rendered = describeFinding({ ...base, mintable: false, fixId: null }).join("\n");
+    const rendered = render({ ...base, mintable: false, fixId: null });
 
     expect(rendered).toContain("no detail");
+  });
+
+  test("describeFinding prints the headline for a clean finding", () => {
+    const rendered = render({ ...base, mintable: true, fixId: null });
+
+    expect(rendered).toContain(base.text.headline);
+  });
+
+  test("describeFinding prints a withheld placeholder line for a finding with a planted PII offender instead of the headline", () => {
+    const rendered = render({
+      ...base,
+      text: { held: true, why: "residual_pii", kind: "email_address", headline: OFFENDER },
+      mintable: true,
+      fixId: null,
+    });
+
+    expect({ offender: OFFENDER, present: rendered.includes(OFFENDER) }).toEqual({
+      offender: OFFENDER,
+      present: false,
+    });
+    expect(rendered).not.toContain("undefined");
+    expect(rendered).toContain(WITHHELD_PLACEHOLDER);
+
+    expect(rendered).toContain("finding-1");
+    expect(rendered).toContain("2026-08-04 06:30");
+    expect(rendered).toContain("ready");
+    expect(rendered).toContain("on /pricing");
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { ALL_DELIVERY_MESSAGES } from "../../src/delivery/messages";
 import * as messagesModule from "../../src/summary/messages";
 import {
   ALL_CUSTOMER_FACING_MESSAGES,
@@ -111,6 +112,37 @@ describe("degradation states — enum totality", () => {
     const q1 = ANALYSIS_OUTCOME_MESSAGES.no_sessions_to_analyse;
     const q3 = ANALYSIS_OUTCOME_MESSAGES.no_candidates_passed_gate;
     expect(q1).not.toBe(q3);
+  });
+
+  test("ALL_CUSTOMER_FACING_MESSAGES and ALL_DELIVERY_MESSAGES are unchanged in count from before this sprint", () => {
+    expect(ALL_CUSTOMER_FACING_MESSAGES.length).toBe(27);
+    expect(ALL_DELIVERY_MESSAGES.length).toBe(24);
+  });
+
+  test("floor_model_text_rejected no longer attributes every content rejection to an accuracy check", () => {
+    const message = SUMMARY_SOURCE_MESSAGES.floor_model_text_rejected;
+
+    const MIS_ATTRIBUTION = /did\s+not\s+pass\s+our\s+accuracy\s+check/i;
+    expect({
+      clause: "did not pass our accuracy check",
+      present: MIS_ATTRIBUTION.test(message),
+    }).toEqual({ clause: "did not pass our accuracy check", present: false });
+
+    const CAUSE_WORDS = [
+      /\baccuracy\b/i,
+      /\bbecause\b/i,
+      /\bfailed\b/i,
+      /\brejected\b/i,
+      /\bpersonal\b/i,
+      /\bdid not pass\b/i,
+    ];
+    expect(CAUSE_WORDS.filter((word) => word.test(message)).map((word) => word.source)).toEqual([]);
+
+    const sentences = message
+      .trim()
+      .split(/(?<=\.)\s+/)
+      .filter((part) => part.length > 0);
+    expect(sentences).toHaveLength(2);
   });
 
   test("no _unsatisfied or degradation sentence contains a positive-observation phrasing", () => {
