@@ -23,7 +23,7 @@ export default function FixesPage() {
         Nothing has been sent to your agent yet
       </Title>
       <Text c="dimmed">
-        A fix appears here once you ask for one. <Link href="/seen">Start from what we&apos;ve seen.</Link>
+        A fix appears here once you ask for one. <Link href="/channel">Start in your channel.</Link>
       </Text>
     </Stack>
   );

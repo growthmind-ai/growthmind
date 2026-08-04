@@ -1,0 +1,29 @@
+import { Stack, Text, Title } from "@mantine/core";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { readChannel } from "@/lib/preview/readers";
+import { evidencePath } from "@/lib/preview/tabs";
+
+export const dynamic = "force-dynamic";
+
+export default function EvidenceIndexPage() {
+  // Step two of one finding's story, so the tab follows the finding the channel leads
+  // with rather than offering a list — the ledger on /seen is the list.
+  const lead = readChannel().messages.find((message) => message.findingId !== null);
+
+  if (lead !== undefined && lead.findingId !== null) {
+    redirect(evidencePath(lead.findingId));
+  }
+
+  return (
+    <Stack gap="md">
+      <Title order={1} size="h3">
+        No finding is open
+      </Title>
+      <Text c="dimmed">
+        Evidence sits behind a finding. <Link href="/channel">Start in your channel.</Link>
+      </Text>
+    </Stack>
+  );
+}

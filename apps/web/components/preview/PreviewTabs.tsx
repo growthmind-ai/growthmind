@@ -1,10 +1,10 @@
 "use client";
 
-import { Group, Text } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { PREVIEW_TABS } from "@/lib/preview/tabs";
+import { PREVIEW_TAB_GROUPS } from "@/lib/preview/tabs";
 
 import classes from "./preview.module.css";
 
@@ -12,21 +12,38 @@ export function PreviewTabs() {
   const pathname = usePathname();
 
   return (
-    <Group gap={4} wrap="nowrap" className={classes.tabstrip} pb="xs">
-      {PREVIEW_TABS.map((tab, index) => {
-        // `startsWith` so a detail route keeps its own tab lit; `/seen` would otherwise
-        // match every child of `/` and light the first tab everywhere.
-        const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+    <Stack gap={4} pb="xs">
+      {PREVIEW_TAB_GROUPS.map((group) => (
+        <Stack key={group.label} gap={2}>
+          <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={2}>
+            {group.label}
+          </Text>
+          <Group gap={4} wrap="nowrap" className={classes.tabstrip}>
+            {group.tabs.map((tab, index) => {
+              // `startsWith` so a detail route keeps its own tab lit; `/seen` would otherwise
+              // match every child of `/` and light the first tab everywhere.
+              const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
 
-        return (
-          <Link key={tab.href} href={tab.href} className={classes.tab} data-active={active || undefined}>
-            <Text span size="xs" c="dimmed" ff="monospace" mr={6}>
-              {String(index + 1).padStart(2, "0")}
-            </Text>
-            {tab.label}
-          </Link>
-        );
-      })}
-    </Group>
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={classes.tab}
+                  data-active={active || undefined}
+                  data-quiet={group.numbered ? undefined : true}
+                >
+                  {group.numbered ? (
+                    <Text span size="xs" c="dimmed" ff="monospace" mr={6}>
+                      {String(index + 1).padStart(2, "0")}
+                    </Text>
+                  ) : null}
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </Group>
+        </Stack>
+      ))}
+    </Stack>
   );
 }

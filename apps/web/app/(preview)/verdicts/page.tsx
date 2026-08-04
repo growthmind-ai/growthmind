@@ -21,7 +21,7 @@ export default function VerdictsPage() {
       </Title>
       <Text c="dimmed">
         A verdict appears here once a fix reaches its readout date.{" "}
-        <Link href="/seen">Start from what we&apos;ve seen.</Link>
+        <Link href="/channel">Start in your channel.</Link>
       </Text>
     </Stack>
   );

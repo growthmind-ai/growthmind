@@ -34,6 +34,11 @@
   font-weight: 600;
 }
 
+.tab[data-quiet] {
+  font-size: var(--mantine-font-size-xs);
+  padding: 3px 8px;
+}
+
 /* The margin note sits beside the beats it cites; below this width there is no margin to
    sit in, so the notes follow the transcript and name the times they refer to. */
 .annotated {

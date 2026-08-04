@@ -6,7 +6,7 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 import { mintFixAction } from "@/lib/preview/actions";
 import { readChannel } from "@/lib/preview/readers";
 import { readPreviewState } from "@/lib/preview/session";
-import { fixPath, seenPath } from "@/lib/preview/tabs";
+import { evidencePath, fixPath } from "@/lib/preview/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +103,7 @@ export default async function ChannelPage() {
                 )}
                 <DismissMenu id={message.findingId} />
                 <ButtonLink
-                  href={seenPath(message.findingId)}
+                  href={evidencePath(message.findingId)}
                   variant="subtle"
                   size="compact-sm"
                   style={tapTargetStyle}
