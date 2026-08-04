@@ -12,9 +12,9 @@ const AD_RECORDING_2 = "ad-recording-2";
 describe("parseRecordingsPage", () => {
   test("reads items from a bare array envelope", () => {
     const parsed = parseRecordingsPage([{ id: AD_RECORDING_1 }], AD_HOST);
-    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
-      [AD_RECORDING_1],
-    );
+    expect(
+      parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId),
+    ).toEqual([AD_RECORDING_1]);
     expect(parsed.droppedMalformed).toBe(0);
   });
 
@@ -58,17 +58,17 @@ describe("parseRecordingsPage", () => {
       [{ startedAt: "2026-07-30T17:00:00.000Z" }, { id: AD_RECORDING_2 }],
       AD_HOST,
     );
-    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
-      [AD_RECORDING_2],
-    );
+    expect(
+      parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId),
+    ).toEqual([AD_RECORDING_2]);
     expect(parsed.droppedMalformed).toBe(1);
   });
 
   test("never throws on a non-object item in the page", () => {
     const parsed = parseRecordingsPage([null, "ad-not-an-object", { id: AD_RECORDING_1 }], AD_HOST);
-    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
-      [AD_RECORDING_1],
-    );
+    expect(
+      parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId),
+    ).toEqual([AD_RECORDING_1]);
     expect(parsed.droppedMalformed).toBe(2);
   });
 
@@ -134,9 +134,9 @@ describe("parseRecordingsPage", () => {
     );
     expect(parsed.next).toBeNull();
     expect(parsed.droppedMalformed).toBe(1);
-    expect(parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId)).toEqual(
-      [AD_RECORDING_1],
-    );
+    expect(
+      parsed.recordings.map((recording: ReplayRecordingSummary) => recording.recordingId),
+    ).toEqual([AD_RECORDING_1]);
   });
 });
 

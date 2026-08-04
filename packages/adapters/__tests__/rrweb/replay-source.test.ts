@@ -96,7 +96,10 @@ function recordingItem(overrides: RecordingItemOverrides = {}): Record<string, u
   };
 }
 
-function recordingsPage(items: readonly unknown[], next: string | null = null): Record<string, unknown> {
+function recordingsPage(
+  items: readonly unknown[],
+  next: string | null = null,
+): Record<string, unknown> {
   return { recordings: items, next };
 }
 
@@ -114,7 +117,10 @@ function eventItem(overrides: EventItemOverrides = {}): Record<string, unknown> 
   };
 }
 
-function eventsPage(items: readonly unknown[], next: string | null = null): Record<string, unknown> {
+function eventsPage(
+  items: readonly unknown[],
+  next: string | null = null,
+): Record<string, unknown> {
   return { events: items, next };
 }
 
@@ -126,7 +132,10 @@ describe("createRrwebReplaySource", () => {
 
   describe("#validate", () => {
     test("a 200 limit-1 recordings page returns ok:true with a checkedAt", async () => {
-      const fake = createFakeFetch(() => ({ status: 200, body: recordingsPage([recordingItem()]) }));
+      const fake = createFakeFetch(() => ({
+        status: 200,
+        body: recordingsPage([recordingItem()]),
+      }));
 
       const result = await buildSource(fake.fetch).validate();
 
@@ -153,7 +162,10 @@ describe("createRrwebReplaySource", () => {
   describe("#listRecordings", () => {
     test("stops with exhausted when the final page's cursor is null", async () => {
       const fake = createPagedFetch([
-        { status: 200, body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2) },
+        {
+          status: 200,
+          body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2),
+        },
         { status: 200, body: recordingsPage([recordingItem({ id: "rec-2" })], null) },
       ]);
 
@@ -164,14 +176,23 @@ describe("createRrwebReplaySource", () => {
       if (!result.ok) return;
       expect(result.stop).toBe("exhausted");
       expect(result.resumeCursor).toBeNull();
-      expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-1", "rec-2"]);
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-1",
+        "rec-2",
+      ]);
       expect(result.pagesFetched).toBe(2);
     });
 
     test("stops with page_cap and a resumeCursor set to the next-unfetched page URL", async () => {
       const fake = createPagedFetch([
-        { status: 200, body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2) },
-        { status: 200, body: recordingsPage([recordingItem({ id: "rec-2" })], NEXT_RECORDINGS_PAGE_3) },
+        {
+          status: 200,
+          body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2),
+        },
+        {
+          status: 200,
+          body: recordingsPage([recordingItem({ id: "rec-2" })], NEXT_RECORDINGS_PAGE_3),
+        },
         { status: 200, body: recordingsPage([recordingItem({ id: "rec-3" })], null) },
       ]);
 
@@ -182,7 +203,10 @@ describe("createRrwebReplaySource", () => {
       if (!result.ok) return;
       expect(result.stop).toBe("page_cap");
       expect(result.resumeCursor).toBe(NEXT_RECORDINGS_PAGE_3);
-      expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-1", "rec-2"]);
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-1",
+        "rec-2",
+      ]);
     });
 
     test("stops with watermark when the oldest recording on a page is at or before sinceAt", async () => {
@@ -206,7 +230,10 @@ describe("createRrwebReplaySource", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.stop).toBe("watermark");
-      expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-1", "rec-2"]);
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-1",
+        "rec-2",
+      ]);
     });
 
     test("telemetry (pagesFetched, droppedMalformed, eventsReceived) is populated on the exhausted arm", async () => {
@@ -228,7 +255,10 @@ describe("createRrwebReplaySource", () => {
 
     test("a mid-walk failure returns ok:false with failure, partialRecordings, and telemetry", async () => {
       const fake = createPagedFetch([
-        { status: 200, body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2) },
+        {
+          status: 200,
+          body: recordingsPage([recordingItem({ id: "rec-1" })], NEXT_RECORDINGS_PAGE_2),
+        },
         { networkError: true },
       ]);
 

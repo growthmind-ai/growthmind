@@ -27,7 +27,10 @@ function namesMissingScope(body: unknown): boolean {
   return typeof text === "string" && MISSING_SCOPE_PATTERN.test(text);
 }
 
-export function replayFailure(code: ReplayFailureCode, secrets: readonly string[] = []): ReplayFailure {
+export function replayFailure(
+  code: ReplayFailureCode,
+  secrets: readonly string[] = [],
+): ReplayFailure {
   return { code, message: scrubSecrets(REPLAY_FAILURE_MESSAGES[code], secrets) };
 }
 

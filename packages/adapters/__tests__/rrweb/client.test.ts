@@ -40,10 +40,7 @@ interface FakeFetch {
 function createFakeFetch(respond: (url: string, callIndex: number) => FakeResponseSpec): FakeFetch {
   const requests: RecordedRequest[] = [];
 
-  const handler = async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  const handler = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const headers = new Headers(

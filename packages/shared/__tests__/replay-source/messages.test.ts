@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import * as messagesModule from "../../src/replay-source/messages";
-import { ALL_REPLAY_SOURCE_MESSAGES, REPLAY_FAILURE_MESSAGES } from "../../src/replay-source/messages";
+import {
+  ALL_REPLAY_SOURCE_MESSAGES,
+  REPLAY_FAILURE_MESSAGES,
+} from "../../src/replay-source/messages";
 import { replayFailureCodeSchema } from "../../src/replay-source/types";
 
 const LIVE_CLAIM = /\blive\b/i;

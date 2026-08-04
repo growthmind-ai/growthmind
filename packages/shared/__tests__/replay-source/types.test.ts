@@ -48,7 +48,9 @@ describe("rrwebEventSchema", () => {
   });
 
   test("rejects a negative timestamp", () => {
-    expect(rrwebEventSchema.safeParse({ ...VALID_EVENT, timestamp: -1722770000000 }).success).toBe(false);
+    expect(rrwebEventSchema.safeParse({ ...VALID_EVENT, timestamp: -1722770000000 }).success).toBe(
+      false,
+    );
   });
 
   test("rejects an event with no data key at all", () => {
@@ -109,7 +111,8 @@ describe("replayRecordingSummarySchema", () => {
 
   test("rejects a string in place of a startedAt date", () => {
     expect(
-      replayRecordingSummarySchema.safeParse({ ...VALID_RECORDING, startedAt: "2026-08-04" }).success,
+      replayRecordingSummarySchema.safeParse({ ...VALID_RECORDING, startedAt: "2026-08-04" })
+        .success,
     ).toBe(false);
   });
 
@@ -125,12 +128,24 @@ describe("replayRecordingSummarySchema", () => {
 
 describe("replayListResultSchema", () => {
   test("accepts an ok result that stopped on the watermark", () => {
-    const result = { ok: true, recordings: [VALID_RECORDING], stop: "watermark", resumeCursor: null, ...TELEMETRY };
+    const result = {
+      ok: true,
+      recordings: [VALID_RECORDING],
+      stop: "watermark",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
     expect(replayListResultSchema.safeParse(result).success).toBe(true);
   });
 
   test("accepts an ok result that stopped on the page cap with a resume cursor", () => {
-    const result = { ok: true, recordings: [], stop: "page_cap", resumeCursor: "cursor-123", ...TELEMETRY };
+    const result = {
+      ok: true,
+      recordings: [],
+      stop: "page_cap",
+      resumeCursor: "cursor-123",
+      ...TELEMETRY,
+    };
     expect(replayListResultSchema.safeParse(result).success).toBe(true);
   });
 
@@ -140,7 +155,12 @@ describe("replayListResultSchema", () => {
   });
 
   test("accepts a failure result carrying partial recordings and telemetry", () => {
-    const result = { ok: false, failure: FAILURE, partialRecordings: [VALID_RECORDING], ...TELEMETRY };
+    const result = {
+      ok: false,
+      failure: FAILURE,
+      partialRecordings: [VALID_RECORDING],
+      ...TELEMETRY,
+    };
     expect(replayListResultSchema.safeParse(result).success).toBe(true);
   });
 
@@ -157,7 +177,13 @@ describe("replayListResultSchema", () => {
   });
 
   test("rejects negative telemetry on the failure arm", () => {
-    const result = { ok: false, failure: FAILURE, partialRecordings: [], ...TELEMETRY, pagesFetched: -3 };
+    const result = {
+      ok: false,
+      failure: FAILURE,
+      partialRecordings: [],
+      ...TELEMETRY,
+      pagesFetched: -3,
+    };
     expect(replayListResultSchema.safeParse(result).success).toBe(false);
   });
 
@@ -225,6 +251,8 @@ describe("replaySourceValidationSchema", () => {
     const [sessionOk, sessionFail] = sessionSourceValidationSchema.options;
 
     expect(Object.keys(replayOk.shape).toSorted()).toEqual(Object.keys(sessionOk.shape).toSorted());
-    expect(Object.keys(replayFail.shape).toSorted()).toEqual(Object.keys(sessionFail.shape).toSorted());
+    expect(Object.keys(replayFail.shape).toSorted()).toEqual(
+      Object.keys(sessionFail.shape).toSorted(),
+    );
   });
 });

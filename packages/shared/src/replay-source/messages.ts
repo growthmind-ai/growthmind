@@ -11,7 +11,8 @@ export const REPLAY_FAILURE_MESSAGES: Record<ReplayFailureCode, string> = {
     "We could not reach your recording source. Check the address is correct and reachable from this machine, then try again.",
   rate_limited:
     "Your recording source asked us to slow down, so we stopped this check early. We will pick up where we left off on the next one.",
-  misconfigured: "This installation cannot read session replays yet. Complete the replay source setup, then try again.",
+  misconfigured:
+    "This installation cannot read session replays yet. Complete the replay source setup, then try again.",
 };
 
 export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = Object.values(REPLAY_FAILURE_MESSAGES);
