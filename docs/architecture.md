@@ -208,12 +208,12 @@ founder and executable by an agent because it is the same artefact).
 
 §10 says findings are **pushed**, never pulled. §5 says nothing may happen the
 customer cannot inspect afterwards. Both are satisfied by the same split: Slack is
-where a finding *arrives*, and the app is where everything *lives* — the account
+where a finding _arrives_, and the app is where everything _lives_ — the account
 and its shell (profile, sign-out, org switching, navigation), install, connections,
 settings, billing, the append-only audit log, export, the kill switch, and the
 findings record itself. A customer who never opens the app still receives every
 finding; one who does open it finds the whole history waiting. Needing to open the
-app to *receive* something is a design bug; having somewhere worth opening is not.
+app to _receive_ something is a design bug; having somewhere worth opening is not.
 
 Test that holds the line: the Slack renderer is a pure function with a legibility
 budget asserted in unit tests. No message may require a link to be understood, and
