@@ -1,10 +1,19 @@
-import { URL_PATH_NORMALISATION_VERSION, summarySourceSchema } from "@growthmind/shared";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {
+  URL_PATH_NORMALISATION_VERSION,
+  summarySourceSchema,
+  type TenantContext,
+} from "@growthmind/shared";
+import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
 import { createFindingPayloadsRepo } from "../../src/repositories/finding-payloads.repo";
-import { createFindingsRepo } from "../../src/repositories/findings.repo";
+import { createFindingsRepo, type MeasuredCountRow } from "../../src/repositories/findings.repo";
 import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
+import type { ScopedDb } from "../../src/repositories/types";
 import { createFixesService } from "../../src/services/fixes.service";
 import { createGrowthContextService } from "../../src/services/growth-context.service";
 import { sha256Hex, type SignatureHex } from "../../src/signatures/hex";
@@ -24,6 +33,32 @@ const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 
 const CONFIRMED = new Date("2026-08-01T10:00:00.000Z");
+
+const OFFENDER = "jane.doe@acme.example";
+
+const FIXTURES_OWNER = "ADD Wave 1.4 (packages/db/src/testing/fixtures.ts, seedUnscannedFinding)";
+
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: {
+    readonly ctx: TenantContext;
+    readonly projectId: string;
+    readonly runId: string;
+    readonly headline: string;
+    readonly context: readonly string[];
+    readonly signature?: string;
+    readonly surface?: string;
+    readonly counts?: readonly MeasuredCountRow[];
+    readonly createdAt?: Date;
+  },
+) => Promise<{ readonly id: string }>;
+
+const loadSeedUnscannedFinding = (): Promise<SeedUnscannedFinding> =>
+  loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier("packages/db/src/testing/fixtures"),
+    exportName: "seedUnscannedFinding",
+    ownedBy: FIXTURES_OWNER,
+  });
 
 interface Seeded {
   readonly org: SeededOrgWithOwner;
@@ -78,6 +113,36 @@ async function seedFinding(
   });
 
   return { findingId: finding.id, signature };
+}
+
+// A payload is attached so the row carries an impact count: what leaves it out of the
+// answer is the hold, not the missing count the row above it tests.
+async function seedHeldFinding(
+  db: TestDb,
+  seed: SeedUnscannedFinding,
+  seeded: Seeded,
+  input: { readonly label: string; readonly surface: string },
+): Promise<{ readonly findingId: string; readonly signature: SignatureHex }> {
+  const run = await seedAnalysisRun(db, { ctx: seeded.org.ctx, projectId: seeded.projectId });
+  const signature = sha256Hex(`growth-context.service.test:${input.label}`);
+
+  const row = await seed(db, {
+    ctx: seeded.org.ctx,
+    projectId: seeded.projectId,
+    runId: run.id,
+    headline: `People stop at the second step, and one wrote in as ${OFFENDER}`,
+    context: ["Something was measured here."],
+    signature,
+    surface: input.surface,
+    counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
+  });
+
+  await createFindingPayloadsRepo(db, seeded.org.ctx).upsertFor({
+    findingId: row.id,
+    payload: fixSpecPayload({ surface: input.surface }),
+  });
+
+  return { findingId: row.id, signature };
 }
 
 describe("growth context service", () => {
@@ -320,5 +385,58 @@ describe("growth context service", () => {
     });
 
     expect(read.knownProblems).toEqual([]);
+  });
+
+  test("a held finding is omitted from knownProblems and a held dismissal is omitted from declined", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+    const seeded = await seedProjectFor(db, "pii-held");
+    const surface = "/onboarding";
+
+    const cleanProblem = await seedFinding(db, seeded, {
+      label: "pii-clean-problem",
+      surface,
+      headline: "People stop at the second step",
+    });
+    const cleanDeclined = await seedFinding(db, seeded, {
+      label: "pii-clean-declined",
+      surface,
+      headline: "Ask for a company name on the first screen",
+    });
+    const heldProblem = await seedHeldFinding(db, seedUnscannedFinding, seeded, {
+      label: "pii-held-problem",
+      surface,
+    });
+    const heldDeclined = await seedHeldFinding(db, seedUnscannedFinding, seeded, {
+      label: "pii-held-declined",
+      surface,
+    });
+
+    const dismissals = createDismissalsRepo(db, seeded.org.ctx);
+    for (const dismissed of [cleanDeclined, heldDeclined]) {
+      await dismissals.record({
+        projectId: seeded.projectId,
+        findingId: dismissed.findingId,
+        signature: dismissed.signature,
+        action: "not_useful",
+        dismissedByUserId: seeded.org.ctx.userId,
+        dismissedAt: WINDOW_END,
+      });
+    }
+
+    const read = await createGrowthContextService(db, seeded.org.ctx).read({
+      projectId: seeded.projectId,
+      surface,
+    });
+
+    const problems = read.knownProblems.map((problem) => problem.findingId);
+    expect(problems).toContain(cleanProblem.findingId);
+    expect(problems).not.toContain(heldProblem.findingId);
+    expect(problems).not.toContain(heldDeclined.findingId);
+
+    expect(read.declined.map((row) => row.headline)).toEqual([
+      "Ask for a company name on the first screen",
+    ]);
+
+    expect(JSON.stringify(read)).not.toContain(OFFENDER);
   });
 });

@@ -6,11 +6,14 @@ import { FIX_SPEC_PAYLOAD_VERSION } from "@growthmind/core";
 import {
   FIX_RESULTS_RULE_VERSION,
   FIX_RESULTS_WINDOW_DAYS,
+  RESIDUAL_PII_KINDS,
+  setLogSink,
   summarySourceSchema,
+  type LogRecord,
   type TenantContext,
   URL_PATH_NORMALISATION_VERSION,
 } from "@growthmind/shared";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 import { sql } from "drizzle-orm";
 
 import {
@@ -20,11 +23,16 @@ import {
   RENDERABLE_SURFACE,
   UNRENDERABLE_SURFACE,
 } from "../helpers/fix-spec-payload";
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
 import { createDeliveriesRepo } from "../../src/repositories/deliveries.repo";
 import { createFindingPayloadsRepo } from "../../src/repositories/finding-payloads.repo";
-import { createFindingsRepo } from "../../src/repositories/findings.repo";
+import { createFindingsRepo, type MeasuredCountRow } from "../../src/repositories/findings.repo";
 import { createFixesRepo } from "../../src/repositories/fixes.repo";
+import type { ScopedDb } from "../../src/repositories/types";
 import { createFixesService } from "../../src/services/fixes.service";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -49,6 +57,34 @@ const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const RESULTS_WINDOW_MS = FIX_RESULTS_WINDOW_DAYS * MS_PER_DAY;
+
+const OFFENDER = "jane.doe@acme.example";
+
+const HOLD_REASONS = ["residual_pii", "unreadable"] as const;
+
+const FIXTURES_OWNER = "ADD Wave 1.4 (packages/db/src/testing/fixtures.ts, seedUnscannedFinding)";
+
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: {
+    readonly ctx: TenantContext;
+    readonly projectId: string;
+    readonly runId: string;
+    readonly headline: string;
+    readonly context: readonly string[];
+    readonly signature?: string;
+    readonly surface?: string;
+    readonly counts?: readonly MeasuredCountRow[];
+    readonly createdAt?: Date;
+  },
+) => Promise<{ readonly id: string }>;
+
+const loadSeedUnscannedFinding = (): Promise<SeedUnscannedFinding> =>
+  loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier("packages/db/src/testing/fixtures"),
+    exportName: "seedUnscannedFinding",
+    ownedBy: FIXTURES_OWNER,
+  });
 
 interface SeededFinding {
   readonly org: SeededOrgWithOwner;
@@ -119,6 +155,35 @@ async function seedFindingIn(
   }
 
   return { org, projectId, findingId: finding.id };
+}
+
+// A payload is attached so the row is a candidate on every other ground: what removes it
+// from the page is the hold, not a missing impact count.
+async function seedHeldFindingIn(
+  db: TestDb,
+  seed: SeedUnscannedFinding,
+  org: SeededOrgWithOwner,
+  options: { readonly label: string; readonly projectId: string },
+): Promise<{ readonly id: string }> {
+  const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId: options.projectId });
+
+  const seeded = await seed(db, {
+    ctx: org.ctx,
+    projectId: options.projectId,
+    runId: run.id,
+    headline: `Two of every three people stop here, and one wrote in as ${OFFENDER}`,
+    context: ["Of 28 people who reached the last step, 19 did not finish."],
+    signature: sha256Hex(`fixes.service.test:${options.label}`),
+    surface: RENDERABLE_SURFACE,
+    counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
+  });
+
+  await createFindingPayloadsRepo(db, org.ctx).upsertFor({
+    findingId: seeded.id,
+    payload: fixSpecPayload({ surface: RENDERABLE_SURFACE }),
+  });
+
+  return seeded;
 }
 
 async function teammateContextFor(db: TestDb, org: SeededOrgWithOwner): Promise<TenantContext> {
@@ -498,6 +563,91 @@ describe("fixes service", () => {
     expect(paged.rows).toHaveLength(1);
     expect(paged.totalOpen).toBe(2);
     expect(paged.rows.map((row) => row.findingId)).not.toContain(stale.findingId);
+  });
+
+  test("listOpen drops a row whose finding text is held and totalOpen falls with it", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("pii-list"),
+      userName: NAMES.userName("pii-list"),
+      email: NAMES.email("pii-list"),
+    });
+    const projectId = (
+      await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("pii-list"),
+      })
+    ).id;
+
+    const first = await seedFindingIn(db, org, { label: "pii-list-first", projectId });
+    const second = await seedFindingIn(db, org, { label: "pii-list-second", projectId });
+    const held = await seedHeldFindingIn(db, seedUnscannedFinding, org, {
+      label: "pii-list-held",
+      projectId,
+    });
+
+    const service = createFixesService(db, org.ctx);
+    for (const findingId of [first.findingId, second.findingId, held.id]) {
+      expect((await service.openFor(findingId)).outcome).toBe("opened");
+    }
+
+    const OPEN_FIXES = 3;
+    expect(await createFixesRepo(db, org.ctx).countOpen({ projectId })).toBe(OPEN_FIXES);
+
+    const page = await service.listOpen({ projectId, limit: 25 });
+
+    // The denominator moves with the row. A total the page can never fill is the defect
+    // the payload-version rows above already pin; a hold must not reintroduce it.
+    expect(page.rows).toHaveLength(OPEN_FIXES - 1);
+    expect(page.totalOpen).toBe(OPEN_FIXES - 1);
+    expect(page.rows.map((row) => row.findingId).toSorted()).toEqual(
+      [first.findingId, second.findingId].toSorted(),
+    );
+    expect(JSON.stringify(page)).not.toContain(OFFENDER);
+  });
+
+  test("readFinding returns null for a held row rather than throwing or returning a partial object", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("pii-read"),
+      userName: NAMES.userName("pii-read"),
+      email: NAMES.email("pii-read"),
+    });
+    const projectId = (
+      await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("pii-read"),
+      })
+    ).id;
+    const held = await seedHeldFindingIn(db, seedUnscannedFinding, org, {
+      label: "pii-read-held",
+      projectId,
+    });
+
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
+
+    try {
+      expect(await createFixesService(db, org.ctx).readFinding(held.id)).toBeNull();
+
+      const lines = logged.filter(
+        (record) => record.level === "error" && record.fields.findingId === held.id,
+      );
+      expect(lines).toHaveLength(1);
+      expect(HOLD_REASONS as readonly unknown[]).toContain(lines[0]?.fields.reason);
+      expect([...RESIDUAL_PII_KINDS, null] as readonly unknown[]).toContain(lines[0]?.fields.kind);
+
+      for (const record of logged) {
+        expect(record.message).not.toContain(OFFENDER);
+        expect(JSON.stringify(record.fields)).not.toContain(OFFENDER);
+      }
+    } finally {
+      restore();
+    }
   });
 });
 

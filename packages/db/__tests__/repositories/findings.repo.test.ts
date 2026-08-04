@@ -2,13 +2,24 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { summarySourceSchema } from "@growthmind/shared";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { summarySourceSchema, type TenantContext } from "@growthmind/shared";
+import { afterAll, beforeAll, describe, expect, it, test } from "bun:test";
 
-import { createFindingsRepo, type PersistFindingInput } from "../../src/repositories/findings.repo";
+import {
+  assertUnderConstruction,
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../shared/__tests__/onboarding/module-under-construction";
+import {
+  createFindingsRepo,
+  type MeasuredCountRow,
+  type PersistFindingInput,
+} from "../../src/repositories/findings.repo";
+import type { ScopedDb } from "../../src/repositories/types";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { findingCountRow } from "../helpers/fix-spec-payload";
 
 const FINDINGS_REPO_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -21,6 +32,42 @@ const FINDINGS_REPO_PATH = path.join(
 
 const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
+
+const OFFENDER = "jane.doe@acme.example";
+
+const HELD_SURFACE = "app/onboarding/connect/page.tsx";
+
+const HELD_CREATED_AT = new Date("2026-07-31T09:15:00.000Z");
+
+const FIXTURES_OWNER = "ADD Wave 1.4 (packages/db/src/testing/fixtures.ts, seedUnscannedFinding)";
+
+// ADD Decision 2's `FindingText`, narrowed to what this row reads.
+type Verdict =
+  | { readonly held: false; readonly headline: string; readonly context: readonly string[] }
+  | { readonly held: true; readonly why: string; readonly kind?: string };
+
+// Writes a row the persist gate would refuse, which is every pre-sprint row.
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: {
+    readonly ctx: TenantContext;
+    readonly projectId: string;
+    readonly runId: string;
+    readonly headline: string;
+    readonly context: readonly string[];
+    readonly signature?: string;
+    readonly surface?: string;
+    readonly counts?: readonly MeasuredCountRow[];
+    readonly createdAt?: Date;
+  },
+) => Promise<{ readonly id: string }>;
+
+const loadSeedUnscannedFinding = (): Promise<SeedUnscannedFinding> =>
+  loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier("packages/db/src/testing/fixtures"),
+    exportName: "seedUnscannedFinding",
+    ownedBy: FIXTURES_OWNER,
+  });
 
 function signatureFor(label: string): string {
   return sha256Hex(`findings.repo.test:${label}`);
@@ -223,5 +270,54 @@ describe("findings repository", () => {
     const body = declared?.[1] ?? "";
     expect(body).toMatch(/\bpersist\s*\(/);
     expect(body).not.toMatch(/\b(?:update|patch|edit|mutate|rewrite|set)\w*\s*\(/i);
+  });
+
+  test("every FindingRecord this repository mints carries its text as a verdict, and a held row still carries its counts and surface", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-findings-held",
+      userName: "Owner Findings Held",
+      email: "owner-findings-held@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "onboarding-findings-held",
+    });
+    const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId: project.id });
+
+    const seeded = await seedUnscannedFinding(db, {
+      ctx: org.ctx,
+      projectId: project.id,
+      runId: run.id,
+      headline: `Two of every three people stop here, and one wrote in as ${OFFENDER}`,
+      context: ["Of 28 people who reached the last step, 19 did not finish."],
+      signature: signatureFor("held-row"),
+      surface: HELD_SURFACE,
+      counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
+      createdAt: HELD_CREATED_AT,
+    });
+
+    const [record] = await createFindingsRepo(db, org.ctx).listForProject(project.id, { limit: 1 });
+    if (record === undefined) throw new Error("the seeded finding could not be read back");
+    expect(record.id).toBe(seeded.id);
+
+    assertUnderConstruction("text" in record, {
+      contract:
+        "FindingRecord carries `text: FindingText` — the repository mints every row's text through the residual-PII gate",
+      ownedBy: "ADD Wave 1.3 (packages/db/src/repositories/findings.repo.ts, Decision 1)",
+    });
+
+    const { text } = record as unknown as { readonly text: Verdict };
+    expect(text.held).toBe(true);
+
+    // Gated, not dropped: the evidence the row carries is untouched by the hold.
+    expect(record.counts).toHaveLength(2);
+    expect(record.counts.map((count) => `${count.numerator}/${count.denominator}`)).toEqual([
+      "28/28",
+      "19/28",
+    ]);
+    expect(record.surface).toBe(HELD_SURFACE);
+    expect(record.createdAt.getTime()).toBe(HELD_CREATED_AT.getTime());
   });
 });
