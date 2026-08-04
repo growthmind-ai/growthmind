@@ -27,6 +27,10 @@ const webShape = {
   BETTER_AUTH_URL: z.url(),
   BETTER_AUTH_API_KEY: z.string().min(1).optional(),
 
+  // Who may see the unfinished surfaces. Optional, and absent means nobody — a preview
+  // gate that fails open shows invented findings to a customer.
+  GROWTHMIND_PREVIEW_USER_IDS: z.string().min(1).optional(),
+
   // Optional because self-host is first-class; both-or-neither is enforced at each
   // composition root, never here — half a credential pair must not stop a boot.
   SLACK_CLIENT_ID: z.string().min(1).optional(),

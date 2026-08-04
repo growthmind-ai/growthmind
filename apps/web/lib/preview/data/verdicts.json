@@ -1,0 +1,13 @@
+[
+  {
+    "findingId": "8c21",
+    "title": "The invite fix",
+    "promisedOn": "On 1 August, before this ran, we said",
+    "promise": "Keep it if invite completion reaches 42 in 110 by 9 August. Kill it otherwise. If fewer than 80 people reach the page, we say it is not readable rather than guessing.",
+    "measuredOn": "On 9 August we measured",
+    "measurement": "Invite completion of 47 in 112 sessions, against 31 in 110 before it shipped. 112 people reached the page, so this is readable.",
+    "verdict": "Kept. It reached the bar we set, and we are leaving it in place.",
+    "record": "That is 5 of 7 calls on your product that played out the way we said. One did not. One still cannot be read. We have written this to your product's model and to the anonymised record we publish across every customer.",
+    "howMeasured": "Both windows exclude your own team, bots and coding agents under the same rules, at the same version. No one was counted in both windows. The signup-completed event outage on 2 August does not touch this number, which is measured from invite events directly."
+  }
+]

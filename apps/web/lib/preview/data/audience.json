@@ -1,0 +1,72 @@
+{
+  "builtFrom": "1,104 sessions of your own, published research on self-serve adoption, and your repository.",
+  "confidence": "4 observed, 1 researched, 1 assumed. The assumed one is named below.",
+  "lastChanged": "2 August. One belief was replaced, and it re-ranked two of our calls.",
+  "beliefs": [
+    {
+      "id": "b1",
+      "claim": "Most arrive from search, not from your docs.",
+      "sources": ["observed"],
+      "evidence": "612 of 1,104 sessions entered on a marketing page from an organic referrer. 47 had ever opened /docs.",
+      "changed": "We stopped treating docs familiarity as given when we judge your onboarding, and started flagging copy that assumes it.",
+      "settledBy": null
+    },
+    {
+      "id": "b2",
+      "claim": "They decide alone, in one sitting.",
+      "sources": ["observed"],
+      "evidence": "89% of accounts that ever completed setup did it in the first session. 4 of 340 accounts have more than two members.",
+      "changed": "We rank anything that adds a step before first value below anything that removes one. This is why the team wizard came third.",
+      "settledBy": null
+    },
+    {
+      "id": "b3",
+      "claim": "Technical enough to paste a key, not patient enough to read.",
+      "sources": ["observed", "research"],
+      "evidence": "Median time on your setup page is 71 seconds, and 3 of 4 who abandon do so before scrolling. Consistent with published first-run abandonment for tools bought without a sales call.",
+      "changed": "We judge your setup copy on its first two lines rather than its completeness, and we count a config file as a step, not a detail.",
+      "settledBy": null
+    },
+    {
+      "id": "b4",
+      "claim": "A third of first sessions happen on a phone.",
+      "sources": ["observed"],
+      "evidence": "31% of first sessions, against 8% of returning ones. The gap has held for six weeks.",
+      "changed": "Every finding is checked against the phone path before we send it. Two findings this month were only reproducible there.",
+      "settledBy": null
+    },
+    {
+      "id": "b5",
+      "claim": "Their first real value is a shared link someone else opened.",
+      "sources": ["observed"],
+      "evidence": "Accounts that shared once in week one came back at 3.4× the rate of accounts that only saved. Saving alone moved nothing.",
+      "changed": "We treat sharing as your activation moment, not signup — which is why invites being broken outranked everything else this week.",
+      "settledBy": null
+    },
+    {
+      "id": "b6",
+      "claim": "They are switching from a spreadsheet, not from a competitor.",
+      "sources": ["assumed"],
+      "evidence": "No import from a named competitor has ever run, and free-text signup answers mention \"sheet\" 19 times. That is suggestive, not conclusive.",
+      "changed": "We expect no prior vocabulary and flag jargon in your copy.",
+      "settledBy": "One question at signup. Ask it and we will stop guessing."
+    }
+  ],
+  "arriveWith": [
+    { "label": "Technical fluency", "value": "Will paste an API key. Will not open a config file." },
+    { "label": "Time before first action", "value": "Median 71 seconds on your setup page." },
+    { "label": "Device, first visit", "value": "31% phone, 66% desktop, 3% tablet." },
+    { "label": "Already have", "value": "Slack 78% · a repository we can read 62% · analytics 100%, which is how we are here at all." },
+    { "label": "Cannot do alone", "value": "Install a workspace-wide Slack app — needs an admin in 22% of cases, and that is where your setup stalls." },
+    { "label": "Decides alone", "value": "Yes. No sign-off, no procurement, no seat request." },
+    { "label": "Judged on", "value": "Weekly active teams. Not signups, not sessions." },
+    { "label": "Leaves when", "value": "Setup outlasts one sitting." }
+  ],
+  "wasBelieved": "People arrive from a code editor, having read your docs, and set up on a desktop with the terminal open beside them.",
+  "nowBelieved": "Most arrive from search, have never opened your docs, and a third are on a phone.",
+  "consequence": "This re-ranked two calls. The team wizard fell from first to third; the invite fix rose to first.",
+  "leastSure": [
+    "Whether the phone-first sessions are the same people returning on desktop, or different people entirely. It changes whether the phone path needs to complete setup or only to start it, and we cannot tell without stitching identity across devices, which we do not do.",
+    "Whether \"switching from a spreadsheet\" holds. Everything we recommend about vocabulary rests on it, and it is the one belief with no hard evidence under it."
+  ]
+}

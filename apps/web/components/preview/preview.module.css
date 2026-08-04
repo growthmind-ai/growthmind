@@ -1,0 +1,97 @@
+.tabstrip {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  text-decoration: none;
+  font-size: var(--mantine-font-size-sm);
+  color: var(--mantine-color-dimmed);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  padding: 4px 10px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    border-color: var(--mantine-primary-color-filled);
+    color: var(--mantine-color-text);
+  }
+}
+
+.tab[data-active] {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+  font-weight: 600;
+}
+
+/* The margin note sits beside the beats it cites; below this width there is no margin to
+   sit in, so the notes follow the transcript and name the times they refer to. */
+.annotated {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  column-gap: var(--mantine-spacing-lg);
+  align-items: start;
+}
+
+.beat {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.note {
+  grid-column: 2;
+  grid-row: var(--note-row);
+}
+
+@media (max-width: 62em) {
+  .annotated {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--mantine-spacing-xs);
+  }
+
+  .beat,
+  .note {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+.beatLine {
+  overflow-wrap: anywhere;
+}
+
+.rowLink {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  gap: var(--mantine-spacing-md);
+  align-items: baseline;
+  text-decoration: none;
+  color: inherit;
+  padding: 10px 4px 10px 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .rowLink:hover {
+    background-color: var(--mantine-color-default-hover);
+  }
+}
+
+@media (max-width: 40em) {
+  .rowLink {
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+  }
+}
