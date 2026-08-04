@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { measuredCount, unknownWorth, type MeasuredCount } from "@growthmind/core";
+import {
+  measuredCount,
+  scanResidualPii,
+  unknownWorth,
+  type MeasuredCount,
+} from "@growthmind/core";
 import type {
   ClaimDeliveryInput,
   ClaimDeliveryResult,
@@ -11,8 +16,18 @@ import type {
   SignatureHex,
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
-import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
-import { GET_IT_FIXED_ACTION_ID, deliveryFailureSentence } from "@growthmind/shared";
+import type {
+  DeliveryPoster,
+  PostRequest,
+  PostResult,
+  ResidualPiiKind,
+  TenantContext,
+} from "@growthmind/shared";
+import {
+  GET_IT_FIXED_ACTION_ID,
+  RESIDUAL_PII_KIND_MESSAGES,
+  deliveryFailureSentence,
+} from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../../src/task-names";
@@ -50,14 +65,23 @@ function sessions(numerator: number, kept: number): MeasuredCount {
   });
 }
 
-function messageInput(context = "Sessions reached the payment step and left without finishing."): DeliverMessageInput {
+const CLEAN_SURFACE = "/checkout/payment";
+
+const CLEAN_HEADLINE = "The payment step is losing sessions";
+
+const CLEAN_CONTEXT = "Sessions reached the payment step and left without finishing.";
+
+function messageInput(
+  context = CLEAN_CONTEXT,
+  surfacePath = CLEAN_SURFACE,
+): DeliverMessageInput {
   return {
     decision: "deliver",
-    surfacePath: "/checkout/payment",
+    surfacePath,
     observations: [{ label: "left before finishing", count: sessions(3, 28) }],
     explanation: {
       source: "model_rendered",
-      headline: "The payment step is losing sessions",
+      headline: CLEAN_HEADLINE,
       context,
     },
   };
@@ -65,15 +89,16 @@ function messageInput(context = "Sessions reached the payment step and left with
 
 function finding(
   findingId: string,
-  overrides: { context?: string; signature?: SignatureHex } = {},
+  overrides: { context?: string; signature?: SignatureHex; surfacePath?: string } = {},
 ): DeliverableFinding {
+  const surfacePath = overrides.surfacePath ?? CLEAN_SURFACE;
   return {
     findingId,
     confidenceBasis: "threshold_met",
     sampleSize: { numerator: 3, denominator: 28 },
     signature: overrides.signature ?? SIGNATURE,
-    message: overrides.context === undefined ? messageInput() : messageInput(overrides.context),
-    worth: unknownWorth("/checkout/payment"),
+    message: messageInput(overrides.context ?? CLEAN_CONTEXT, surfacePath),
+    worth: unknownWorth(surfacePath),
   };
 }
 
@@ -545,11 +570,21 @@ test("no lane can leave a delivery stuck pending, whatever the poster does", asy
   }
 });
 
-test("generated text carrying personal data is never posted and the recorded reason quotes none of it", async () => {
-   
-  const leak = "One session emailed hannah.reed@northwind-shop.example.com from the payment step.";
+// Re-pointed at the residue the persist-time scan cannot reach (ADD Decision 6). The
+// persisted headline and context are clean; the offender rides in on the surface path,
+// which is composed into the message here and lives nowhere in `FindingText`.
+const DIRTY_SURFACE = "/orders-123456789012";
+
+const DIRTY_SURFACE_KIND: ResidualPiiKind = "payment_card";
+
+test("a planted PII offender in a composed Slack message is still held back as blocked_by_pii with the existing residual-pii reason", async () => {
+  expect(scanResidualPii(`${CLEAN_HEADLINE}\n${CLEAN_CONTEXT}`).clean).toBe(true);
+  const surfaceScan = scanResidualPii(DIRTY_SURFACE);
+  expect(surfaceScan.clean).toBe(false);
+  expect(surfaceScan.findings[0]?.kind).toBe(DIRTY_SURFACE_KIND);
+
   const scene = harness({
-    lanes: [lane({ candidates: [finding("finding-1", { context: leak })] })],
+    lanes: [lane({ candidates: [finding("finding-1", { surfacePath: DIRTY_SURFACE })] })],
   });
 
   const summary = await scene.run();
@@ -560,14 +595,11 @@ test("generated text carrying personal data is never posted and the recorded rea
 
   const row = scene.ledger.rowFor("finding-1");
   expect(row?.status).toBe("failed");
-  expect(row?.failureReason).toContain("email address");
-   
-  expect(row?.failureReason).not.toContain("hannah");
-  expect(row?.failureReason).not.toContain("northwind-shop.example.com");
-  expect(row?.failureReason).not.toContain("@");
+  expect(row?.failureReason).toBe(RESIDUAL_PII_KIND_MESSAGES[DIRTY_SURFACE_KIND]);
+
+  expect(row?.failureReason).not.toContain(DIRTY_SURFACE);
   for (const line of scene.logs.all()) {
-    expect(line).not.toContain("hannah");
-    expect(line).not.toContain("northwind-shop.example.com");
+    expect(line).not.toContain(DIRTY_SURFACE);
   }
 });
 
