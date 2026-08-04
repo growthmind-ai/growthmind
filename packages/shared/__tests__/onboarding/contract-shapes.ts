@@ -159,6 +159,15 @@ export type StepDescriptor =
       readonly skippable: boolean;
     }
   | {
+      readonly kind: "panel";
+      readonly id: StepId;
+      readonly ordinal: number;
+      readonly title: string;
+      readonly helper: string;
+    }
+  //   ^ no `fields`, no `actions`, no `confirmations`: the panel owns its own
+  //     controls (O-026 D-9), and that absence is the contract.
+  | {
       readonly kind: "stage";
       readonly id: StepId;
       readonly ordinal: number;
@@ -172,6 +181,9 @@ export type StepSequenceFacts = {
   readonly slackSkipped: boolean;
 
   readonly slackTestPostFailed: boolean;
+
+  readonly agentConnected: boolean;
+
   readonly armedAt: Date | null;
 
   readonly reopenedReadOnly: boolean;
