@@ -1,6 +1,8 @@
 import { Stack, Title } from "@mantine/core";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { LAST_LOGIN_METHOD_COOKIE, resolveLastLoginBadge } from "@/lib/last-login-method";
 import { ROUTES } from "@/lib/routes";
 import { configuredSocialProviders } from "@/lib/social-auth";
 import { getTenantContext } from "@/lib/tenant";
@@ -22,13 +24,20 @@ export default async function SignInPage() {
   // credentials itself: a NEXT_PUBLIC_ twin would publish them to every browser.
   const providers = configuredSocialProviders(process.env);
 
+  // Read here rather than from document.cookie in the button: the server would render no
+  // badge and the browser would then add one, which is a hydration mismatch and a flash.
+  const lastUsed = resolveLastLoginBadge(
+    (await cookies()).get(LAST_LOGIN_METHOD_COOKIE)?.value,
+    providers,
+  );
+
   return (
     <Stack gap="lg">
       <Title order={1} size="h3" ta="center">
         Sign in
       </Title>
-      <SocialButtons providers={providers} />
-      <SignInForm />
+      <SocialButtons providers={providers} lastUsed={lastUsed} />
+      <SignInForm lastUsed={lastUsed} />
     </Stack>
   );
 }

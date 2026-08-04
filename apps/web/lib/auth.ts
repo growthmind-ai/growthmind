@@ -10,9 +10,10 @@ import { logger, parseWebEnv, resolveActiveOrganization } from "@growthmind/shar
 import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization } from "better-auth/plugins";
+import { lastLoginMethod, organization } from "better-auth/plugins";
 
 import { getDb } from "./db";
+import { LAST_LOGIN_METHOD_COOKIE } from "./last-login-method";
 import { getPostHogClient } from "./posthog-server";
 import { authProviderLabel, socialProvidersConfig } from "./social-auth";
 
@@ -54,6 +55,9 @@ export function buildAuth(options: BuildAuthOptions = {}) {
 
     plugins: [
       organization({ allowUserToCreateOrganization: false, disableOrganizationDeletion: true }),
+      // Written on the provider's callback, not on the click, so a consent screen someone
+      // backed out of never becomes the method the sign-in page recommends.
+      lastLoginMethod({ cookieName: LAST_LOGIN_METHOD_COOKIE }),
       ...(env.BETTER_AUTH_API_KEY ? [dash({ apiKey: env.BETTER_AUTH_API_KEY })] : []),
     ],
     databaseHooks: {
