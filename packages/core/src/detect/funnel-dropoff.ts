@@ -3,62 +3,18 @@ import { measuredCount } from "../counts/measured-count";
 import { PERCENT_SCALE } from "../counts/percent";
 import type { EvidenceSignal } from "../evidence/signals";
 import type { ThresholdRuleSet } from "../rules/types";
+import { sessionWalk, surfaceNormalisationVersionOf, transitionsOf } from "../spine/walk";
 import { analysedSessions } from "./analysed";
-import { orderTimeline } from "./order";
-import type { DetectorCandidate, DetectorCorpus, DetectorResult, SessionTimeline } from "./types";
+import type { DetectorCandidate, DetectorCorpus, DetectorResult } from "./types";
 
 const AFTER_FIRST_VISIT_OFFSET = 1;
-
-function pathWalk(session: SessionTimeline): readonly string[] {
-  const walk: string[] = [];
-  let previous: string | null = null;
-
-  for (const event of orderTimeline(session.events)) {
-    const path = event.urlPath;
-    if (path === null) continue;
-    if (path !== previous) walk.push(path);
-    previous = path;
-  }
-
-  return walk;
-}
-
-function transitionsOf(
-  walks: readonly (readonly string[])[],
-): ReadonlyMap<string, ReadonlySet<string>> {
-  const transitions = new Map<string, Set<string>>();
-
-  for (const walk of walks) {
-    let previous: string | null = null;
-    for (const path of walk) {
-      if (previous !== null) {
-        const destinations = transitions.get(previous) ?? new Set<string>();
-        destinations.add(path);
-        transitions.set(previous, destinations);
-      }
-      previous = path;
-    }
-  }
-
-  return transitions;
-}
-
-function surfaceVersionOf(sessions: readonly SessionTimeline[], surface: string): number | null {
-  const versions = sessions
-    .flatMap((session) => session.events)
-    .filter((event) => event.urlPath === surface)
-    .map((event) => event.urlPathNormalisationVersion);
-
-  const [first] = versions;
-  return versions.every((version) => version === first) ? (first ?? null) : null;
-}
 
 export function detectFunnelDropoff(
   corpus: DetectorCorpus,
   ruleSet: ThresholdRuleSet,
 ): DetectorResult {
   const { kept, coverage } = analysedSessions(corpus);
-  const walks = kept.map(pathWalk);
+  const walks = kept.map(sessionWalk);
 
   const candidates: DetectorCandidate[] = [];
 
@@ -124,7 +80,7 @@ export function detectFunnelDropoff(
       claimSubject: "surface",
 
       surface: origin,
-      surfaceNormalisationVersion: surfaceVersionOf(kept, origin),
+      surfaceNormalisationVersion: surfaceNormalisationVersionOf(kept, origin),
       signals,
 
       counts: [countOf(atOrigin.length), countOf(dropped.length)],
