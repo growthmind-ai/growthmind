@@ -12,9 +12,17 @@ import type {
   TimelineEvent,
 } from "../../src/detect/types";
 import type { EvidenceSignal } from "../../src/evidence/signals";
+import type { AssembledCandidates } from "../../src/findings/assemble";
 import { assembleCandidates } from "../../src/findings/assemble";
+import type { CandidateFinding } from "../../src/findings/candidate";
 import { candidateFindingSchema } from "../../src/findings/candidate";
 import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
+import type {
+  ElementIdentity,
+  SessionAction,
+  SessionTranscript,
+  TranscriptCounts,
+} from "../../src/replay/types";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 
@@ -168,6 +176,161 @@ function funnelCorpus(input: { strugglers: number; struggleVisits: number }): De
 function signalsOf(candidate: unknown): readonly EvidenceSignal[] | undefined {
   const record = candidate as Record<string, unknown>;
   return record["signals"] as readonly EvidenceSignal[] | undefined;
+}
+
+// TODO(O-041 D-11): SessionReplay and the optional DetectorCorpus.replays land in
+// src/detect/types.ts; delete these two local declarations and import them then.
+type SessionReplay = {
+  readonly sessionId: string;
+  readonly transcript: SessionTranscript;
+};
+
+type ObservedCorpus = DetectorCorpus & {
+  readonly replays?: readonly SessionReplay[];
+};
+
+type DetectObservedStruggle = (corpus: ObservedCorpus, ruleSet: ThresholdRuleSet) => DetectorResult;
+
+// Typed `string` so the specifier stays unresolvable at compile time: this file must
+// typecheck before src/detect/observed.ts exists, and must fail at run time until it does.
+const OBSERVED_DETECTOR_MODULE: string = "../../src/detect/observed";
+
+async function loadDetectObservedStruggle(): Promise<DetectObservedStruggle> {
+  const loaded = (await import(OBSERVED_DETECTOR_MODULE)) as Record<string, unknown>;
+  const detector = loaded["detectObservedStruggle"];
+
+  if (typeof detector !== "function") {
+    throw new Error("src/detect/observed.ts must export detectObservedStruggle");
+  }
+
+  return detector as DetectObservedStruggle;
+}
+
+// TODO(O-041 D-9): both members land on ThresholdRuleSet in the rules wave; the ADD §4
+// ratified values below are the fallback until they do, and become unreachable after.
+type ObservedThresholdMembers = {
+  readonly struggleRageClickMin?: number;
+  readonly struggleObservedMinSessions?: number;
+};
+
+const RATIFIED_RAGE_CLICK_MIN = 4;
+const RATIFIED_OBSERVED_MIN_SESSIONS = 5;
+
+function observedFloors(rules: ThresholdRuleSet): {
+  readonly rageClickMin: number;
+  readonly minSessions: number;
+} {
+  const declared: ThresholdRuleSet & ObservedThresholdMembers = rules;
+
+  return {
+    rageClickMin: declared.struggleRageClickMin ?? RATIFIED_RAGE_CLICK_MIN,
+    minSessions: declared.struggleObservedMinSessions ?? RATIFIED_OBSERVED_MIN_SESSIONS,
+  };
+}
+
+// Distinct from the observed cohort by construction, so a candidate that read the other
+// producer's count fails the double-count test instead of passing by coincidence.
+function funnelStrugglerCount(rules: ThresholdRuleSet): number {
+  return observedFloors(rules).minSessions + rules.struggleMinStrugglingSessions;
+}
+
+const OBSERVED_HREF = `https://o041.example.invalid${ORIGIN}`;
+const OBSERVED_ACTION_STRIDE_MS = 1_500;
+const OBSERVED_RAGE_SPAN_MS = 900;
+const OBSERVED_ENDED_AT_MS = 3_000;
+
+const FUNNEL_DETECTOR: string = "funnel_dropoff";
+const OBSERVED_DETECTOR: string = "observed_struggle";
+
+const PAY_CONTROL: ElementIdentity = {
+  nodeId: 4_100,
+  tagName: "button",
+  classes: [],
+  testId: "o041-pay",
+  attributes: {},
+};
+
+const QUIET_COUNTS: TranscriptCounts = {
+  clicks: 0,
+  deadClicks: 0,
+  rageClicks: 0,
+  refocuses: 0,
+  abandonedFields: 0,
+  scrollBacks: 0,
+};
+
+function rageTranscript(clicks: number): SessionTranscript {
+  const actions: readonly SessionAction[] = [
+    { kind: "page", atMs: 0, href: OBSERVED_HREF },
+    {
+      kind: "rage_click",
+      atMs: OBSERVED_ACTION_STRIDE_MS,
+      element: PAY_CONTROL,
+      clicks,
+      spanMs: OBSERVED_RAGE_SPAN_MS,
+    },
+    { kind: "ended", atMs: OBSERVED_ENDED_AT_MS },
+  ];
+
+  return {
+    actions,
+    startedAt: FIRST_SESSION_AT,
+    durationMs: OBSERVED_ENDED_AT_MS,
+    pages: [OBSERVED_HREF],
+    counts: { ...QUIET_COUNTS, rageClicks: 1 },
+    droppedEvents: 0,
+  };
+}
+
+function struggleSessionId(index: number): string {
+  return `struggle-${String(index).padStart(3, "0")}`;
+}
+
+function dualProducerCorpus(): ObservedCorpus {
+  const rules = ruleSet();
+  const floors = observedFloors(rules);
+
+  const corpus = funnelCorpus({
+    strugglers: funnelStrugglerCount(rules),
+    struggleVisits: rules.struggleRepeatedAttemptMin,
+  });
+
+  return {
+    ...corpus,
+    replays: Array.from({ length: floors.minSessions }, (_unused, index) => ({
+      sessionId: struggleSessionId(index),
+      transcript: rageTranscript(floors.rageClickMin),
+    })),
+  };
+}
+
+function candidateOf(assembled: AssembledCandidates, detector: string): CandidateFinding {
+  const found = assembled.candidates.find((candidate) => candidate.detector === detector);
+  if (found === undefined) {
+    throw new Error(`the assembly must carry a ${detector} candidate`);
+  }
+  return found;
+}
+
+function struggleSignalOf(candidate: CandidateFinding): Extract<EvidenceSignal, { kind: "struggle" }> {
+  const struggle = (signalsOf(candidate) ?? []).find((signal) => signal.kind === "struggle");
+  if (struggle === undefined || struggle.kind !== "struggle") {
+    throw new Error(`the ${candidate.detector} candidate must carry a struggle signal`);
+  }
+  return struggle;
+}
+
+function identityTuples(assembled: AssembledCandidates): readonly string[] {
+  return assembled.candidates
+    .map((candidate) =>
+      JSON.stringify([
+        candidate.detector,
+        candidate.surface,
+        candidate.evidenceShape,
+        candidate.finalClass,
+      ]),
+    )
+    .toSorted();
 }
 
 describe("assembleCandidates", () => {
@@ -394,5 +557,77 @@ describe("assembleCandidates", () => {
 
     const empty = detectFunnelDropoff(corpusOf([]), rules);
     expect(assembleCandidates([empty], rules)).toEqual({ candidates: [], rejected: [] });
+  });
+});
+
+describe("assembleCandidates with two producers on one surface", () => {
+  test("should assemble a confusing finding from an observed struggle candidate end to end", async () => {
+    const rules = ruleSet();
+    const detectObservedStruggle = await loadDetectObservedStruggle();
+
+    const assembled = assembleCandidates(
+      [detectObservedStruggle(dualProducerCorpus(), rules)],
+      rules,
+    );
+
+    expect(assembled.rejected).toEqual([]);
+    expect(assembled.candidates.length).toBe(1);
+    expect(assembled.candidates[0]?.finalClass).toBe("confusing");
+  });
+
+  test("should not change a funnel_dropoff candidate's evidence shape when an observed struggle candidate exists on the same surface", async () => {
+    const rules = ruleSet();
+    const detectObservedStruggle = await loadDetectObservedStruggle();
+    const corpus = dualProducerCorpus();
+
+    const funnel = detectFunnelDropoff(corpus, rules);
+    const observed = detectObservedStruggle(corpus, rules);
+
+    const alone = assembleCandidates([funnel], rules);
+    const together = assembleCandidates([funnel, observed], rules);
+
+    expect(together.candidates.length).toBe(2);
+    expect(candidateOf(together, OBSERVED_DETECTOR).surface).toBe(ORIGIN);
+
+    expect(candidateOf(together, FUNNEL_DETECTOR).evidenceShape).toBe(
+      candidateOf(alone, FUNNEL_DETECTOR).evidenceShape,
+    );
+  });
+
+  test("should produce the same two findings under either detector arrival order", async () => {
+    const rules = ruleSet();
+    const detectObservedStruggle = await loadDetectObservedStruggle();
+    const corpus = dualProducerCorpus();
+
+    const funnel = detectFunnelDropoff(corpus, rules);
+    const observed = detectObservedStruggle(corpus, rules);
+
+    const forward = identityTuples(assembleCandidates([funnel, observed], rules));
+    const reverse = identityTuples(assembleCandidates([observed, funnel], rules));
+
+    expect(forward.length).toBe(2);
+    expect(forward).toEqual(reverse);
+  });
+
+  test("should not double-count strugglingSessions across the two producers", async () => {
+    const rules = ruleSet();
+    const detectObservedStruggle = await loadDetectObservedStruggle();
+    const corpus = dualProducerCorpus();
+
+    const assembled = assembleCandidates(
+      [detectFunnelDropoff(corpus, rules), detectObservedStruggle(corpus, rules)],
+      rules,
+    );
+
+    const funnelSessions = funnelStrugglerCount(rules);
+    const observedSessions = observedFloors(rules).minSessions;
+    expect(funnelSessions).not.toBe(observedSessions);
+
+    expect(
+      struggleSignalOf(candidateOf(assembled, FUNNEL_DETECTOR)).strugglingSessions.numerator,
+    ).toBe(funnelSessions);
+    expect(
+      struggleSignalOf(candidateOf(assembled, OBSERVED_DETECTOR)).strugglingSessions.numerator,
+    ).toBe(observedSessions);
   });
 });
