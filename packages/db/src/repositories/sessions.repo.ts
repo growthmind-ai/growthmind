@@ -102,7 +102,7 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
         .insert(sessions)
         .values(
           ourRows.map((row) => ({
-            ...s.stamp,
+            organizationId: s.stamp.organizationId,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionKey: row.sessionKey,

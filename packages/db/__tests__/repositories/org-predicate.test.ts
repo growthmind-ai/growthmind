@@ -54,9 +54,15 @@ function valuesGroups(code: string): string[] {
   return groups;
 }
 
+// Both forms name the stamp inside the values group itself. The second exists for batch
+// inserts, where spreading once per row is what `no-map-spread` is about; nothing else
+// counts, so an org id reaching an insert from anywhere but the stamp is still flagged.
+const FROM_STAMP = [/\.\.\.s\.stamp\b/, /organizationId:\s*s\.stamp\.organizationId\b/] as const;
+
 function unstampedValuesGroups(code: string): string[] {
   return valuesGroups(code).filter(
-    (group) => group.includes("organizationId") && !group.includes("...s.stamp"),
+    (group) =>
+      group.includes("organizationId") && !FROM_STAMP.some((stamped) => stamped.test(group)),
   );
 }
 
@@ -112,5 +118,19 @@ describe("one helper owns every tenant predicate and stamp", () => {
 
     expect(unstampedValuesGroups(offender)).toHaveLength(1);
     expect(unstampedValuesGroups(stamped)).toEqual([]);
+  });
+
+  it("the scanner passes a batch insert that reads the stamp per row", () => {
+    const batched = `await db.insert(events).values(rows.map((row) => ({
+      organizationId: s.stamp.organizationId, projectId: row.projectId })))`;
+
+    expect(unstampedValuesGroups(batched)).toEqual([]);
+  });
+
+  it("the scanner still flags an org id a batch insert took from its own rows", () => {
+    const offender = `await db.insert(events).values(rows.map((row) => ({
+      organizationId: row.organizationId, projectId: row.projectId })))`;
+
+    expect(unstampedValuesGroups(offender)).toHaveLength(1);
   });
 });

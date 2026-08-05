@@ -31,9 +31,9 @@ function citationResolves(citation: EnforcingTest): boolean {
   return source.includes(`test("${citation.test}"`);
 }
 
-const ALL_CITATIONS: readonly EnforcingTest[] = Object.values(SAC_CONTRACT).flatMap((row) => [
-  ...row.enforcedBy,
-]);
+const ALL_CITATIONS: readonly EnforcingTest[] = Object.values(SAC_CONTRACT).flatMap(
+  (row) => row.enforcedBy,
+);
 
 describe("the String Assertion Contract", () => {
   test("every assertion-contract row cites a test name that exists verbatim in the tree", () => {
