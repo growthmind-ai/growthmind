@@ -1,6 +1,12 @@
 import { orderTimeline } from "../detect/order";
 import type { SessionTimeline } from "../detect/types";
 
+export function comparePathsAscending(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export function sessionWalk(session: SessionTimeline): readonly string[] {
   const walk: string[] = [];
   let previous: string | null = null;

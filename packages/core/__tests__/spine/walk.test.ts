@@ -1,11 +1,35 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SessionTimeline } from "../../src/detect/types";
-import { sessionWalk, surfaceNormalisationVersionOf, transitionsOf } from "../../src/spine/walk";
+import {
+  comparePathsAscending,
+  sessionWalk,
+  surfaceNormalisationVersionOf,
+  transitionsOf,
+} from "../../src/spine/walk";
 import { NORMALISATION_VERSION, STARTED_AT, sessionOf } from "./fixtures";
 
 const ORIGIN = "/pricing";
 const DESTINATION = "/checkout";
+
+describe("comparePathsAscending", () => {
+  test("orders two paths lexicographically", () => {
+    expect(comparePathsAscending("/a", "/b")).toBe(-1);
+    expect(comparePathsAscending("/b", "/a")).toBe(1);
+  });
+
+  test("reports equal paths as a tie, so a caller's prior order survives a stable sort", () => {
+    expect(comparePathsAscending(ORIGIN, ORIGIN)).toBe(0);
+  });
+
+  test("sorts a path list into one deterministic order regardless of input order", () => {
+    const forwards = ["/c", "/a", "/b"].toSorted(comparePathsAscending);
+    const backwards = ["/b", "/c", "/a"].toSorted(comparePathsAscending);
+
+    expect(forwards).toEqual(["/a", "/b", "/c"]);
+    expect(forwards).toEqual(backwards);
+  });
+});
 
 describe("sessionWalk", () => {
   test("collapses consecutive repeats, so a reload never reads as a second step", () => {

@@ -1,4 +1,5 @@
 import type { SessionTimeline, TimelineEvent } from "../../src/detect/types";
+import type { StepSpine } from "../../src/spine/types";
 
 export const STARTED_AT = new Date("2026-07-03T09:00:00.000Z");
 export const EVENT_STRIDE_MS = 1_000;
@@ -35,6 +36,6 @@ export function sessionOf(
   };
 }
 
-export function pathsOf(spine: { readonly steps: readonly { readonly path: string }[] }): string[] {
+export function pathsOf(spine: StepSpine): string[] {
   return spine.steps.map((step) => step.path);
 }

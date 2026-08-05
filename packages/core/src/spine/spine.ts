@@ -1,16 +1,11 @@
+import { PERCENT_SCALE } from "../counts/percent";
 import type { SessionTimeline } from "../detect/types";
-import type { SessionPlacement, SpineStep, StepSpine } from "./types";
-import { STEP_SPINE_VERSION } from "./types";
-import { sessionWalk, surfaceNormalisationVersionOf } from "./walk";
+import type { SessionPlacement, SpineOptions, SpineStep, StepSpine } from "./types";
+import { SPINE_MIN_REACH_RATIO_PERCENT, STEP_SPINE_VERSION } from "./types";
+import { comparePathsAscending, sessionWalk, surfaceNormalisationVersionOf } from "./walk";
 
 const ORIGIN_INDEX = 0;
 const FIRST_STEP_AFTER_ORIGIN = 1;
-
-function compareAscending(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 function median(values: readonly number[]): number {
   const sorted = values.toSorted((left, right) => left - right);
@@ -20,6 +15,19 @@ function median(values: readonly number[]): number {
   return (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function walksReaching(
+  sessions: readonly SessionTimeline[],
+  surface: string,
+): readonly (readonly string[])[] {
+  const walkBySession = new Map<string, readonly string[]>();
+
+  for (const session of sessions) {
+    walkBySession.set(session.sessionId, sessionWalk(session));
+  }
+
+  return [...walkBySession.values()].filter((walk) => walk.includes(surface));
+}
+
 function firstOffsetsFromOrigin(
   walks: readonly (readonly string[])[],
   surface: string,
@@ -27,10 +35,9 @@ function firstOffsetsFromOrigin(
   const offsetsByPath = new Map<string, number[]>();
 
   for (const walk of walks) {
-    const entered = walk.indexOf(surface);
     const seen = new Set<string>();
 
-    for (const [offset, path] of walk.slice(entered).entries()) {
+    for (const [offset, path] of walk.slice(walk.indexOf(surface)).entries()) {
       if (path === surface || seen.has(path)) continue;
       seen.add(path);
 
@@ -43,8 +50,13 @@ function firstOffsetsFromOrigin(
   return offsetsByPath;
 }
 
-export function buildStepSpine(sessions: readonly SessionTimeline[], surface: string): StepSpine {
-  const walks = sessions.map(sessionWalk).filter((walk) => walk.includes(surface));
+export function buildStepSpine(
+  sessions: readonly SessionTimeline[],
+  surface: string,
+  options: SpineOptions = {},
+): StepSpine {
+  const minReachRatioPercent = options.minReachRatioPercent ?? SPINE_MIN_REACH_RATIO_PERCENT;
+  const walks = walksReaching(sessions, surface);
 
   const origin: SpineStep = {
     path: surface,
@@ -58,11 +70,12 @@ export function buildStepSpine(sessions: readonly SessionTimeline[], surface: st
       typicalOffset: median(offsets),
       sessionsReaching: offsets.length,
     }))
+    .filter((step) => step.sessionsReaching * PERCENT_SCALE >= minReachRatioPercent * walks.length)
     .toSorted(
       (left, right) =>
         left.typicalOffset - right.typicalOffset ||
         right.sessionsReaching - left.sessionsReaching ||
-        compareAscending(left.path, right.path),
+        comparePathsAscending(left.path, right.path),
     );
 
   return {
@@ -72,6 +85,7 @@ export function buildStepSpine(sessions: readonly SessionTimeline[], surface: st
       surfaceNormalisationVersion: surfaceNormalisationVersionOf(sessions, surface),
       spineVersion: STEP_SPINE_VERSION,
     },
+    minReachRatioPercent,
     steps: [
       origin,
       ...ranked.map((step, position) => ({
@@ -94,26 +108,20 @@ export function placeOnSpine(
     const walk = sessionWalk(session);
     const originVisits = walk.filter((path) => path === origin).length;
 
-    if (originVisits === 0) {
-      return {
-        sessionId: session.sessionId,
-        reachedIndex: null,
-        visitedIndexes: [],
-        originVisits: 0,
-      };
-    }
-
     const visited = new Set<number>();
-    for (const path of walk.slice(walk.indexOf(origin))) {
-      const index = indexByPath.get(path);
-      if (index !== undefined) visited.add(index);
+    if (originVisits > 0) {
+      for (const path of walk.slice(walk.indexOf(origin))) {
+        const index = indexByPath.get(path);
+        if (index !== undefined) visited.add(index);
+      }
     }
 
     const visitedIndexes = [...visited].toSorted((left, right) => left - right);
 
     return {
       sessionId: session.sessionId,
-      reachedIndex: Math.max(...visitedIndexes),
+
+      deepestVisitedIndex: visitedIndexes.at(-1) ?? null,
       visitedIndexes,
       originVisits,
     };

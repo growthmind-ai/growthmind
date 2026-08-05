@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildStepSpine, placeOnSpine } from "../../src/spine/spine";
-import { STEP_SPINE_VERSION } from "../../src/spine/types";
+import type { StepSpine } from "../../src/spine/types";
+import { SPINE_MIN_REACH_RATIO_PERCENT, STEP_SPINE_VERSION } from "../../src/spine/types";
 import { NORMALISATION_VERSION, pathsOf, sessionOf } from "./fixtures";
 
 const ORIGIN = "/pricing";
 const CHECKOUT = "/checkout";
 const DONE = "/done";
+
+const NO_FLOOR = { minReachRatioPercent: 0 };
 
 describe("buildStepSpine — the canonical order", () => {
   test("the origin is always step 0, whatever the sessions did after it", () => {
@@ -29,6 +32,15 @@ describe("buildStepSpine — the canonical order", () => {
     expect(spine.steps.map((step) => step.index)).toEqual([0, 1, 2]);
   });
 
+  test("a fractional median decides the order, not just the integer offsets it came from", () => {
+    const spine = buildStepSpine(
+      [sessionOf("s1", [ORIGIN, "/a", "/b"]), sessionOf("s2", [ORIGIN, "/z", "/a", "/b"])],
+      ORIGIN,
+    );
+
+    expect(pathsOf(spine)).toEqual([ORIGIN, "/z", "/a", "/b"]);
+  });
+
   test("an offset tie breaks toward the step more sessions reached, never toward insertion order", () => {
     const spine = buildStepSpine(
       [
@@ -37,6 +49,7 @@ describe("buildStepSpine — the canonical order", () => {
         sessionOf("s3", [ORIGIN, "/common"]),
       ],
       ORIGIN,
+      NO_FLOOR,
     );
 
     expect(pathsOf(spine)).toEqual([ORIGIN, "/common", "/rare"]);
@@ -57,10 +70,68 @@ describe("buildStepSpine — the canonical order", () => {
     expect(spine.steps[1]).toEqual({ path: CHECKOUT, index: 1, sessionsReaching: 1 });
   });
 
+  test("one session id appearing twice in the corpus counts once, never inflating reach", () => {
+    const spine = buildStepSpine(
+      [sessionOf("s1", [ORIGIN, CHECKOUT]), sessionOf("s1", [ORIGIN, CHECKOUT])],
+      ORIGIN,
+    );
+
+    expect(spine.steps[0].sessionsReaching).toBe(1);
+  });
+
   test("steps before the origin are not on the spine, because the spine starts where it says", () => {
     const spine = buildStepSpine([sessionOf("s1", ["/home", ORIGIN, CHECKOUT])], ORIGIN);
 
     expect(pathsOf(spine)).toEqual([ORIGIN, CHECKOUT]);
+  });
+});
+
+describe("buildStepSpine — the spine is the dominant path, not every branch", () => {
+  test("a side branch below the reach floor is excluded, so it cannot outrank the main path", () => {
+    const branching = [
+      sessionOf("w1", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("w2", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("w3", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("bounced", [ORIGIN, "/faq"]),
+    ];
+
+    const spine = buildStepSpine(branching, ORIGIN);
+
+    expect(pathsOf(spine)).toEqual([ORIGIN, "/plan", CHECKOUT]);
+  });
+
+  test("a session that bounced to a side branch never reads as further along than one that advanced", () => {
+    const branching = [
+      sessionOf("w1", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("w2", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("w3", [ORIGIN, "/plan", CHECKOUT]),
+      sessionOf("bounced", [ORIGIN, "/faq"]),
+    ];
+
+    const spine = buildStepSpine(branching, ORIGIN);
+    const [bounced] = placeOnSpine(spine, [sessionOf("bounced", [ORIGIN, "/faq"])]);
+    const [advanced] = placeOnSpine(spine, [sessionOf("advanced", [ORIGIN, "/plan"])]);
+
+    expect(bounced.deepestVisitedIndex).toBe(0);
+    expect(advanced.deepestVisitedIndex).toBe(1);
+  });
+
+  test("a miss against the floor drops the step, never invents one the cohort mostly never saw", () => {
+    const spine = buildStepSpine(
+      [sessionOf("s1", [ORIGIN, "/rare"]), sessionOf("s2", [ORIGIN]), sessionOf("s3", [ORIGIN])],
+      ORIGIN,
+    );
+
+    expect(pathsOf(spine)).toEqual([ORIGIN]);
+  });
+
+  test("the floor the spine was built at is recorded on it, so a reader is not left guessing", () => {
+    expect(buildStepSpine([sessionOf("s1", [ORIGIN])], ORIGIN).minReachRatioPercent).toBe(
+      SPINE_MIN_REACH_RATIO_PERCENT,
+    );
+    expect(buildStepSpine([sessionOf("s1", [ORIGIN])], ORIGIN, NO_FLOOR).minReachRatioPercent).toBe(
+      0,
+    );
   });
 });
 
@@ -91,6 +162,21 @@ describe("buildStepSpine — identity (D12)", () => {
     const spine = buildStepSpine([sessionOf("s1", [ORIGIN])], ORIGIN);
 
     expect(spine.identity.spineVersion).toBe(STEP_SPINE_VERSION);
+  });
+
+  test("a surface rename forks the identity — the ancestry edge that would map it is owed by B-031", () => {
+    const before = buildStepSpine([sessionOf("s1", [ORIGIN, "/checkout"])], "/checkout");
+    const after = buildStepSpine([sessionOf("s1", [ORIGIN, "/pay"])], "/pay");
+
+    expect(after.identity).not.toEqual(before.identity);
+  });
+
+  test("a normalisation version bump forks the identity for one unchanged surface", () => {
+    const v1 = buildStepSpine([sessionOf("s1", [ORIGIN], { normalisationVersion: 1 })], ORIGIN);
+    const v2 = buildStepSpine([sessionOf("s1", [ORIGIN], { normalisationVersion: 2 })], ORIGIN);
+
+    expect(v1.identity.surface).toBe(v2.identity.surface);
+    expect(v1.identity).not.toEqual(v2.identity);
   });
 });
 
@@ -142,17 +228,17 @@ describe("placeOnSpine", () => {
     );
   }
 
-  test("reachedIndex is the furthest step the session touched", () => {
+  test("deepestVisitedIndex is the furthest step the session touched", () => {
     const [placement] = placeOnSpine(spine(), [sessionOf("s1", [ORIGIN, CHECKOUT])]);
 
-    expect(placement.reachedIndex).toBe(1);
+    expect(placement.deepestVisitedIndex).toBe(1);
     expect(placement.visitedIndexes).toEqual([0, 1]);
   });
 
   test("a session that never entered the origin is unplaced (null), never placed at step 0", () => {
     const [placement] = placeOnSpine(spine(), [sessionOf("s1", ["/elsewhere"])]);
 
-    expect(placement.reachedIndex).toBeNull();
+    expect(placement.deepestVisitedIndex).toBeNull();
     expect(placement.visitedIndexes).toEqual([]);
     expect(placement.originVisits).toBe(0);
   });
@@ -160,14 +246,14 @@ describe("placeOnSpine", () => {
   test("a path absent from the spine is ignored, never assigned an invented index", () => {
     const [placement] = placeOnSpine(spine(), [sessionOf("s1", [ORIGIN, "/unknown"])]);
 
-    expect(placement.reachedIndex).toBe(0);
+    expect(placement.deepestVisitedIndex).toBe(0);
     expect(placement.visitedIndexes).toEqual([0]);
   });
 
   test("steps visited before the origin do not count, because placement starts at the origin", () => {
     const [placement] = placeOnSpine(spine(), [sessionOf("s1", [DONE, ORIGIN])]);
 
-    expect(placement.reachedIndex).toBe(0);
+    expect(placement.deepestVisitedIndex).toBe(0);
     expect(placement.visitedIndexes).toEqual([0]);
   });
 
@@ -191,11 +277,28 @@ describe("placeOnSpine", () => {
 
   test("a step reached by zero sessions in this cohort stays on the spine, unreached (D5)", () => {
     const built = spine();
-    const placements = placeOnSpine(built, [sessionOf("s1", [ORIGIN])]);
+    const [placement] = placeOnSpine(built, [sessionOf("s1", [ORIGIN])]);
 
     expect(built.steps).toHaveLength(3);
-    expect(placements[0].visitedIndexes).toEqual([0]);
-    expect(placements.every((placement) => placement.reachedIndex !== 2)).toBe(true);
+    expect(placement.visitedIndexes).toEqual([0]);
+    expect(placement.deepestVisitedIndex).toBe(0);
+  });
+
+  test("a spine whose steps omit its own origin yields null, never a poison -Infinity", () => {
+    const originless: StepSpine = {
+      identity: {
+        surface: ORIGIN,
+        surfaceNormalisationVersion: NORMALISATION_VERSION,
+        spineVersion: STEP_SPINE_VERSION,
+      },
+      minReachRatioPercent: SPINE_MIN_REACH_RATIO_PERCENT,
+      steps: [{ path: CHECKOUT, index: 0, sessionsReaching: 1 }],
+    };
+
+    const [placement] = placeOnSpine(originless, [sessionOf("s1", [ORIGIN])]);
+
+    expect(placement.deepestVisitedIndex).toBeNull();
+    expect(placement.originVisits).toBe(1);
   });
 });
 
@@ -215,8 +318,8 @@ describe("placeOnSpine — the outcome's goal: two cohorts, one spine", () => {
 
     expect(pathsOf(shared)).toEqual([ORIGIN, CHECKOUT, DONE]);
 
-    expect(succeeded.map((placement) => placement.reachedIndex)).toEqual([2, 2]);
-    expect(failed.map((placement) => placement.reachedIndex)).toEqual([1, 1]);
+    expect(succeeded.map((placement) => placement.deepestVisitedIndex)).toEqual([2, 2]);
+    expect(failed.map((placement) => placement.deepestVisitedIndex)).toEqual([1, 1]);
   });
 
   test("placing a cohort does not mutate the spine, so the second caller reads the same steps", () => {
