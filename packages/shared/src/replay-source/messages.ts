@@ -28,10 +28,14 @@ export const REPLAY_LIST_UNREADABLE =
 export const REPLAY_EMPTY_RECORDING =
   "This recording arrived empty, so there is nothing to play. That usually means the session ended before anything was captured.";
 
+export const REPLAY_LIST_TRUNCATED =
+  "These are the most recent recordings. Older ones are still in your analytics — we read one page at a time so this screen stays quick.";
+
 export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   ...Object.values(REPLAY_FAILURE_MESSAGES),
   REPLAY_NO_CONNECTION,
   REPLAY_NONE_YET,
   REPLAY_LIST_UNREADABLE,
   REPLAY_EMPTY_RECORDING,
+  REPLAY_LIST_TRUNCATED,
 ];

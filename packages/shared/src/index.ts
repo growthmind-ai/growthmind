@@ -185,6 +185,7 @@ export {
   REPLAY_NONE_YET,
   REPLAY_LIST_UNREADABLE,
   REPLAY_EMPTY_RECORDING,
+  REPLAY_LIST_TRUNCATED,
 } from "./replay-source/messages";
 
 export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
