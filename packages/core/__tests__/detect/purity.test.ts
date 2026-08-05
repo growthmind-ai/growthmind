@@ -551,6 +551,7 @@ describe("detector purity and coverage", () => {
     expect(detectors.map((entry) => entry.name).toSorted()).toEqual([
       "detectErrorEvent",
       "detectFunnelDropoff",
+      "detectObservedStruggle",
     ]);
 
     for (const detector of detectors) {
@@ -593,6 +594,7 @@ describe("detector purity and coverage", () => {
     expect(detectorModules.map((module) => module.path).toSorted()).toEqual([
       "detect/error-event.ts",
       "detect/funnel-dropoff.ts",
+      "detect/observed.ts",
     ]);
 
     for (const scanned of detectorModules) {

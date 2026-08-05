@@ -267,7 +267,19 @@ type FailDirectionEvidence = {
 type NumericMembers<T> = {
   [K in keyof T]-?: T[K] extends number ? K : never;
 }[keyof T];
-type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet>, "version">;
+
+// TODO(O-041 D-9): delete ObservedThresholds once ThresholdRuleSet carries these six — the
+// intersection then collapses and ThresholdKey enforces totality off the real type alone.
+type ObservedThresholds = {
+  readonly struggleRageClickMin: number;
+  readonly struggleDeadClickMin: number;
+  readonly struggleFieldAbandonedMin: number;
+  readonly struggleFieldRefocusMin: number;
+  readonly struggleScrollBackMin: number;
+  readonly struggleObservedMinSessions: number;
+};
+
+type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet & ObservedThresholds>, "version">;
 
 type NameListMembers<T> = {
   [K in keyof T]-?: T[K] extends readonly string[] ? K : never;
@@ -306,6 +318,30 @@ const THRESHOLD_FAIL_DIRECTION_TESTS: Record<ThresholdKey, FailDirectionEvidence
   },
   struggleMinStrugglingSessions: {
     test: "should not satisfy confusing proof below struggleMinStrugglingSessions",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleRageClickMin: {
+    test: "should not satisfy confusing proof below struggleRageClickMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleDeadClickMin: {
+    test: "should not satisfy confusing proof below struggleDeadClickMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleFieldAbandonedMin: {
+    test: "should not satisfy confusing proof below struggleFieldAbandonedMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleFieldRefocusMin: {
+    test: "should not satisfy confusing proof below struggleFieldRefocusMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleScrollBackMin: {
+    test: "should not satisfy confusing proof below struggleScrollBackMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleObservedMinSessions: {
+    test: "should not satisfy confusing proof below struggleObservedMinSessions",
     file: "evidence/predicates.test.ts",
   },
   instrumentationDropRatioPercent: {
