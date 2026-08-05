@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { REPLAY_EMPTY_RECORDING, REPLAY_LIST_UNREADABLE } from "@growthmind/shared";
 
 import "rrweb-player/dist/style.css";
+import classes from "./replay-player.module.css";
 
 interface ReplayPlayerProps {
   readonly recordingId: string;
@@ -101,7 +102,7 @@ export function ReplayPlayer({ recordingId }: ReplayPlayerProps) {
           {load.message}
         </Alert>
       )}
-      <Box ref={mountRef} />
+      <Box ref={mountRef} className={classes.player} />
     </>
   );
 }
