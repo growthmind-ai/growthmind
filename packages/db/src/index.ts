@@ -213,7 +213,12 @@ export {
   type RecordingSummariesRepo,
   type RecordingSummaryRecord,
   type PersistRecordingSummaryInput,
+  type SessionRecordingCitation,
+  type StoredTranscript,
+  type StoredTranscriptAction,
 } from "./repositories/recording-summaries.repo";
+
+export type { TranscriptPullStop } from "./schema/recording-summaries";
 
 export {
   createAnalysisRunsRepo,
