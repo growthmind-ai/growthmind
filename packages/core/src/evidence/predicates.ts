@@ -7,12 +7,40 @@ export const PROOF_PREDICATE_VERSION = 1;
 function magnitudeSatisfied(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
   switch (signal.kind) {
     case "struggle":
-      if (signal.subkind !== "repeated_attempt") return false;
-
-      return (
-        signal.attempts >= ruleSet.struggleRepeatedAttemptMin &&
-        signal.strugglingSessions.numerator >= ruleSet.struggleMinStrugglingSessions
-      );
+      switch (signal.subkind) {
+        case "repeated_attempt":
+          return (
+            signal.attempts >= ruleSet.struggleRepeatedAttemptMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleMinStrugglingSessions
+          );
+        case "backtrack":
+          return false;
+        case "rage_click":
+          return (
+            signal.attempts >= ruleSet.struggleRageClickMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleObservedMinSessions
+          );
+        case "dead_click":
+          return (
+            signal.attempts >= ruleSet.struggleDeadClickMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleObservedMinSessions
+          );
+        case "field_abandoned":
+          return (
+            signal.attempts >= ruleSet.struggleFieldAbandonedMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleObservedMinSessions
+          );
+        case "field_refocus":
+          return (
+            signal.attempts >= ruleSet.struggleFieldRefocusMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleObservedMinSessions
+          );
+        case "scroll_back":
+          return (
+            signal.attempts >= ruleSet.struggleScrollBackMin &&
+            signal.strugglingSessions.numerator >= ruleSet.struggleObservedMinSessions
+          );
+      }
     case "instrumentation_rate_drop":
       return (
         signal.expected.numerator >= ruleSet.instrumentationMinExpected &&
@@ -56,11 +84,40 @@ function admittedKindsFor(
 function atInclusiveBoundary(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
   switch (signal.kind) {
     case "struggle":
-      if (signal.subkind !== "repeated_attempt") return false;
-      return (
-        signal.attempts === ruleSet.struggleRepeatedAttemptMin ||
-        signal.strugglingSessions.numerator === ruleSet.struggleMinStrugglingSessions
-      );
+      switch (signal.subkind) {
+        case "repeated_attempt":
+          return (
+            signal.attempts === ruleSet.struggleRepeatedAttemptMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleMinStrugglingSessions
+          );
+        case "backtrack":
+          return false;
+        case "rage_click":
+          return (
+            signal.attempts === ruleSet.struggleRageClickMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleObservedMinSessions
+          );
+        case "dead_click":
+          return (
+            signal.attempts === ruleSet.struggleDeadClickMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleObservedMinSessions
+          );
+        case "field_abandoned":
+          return (
+            signal.attempts === ruleSet.struggleFieldAbandonedMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleObservedMinSessions
+          );
+        case "field_refocus":
+          return (
+            signal.attempts === ruleSet.struggleFieldRefocusMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleObservedMinSessions
+          );
+        case "scroll_back":
+          return (
+            signal.attempts === ruleSet.struggleScrollBackMin ||
+            signal.strugglingSessions.numerator === ruleSet.struggleObservedMinSessions
+          );
+      }
     case "failure_correlated":
       return signal.correlatedSessions.numerator === ruleSet.errorMinAffectedSessions;
     case "instrumentation_rate_drop":
