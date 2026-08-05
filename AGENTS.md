@@ -32,7 +32,7 @@ Two files sit one level down from this one, and both are worth the minutes:
 - **Auth**: Better Auth
 - **Jobs**: Graphile Worker (Postgres-backed; cron with backfill)
 - **Validation**: Zod v4. Single source of truth for shapes
-- **AI**: Vercel AI SDK; analysis via Google Gemini (`gemini-3.6-flash`)
+- **AI**: Vercel AI SDK; analysis via Google Gemini (`gemini-3.5-flash-lite`)
 
 ## Commands
 

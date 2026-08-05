@@ -19,6 +19,8 @@ export const TASK = {
 
   GROWTH_CONTEXT_TICK: "growth-context:tick",
 
+  REPLAY_NARRATION_TICK: "replay-narration:tick",
+
   BUSINESS_RESEARCH: BUSINESS_RESEARCH_TASK,
 
   REDUCE_AUDIENCE: AUDIENCE_REDUCE_TASK,

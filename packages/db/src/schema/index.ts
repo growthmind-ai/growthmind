@@ -14,6 +14,7 @@ export { apiKeys } from "./api-keys";
 export * from "./analysis-runs";
 export * from "./findings";
 export * from "./finding-payloads";
+export * from "./recording-summaries";
 export * from "./fixes";
 export * from "./analysis-model-calls";
 

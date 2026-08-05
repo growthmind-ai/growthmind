@@ -1,5 +1,6 @@
 import { Stack } from "@mantine/core";
 
+import { RecordingSummary } from "@/components/replay/RecordingSummary";
 import { ReplayPlayer } from "@/components/replay/ReplayPlayer";
 import { AnchorLink } from "@/components/ui/Links";
 import { PageHeader } from "@/components/ui/Page";
@@ -19,6 +20,8 @@ export default async function ReplayDetailPage({
       <PageHeader title="Recording">
         <AnchorLink href={ROUTES.replays}>Back to all recordings</AnchorLink>
       </PageHeader>
+
+      <RecordingSummary recordingId={recordingId} />
 
       <ReplayPlayer recordingId={recordingId} />
     </Stack>

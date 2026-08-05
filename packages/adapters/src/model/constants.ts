@@ -1,4 +1,4 @@
-export const DEFAULT_COLDSTART_MODEL = "gemini-3.6-flash";
+export const DEFAULT_COLDSTART_MODEL = "gemini-3.5-flash-lite";
 
 export const MODEL_REQUEST_TIMEOUT_MS = 30_000;
 
