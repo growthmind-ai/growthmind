@@ -113,6 +113,13 @@ const CLAIMS: readonly {
     because: "packages/db/src/schema/fixes.ts exists — the tools have read real rows since O-020",
   },
   {
+    file: "docs/architecture.md",
+    claim: ARCHITECTURE_SCAN_NOT_RUN,
+    holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/repositories/finding-text.ts`),
+    because:
+      "packages/db/src/repositories/finding-text.ts exists — every read of a persisted finding mints its text through the residual scan",
+  },
+  {
     file: ".ai/decisions/0007-mcp-route-surface.md",
     claim: /No table records a finding or a fix/i,
     holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),

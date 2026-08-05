@@ -38,6 +38,7 @@ export type EnforcedSacId =
   | "SAC-6"
   | "SAC-7"
   | "SAC-8"
+  | "SAC-9"
   | "SAC-10"
   | "SAC-11"
   | "SAC-12";
@@ -66,6 +67,7 @@ const FLOOR_TESTS = "packages/core/__tests__/summary/floor.test.ts";
 const GUARD_TESTS = "packages/core/__tests__/summary/guards.test.ts";
 const FUNNEL_TESTS = "packages/core/__tests__/detect/funnel-dropoff.test.ts";
 const ANALYSIS_TICK_TESTS = "worker/__tests__/tasks/analysis-tick.test.ts";
+const FINDING_TEXT_REACH_TESTS = "__tests__/finding-text-reach.test.ts";
 
 export const SAC_11_DISJOINTNESS_PROOF: EnforcingTest = {
   test: "the dropped and struggling cohorts are structurally disjoint",
@@ -205,6 +207,24 @@ export const SAC_CONTRACT: Record<EnforcedSacId, EnforcedSacRow> = {
     ],
   },
 
+  "SAC-9": {
+    id: "SAC-9",
+    mayAssert:
+      "That a summary was produced without a model, when it was, and that every path which writes or reads persisted finding text ran the residual scan.",
+    mayNotAssert:
+      "That the text is free of personal data. The scanner is a keyword classifier and will miss; what may be claimed is that it ran on every path, never that it found everything.",
+    enforcedBy: [
+      {
+        test: "a candidate whose model text contains a planted PII offender persists the floor summary with summary_source floor_model_text_rejected, never the dirty text",
+        file: ANALYSIS_TICK_TESTS,
+      },
+      {
+        test: "a repo-wide scan finds no code path reading findings.headline or findings.context outside the residual-PII gate",
+        file: FINDING_TEXT_REACH_TESTS,
+      },
+    ],
+  },
+
   "SAC-10": {
     id: "SAC-10",
     mayAssert: "The stop reason, when the run stopped early.",
@@ -259,14 +279,6 @@ export const SAC_CONTRACT: Record<EnforcedSacId, EnforcedSacRow> = {
   },
 };
 
-export const SAC_NOT_YET_ENFORCED: Record<UnenforcedSacId, UnenforcedSacRow> = {
-  "SAC-9": {
-    id: "SAC-9",
-    mayAssert: "That a summary was produced without a model, when it was.",
-    mayNotAssert:
-      "That generated text has been scanned for residual personal data. No such claim may appear in code, comment, doc, or string.",
-    notEnforcedBecause:
-      "O-011 built the model call, so generated text now exists — the reason this row gave before (that there was nothing to scan) is spent, and the row stays here for a narrower one. `scanResidualPii` is NOT run over model text before persistence. Promoting SAC-9 needs a ruling on which `summary_source` a dirty scan takes, and inventing one would author a customer-facing sentence in the same sprint that committed to authoring none. The guard that DOES run (`guardModelText`) checks assertions, not residual personal data, so nothing here may be read as that scan having happened.",
-    inheritedBy: "O-007 — the residual scanner ships with delivery.",
-  },
-};
+// Empty since O-021 promoted SAC-9. `UnenforcedSacRow` stays exported for the next row
+// that has to sit here before its seam exists.
+export const SAC_NOT_YET_ENFORCED: Record<UnenforcedSacId, UnenforcedSacRow> = {};

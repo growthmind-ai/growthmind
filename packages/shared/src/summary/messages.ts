@@ -38,7 +38,7 @@ export const SUMMARY_SOURCE_MESSAGES: Record<SummarySource, string> = {
   floor_model_output_invalid:
     "This shows the numbers on their own. What came back could not be read as a written explanation.",
   floor_model_text_rejected:
-    "This shows the numbers on their own. A written explanation was generated but did not pass our accuracy check, so we left it out.",
+    "This shows the numbers on their own. A written explanation was generated, and we left it out.",
 };
 
 type FloorFindingClass = "broken" | "confusing" | "changed_mind" | "instrumentation";

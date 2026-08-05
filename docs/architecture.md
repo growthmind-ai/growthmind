@@ -798,13 +798,18 @@ proven impossible by test.
 ingest that quarantines rather than drops; a per-project mask report that makes "we
 can prove it" a statement about mechanism rather than an audit promise. English
 narratives are the hard part. Free text captures what a typed field never would.
-**Generated finding text does NOT yet pass that residual scanner.** shipped the
-first model-written text and guards it with `guardModelText`, which checks the
-assertion contract, that a sentence adds no claim the candidate's own fields do not
-carry, and is not a personal-data scan. Running `scanResidualPii` over model text is
-what promotes SAC-9 out of `SAC_NOT_YET_ENFORCED`; its heir is named in
-`packages/shared/src/summary/assertion-contract.ts`. Until that lands, nothing here or
-anywhere else may be read as that scan having happened.
+**Generated finding text passes that residual scanner at two seams.** Model-rendered
+text is scanned before it is persisted, beside the assertion-contract guard in
+`worker/src/analysis/plan.ts`; a candidate whose text is held degrades to the
+deterministic floor rather than being written. Every read of a persisted row mints its
+text through one function, `readFindingText` in
+`packages/db/src/repositories/finding-text.ts`, so a row written before that seam
+existed is withheld from every reader rather than degraded — the candidate is no longer
+in hand at read time, and the floor cannot be re-rendered from the row alone.
+`guardModelText` still checks the assertion contract, that a sentence adds no claim the
+candidate's own fields do not carry, which is a different job. The scanner is a keyword
+classifier and will miss: what the mechanism proves is that the scan ran on every path,
+never that a page is free of personal data.
 
 **Forbidden surfaces (§5).** Pricing, billing, auth, consent flows and terms are a
 hard deny list checked at proposal time against the surface registry. A growth agent
