@@ -256,6 +256,7 @@ export {
   type GrowthContextSnapshot,
   type StatePageRoleInput,
   type SiteResearchRow,
+  type CorrectBeliefInput,
   type SaveGrowthContextInput,
 } from "./repositories/growth-context.repo";
 export {

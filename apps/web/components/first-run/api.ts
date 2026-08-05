@@ -38,6 +38,7 @@ export const SETTINGS_API = {
   slackChannel: "/api/settings/slack/channel",
   pageRole: "/api/settings/pages/role",
   site: "/api/settings/site",
+  belief: "/api/settings/audience/belief",
 } as const;
 
 export interface PostAnswer {

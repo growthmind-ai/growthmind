@@ -13,10 +13,8 @@ import {
   SITE_NOTHING_FOUND,
   SITE_READ_ACTION,
   SITE_READ_AGAIN_ACTION,
-  SITE_READ_FROM,
   SITE_RUNNING,
   SITE_SECTION_LEAD,
-  SITE_TOLD_TO_US,
   type IcpBeliefKind,
 } from "@growthmind/shared";
 
@@ -24,6 +22,7 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 import type { SiteResearchView } from "@/lib/settings/site";
 
 import { SETTINGS_API, postJson } from "../first-run/api";
+import { BeliefRow } from "./BeliefRow";
 
 interface SiteResearchProps {
   readonly view: SiteResearchView;
@@ -119,16 +118,7 @@ export function SiteResearch({ view }: SiteResearchProps) {
                   {ICP_BELIEF_HEADINGS[kind]}
                 </Text>
                 {rows.map((belief) => (
-                  <Stack key={belief.statement} gap={0}>
-                    <Text size="sm">{belief.statement}</Text>
-                    {/* Provenance beside the claim, not in a tooltip: a claim without it is
-                        a guess wearing a schema, and hiding it is the same thing. */}
-                    <Text size="xs" c="dimmed">
-                      {belief.readFrom === null
-                        ? SITE_TOLD_TO_US
-                        : `${SITE_READ_FROM} ${belief.readFrom}`}
-                    </Text>
-                  </Stack>
+                  <BeliefRow key={belief.statement} belief={belief} />
                 ))}
               </Stack>
             );

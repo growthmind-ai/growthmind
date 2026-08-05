@@ -691,6 +691,7 @@ export {
   settingsSlackChannelInputSchema,
   settingsPageRoleInputSchema,
   settingsSiteInputSchema,
+  settingsBeliefInputSchema,
   firstRunSlackChannelsInputSchema,
   firstRunSlackConnectInputSchema,
   firstRunSlackOAuthCallbackInputSchema,
@@ -813,5 +814,11 @@ export {
   SITE_READ_FROM,
   SITE_TOLD_TO_US,
   ICP_BELIEF_HEADINGS,
+  BELIEF_CORRECT_ACTION,
+  BELIEF_REMOVE_ACTION,
+  BELIEF_SAVE_ACTION,
+  BELIEF_CANCEL_ACTION,
+  BELIEF_CORRECTED_NOTE,
+  BELIEF_EDIT_LABEL,
 } from "./growth/messages";
 export { FIX_SURFACE_FORBIDDEN_REFUSALS } from "./delivery/messages";

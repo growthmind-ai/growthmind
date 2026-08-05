@@ -13,6 +13,9 @@ export interface SiteBeliefView {
 
   // Null when a person told us rather than a page saying it.
   readonly readFrom: string | null;
+
+  // What this replaced, when a person corrected it.
+  readonly correctedFrom: string | null;
 }
 
 export interface SiteResearchView {
@@ -46,6 +49,7 @@ export async function readSiteResearch(
         kind: belief.kind,
         statement: belief.statement,
         readFrom: belief.provenance.citation,
+        correctedFrom: belief.correctedFrom,
       })),
     };
   } catch (error) {

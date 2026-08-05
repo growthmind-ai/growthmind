@@ -45,6 +45,22 @@ export const SITE_DOMAIN_UNREADABLE: FirstRunGateRefusal = Object.freeze({
   status: 400,
 });
 
+export const BELIEF_NOT_ADMITTED: FirstRunGateRefusal = Object.freeze({
+  code: "belief_not_admitted",
+  message:
+    "Describe a group of people rather than one person — a role, a kind of company, a " +
+    "situation. We keep this about segments on purpose.",
+  status: 400,
+});
+
+export const BELIEF_NOT_FOUND: FirstRunGateRefusal = Object.freeze({
+  code: "belief_not_found",
+  message:
+    "That line has changed since this page loaded, so nothing was altered. Reload and have " +
+    "another look.",
+  status: 409,
+});
+
 export const NO_CHANNEL_CONNECTED: FirstRunGateRefusal = Object.freeze({
   code: "no_channel_connected",
   message:
