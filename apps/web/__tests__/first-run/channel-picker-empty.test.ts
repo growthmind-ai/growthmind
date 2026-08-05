@@ -22,6 +22,7 @@ import {
   SLACK_CONNECTION,
   fixture,
   offenders,
+  readExisting,
   readFirstRun,
 } from "./helpers/first-run-source";
 import { stepCardProps } from "./helpers/slack-card";
@@ -178,9 +179,13 @@ describe("the channel list that arrives empty — the sweep's dead end", () => {
     expect(offenders([CLEAN_UNGATED_RELIST], BROKEN_LIST_GATE)).toEqual([]);
 
     const card = readFirstRun(SLACK_CONNECTION);
+    // The fetch-and-relist mechanism itself lives in the shared hook both `SlackConnection`
+    // and `SlackDeliveryControls` mount, so the gate scan and the positive control both
+    // have to look there, not only at the card.
+    const listing = readExisting("apps/web/components/first-run/use-slack-channel-listing.ts");
 
-    expect(offenders([card], BROKEN_LIST_GATE)).toEqual([]);
-    expect(blankComments(card.source)).toContain("setListingAttempt");
+    expect(offenders([card, listing], BROKEN_LIST_GATE)).toEqual([]);
+    expect(blankComments(listing.source)).toContain("setAttempt");
 
     for (const channels of [null, [], CHANNELS]) {
       expect(readPicker(channels).controls).toContain(ONBOARDING_MESSAGES.refreshChannels);

@@ -1,5 +1,4 @@
 import { Divider, Stack, Text, Title } from "@mantine/core";
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { ensureProject } from "@growthmind/db";
@@ -28,7 +27,7 @@ import type { BusinessResearchView } from "@/lib/settings/business";
 import { readPageRoles, type PageRoleView } from "@/lib/settings/pages";
 import { readBusinessResearch } from "@/lib/settings/site";
 import { readSettingsView, type SettingsView } from "@/lib/settings/view";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -149,10 +148,7 @@ function Business({ view, site }: { view: SettingsView; site: BusinessResearchVi
 }
 
 export default async function SettingsPage() {
-  const ctx = await getTenantContext();
-  if (!ctx) {
-    redirect(ROUTES.signIn);
-  }
+  const ctx = await requireTenantContext();
 
   const db = getDb();
   const { projectId } = await ensureProject(db, ctx);

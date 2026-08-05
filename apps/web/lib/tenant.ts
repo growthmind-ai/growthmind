@@ -1,9 +1,11 @@
 import { ensureOrganization, findMembershipsByUserId } from "@growthmind/db";
 import { deriveTenantContext, logger, type TenantContext } from "@growthmind/shared";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { getAuth } from "./auth";
 import { getDb } from "./db";
+import { ROUTES } from "./routes";
 
 async function readRequestHeaders(): Promise<Headers | null> {
   try {
@@ -50,4 +52,24 @@ export async function getTenantContext(): Promise<TenantContext | null> {
     },
     memberships,
   });
+}
+
+// The one call every `(app)/` page needs: the layout already redirects a signed-out
+// visitor before any page renders, but each page still needs the tenant's own data
+// (organizationId, role, …), so it calls this rather than repeating the guard.
+export async function requireTenantContext(): Promise<TenantContext> {
+  const tenant = await getTenantContext();
+  if (tenant === null) {
+    redirect(ROUTES.signIn);
+  }
+  return tenant;
+}
+
+// The sibling for `(auth)/` pages: a visitor already signed in has nothing to do on
+// sign-in/sign-up, so they're sent on rather than shown the form again.
+export async function redirectIfSignedIn(destination: string = ROUTES.home): Promise<void> {
+  const tenant = await getTenantContext();
+  if (tenant !== null) {
+    redirect(destination);
+  }
 }

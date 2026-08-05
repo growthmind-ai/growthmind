@@ -1,6 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import { SLACK_TIMESTAMP_TOLERANCE_MS } from "@growthmind/shared";
+
+import { constantTimeEquals } from "./constant-time";
 
 export const SLACK_SIGNATURE_VERSION = "v0";
 
@@ -25,15 +27,6 @@ const ACCEPTED: VerifySlackSignatureResult = { ok: true };
 
 function refuse(reason: SlackSignatureRefusalReason): VerifySlackSignatureResult {
   return { ok: false, reason };
-}
-
-function constantTimeEquals(left: string, right: string): boolean {
-  const leftBytes = Buffer.from(left, "utf8");
-  const rightBytes = Buffer.from(right, "utf8");
-
-  if (leftBytes.length !== rightBytes.length) return false;
-
-  return timingSafeEqual(leftBytes, rightBytes);
 }
 
 export function verifySlackSignature(input: VerifySlackSignatureInput): VerifySlackSignatureResult {

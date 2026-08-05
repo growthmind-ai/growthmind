@@ -1,9 +1,8 @@
-import { Box, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Stack, Text } from "@mantine/core";
 
 import { StartInChannel } from "@/components/preview/StartInChannel";
-import classes from "@/components/preview/preview.module.css";
 import { ClosingNote, PageHeader } from "@/components/ui/Page";
+import { ListRow } from "@/components/ui/ListRow";
 import { fixPath } from "@/lib/paths";
 import { readFixes } from "@/lib/preview/readers";
 import { checkSummary, tallyChecks } from "@/lib/preview/summaries";
@@ -15,25 +14,20 @@ function Row({ fix }: { readonly fix: FixView }) {
   const tally = tallyChecks(fix.checks);
 
   return (
-    <Link href={fixPath(fix.findingId)} className={classes.rowLink}>
-      <Text ff="monospace" fw={700} ta="right" style={{ lineHeight: 1.3 }}>
-        {tally.confirmed}
-        <Text span ff="monospace" size="xs" fw={400} c="dimmed">
-          /{fix.checks.length}
+    <ListRow
+      href={fixPath(fix.findingId)}
+      leading={
+        <Text ff="monospace" fw={700} ta="right" style={{ lineHeight: 1.3 }}>
+          {tally.confirmed}
+          <Text span ff="monospace" size="xs" fw={400} c="dimmed">
+            /{fix.checks.length}
+          </Text>
         </Text>
-      </Text>
-      <Box style={{ minWidth: 0 }}>
-        <Text fw={600} style={{ lineHeight: 1.4 }}>
-          {fix.title}
-        </Text>
-        <Text size="sm" c="dimmed" style={{ lineHeight: 1.45 }}>
-          {checkSummary(tally)} · sent to {fix.dispatchedTo} on {fix.dispatchedOn}
-        </Text>
-      </Box>
-      <Text ff="monospace" size="xs" c="dimmed">
-        reads out {fix.readoutDue}
-      </Text>
-    </Link>
+      }
+      heading={fix.title}
+      detail={`${checkSummary(tally)} · sent to ${fix.dispatchedTo} on ${fix.dispatchedOn}`}
+      trailing={`reads out ${fix.readoutDue}`}
+    />
   );
 }
 

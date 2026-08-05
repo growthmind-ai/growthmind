@@ -2,7 +2,6 @@
 // you: the onboarding surface is deliberately not linkable back to, so a founder who
 // dismissed it — and every teammate who joined after it — arrives here instead.
 import { Stack } from "@mantine/core";
-import { redirect } from "next/navigation";
 
 import { createApiKeysRepo, createProviderInterestRepo } from "@growthmind/db";
 import {
@@ -20,16 +19,12 @@ import { PageHeader } from "@/components/ui/Page";
 import { getDb } from "@/lib/db";
 import { mcpPublicUrl } from "@/lib/mcp/public-url";
 import { viewerMaySeePreview } from "@/lib/preview/guard";
-import { ROUTES } from "@/lib/routes";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentPage() {
-  const ctx = await getTenantContext();
-  if (ctx === null) {
-    redirect(ROUTES.signIn);
-  }
+  const ctx = await requireTenantContext();
 
   const db = getDb();
 

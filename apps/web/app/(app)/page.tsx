@@ -1,5 +1,4 @@
 import { Group, Stack, Text } from "@mantine/core";
-import { redirect } from "next/navigation";
 
 import { createFirstRunRepo } from "@growthmind/db";
 import { SET_UP_CTA_LABEL } from "@growthmind/shared";
@@ -12,16 +11,12 @@ import { tapTargetStyle } from "../../components/ui/tap-target";
 import { getDb } from "../../lib/db";
 import { readLandingView } from "../../lib/landing/view";
 import { ROUTES } from "../../lib/routes";
-import { getTenantContext } from "../../lib/tenant";
+import { requireTenantContext } from "../../lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const tenantContext = await getTenantContext();
-
-  if (!tenantContext) {
-    redirect(ROUTES.signIn);
-  }
+  const tenantContext = await requireTenantContext();
 
   const db = getDb();
   const dismissed = await createFirstRunRepo(db, tenantContext).isDismissed(tenantContext.userId);

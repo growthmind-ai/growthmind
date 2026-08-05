@@ -1,6 +1,5 @@
 import { Avatar, Group, Stack, Text } from "@mantine/core";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 
 import { SignOutButton } from "@/components/landing/sign-out-button";
 import { AnchorLink } from "@/components/ui/Links";
@@ -8,15 +7,12 @@ import { PageHeader, RuledRow } from "@/components/ui/Page";
 import { getAuth } from "@/lib/auth";
 import { initialsOf } from "@/lib/initials";
 import { ROUTES } from "@/lib/routes";
-import { getTenantContext } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const tenant = await getTenantContext();
-  if (tenant === null) {
-    redirect(ROUTES.signIn);
-  }
+  const tenant = await requireTenantContext();
 
   const session = await getAuth().api.getSession({ headers: await headers() });
   const name = session?.user.name?.trim() ?? "";
