@@ -3,6 +3,7 @@ import { z } from "zod";
 import { measuredCount, measuredCountInputSchema } from "../counts/measured-count";
 import type { MeasuredCount } from "../counts/measured-count";
 import { claimSubjectSchema, detectorCoverageSchema } from "../detect/types";
+import { struggleSubkindSchema } from "../evidence/signals";
 import type { EvidenceSignal } from "../evidence/signals";
 import { downgradeTraceSchema } from "../evidence/trace";
 import { candidateFindingSchema, confidenceBasisSchema } from "../findings/candidate";
@@ -57,7 +58,7 @@ const persistedSignalSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("struggle"),
-    subkind: z.enum(["repeated_attempt", "backtrack"]),
+    subkind: struggleSubkindSchema,
     surface: z.string().min(1),
     attempts: z.number().int().nonnegative(),
     strugglingSessions: persistedCountSchema,
