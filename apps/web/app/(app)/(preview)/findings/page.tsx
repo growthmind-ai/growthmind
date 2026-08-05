@@ -1,5 +1,4 @@
-import { Box, Group, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Group, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 
 import {
@@ -11,9 +10,9 @@ import {
 } from "@growthmind/shared";
 import type { FindingGroup, FindingRow } from "@growthmind/shared";
 
-import classes from "@/components/preview/preview.module.css";
 import { RestoreButton } from "@/components/preview/RestoreButton";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { ListRow } from "@/components/ui/ListRow";
 import { ClosingNote, PageHeader } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { readOverview, readRow } from "@/lib/preview/findings";
@@ -60,21 +59,18 @@ function Count({ row }: { readonly row: FindingRow }) {
 
 function Row({ row }: { readonly row: FindingRow }) {
   return (
-    <Link href={findingPath(row.id)} className={classes.rowLink}>
-      <Count row={row} />
-      <Box style={{ minWidth: 0 }}>
-        <Text fw={600} style={{ lineHeight: 1.4 }}>
-          {row.headline}
-        </Text>
-        <Text size="sm" c="dimmed" style={{ lineHeight: 1.45 }}>
+    <ListRow
+      href={findingPath(row.id)}
+      leading={<Count row={row} />}
+      heading={row.headline}
+      detail={
+        <>
           {row.context}
           {row.aside === null ? null : ` ${row.aside}`}
-        </Text>
-      </Box>
-      <Text ff="monospace" size="xs" c="dimmed">
-        {row.observedOn}
-      </Text>
-    </Link>
+        </>
+      }
+      trailing={row.observedOn}
+    />
   );
 }
 

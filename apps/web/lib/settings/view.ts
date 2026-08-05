@@ -1,9 +1,5 @@
 import type { ScopedDb } from "@growthmind/db";
-import {
-  createEventsCounterService,
-  createProviderInterestRepo,
-  describeDriverError,
-} from "@growthmind/db";
+import { createEventsCounterService, createProviderInterestRepo } from "@growthmind/db";
 import type {
   ConnectionStateStatus,
   InterestProviderId,
@@ -13,10 +9,11 @@ import type {
 import {
   CONNECTION_STATE_MESSAGES,
   interestPingConfigured,
-  logger,
   parseWebEnv,
   toOnboardingCounterView,
 } from "@growthmind/shared";
+
+import { readOrFallback } from "@/lib/read-or-fallback";
 
 import { readSlackSettings, type SlackSettingsView } from "./slack";
 
@@ -58,43 +55,39 @@ async function readSource(
   ctx: TenantContext,
   projectId: string,
 ): Promise<SettingsSourceView> {
-  try {
-    const view = toOnboardingCounterView(await createEventsCounterService(db, ctx).read(projectId));
-    const { state } = view;
+  return readOrFallback(
+    async () => {
+      const view = toOnboardingCounterView(await createEventsCounterService(db, ctx).read(projectId));
+      const { state } = view;
 
-    if (state.status === "not_connected") {
-      return NOTHING_ATTACHED;
-    }
+      if (state.status === "not_connected") {
+        return NOTHING_ATTACHED;
+      }
 
-    return {
-      status: state.status,
-      host: state.connection.host,
-      sourceProjectId: state.connection.sourceProjectId,
-      inferredInternalDomain: state.connection.inferredInternalDomain,
-      internalDomainProvenance: state.connection.internalDomainProvenance,
-    };
-  } catch (error) {
-    logger.error("settings: the analytics connection could not be read", {
-      organizationId: ctx.organizationId,
-      reason: describeDriverError(error),
-    });
-    return NOTHING_ATTACHED;
-  }
+      return {
+        status: state.status,
+        host: state.connection.host,
+        sourceProjectId: state.connection.sourceProjectId,
+        inferredInternalDomain: state.connection.inferredInternalDomain,
+        internalDomainProvenance: state.connection.internalDomainProvenance,
+      };
+    },
+    NOTHING_ATTACHED,
+    "settings: the analytics connection could not be read",
+    { organizationId: ctx.organizationId },
+  );
 }
 
 async function readInterest(
   db: ScopedDb,
   ctx: TenantContext,
 ): Promise<readonly InterestProviderId[]> {
-  try {
-    return await createProviderInterestRepo(db, ctx).listNotedProviders();
-  } catch (error) {
-    logger.error("settings: noted providers could not be read", {
-      organizationId: ctx.organizationId,
-      reason: describeDriverError(error),
-    });
-    return [];
-  }
+  return readOrFallback(
+    () => createProviderInterestRepo(db, ctx).listNotedProviders(),
+    [],
+    "settings: noted providers could not be read",
+    { organizationId: ctx.organizationId },
+  );
 }
 
 // Org-scoped throughout, so a teammate who ran none of setup can repair all of it.

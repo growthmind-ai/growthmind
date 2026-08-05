@@ -7,7 +7,6 @@ import {
   createFirstRunStatusService,
   createProviderInterestRepo,
   createSlackConnectionsRepo,
-  describeDriverError,
   isDeliveryTarget,
 } from "@growthmind/db";
 import type {
@@ -28,13 +27,13 @@ import {
   SLACK_CHANNEL_PICK_PROMPT,
   SLACK_SKIPPED_NOTICE,
   interestPingConfigured,
-  logger,
   parseWebEnv,
   toAgentConnection,
   toOnboardingCounterView,
 } from "@growthmind/shared";
 
 import { mcpPublicUrl } from "@/lib/mcp/public-url";
+import { readOrFallback } from "@/lib/read-or-fallback";
 import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
 export type FirstRunStatusPayload = FirstRunStatus & {
@@ -133,25 +132,24 @@ async function resolveDelivery(input: {
 
   if (findingId === null || !isDeliveryTarget(target)) return NO_DELIVERY;
 
-  try {
-    const delivery = await createDeliveriesRepo(input.db, input.ctx).findFor(
-      findingId,
-      target.channelId,
-    );
-    const state = toFirstRunDeliveryState({
-      hasFinding: true,
-      channelId: target.channelId,
-      delivery,
-    });
+  return readOrFallback(
+    async () => {
+      const delivery = await createDeliveriesRepo(input.db, input.ctx).findFor(
+        findingId,
+        target.channelId,
+      );
+      const state = toFirstRunDeliveryState({
+        hasFinding: true,
+        channelId: target.channelId,
+        delivery,
+      });
 
-    return { state, failureReason: toDeliveryFailureReason({ state, delivery }) };
-  } catch (error) {
-    logger.error("onboarding status: whether this finding reached Slack could not be read", {
-      organizationId: input.ctx.organizationId,
-      reason: describeDriverError(error),
-    });
-    return NO_DELIVERY;
-  }
+      return { state, failureReason: toDeliveryFailureReason({ state, delivery }) };
+    },
+    NO_DELIVERY,
+    "onboarding status: whether this finding reached Slack could not be read",
+    { organizationId: input.ctx.organizationId },
+  );
 }
 
 const NO_KEY_USE: ApiKeyUseSummary = { liveCount: 0, anyUsed: false };
@@ -162,15 +160,12 @@ async function resolveKeyUse(input: {
   readonly db: ScopedDb;
   readonly ctx: TenantContext;
 }): Promise<ApiKeyUseSummary> {
-  try {
-    return await createApiKeysRepo(input.db, input.ctx).liveKeyUse();
-  } catch (error) {
-    logger.error("onboarding status: whether a key has been used could not be read", {
-      organizationId: input.ctx.organizationId,
-      reason: describeDriverError(error),
-    });
-    return NO_KEY_USE;
-  }
+  return readOrFallback(
+    () => createApiKeysRepo(input.db, input.ctx).liveKeyUse(),
+    NO_KEY_USE,
+    "onboarding status: whether a key has been used could not be read",
+    { organizationId: input.ctx.organizationId },
+  );
 }
 
 export async function buildFirstRunStatus(

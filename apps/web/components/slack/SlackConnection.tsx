@@ -4,7 +4,7 @@
 // step 3 and as the settings page that outlives it.
 import { Button, Collapse, Group, Loader, Select, Stack, Text } from "@mantine/core";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { isDeliveryAddress, ONBOARDING_MESSAGES, type FieldDescriptor } from "@growthmind/shared";
 
@@ -14,10 +14,8 @@ import { slackOAuthOutcomeOf, type SlackOAuthOutcome } from "@/lib/first-run/sla
 
 import {
   FIRST_RUN_API,
-  getJson,
   postForOutcome,
   postJson,
-  readChannelList,
   readRefusal,
   readTestPostAnswer,
   type SlackChannelChoice,
@@ -25,6 +23,7 @@ import {
 } from "../first-run/api";
 import { FieldRow } from "../first-run/FieldRow";
 import { changeField, initialValues, type FieldValues } from "../first-run/form-fields";
+import { useSlackChannelListing } from "../first-run/use-slack-channel-listing";
 
 const BOT_TOKEN = "botToken";
 const CHANNEL_ID = "channelId";
@@ -170,9 +169,7 @@ export function SlackConnection(props: SlackConnectionProps) {
   const [failure, setFailure] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<TestPostAnswer | null>(null);
   const [disclosed, setDisclosed] = useState(false);
-  const [channels, setChannels] = useState<readonly SlackChannelChoice[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
-  const [listingAttempt, setListingAttempt] = useState(0);
   // What THIS VISIT attached, OR-ed with the persisted answer below rather than
   // seeded from it — a seeded value keeps saying the old thing after a refresh.
   const [workspaceNow, setWorkspaceNow] = useState(false);
@@ -203,34 +200,7 @@ export function SlackConnection(props: SlackConnectionProps) {
   const retryable = postFailed && outcome?.retryable === true;
 
   // AD-7: nothing is cached — a founder told to pick very often makes one first.
-  useEffect(() => {
-    if (!picking) {
-      return undefined;
-    }
-
-    let current = true;
-
-    void getJson(FIRST_RUN_API.slackChannels).then((answer) => {
-      if (!current) {
-        return;
-      }
-      if (answer === null) {
-        setFailure(ONBOARDING_MESSAGES.networkFailure);
-        return;
-      }
-
-      const list = readChannelList(answer.body);
-      if (list === null) {
-        setFailure(readRefusal(answer.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
-        return;
-      }
-      setChannels(list);
-    });
-
-    return () => {
-      current = false;
-    };
-  }, [picking, listingAttempt]);
+  const { channels, relist: relistChannels } = useSlackChannelListing(picking, setFailure);
 
   function renderField(field: FieldDescriptor): ReactNode {
     return (
@@ -344,8 +314,7 @@ export function SlackConnection(props: SlackConnectionProps) {
   // leaves no stale claim on screen.
   function relist(): void {
     setFailure(null);
-    setChannels(null);
-    setListingAttempt((attempt) => attempt + 1);
+    relistChannels();
   }
 
   async function skip(): Promise<void> {

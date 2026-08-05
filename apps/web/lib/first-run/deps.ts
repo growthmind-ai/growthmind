@@ -10,18 +10,15 @@ import type {
   WebEnv,
   TenantContext,
 } from "@growthmind/shared";
-import {
-  deriveIdentityHmacKey,
-  logger,
-  parseWebEnv,
-  resolveCredentialKey,
-} from "@growthmind/shared";
+import { logger, parseWebEnv, resolveCredentialKey } from "@growthmind/shared";
 import {
   createPostHogSessionSource,
   createSlackDeliveryPoster,
   discoverProjects,
 } from "@growthmind/adapters";
 
+import { createPostHogAdapterDeps } from "@/lib/adapter-deps";
+import { whenCredentialResolved } from "@/lib/credential-port";
 import { getDb } from "@/lib/db";
 import { getPostHogClient } from "@/lib/posthog-server";
 import { listChannels, type SlackChannelChoice } from "@/lib/slack/channels";
@@ -85,69 +82,60 @@ export interface FirstRunRouteDeps {
   readonly fetch?: typeof globalThis.fetch | undefined;
 }
 
-const CONNECT_BACKOFF_CEILING_MS = 5_000;
-
 function createSourceWith(key: CredentialKey): CreateSourceFn {
-  const identityHmacKey = deriveIdentityHmacKey(key);
-
-  return (config) =>
-    createPostHogSessionSource(config, {
-      fetch: globalThis.fetch,
-      sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-      now: () => new Date(),
-      random: () => Math.random(),
-      identityHmacKey,
-      deadlineExceededAfter: (ms) => ms > CONNECT_BACKOFF_CEILING_MS,
-    });
+  return (config) => createPostHogSessionSource(config, createPostHogAdapterDeps(key));
 }
 
 // Built only when the key resolves: the identity hmac comes from it (M-1).
 function discoverProjectsWith(key: CredentialKey): FirstRunDiscoverProjects {
-  const identityHmacKey = deriveIdentityHmacKey(key);
+  return (input) => discoverProjects(input, createPostHogAdapterDeps(key));
+}
 
-  return (input) =>
-    discoverProjects(input, {
-      fetch: globalThis.fetch,
-      sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-      now: () => new Date(),
-      random: () => Math.random(),
-      identityHmacKey,
-    });
+type OrgSlackCredential =
+  | { readonly ok: true; readonly token: string }
+  | { readonly ok: false; readonly code: "no_connection" | "unreadable_credential" };
+
+// Shared by `makePosterFor` and `makeChannelsFor`: both need the org's stored
+// Slack credential opened the same way, here and nowhere else (AD-20, D7).
+async function openOrgSlackCredential(
+  db: ScopedDb,
+  ctx: TenantContext,
+  key: CredentialKey,
+): Promise<OrgSlackCredential> {
+  const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
+
+  if (opened === null) {
+    return { ok: false, code: "no_connection" };
+  }
+
+  if (!opened.ok) {
+    logger.error(
+      `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
+        `installation cannot open (${opened.reason}) — it must be reconnected`,
+    );
+    return { ok: false, code: "unreadable_credential" };
+  }
+
+  return { ok: true, token: opened.value };
 }
 
 // A poster per organization, keyed by the context and nothing else (D7). This
 // file is the composition root: no route, page or service may open a credential
 // itself (AD-20). Fails closed, and never names the ciphertext.
 function makePosterFor(db: ScopedDb, env: WebEnv): FirstRunPosterFor {
-  const resolution = resolveCredentialKey(env);
-
-  if (!resolution.ok) {
-    logger.error(
-      `onboarding composition: the credential key could not be resolved (${resolution.reason}), ` +
-        `so no delivery channel can be opened on this installation until it is configured`,
-    );
-    return () => Promise.resolve(null);
-  }
-
-  const key = resolution.key;
-
-  return async (ctx) => {
-    const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
-
-    if (opened === null) {
-      return null;
-    }
-
-    if (!opened.ok) {
-      logger.error(
-        `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
-          `installation cannot open (${opened.reason}) — it must be reconnected`,
-      );
-      return null;
-    }
-
-    return createSlackDeliveryPoster({ botToken: opened.value }, { fetch: globalThis.fetch });
-  };
+  return whenCredentialResolved<TenantContext, DeliveryPoster | null>(
+    resolveCredentialKey(env),
+    "onboarding composition",
+    "no delivery channel can be opened",
+    null,
+    (key) => async (ctx) => {
+      const credential = await openOrgSlackCredential(db, ctx, key);
+      if (!credential.ok) {
+        return null;
+      }
+      return createSlackDeliveryPoster({ botToken: credential.token }, { fetch: globalThis.fetch });
+    },
+  );
 }
 
 // The sibling of `makePosterFor`, one screen earlier: a channel lister per
@@ -159,36 +147,25 @@ function makeChannelsFor(
   resolution: CredentialKeyResolution,
   fetchImpl: typeof globalThis.fetch,
 ): FirstRunChannelsFor {
-  if (!resolution.ok) {
-    logger.error(
-      `onboarding composition: the credential key could not be resolved (${resolution.reason}), ` +
-        `so no workspace's channels can be read on this installation until it is configured`,
-    );
-    return () => Promise.resolve({ ok: false, code: "unreadable_credential" });
-  }
+  return whenCredentialResolved<TenantContext, FirstRunChannelListing>(
+    resolution,
+    "onboarding composition",
+    "no workspace's channels can be read",
+    { ok: false, code: "unreadable_credential" },
+    (key) => async (ctx) => {
+      const credential = await openOrgSlackCredential(db, ctx, key);
+      if (!credential.ok) {
+        return { ok: false, code: credential.code };
+      }
 
-  const key = resolution.key;
+      const listed = await listChannels(credential.token, { fetch: fetchImpl });
 
-  return async (ctx) => {
-    const opened = await createSlackConnectionsRepo(db, ctx).openCredentialForOrg(key);
-
-    if (opened === null) {
-      return { ok: false, code: "no_connection" };
-    }
-
-    if (!opened.ok) {
-      logger.error(
-        `onboarding composition: org ${ctx.organizationId} has a stored delivery credential this ` +
-          `installation cannot open (${opened.reason}) — it must be reconnected`,
-      );
-      return { ok: false, code: "unreadable_credential" };
-    }
-
-    const listed = await listChannels(opened.value, { fetch: fetchImpl });
-
-    // The token went one call into the adapter; `{ id, name }` crosses back.
-    return listed.ok ? { ok: true, channels: listed.channels } : { ok: false, code: listed.code };
-  };
+      // The token went one call into the adapter; `{ id, name }` crosses back.
+      return listed.ok
+        ? { ok: true, channels: listed.channels }
+        : { ok: false, code: listed.code };
+    },
+  );
 }
 
 // Two ways in, one composition: both land on `makeChannelsFor`, so there is no

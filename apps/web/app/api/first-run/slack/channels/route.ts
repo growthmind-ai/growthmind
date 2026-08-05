@@ -5,32 +5,13 @@
 // AD-7 decided, not omitted: fetched live and stored nowhere, so a channel made a minute ago is pickable.
 import { firstRunSlackChannelsInputSchema } from "@growthmind/shared";
 
-import {
-  resolveChannelsFor,
-  resolveFirstRunDeps,
-  type FirstRunChannelListingRefusal,
-  type FirstRunRouteDeps,
-} from "@/lib/first-run/deps";
+import { resolveChannelsFor, resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
-import {
-  CHANNELS_CALL_FAILED,
-  CHANNELS_NOT_AUTHORISED,
-  CHANNELS_UNAVAILABLE,
-  NO_WORKSPACE_CONNECTED,
-  refusalResponse,
-  type FirstRunGateRefusal,
-} from "@/lib/first-run/refusals";
+import { LISTING_REFUSALS, refusalResponse } from "@/lib/first-run/refusals";
 
 export const dynamic = "force-dynamic";
 
 export const inputSchema = firstRunSlackChannelsInputSchema;
-
-const LISTING_REFUSALS: Record<FirstRunChannelListingRefusal, FirstRunGateRefusal> = {
-  no_connection: NO_WORKSPACE_CONNECTED,
-  unreadable_credential: CHANNELS_UNAVAILABLE,
-  not_authorised: CHANNELS_NOT_AUTHORISED,
-  call_failed: CHANNELS_CALL_FAILED,
-};
 
 export async function handle(request: Request, deps: FirstRunRouteDeps): Promise<Response> {
   const gate = await requireTenant(deps);

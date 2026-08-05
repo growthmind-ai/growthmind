@@ -1,5 +1,7 @@
 // The HTTP refusal sentences for first-run routes. Not the onboarding copy home.
 
+import type { FirstRunChannelListingRefusal } from "./deps";
+
 export interface ParseIssueLike {
   readonly code: string;
   readonly path: readonly PropertyKey[];
@@ -209,6 +211,15 @@ export function describeBodyRefusal(error: ParseErrorLike): FirstRunRefusal {
 
   return { code: "invalid_body", message: INVALID_BODY_MESSAGE, status: 400 };
 }
+
+// Shared by every route that turns a channel-listing refusal into an HTTP response: the
+// fill route, the settings move route, and the plain listing route.
+export const LISTING_REFUSALS: Record<FirstRunChannelListingRefusal, FirstRunGateRefusal> = {
+  no_connection: NO_WORKSPACE_CONNECTED,
+  unreadable_credential: CHANNELS_UNAVAILABLE,
+  not_authorised: CHANNELS_NOT_AUTHORISED,
+  call_failed: CHANNELS_CALL_FAILED,
+};
 
 export function refusalResponse(refusal: FirstRunRefusal | FirstRunGateRefusal): Response {
   return Response.json(
