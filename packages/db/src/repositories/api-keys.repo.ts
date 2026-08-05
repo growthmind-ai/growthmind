@@ -11,6 +11,7 @@ import {
 } from "@growthmind/shared";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { apiKeys } from "../schema/api-keys";
 import { organization } from "../schema/auth";
 import { orgCrud } from "./crud";
@@ -124,7 +125,7 @@ export function apiKeyIdOf(ctx: TenantContext): string | null {
 // Unconditional in the application, conditional in the statement: the first call on a
 // key always writes, and the database decides every call after that.
 export async function stampApiKeyUse(db: ScopedDb, keyId: string): Promise<void> {
-  await db
+  const stamped = await db
     .update(apiKeys)
     .set({ lastUsedAt: sql`now()` })
     .where(
@@ -133,7 +134,15 @@ export async function stampApiKeyUse(db: ScopedDb, keyId: string): Promise<void>
         isNull(apiKeys.revokedAt),
         sql`(${apiKeys.lastUsedAt} is null or ${apiKeys.lastUsedAt} < now() - make_interval(secs => ${API_KEY_USE_STAMP_INTERVAL_SECONDS}))`,
       ),
-    );
+    )
+    .returning();
+
+  // A first call from someone's coding assistant is the moment the setup panel is waiting
+  // for, and it arrives on a request nobody in a browser made.
+  const row = stamped[0];
+  if (row !== undefined) {
+    await publishLive(db, { organizationId: row.organizationId, topic: "agent_connection" });
+  }
 }
 
 // The organization is read out of the database, keyed by the digest of an unforgeable

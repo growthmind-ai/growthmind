@@ -20,6 +20,7 @@ import {
 } from "@growthmind/shared";
 import { eq, inArray, sql } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { growthContext } from "../schema/growth-context";
 import { orgCrud } from "./crud";
 import { scoped } from "./scope";
@@ -161,6 +162,13 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, growthContext);
 
+  // Beside the writes rather than in the callers: a route or a task that forgot to announce
+  // would leave every open page silently stale, and there is no timer behind it to cover
+  // for that (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "business_context" });
+  }
+
   // Only if the row has not moved since it was read. The nightly tick, the site read and a
   // second person editing all write this one row, and a plain UPDATE here would put back
   // whatever the browser last saw (D6).
@@ -188,7 +196,10 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       )
       .returning();
 
-    return written.length > 0;
+    if (written.length === 0) return false;
+
+    await announce();
+    return true;
   }
 
   return {
@@ -304,8 +315,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         if (input.statement === null) {
           // The sentence is kept as a tombstone, not as a fact: without it the next read of
           // the page it came from proposes it again and the removal silently undoes itself.
-          const tombstoned =
-            input.was === null ? removed : [...new Set([...removed, input.was])];
+          const tombstoned = input.was === null ? removed : [...new Set([...removed, input.was])];
 
           if (await writeFactsIfUnchanged(input.projectId, others, tombstoned, current.updatedAt)) {
             return "stated";
@@ -469,6 +479,8 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         .update(growthContext)
         .set({ researchStatus: "running", researchFailure: null, updatedAt: new Date() })
         .where(s.owned(growthContext, eq(growthContext.projectId, projectId)));
+
+      await announce();
     },
 
     async recordResearch(input: {
@@ -519,20 +531,28 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           )
           .returning();
 
-        if (written.length > 0) return;
+        if (written.length > 0) {
+          await announce();
+          return;
+        }
       }
 
       // Contended past the retries. The status still has to settle or a person watches
       // "running" forever (D8), and what this read found is re-derivable by pressing the
       // button again — whatever they typed in the meantime is not.
-      logger.warn("growth context: the site read kept being overtaken, so only its status was recorded", {
-        projectId: input.projectId,
-      });
+      logger.warn(
+        "growth context: the site read kept being overtaken, so only its status was recorded",
+        {
+          projectId: input.projectId,
+        },
+      );
 
       await db
         .update(growthContext)
         .set({ ...settled, updatedAt: new Date() })
         .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
+
+      await announce();
     },
 
     // Every exit path records where it got to, so nothing sits on "running" forever (D8).
@@ -545,6 +565,8 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           updatedAt: new Date(),
         })
         .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
+
+      await announce();
     },
 
     async save(input: SaveGrowthContextInput): Promise<GrowthContextRow> {

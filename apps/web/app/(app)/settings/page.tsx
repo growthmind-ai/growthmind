@@ -15,6 +15,7 @@ import {
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
+import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { BusinessContext } from "@/components/settings/BusinessContext";
 import { PageRoles } from "@/components/settings/PageRoles";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
@@ -161,6 +162,10 @@ export default async function SettingsPage() {
 
   return (
     <Stack gap="lg" maw={640}>
+      {/* The site read finishes in a worker, minutes after the press that started it. This
+          is how the page hears about it. */}
+      <LiveRefresh topics={["business_context"]} />
+
       <Title order={1} size="h3">
         {SETTINGS_TITLE}
       </Title>
