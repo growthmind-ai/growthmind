@@ -81,12 +81,12 @@ describe("replayFailureCodeSchema", () => {
 });
 
 describe("replaySourceKindSchema", () => {
-  test('its options are exactly ["rrweb"]', () => {
-    expect(replaySourceKindSchema.options).toEqual(["rrweb"]);
+  test('its options are exactly ["rrweb", "posthog"]', () => {
+    expect(replaySourceKindSchema.options).toEqual(["rrweb", "posthog"]);
   });
 
-  test('rejects a session-source kind such as "posthog"', () => {
-    expect(replaySourceKindSchema.safeParse("posthog").success).toBe(false);
+  test("rejects a kind that is neither known replay source", () => {
+    expect(replaySourceKindSchema.safeParse("segment").success).toBe(false);
   });
 });
 

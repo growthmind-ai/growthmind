@@ -57,6 +57,11 @@ export function mapFailure(
   if (status === 401) {
     return sourceFailure("invalid_credentials", secrets);
   }
+  // A 400 is the vendor rejecting a request we built (e.g. too wide a blob-key span),
+  // not a connectivity problem — "misconfigured" is the actionable code for it.
+  if (status === 400) {
+    return sourceFailure("misconfigured", secrets);
+  }
   if (status === 404) {
     return sourceFailure("project_not_found", secrets);
   }

@@ -5,13 +5,14 @@ import { readAdapterSources } from "./helpers/source-scan";
 const REPLAY_SOURCE_IMPLEMENTATION = /\)\s*:\s*ReplaySource\s*\{/;
 
 describe("the ReplaySource port", () => {
-  test("exactly one ReplaySource implementation is referenced, by name — no registry, factory map, or dynamic lookup", () => {
+  test("exactly the known ReplaySource implementations are referenced, by name — no registry, factory map, or dynamic lookup", () => {
     const files = readAdapterSources();
 
     const implementations = files
       .filter((file) => REPLAY_SOURCE_IMPLEMENTATION.test(file.code))
-      .map((file) => file.path);
-    expect(implementations).toEqual(["rrweb/replay-source.ts"]);
+      .map((file) => file.path)
+      .toSorted();
+    expect(implementations).toEqual(["posthog/replay-source.ts", "rrweb/replay-source.ts"]);
   });
 
   test("CONTROL: the scan would see a second implementation if one were planted", () => {
