@@ -1,5 +1,7 @@
 import type { RrwebEvent } from "@growthmind/shared";
 
+import type { NodeIndex } from "../../src/replay/nodes";
+import { MAX_ANCESTOR_WALK, indexDomSegments } from "../../src/replay/nodes";
 import {
   RRWEB_EVENT_TYPE,
   RRWEB_INCREMENTAL_SOURCE,
@@ -116,17 +118,61 @@ export const API_KEY_NODE_ID = 22;
 export const SCROLL_NODE_ID = 23;
 export const LATE_NODE_ID = 91;
 
+export const SUBMIT_TEXT_NODE_ID = 31;
+
 export function settingsSnapshot(offsetMs = 0): RrwebEvent {
   return snapshotEvent(
     offsetMs,
     documentNode([
       element(2, "HTML", {}, [
         element(3, "BODY", {}, [
-          element(SUBMIT_NODE_ID, "BUTTON", { class: "gm-submit", id: "save" }, [maskedText(31)]),
+          element(SUBMIT_NODE_ID, "BUTTON", { class: "gm-submit", id: "save" }, [
+            maskedText(SUBMIT_TEXT_NODE_ID),
+          ]),
           element(API_KEY_NODE_ID, "INPUT", { name: "apiKey", type: "text" }),
           element(SCROLL_NODE_ID, "DIV", { class: "gm-scroller" }),
         ]),
       ]),
     ]),
   );
+}
+
+export const ICON_BUTTON_NODE_ID = 41;
+export const ICON_SVG_NODE_ID = 42;
+export const ICON_PATH_NODE_ID = 43;
+export const LINK_NODE_ID = 44;
+export const LINK_TEXT_NODE_ID = 45;
+export const BARE_DIV_NODE_ID = 46;
+
+export const DEEP_BUTTON_NODE_ID = 50;
+export const DEEP_DIV_NODE_ID = DEEP_BUTTON_NODE_ID + MAX_ANCESTOR_WALK + 1;
+
+function deeplyWrappedButton(): Node {
+  let wrapped = element(DEEP_DIV_NODE_ID, "DIV", { class: "gm-deep" });
+  for (let nodeId = DEEP_DIV_NODE_ID - 1; nodeId > DEEP_BUTTON_NODE_ID; nodeId -= 1) {
+    wrapped = element(nodeId, "DIV", {}, [wrapped]);
+  }
+  return element(DEEP_BUTTON_NODE_ID, "BUTTON", { class: "gm-deep-button" }, [wrapped]);
+}
+
+export function controlsSnapshot(offsetMs = 0): RrwebEvent {
+  return snapshotEvent(
+    offsetMs,
+    documentNode([
+      element(2, "HTML", {}, [
+        element(3, "BODY", {}, [
+          element(ICON_BUTTON_NODE_ID, "BUTTON", { class: "gm-icon" }, [
+            element(ICON_SVG_NODE_ID, "SVG", {}, [element(ICON_PATH_NODE_ID, "PATH")]),
+          ]),
+          element(LINK_NODE_ID, "A", { href: "/billing" }, [maskedText(LINK_TEXT_NODE_ID)]),
+          element(BARE_DIV_NODE_ID, "DIV", { class: "gm-plain" }),
+          deeplyWrappedButton(),
+        ]),
+      ]),
+    ]),
+  );
+}
+
+export function lastSegmentIndex(events: readonly RrwebEvent[]): NodeIndex {
+  return indexDomSegments(events).at(-1)?.index ?? new Map();
 }

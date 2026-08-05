@@ -1,7 +1,7 @@
 import type { RrwebEvent } from "@growthmind/shared";
 
-import type { NodeIndex } from "./nodes";
-import { indexNodes, resolveIdentity } from "./nodes";
+import type { DomSegments } from "./nodes";
+import { indexDomSegments, resolveControlAt, resolveIdentityAt } from "./nodes";
 import type { ReplayFact } from "./parse";
 import { RRWEB_MOUSE_INTERACTION, readReplayEvents } from "./parse";
 import type { ElementIdentity, SessionAction } from "./types";
@@ -36,8 +36,8 @@ type Draft = {
 
 type ClickPoint = {
   readonly tsMs: number;
-  readonly nodeId: number;
   readonly order: number;
+  readonly element: ElementIdentity;
 };
 
 type ScrollState = {
@@ -68,7 +68,7 @@ function pageDrafts(facts: readonly ReplayFact[], firstTsMs: number): readonly D
 
 function clickDrafts(
   facts: readonly ReplayFact[],
-  index: NodeIndex,
+  segments: DomSegments,
   firstTsMs: number,
 ): readonly Draft[] {
   const clicks: ClickPoint[] = [];
@@ -80,7 +80,8 @@ function clickDrafts(
       continue;
     }
     if (fact.kind === "mouse" && fact.interaction === RRWEB_MOUSE_INTERACTION.click) {
-      clicks.push({ tsMs: fact.tsMs, nodeId: fact.nodeId, order });
+      const element = resolveControlAt(segments, fact.nodeId, fact.tsMs);
+      clicks.push({ tsMs: fact.tsMs, order, element });
     }
   }
 
@@ -90,15 +91,17 @@ function clickDrafts(
   while (cursor < clicks.length) {
     const head = clicks[cursor];
     let end = cursor + 1;
+    // Repeats are counted on the resolved control: hammering one button reaches rrweb as
+    // clicks on whichever icon or label the pointer happened to be over.
     while (
       end < clicks.length &&
-      clicks[end].nodeId === head.nodeId &&
+      clicks[end].element.nodeId === head.element.nodeId &&
       clicks[end].tsMs - head.tsMs <= RAGE_CLICK_WINDOW_MS
     ) {
       end += 1;
     }
 
-    const element = resolveIdentity(index, head.nodeId);
+    const element = head.element;
     const atMs = head.tsMs - firstTsMs;
     const run = end - cursor;
 
@@ -146,7 +149,7 @@ function axisMove(
 
 function sequentialDrafts(
   facts: readonly ReplayFact[],
-  index: NodeIndex,
+  segments: DomSegments,
   firstTsMs: number,
 ): readonly Draft[] {
   const drafts: Draft[] = [];
@@ -159,7 +162,7 @@ function sequentialDrafts(
     const atMs = fact.tsMs - firstTsMs;
 
     if (fact.kind === "mouse") {
-      const element = resolveIdentity(index, fact.nodeId);
+      const element = resolveControlAt(segments, fact.nodeId, fact.tsMs);
 
       if (fact.interaction === RRWEB_MOUSE_INTERACTION.doubleClick) {
         drafts.push({ atMs, order, action: { kind: "double_click", atMs, element } });
@@ -170,9 +173,9 @@ function sequentialDrafts(
         typingNodeId = null;
         if (!isFieldElement(element)) continue;
 
-        const focusCount = (focusCounts.get(fact.nodeId) ?? 0) + 1;
-        focusCounts.set(fact.nodeId, focusCount);
-        openFocus.set(fact.nodeId, false);
+        const focusCount = (focusCounts.get(element.nodeId) ?? 0) + 1;
+        focusCounts.set(element.nodeId, focusCount);
+        openFocus.set(element.nodeId, false);
 
         if (focusCount >= FIELD_REFOCUS_MIN_FOCUSES) {
           drafts.push({
@@ -186,8 +189,8 @@ function sequentialDrafts(
 
       if (fact.interaction === RRWEB_MOUSE_INTERACTION.blur) {
         typingNodeId = null;
-        const typed = openFocus.get(fact.nodeId);
-        openFocus.delete(fact.nodeId);
+        const typed = openFocus.get(element.nodeId);
+        openFocus.delete(element.nodeId);
 
         if (typed === false && isFieldElement(element)) {
           drafts.push({ atMs, order, action: { kind: "field_abandoned", atMs, element } });
@@ -197,11 +200,11 @@ function sequentialDrafts(
     }
 
     if (fact.kind === "input") {
-      if (openFocus.has(fact.nodeId)) openFocus.set(fact.nodeId, true);
-      if (typingNodeId === fact.nodeId) continue;
+      const element = resolveIdentityAt(segments, fact.nodeId, fact.tsMs);
+      if (openFocus.has(element.nodeId)) openFocus.set(element.nodeId, true);
+      if (typingNodeId === element.nodeId) continue;
 
-      typingNodeId = fact.nodeId;
-      const element = resolveIdentity(index, fact.nodeId);
+      typingNodeId = element.nodeId;
       drafts.push({ atMs, order, action: { kind: "input", atMs, element } });
       continue;
     }
@@ -224,7 +227,7 @@ function sequentialDrafts(
     });
 
     if (horizontal.reversed || vertical.reversed) {
-      const element = resolveIdentity(index, fact.nodeId);
+      const element = resolveIdentityAt(segments, fact.nodeId, fact.tsMs);
       drafts.push({ atMs, order, action: { kind: "scroll_back", atMs, element } });
     }
   }
@@ -253,20 +256,29 @@ function withWaitsAndEnd(
   return transcript;
 }
 
+function fromZero(action: SessionAction, originMs: number): SessionAction {
+  return { ...action, atMs: action.atMs - originMs };
+}
+
 export function toActions(events: readonly RrwebEvent[]): readonly SessionAction[] {
   const { facts, firstTsMs, lastTsMs } = readReplayEvents(events);
   if (firstTsMs === null || lastTsMs === null) return [];
 
-  const index = indexNodes(events);
+  const segments = indexDomSegments(events);
   const drafts = [
     ...pageDrafts(facts, firstTsMs),
-    ...clickDrafts(facts, index, firstTsMs),
-    ...sequentialDrafts(facts, index, firstTsMs),
+    ...clickDrafts(facts, segments, firstTsMs),
+    ...sequentialDrafts(facts, segments, firstTsMs),
   ];
 
-  const ordered = drafts
-    .toSorted((left, right) => left.atMs - right.atMs || left.order - right.order)
-    .map((draft) => draft.action);
+  const ordered = drafts.toSorted(
+    (left, right) => left.atMs - right.atMs || left.order - right.order,
+  );
 
-  return withWaitsAndEnd(ordered, lastTsMs - firstTsMs);
+  // The clock starts at the first thing the person did, so a recording that idled for an
+  // hour before its first action still reads from 0:00.
+  const originMs = ordered.at(0)?.atMs ?? 0;
+  const actions = ordered.map((draft) => fromZero(draft.action, originMs));
+
+  return withWaitsAndEnd(actions, lastTsMs - firstTsMs - originMs);
 }

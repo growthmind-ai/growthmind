@@ -24,12 +24,26 @@ export const DESCRIBE_TRUNCATION_MARKER = "…";
 
 const WHITESPACE_RUN = /\s+/g;
 
+const ABSOLUTE_URL = /^[a-z][\w+.-]*:\/\/([^/?#\s]*)(\S*)$/i;
+
+// Every link on a site shares its origin, so an origin identifies nothing and a long one
+// crowds out the path, which is the part that tells two links apart.
+function withoutOrigin(value: string): string {
+  const parsed = ABSOLUTE_URL.exec(value);
+  if (parsed === null) return value;
+
+  const host = parsed[1] ?? "";
+  const path = parsed[2] ?? "";
+  return path.length === 0 || path === "/" ? host : path;
+}
+
 function readableValue(value: string): string {
-  const collapsed = value.replaceAll(WHITESPACE_RUN, " ").trim();
+  const collapsed = withoutOrigin(value.replaceAll(WHITESPACE_RUN, " ").trim());
   if (collapsed.length <= DESCRIBE_VALUE_MAX_LENGTH) return collapsed;
 
-  const head = Math.max(0, DESCRIBE_VALUE_MAX_LENGTH - DESCRIBE_TRUNCATION_MARKER.length);
-  return `${collapsed.slice(0, head).trimEnd()}${DESCRIBE_TRUNCATION_MARKER}`;
+  // Keep the tail: two values long enough to truncate usually differ at the end.
+  const tail = Math.max(0, DESCRIBE_VALUE_MAX_LENGTH - DESCRIBE_TRUNCATION_MARKER.length);
+  return `${DESCRIBE_TRUNCATION_MARKER}${collapsed.slice(-tail).trimStart()}`;
 }
 
 function attributeSuffix(identity: ElementIdentity): string {

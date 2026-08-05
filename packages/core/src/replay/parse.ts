@@ -26,10 +26,15 @@ export const RRWEB_NODE_TYPE = {
 
 export type UnknownRecord = Readonly<Record<string, unknown>>;
 
+export type MutationAdd = {
+  readonly parentId: number | null;
+  readonly node: UnknownRecord;
+};
+
 export type ReplayFact =
   | { readonly kind: "page"; readonly tsMs: number; readonly href: string }
   | { readonly kind: "snapshot"; readonly tsMs: number; readonly node: UnknownRecord }
-  | { readonly kind: "mutation"; readonly tsMs: number; readonly adds: readonly UnknownRecord[] }
+  | { readonly kind: "mutation"; readonly tsMs: number; readonly adds: readonly MutationAdd[] }
   | {
       readonly kind: "mouse";
       readonly tsMs: number;
@@ -71,15 +76,17 @@ function asFilledString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function addedNodesOf(value: unknown): readonly UnknownRecord[] {
+function addedNodesOf(value: unknown): readonly MutationAdd[] {
   if (!Array.isArray(value)) return [];
 
-  const nodes: UnknownRecord[] = [];
+  const adds: MutationAdd[] = [];
   for (const entry of value) {
-    const node = asRecord(asRecord(entry)?.["node"]);
-    if (node !== null) nodes.push(node);
+    const record = asRecord(entry);
+    const node = asRecord(record?.["node"]);
+    if (node === null) continue;
+    adds.push({ parentId: asWholeNumber(record?.["parentId"]), node });
   }
-  return nodes;
+  return adds;
 }
 
 function incrementalFact(tsMs: number, data: UnknownRecord): ReplayFact | null {

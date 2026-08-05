@@ -122,6 +122,23 @@ describe("renderTranscript", () => {
     expect(renderTranscript(transcript)).toContain("clicked #unknown(4242)");
   });
 
+  test("should stamp the first line 0:00 rather than the offset the recorder happened to start at", () => {
+    const idleMs = 4_673_000;
+    const transcript = buildTranscript([
+      mouseMoveEvent(0),
+      metaEvent(idleMs, SETTINGS_PAGE),
+      settingsSnapshot(idleMs + 10),
+      clickEvent(idleMs + 4_000, SUBMIT_NODE_ID),
+      mutationEvent(idleMs + 4_050),
+    ]);
+
+    expect(renderTranscript(transcript).split("\n")).toEqual([
+      `0:00  opened ${SETTINGS_PAGE}`,
+      "0:04  clicked button.gm-submit#save",
+      "0:04  session ended",
+    ]);
+  });
+
   test("should keep minutes past the hour readable rather than resetting the clock", () => {
     const transcript = buildTranscript([
       metaEvent(0, SETTINGS_PAGE),

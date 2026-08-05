@@ -1,3 +1,4 @@
+import type { RrwebEvent } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -12,13 +13,23 @@ import { UNKNOWN_TAG_NAME } from "../../src/replay/nodes";
 import type { SessionAction, SessionActionKind } from "../../src/replay/types";
 import {
   API_KEY_NODE_ID,
+  BARE_DIV_NODE_ID,
   BILLING_PAGE,
+  DEEP_BUTTON_NODE_ID,
+  DEEP_DIV_NODE_ID,
+  ICON_BUTTON_NODE_ID,
+  ICON_PATH_NODE_ID,
   LATE_NODE_ID,
+  LINK_NODE_ID,
+  LINK_TEXT_NODE_ID,
   SCROLL_NODE_ID,
   SETTINGS_PAGE,
   SUBMIT_NODE_ID,
+  SUBMIT_TEXT_NODE_ID,
   blurEvent,
   clickEvent,
+  controlsSnapshot,
+  documentNode,
   doubleClickEvent,
   element,
   focusEvent,
@@ -28,6 +39,7 @@ import {
   mutationEvent,
   scrollEvent,
   settingsSnapshot,
+  snapshotEvent,
 } from "./fixtures";
 
 const kindsOf = (actions: readonly SessionAction[]): readonly SessionActionKind[] =>
@@ -384,6 +396,28 @@ describe("toActions — time", () => {
 
     expect(only(actions, "click")[0]?.atMs).toBe(1_000);
   });
+
+  test("should start the clock at the first action, however long the recorder ran before it", () => {
+    const idleMs = 4_673_000;
+    const actions = toActions([
+      mouseMoveEvent(0),
+      mouseMoveEvent(idleMs - 1_000),
+      metaEvent(idleMs, SETTINGS_PAGE),
+      settingsSnapshot(idleMs + 10),
+      clickEvent(idleMs + 1_000, SUBMIT_NODE_ID),
+      mutationEvent(idleMs + 1_050),
+    ]);
+
+    expect(actions[0]).toEqual({ kind: "page", atMs: 0, href: SETTINGS_PAGE });
+    expect(only(actions, "click")[0]?.atMs).toBe(1_000);
+    expect(actions.at(-1)).toEqual({ kind: "ended", atMs: 1_050 });
+  });
+
+  test("should not shift the clock off zero when a recording produced no action at all", () => {
+    expect(toActions([mouseMoveEvent(0), mouseMoveEvent(500)])).toEqual([
+      { kind: "ended", atMs: 500 },
+    ]);
+  });
 });
 
 describe("toActions — element identity", () => {
@@ -414,14 +448,142 @@ describe("toActions — element identity", () => {
     expect(only(actions, "click")[0]?.element.tagName).toBe(UNKNOWN_TAG_NAME);
   });
 
-  test("should not read a masked text node as the element a click landed on", () => {
+  test("should read the button a masked text node sits inside, never the text node itself", () => {
     const actions = toActions([
       metaEvent(0, SETTINGS_PAGE),
       settingsSnapshot(10),
-      clickEvent(1_000, 31),
+      clickEvent(1_000, SUBMIT_TEXT_NODE_ID),
       mutationEvent(1_050),
     ]);
 
+    expect(only(actions, "click")[0]?.element.nodeId).toBe(SUBMIT_NODE_ID);
+    expect(only(actions, "click")[0]?.element.tagName).toBe("button");
+  });
+});
+
+describe("toActions — the DOM a click actually happened in", () => {
+  const REUSED_NODE_ID = 21;
+
+  function scriptThenButton(): readonly RrwebEvent[] {
+    return [
+      metaEvent(0, SETTINGS_PAGE),
+      snapshotEvent(
+        10,
+        documentNode([
+          element(2, "HTML", {}, [
+            element(3, "HEAD", {}, [
+              element(REUSED_NODE_ID, "SCRIPT", { type: "text/javascript" }),
+            ]),
+          ]),
+        ]),
+      ),
+      snapshotEvent(
+        5_000,
+        documentNode([
+          element(2, "HTML", {}, [
+            element(3, "BODY", {}, [element(REUSED_NODE_ID, "BUTTON", { class: "gm-pay" })]),
+          ]),
+        ]),
+      ),
+    ];
+  }
+
+  test("should resolve a click against the newest snapshot when two snapshots reuse one node id", () => {
+    const actions = toActions([
+      ...scriptThenButton(),
+      clickEvent(6_000, REUSED_NODE_ID),
+      mutationEvent(6_050),
+    ]);
+
+    expect(only(actions, "click")[0]?.element.tagName).toBe("button");
+    expect(only(actions, "click")[0]?.element.classes).toEqual(["gm-pay"]);
+  });
+
+  test("should still resolve a click against the older snapshot while that snapshot is the live one", () => {
+    const actions = toActions([
+      ...scriptThenButton(),
+      clickEvent(1_000, REUSED_NODE_ID),
+      mutationEvent(1_050),
+    ]);
+
+    expect(only(actions, "click")[0]?.element.tagName).toBe("script");
+  });
+
+  test("should not resolve a click that happened before any snapshot against a later tree", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      clickEvent(1_000, SUBMIT_NODE_ID),
+      mutationEvent(1_050),
+      settingsSnapshot(5_000),
+    ]);
+
     expect(only(actions, "click")[0]?.element.tagName).toBe(UNKNOWN_TAG_NAME);
+  });
+});
+
+describe("toActions — the control a person meant to press", () => {
+  test("should describe the button when the click landed on the path inside its icon", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      controlsSnapshot(10),
+      clickEvent(1_000, ICON_PATH_NODE_ID),
+      mutationEvent(1_050),
+    ]);
+
+    expect(only(actions, "click")[0]?.element.nodeId).toBe(ICON_BUTTON_NODE_ID);
+    expect(only(actions, "click")[0]?.element.tagName).toBe("button");
+  });
+
+  test("should describe the anchor when the click landed on the text inside it", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      controlsSnapshot(10),
+      clickEvent(1_000, LINK_TEXT_NODE_ID),
+      mutationEvent(1_050),
+    ]);
+
+    expect(only(actions, "click")[0]?.element.nodeId).toBe(LINK_NODE_ID);
+    expect(only(actions, "click")[0]?.element.tagName).toBe("a");
+  });
+
+  test("should describe the div itself when no control sits above it within the walk", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      controlsSnapshot(10),
+      clickEvent(1_000, BARE_DIV_NODE_ID),
+      mutationEvent(1_050),
+      clickEvent(2_000, DEEP_DIV_NODE_ID),
+      mutationEvent(2_050),
+    ]);
+
+    const clicked = only(actions, "click").map((action) => action.element.nodeId);
+    expect(clicked).toEqual([BARE_DIV_NODE_ID, DEEP_DIV_NODE_ID]);
+    expect(clicked).not.toContain(DEEP_BUTTON_NODE_ID);
+  });
+
+  test("should not call a click dead when the page answers the control the click resolved to", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      controlsSnapshot(10),
+      clickEvent(1_000, ICON_PATH_NODE_ID),
+      mutationEvent(1_100),
+    ]);
+
+    expect(kindsOf(actions)).toEqual(["page", "click", "ended"]);
+    expect(only(actions, "dead_click")).toEqual([]);
+    expect(only(actions, "click")[0]?.element.nodeId).toBe(ICON_BUTTON_NODE_ID);
+  });
+
+  test("should collapse hammering on one button reported as clicks on its icon and its label", () => {
+    const actions = toActions([
+      metaEvent(0, SETTINGS_PAGE),
+      controlsSnapshot(10),
+      clickEvent(1_000, ICON_PATH_NODE_ID),
+      clickEvent(1_200, ICON_BUTTON_NODE_ID),
+      clickEvent(1_400, ICON_PATH_NODE_ID),
+    ]);
+
+    expect(only(actions, "rage_click")).toHaveLength(1);
+    expect(only(actions, "rage_click")[0]?.element.nodeId).toBe(ICON_BUTTON_NODE_ID);
   });
 });
