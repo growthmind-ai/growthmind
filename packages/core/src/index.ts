@@ -300,3 +300,83 @@ export {
   type FactRefusal,
   type FactAdmission,
 } from "./growth/fact-admission";
+
+export type {
+  ElementIdentity,
+  SessionAction,
+  SessionActionKind,
+  SessionTranscript,
+  TranscriptCounts,
+  PageAction,
+  ClickAction,
+  DoubleClickAction,
+  RageClickAction,
+  DeadClickAction,
+  InputAction,
+  FieldRefocusAction,
+  FieldAbandonedAction,
+  ScrollBackAction,
+  WaitAction,
+  EndedAction,
+} from "./replay/types";
+export {
+  RRWEB_EVENT_TYPE,
+  RRWEB_INCREMENTAL_SOURCE,
+  RRWEB_MOUSE_INTERACTION,
+  RRWEB_NODE_TYPE,
+  asRecord,
+  readReplayEvents,
+  type MutationAdd,
+  type ReplayFact,
+  type ReadReplayEvents,
+  type UnknownRecord,
+} from "./replay/parse";
+export {
+  MAX_INDEXED_NODES,
+  MAX_ANCESTOR_WALK,
+  INTERACTIVE_TAG_NAMES,
+  INTERACTIVE_ROLES,
+  INTERACTIVE_TYPE,
+  UNKNOWN_TAG_NAME,
+  CLASS_ATTRIBUTE,
+  ID_ATTRIBUTE,
+  ROLE_ATTRIBUTE,
+  TEST_ID_ATTRIBUTE,
+  TYPE_ATTRIBUTE,
+  indexDomSegments,
+  segmentAt,
+  resolveIdentity,
+  resolveIdentityAt,
+  resolveControlAt,
+  isInteractive,
+  unknownIdentity,
+  isUnknownIdentity,
+  type NodeIndex,
+  type DomSegment,
+  type DomSegments,
+} from "./replay/nodes";
+export {
+  DESCRIBE_ATTRIBUTE_PRECEDENCE,
+  DESCRIBE_MAX_CLASSES,
+  DESCRIBE_VALUE_MAX_LENGTH,
+  DESCRIBE_TRUNCATION_MARKER,
+  describeElement,
+} from "./replay/describe";
+export {
+  RAGE_CLICK_MIN_CLICKS,
+  RAGE_CLICK_WINDOW_MS,
+  DEAD_CLICK_WINDOW_MS,
+  WAIT_THRESHOLD_MS,
+  SCROLL_BACK_MIN_PX,
+  FIELD_REFOCUS_MIN_FOCUSES,
+  FIELD_TAG_NAMES,
+  toActions,
+} from "./replay/actions";
+export { buildTranscript } from "./replay/transcript";
+export {
+  MS_PER_SECOND,
+  SECONDS_PER_MINUTE,
+  STAMP_SEPARATOR,
+  EMPTY_TRANSCRIPT_LINE,
+  renderTranscript,
+} from "./replay/render";
