@@ -93,6 +93,7 @@ function fakeRepo() {
     summarisedIds: (_projectId, ids) =>
       Promise.resolve(new Set(ids.filter((id) => rows.some((row) => row.recordingId === id)))),
     latestStartedAt: () => Promise.resolve(null),
+    citationsFor: () => Promise.resolve([]),
   };
 
   return { repo, rows };

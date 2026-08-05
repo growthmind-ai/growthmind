@@ -8,10 +8,28 @@ import {
   renderTranscript,
   renderWithheldRecordingFloor,
   reviewFindingText,
+  serialisePersistedTranscript,
+  PERSISTED_TRANSCRIPT_VERSION,
 } from "@growthmind/core";
 import type { FloorNarration, ScannedText, TranscriptDigest } from "@growthmind/core";
-import type { PersistRecordingSummaryInput, RecordingSummariesRepo } from "@growthmind/db";
-import type { ReplayRecordingSummary, SummarySource, TenantContext } from "@growthmind/shared";
+import type {
+  PersistRecordingSummaryInput,
+  RecordingSummariesRepo,
+  TranscriptPullStop,
+} from "@growthmind/db";
+import {
+  recordingSessionKey,
+  REPLAY_PULL_STOP_MESSAGES,
+  SESSION_GROUPING_VERSION,
+} from "@growthmind/shared";
+import type {
+  ReplayEventsResult,
+  ReplayRecordingSummary,
+  ReplaySourceKind,
+  RrwebEvent,
+  SummarySource,
+  TenantContext,
+} from "@growthmind/shared";
 
 import type { AnalysisLogger } from "../analysis/types";
 import type { ConfiguredNarrator } from "./narrator-deps";
@@ -132,16 +150,50 @@ function scanDown(narrated: NarrationText, floor: FloorNarration): ScannedNarrat
   );
 }
 
+type PullOutcome = {
+  readonly events: readonly RrwebEvent[];
+  readonly stop: TranscriptPullStop;
+  readonly reason: string | null;
+  readonly bytesReceived: number | null;
+};
+
+// The rrweb source reads parsed JSON pages and reports 0 on every arm, so carrying its count
+// through would store "not measured" as "measured zero".
+function readPull(provider: ReplaySourceKind, pulled: ReplayEventsResult): PullOutcome {
+  const bytesReceived = provider === "rrweb" ? null : pulled.bytesReceived;
+
+  if (!pulled.ok) {
+    return {
+      events: pulled.partialEvents,
+      stop: "failed",
+      reason: pulled.failure.message,
+      bytesReceived,
+    };
+  }
+
+  return {
+    events: pulled.events,
+    stop: pulled.stop,
+    reason: pulled.stop === "exhausted" ? null : REPLAY_PULL_STOP_MESSAGES[pulled.stop],
+    bytesReceived,
+  };
+}
+
 function persistInputFor(args: {
   readonly projectId: string;
+  readonly provider: ReplaySourceKind;
   readonly recording: ReplayRecordingSummary;
   readonly digest: TranscriptDigest;
   readonly transcript: string;
+  readonly pull: PullOutcome;
+  readonly watermark: Date | null;
   readonly text: ScannedNarration;
   readonly resolvedModelId: string | null;
   readonly tokensIn: number | null;
   readonly tokensOut: number | null;
 }): PersistRecordingSummaryInput {
+  const sessionKey = recordingSessionKey(args.provider, args.recording.recordingId);
+
   return {
     projectId: args.projectId,
     recordingId: args.recording.recordingId,
@@ -155,6 +207,22 @@ function persistInputFor(args: {
     notableCount: countNotable(args.digest.actions),
     droppedEvents: args.digest.droppedEvents,
     startedAt: args.recording.startedAt,
+
+    provider: args.provider,
+    sessionKey,
+    sessionGroupingVersion: sessionKey === null ? null : SESSION_GROUPING_VERSION,
+
+    // What the narrator read, beat for beat: a citation resting on a beat the row never
+    // stored is the break this outcome exists to close.
+    actions: serialisePersistedTranscript(args.digest.actions, PERSISTED_TRANSCRIPT_VERSION),
+    actionsVersion: PERSISTED_TRANSCRIPT_VERSION,
+    actionsOmitted: args.digest.omitted,
+
+    pullStop: args.pull.stop,
+    pullReason: args.pull.reason,
+    pullWatermarkAt: args.watermark,
+    bytesReceived: args.pull.bytesReceived,
+
     resolvedModelId: args.resolvedModelId,
     tokensIn: args.tokensIn,
     tokensOut: args.tokensOut,
@@ -167,9 +235,10 @@ async function narrateOne(
   source: ReplaySource,
   summaries: RecordingSummariesRepo,
   recording: ReplayRecordingSummary,
+  watermark: Date | null,
 ): Promise<boolean> {
   const pulled = await source.pullEvents(recording.recordingId);
-  const events = pulled.ok ? pulled.events : pulled.partialEvents;
+  const pull = readPull(source.kind, pulled);
 
   if (!pulled.ok) {
     deps.logger.info(
@@ -178,7 +247,7 @@ async function narrateOne(
     );
   }
 
-  const transcript = buildTranscript(events);
+  const transcript = buildTranscript(pull.events);
   const digest = compactTranscript(transcript);
 
   const narrated = await narrationFor(digest, deps.narrator);
@@ -187,9 +256,12 @@ async function narrateOne(
   await summaries.persist(
     persistInputFor({
       projectId: lane.projectId,
+      provider: source.kind,
       recording,
       digest,
       transcript: renderTranscript(transcript),
+      pull,
+      watermark,
       text,
       resolvedModelId: deps.narrator?.resolvedModelId ?? null,
       tokensIn: narrated.tokensIn,
@@ -243,7 +315,7 @@ async function runLane(
 
   for (const recording of fresh.slice(0, deps.perProjectCap)) {
     try {
-      await narrateOne(deps, lane, resolved.source, summaries, recording);
+      await narrateOne(deps, lane, resolved.source, summaries, recording, watermark);
       tally.summarised += 1;
     } catch (error) {
       tally.failed += 1;
