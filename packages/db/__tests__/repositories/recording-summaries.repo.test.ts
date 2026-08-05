@@ -26,6 +26,7 @@ import {
 import type {
   PersistedSessionAction,
   TranscriptPersistInput,
+  TranscriptRefreshInput,
 } from "../helpers/transcript-contract";
 
 const NAMES = laneNames("recording-summaries");
@@ -46,6 +47,12 @@ const PERSISTED_ACTIONS: readonly PersistedSessionAction[] = [
 ];
 
 const PAGE_CAP_REASON = "We read as much of this recording as one pass allows.";
+
+const BYTE_CAP_REASON = "This recording is larger than we read in one visit.";
+
+const RATE_LIMIT_REASON = "Your recording source asked us to slow down, so we stopped early.";
+
+const REFRESHED_ACTION_COUNT = 24;
 
 const CLEAN = scannedTextFor("Someone pressed the buy button and nothing happened", [
   "They opened pricing, pressed buy four times, and left.",
@@ -87,6 +94,31 @@ function transcriptInputFor(
     pullStop: "exhausted",
     pullReason: null,
     pullWatermarkAt: WATERMARK_AT,
+    ...overrides,
+  };
+}
+
+function refreshInputFor(
+  projectId: string,
+  recordingId: string,
+  overrides: Partial<TranscriptRefreshInput> = {},
+): TranscriptRefreshInput {
+  return {
+    projectId,
+    recordingId,
+    transcript: "0:00  opened /pricing\n1:04  pressed buy four times",
+    pages: ["/pricing", "/checkout"],
+    durationMs: 124_000,
+    actionCount: REFRESHED_ACTION_COUNT,
+    notableCount: 2,
+    droppedEvents: 0,
+    actions: transcriptOf(PERSISTED_ACTIONS),
+    actionsVersion: 1,
+    actionsOmitted: 0,
+    pullStop: "exhausted",
+    pullReason: null,
+    pullWatermarkAt: WATERMARK_AT,
+    bytesReceived: 2_048,
     ...overrides,
   };
 }
@@ -528,5 +560,215 @@ describe("recording summaries repository", () => {
     const { org, project } = await seedOrg("citation-empty");
 
     expect(await citationsFor(transcriptRepo(db, org.ctx), project.id, [])).toEqual([]);
+  });
+
+  async function seedCitable(
+    label: string,
+    recordingId: string,
+    actions: unknown,
+    version: number,
+  ) {
+    const { org, project, connection } = await seedOrgProjectConnection(label);
+    const sessionKey = recordingSessionKey("posthog", recordingId);
+
+    await transcriptRepo(db, org.ctx).persist(
+      transcriptInputFor(project.id, recordingId, {
+        sessionKey,
+        actions: actions as TranscriptPersistInput["actions"],
+        actionsVersion: version,
+      }),
+    );
+
+    const session = await seedSession(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      connectionId: connection.id,
+      sessionKey: sessionKey ?? "",
+    });
+
+    return citationsFor(transcriptRepo(db, org.ctx), project.id, [session.id]);
+  }
+
+  it("should report no readable actions for a transcript written by a newer version", async () => {
+    const citations = await seedCitable(
+      "citation-newer-version",
+      "0198c4f2-7a1b-7c3d-9e4f-newer-version",
+      { v: 2, actions: [{ kind: "page", atMs: 0 }] },
+      2,
+    );
+
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.transcriptVersion).toBe(2);
+    expect(citations[0]?.actions).toBeNull();
+  });
+
+  it("should report no readable actions for a payload carrying a kind its version cannot read", async () => {
+    const citations = await seedCitable(
+      "citation-unknown-kind",
+      "0198c4f2-7a1b-7c3d-9e4f-unknown-kind",
+      { v: 1, actions: [{ kind: "teleported", atMs: 12 }] },
+      1,
+    );
+
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.transcriptVersion).toBe(1);
+    expect(citations[0]?.actions).toBeNull();
+  });
+
+  it("should report an empty action list for a recording that genuinely had no beats", async () => {
+    const citations = await seedCitable(
+      "citation-no-beats",
+      "0198c4f2-7a1b-7c3d-9e4f-no-beats",
+      transcriptOf([]),
+      1,
+    );
+
+    expect(citations).toHaveLength(1);
+    expect(citations[0]?.transcriptVersion).toBe(1);
+    expect(citations[0]?.actions).toEqual([]);
+  });
+
+  it("should report a failed pull as retryable and a capped or exhausted one as settled", async () => {
+    const { org, project } = await seedOrg("retryable-ids");
+    const repo = transcriptRepo(db, org.ctx);
+    const ids = ["rec-throttled", "rec-byte-capped", "rec-read-whole"];
+
+    await repo.persist(
+      transcriptInputFor(project.id, "rec-throttled", {
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+      }),
+    );
+    await repo.persist(
+      transcriptInputFor(project.id, "rec-byte-capped", {
+        pullStop: "byte_cap",
+        pullReason: BYTE_CAP_REASON,
+      }),
+    );
+    await repo.persist(transcriptInputFor(project.id, "rec-read-whole"));
+
+    expect(await repo.summarisedIds(project.id, ids)).toEqual(new Set(ids));
+    expect(await repo.retryablePullIds(project.id, ids)).toEqual(new Set(["rec-throttled"]));
+  });
+
+  it("should treat a row written before 0021 as settled rather than retryable", async () => {
+    const { org, project } = await seedOrg("retryable-legacy");
+
+    await db.insert(recordingSummaries).values({
+      organizationId: org.organizationId,
+      projectId: project.id,
+      recordingId: "rec-legacy-pull",
+      summarySource: "model_rendered",
+      headline: "Someone opened pricing and left",
+      context: ["They read one page and went no further."],
+      transcript: "0:00  opened /pricing",
+      pages: ["/pricing"],
+      durationMs: 4000,
+      actionCount: 2,
+      notableCount: 0,
+      droppedEvents: 0,
+      startedAt: STARTED_AT,
+      resolvedModelId: null,
+    });
+
+    const repo = transcriptRepo(db, org.ctx);
+
+    expect((await repo.summarisedIds(project.id, ["rec-legacy-pull"])).size).toBe(1);
+    expect((await repo.retryablePullIds(project.id, ["rec-legacy-pull"])).size).toBe(0);
+  });
+
+  it("should replace the evidence on a failed pull and leave the narration as written", async () => {
+    const { org, project } = await seedOrg("refresh-failed");
+    const repo = transcriptRepo(db, org.ctx);
+
+    const first = await repo.persist(
+      transcriptInputFor(project.id, "rec-retried-pull", {
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+        bytesReceived: 1_024,
+      }),
+    );
+
+    const refreshed = await repo.refreshFailedPull(refreshInputFor(project.id, "rec-retried-pull"));
+
+    expect(refreshed?.id).toBe(first.id);
+    expect(refreshed?.pullStop).toBe("exhausted");
+    expect(refreshed?.pullReason).toBeNull();
+    expect(refreshed?.actionCount).toBe(REFRESHED_ACTION_COUNT);
+    expect(refreshed?.bytesReceived).toBe(2_048);
+    expect(refreshed?.pages).toEqual(["/pricing", "/checkout"]);
+    expect(refreshed?.text.held).toBe(false);
+    if (refreshed?.text.held === false) {
+      expect(refreshed.text.headline).toBe(CLEAN.headline);
+    }
+    expect(refreshed?.summarySource).toBe("model_rendered");
+    expect(refreshed?.resolvedModelId).toBe("test-model");
+    expect(refreshed?.tokensIn).toBe(40);
+    expect(refreshed?.startedAt?.toISOString()).toBe(STARTED_AT.toISOString());
+    expect(await rowCountFor(project.id, "rec-retried-pull")).toBe(1);
+    expect((await repo.retryablePullIds(project.id, ["rec-retried-pull"])).size).toBe(0);
+  });
+
+  it("should refuse to replace a row whose pull reached a bound", async () => {
+    const { org, project } = await seedOrg("refresh-bounded");
+    const repo = transcriptRepo(db, org.ctx);
+
+    await repo.persist(
+      transcriptInputFor(project.id, "rec-bounded", {
+        pullStop: "byte_cap",
+        pullReason: BYTE_CAP_REASON,
+      }),
+    );
+
+    expect(await repo.refreshFailedPull(refreshInputFor(project.id, "rec-bounded"))).toBeNull();
+
+    const found = await repo.findFor(project.id, "rec-bounded");
+    expect(found?.pullStop).toBe("byte_cap");
+    expect(found?.pullReason).toBe(BYTE_CAP_REASON);
+  });
+
+  it("should refuse a retry that read less than the row already holds", async () => {
+    const { org, project } = await seedOrg("refresh-shorter");
+    const repo = transcriptRepo(db, org.ctx);
+
+    await repo.persist(
+      transcriptInputFor(project.id, "rec-shorter-retry", {
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+      }),
+    );
+
+    const shorter = await repo.refreshFailedPull(
+      refreshInputFor(project.id, "rec-shorter-retry", { actionCount: 3, notableCount: 0 }),
+    );
+
+    expect(shorter).toBeNull();
+
+    const found = await repo.findFor(project.id, "rec-shorter-retry");
+    expect(found?.actionCount).toBe(12);
+    expect(found?.pullStop).toBe("failed");
+  });
+
+  it("should refuse to refresh or list a failed pull another organization owns", async () => {
+    const mine = await seedOrg("refresh-tenant-mine");
+    const theirs = await seedOrg("refresh-tenant-theirs");
+
+    await transcriptRepo(db, mine.org.ctx).persist(
+      transcriptInputFor(mine.project.id, "rec-not-theirs", {
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+      }),
+    );
+
+    const theirRepo = transcriptRepo(db, theirs.org.ctx);
+
+    expect((await theirRepo.retryablePullIds(mine.project.id, ["rec-not-theirs"])).size).toBe(0);
+    expect(
+      await theirRepo.refreshFailedPull(refreshInputFor(mine.project.id, "rec-not-theirs")),
+    ).toBeNull();
+
+    const found = await transcriptRepo(db, mine.org.ctx).findFor(mine.project.id, "rec-not-theirs");
+    expect(found?.pullStop).toBe("failed");
+    expect(found?.actionCount).toBe(12);
   });
 });

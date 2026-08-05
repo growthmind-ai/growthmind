@@ -210,9 +210,11 @@ export {
 export {
   createRecordingSummariesRepo,
   RECORDING_SUMMARY_CONFLICT_TARGET,
+  RETRYABLE_PULL_STOP,
   type RecordingSummariesRepo,
   type RecordingSummaryRecord,
   type PersistRecordingSummaryInput,
+  type RefreshFailedPullInput,
   type SessionRecordingCitation,
   type StoredTranscript,
   type StoredTranscriptAction,

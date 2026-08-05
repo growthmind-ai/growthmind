@@ -61,6 +61,10 @@ const DEFAULT_RECORDING_TIMEOUT_MS = 2 * FR02_THRESHOLDS.stopMs;
 
 const CONNECT_BACKOFF_CEILING_MS = 5_000;
 
+let secretToRedact = "";
+const redact = (text: string): string =>
+  secretToRedact === "" ? text : text.replaceAll(secretToRedact, "[redacted]");
+
 const USAGE = `M-0 recording-pull probe (O-040 FR-0.1b). Read-only: writes nothing, anywhere.
 
 Usage: bun scripts/spikes/m0-recording-pull.ts [flags]
@@ -417,8 +421,7 @@ async function main(): Promise<number> {
       return 1;
     }
     const { source, host, organizationName, personalApiKey } = resolution.resolved;
-    const redact = (text: string): string =>
-      personalApiKey === "" ? text : text.replaceAll(personalApiKey, "[redacted]");
+    secretToRedact = personalApiKey;
 
     console.log(`Organisation: ${organizationName}`);
     console.log(`Source: ${source.kind} at ${host}`);
@@ -577,7 +580,7 @@ async function main(): Promise<number> {
 }
 
 const exitCode = await main().catch((error: unknown) => {
-  console.error(`The probe stopped: ${describeError(error)}`);
+  console.error(`The probe stopped: ${redact(describeError(error))}`);
   return 1;
 });
 process.exit(exitCode);

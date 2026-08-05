@@ -15,6 +15,7 @@ import type { FloorNarration, ScannedText, TranscriptDigest } from "@growthmind/
 import type {
   PersistRecordingSummaryInput,
   RecordingSummariesRepo,
+  RefreshFailedPullInput,
   TranscriptPullStop,
 } from "@growthmind/db";
 import {
@@ -57,6 +58,10 @@ export interface ReplayNarrationDeps {
   readonly narrator: ConfiguredNarrator | null;
 
   readonly perProjectCap: number;
+
+  // Lanes are unbounded, so the per-lane cap bounds a lane and nothing else. This bounds the tick.
+  readonly perTickCap: number;
+
   readonly listPages: number;
 
   readonly logger: AnalysisLogger;
@@ -65,6 +70,7 @@ export interface ReplayNarrationDeps {
 export type ReplayNarrationOutcome = {
   readonly lanesRead: number;
   readonly summarised: number;
+  readonly retried: number;
   readonly skipped: number;
   readonly failed: number;
 };
@@ -179,38 +185,23 @@ function readPull(provider: ReplaySourceKind, pulled: ReplayEventsResult): PullO
   };
 }
 
-function persistInputFor(args: {
-  readonly projectId: string;
-  readonly provider: ReplaySourceKind;
-  readonly recording: ReplayRecordingSummary;
+type PulledEvidence = {
   readonly digest: TranscriptDigest;
   readonly transcript: string;
   readonly pull: PullOutcome;
   readonly watermark: Date | null;
-  readonly text: ScannedNarration;
-  readonly resolvedModelId: string | null;
-  readonly tokensIn: number | null;
-  readonly tokensOut: number | null;
-}): PersistRecordingSummaryInput {
-  const sessionKey = recordingSessionKey(args.provider, args.recording.recordingId);
+};
 
+// One builder for the first attempt and the retry, so a re-read row can never carry a different
+// shape from the row it replaces.
+function evidenceFor(args: PulledEvidence) {
   return {
-    projectId: args.projectId,
-    recordingId: args.recording.recordingId,
-    summarySource: args.text.summarySource,
-    headline: args.text.headline,
-    context: args.text.context,
     transcript: args.transcript,
     pages: args.digest.pages,
     durationMs: args.digest.durationMs,
     actionCount: args.digest.actions.length + args.digest.omitted,
     notableCount: countNotable(args.digest.actions),
     droppedEvents: args.digest.droppedEvents,
-    startedAt: args.recording.startedAt,
-
-    provider: args.provider,
-    sessionKey,
-    sessionGroupingVersion: sessionKey === null ? null : SESSION_GROUPING_VERSION,
 
     // What the narrator read, beat for beat: a citation resting on a beat the row never
     // stored is the break this outcome exists to close.
@@ -222,12 +213,56 @@ function persistInputFor(args: {
     pullReason: args.pull.reason,
     pullWatermarkAt: args.watermark,
     bytesReceived: args.pull.bytesReceived,
+  };
+}
+
+function persistInputFor(
+  args: PulledEvidence & {
+    readonly projectId: string;
+    readonly provider: ReplaySourceKind;
+    readonly recording: ReplayRecordingSummary;
+    readonly text: ScannedNarration;
+    readonly resolvedModelId: string | null;
+    readonly tokensIn: number | null;
+    readonly tokensOut: number | null;
+  },
+): PersistRecordingSummaryInput {
+  const sessionKey = recordingSessionKey(args.provider, args.recording.recordingId);
+
+  return {
+    projectId: args.projectId,
+    recordingId: args.recording.recordingId,
+    summarySource: args.text.summarySource,
+    headline: args.text.headline,
+    context: args.text.context,
+    startedAt: args.recording.startedAt,
+
+    provider: args.provider,
+    sessionKey,
+    sessionGroupingVersion: sessionKey === null ? null : SESSION_GROUPING_VERSION,
+
+    ...evidenceFor(args),
 
     resolvedModelId: args.resolvedModelId,
     tokensIn: args.tokensIn,
     tokensOut: args.tokensOut,
   };
 }
+
+function refreshInputFor(
+  args: PulledEvidence & {
+    readonly projectId: string;
+    readonly recording: ReplayRecordingSummary;
+  },
+): RefreshFailedPullInput {
+  return {
+    projectId: args.projectId,
+    recordingId: args.recording.recordingId,
+    ...evidenceFor(args),
+  };
+}
+
+type PullAttempt = "first" | "retry";
 
 async function narrateOne(
   deps: ReplayNarrationDeps,
@@ -236,7 +271,8 @@ async function narrateOne(
   summaries: RecordingSummariesRepo,
   recording: ReplayRecordingSummary,
   watermark: Date | null,
-): Promise<boolean> {
+  attempt: PullAttempt,
+): Promise<void> {
   const pulled = await source.pullEvents(recording.recordingId);
   const pull = readPull(source.kind, pulled);
 
@@ -247,8 +283,19 @@ async function narrateOne(
     );
   }
 
-  const transcript = buildTranscript(pull.events);
-  const digest = compactTranscript(transcript);
+  const walk = buildTranscript(pull.events);
+  const digest = compactTranscript(walk);
+  const evidence = { digest, transcript: renderTranscript(walk), pull, watermark };
+
+  // The row already carries a narration bought with a model call, and the words describe a
+  // recording, not a pull. Re-reading the beats does not buy a second one.
+  if (attempt === "retry") {
+    await summaries.refreshFailedPull(
+      refreshInputFor({ projectId: lane.projectId, recording, ...evidence }),
+    );
+
+    return;
+  }
 
   const narrated = await narrationFor(digest, deps.narrator);
   const text = scanDown(narrated.text, renderRecordingFloor(digest));
@@ -258,26 +305,30 @@ async function narrateOne(
       projectId: lane.projectId,
       provider: source.kind,
       recording,
-      digest,
-      transcript: renderTranscript(transcript),
-      pull,
-      watermark,
+      ...evidence,
       text,
       resolvedModelId: deps.narrator?.resolvedModelId ?? null,
       tokensIn: narrated.tokensIn,
       tokensOut: narrated.tokensOut,
     }),
   );
-
-  return true;
 }
+
+type LaneTally = {
+  summarised: number;
+  retried: number;
+  skipped: number;
+  failed: number;
+  attempted: number;
+};
 
 async function runLane(
   deps: ReplayNarrationDeps,
   lane: ReplayLane,
-): Promise<{ summarised: number; skipped: number; failed: number }> {
+  budget: number,
+): Promise<LaneTally> {
   const ctx = deps.contextFor(lane);
-  const tally = { summarised: 0, skipped: 0, failed: 0 };
+  const tally: LaneTally = { summarised: 0, retried: 0, skipped: 0, failed: 0, attempted: 0 };
 
   const resolved = await deps.sourceFor(ctx, lane.projectId);
   if (!resolved.ok) {
@@ -305,18 +356,30 @@ async function runLane(
     );
   }
 
-  const known = await summaries.summarisedIds(
-    lane.projectId,
-    recordings.map((recording) => recording.recordingId),
-  );
+  const recordingIds = recordings.map((recording) => recording.recordingId);
+  const known = await summaries.summarisedIds(lane.projectId, recordingIds);
+  const retryable = await summaries.retryablePullIds(lane.projectId, recordingIds);
 
   const fresh = recordings.filter((recording) => !known.has(recording.recordingId));
-  tally.skipped = recordings.length - fresh.length;
+  const retries = recordings.filter((recording) => retryable.has(recording.recordingId));
 
-  for (const recording of fresh.slice(0, deps.perProjectCap)) {
+  tally.skipped = recordings.length - fresh.length - retries.length;
+
+  // Recordings with no row at all go first: one the source will never serve comes back every
+  // tick, and must not hold a slot ahead of a recording nobody has read yet.
+  const due = [...fresh, ...retries].slice(0, budget);
+
+  for (const recording of due) {
+    const attempt: PullAttempt = retryable.has(recording.recordingId) ? "retry" : "first";
+
     try {
-      await narrateOne(deps, lane, resolved.source, summaries, recording, watermark);
-      tally.summarised += 1;
+      await narrateOne(deps, lane, resolved.source, summaries, recording, watermark, attempt);
+
+      if (attempt === "retry") {
+        tally.retried += 1;
+      } else {
+        tally.summarised += 1;
+      }
     } catch (error) {
       tally.failed += 1;
       deps.logger.error(
@@ -326,10 +389,12 @@ async function runLane(
     }
   }
 
-  if (fresh.length > deps.perProjectCap) {
+  tally.attempted = due.length;
+
+  if (fresh.length + retries.length > due.length) {
     deps.logger.info(
-      `replay narration: project ${lane.projectId} had ${String(fresh.length)} new recordings and ` +
-        `this tick summarised ${String(deps.perProjectCap)}; the rest follow next tick`,
+      `replay narration: project ${lane.projectId} had ${String(fresh.length + retries.length)} ` +
+        `recordings to read and this tick read ${String(due.length)}; the rest follow next tick`,
     );
   }
 
@@ -340,12 +405,25 @@ export async function runReplayNarrationTick(
   deps: ReplayNarrationDeps,
 ): Promise<ReplayNarrationOutcome> {
   const lanes = await deps.lanes.listDueLanes();
-  const total = { lanesRead: lanes.length, summarised: 0, skipped: 0, failed: 0 };
+  const total = { lanesRead: 0, summarised: 0, retried: 0, skipped: 0, failed: 0 };
+  let budget = deps.perTickCap;
 
   for (const lane of lanes) {
+    if (budget <= 0) {
+      deps.logger.info(
+        `replay narration: this tick reached its ceiling of ${String(deps.perTickCap)} ` +
+          `recordings, so ${String(lanes.length - total.lanesRead)} projects are read next tick`,
+      );
+      break;
+    }
+
+    total.lanesRead += 1;
+
     try {
-      const tally = await runLane(deps, lane);
+      const tally = await runLane(deps, lane, Math.min(deps.perProjectCap, budget));
+      budget -= tally.attempted;
       total.summarised += tally.summarised;
+      total.retried += tally.retried;
       total.skipped += tally.skipped;
       total.failed += tally.failed;
     } catch (error) {
@@ -358,8 +436,8 @@ export async function runReplayNarrationTick(
 
   deps.logger.info(
     `replay narration: read ${String(total.lanesRead)} projects, summarised ` +
-      `${String(total.summarised)} recordings, skipped ${String(total.skipped)} already held, ` +
-      `${String(total.failed)} failed`,
+      `${String(total.summarised)} recordings, read ${String(total.retried)} again after a ` +
+      `failed pull, skipped ${String(total.skipped)} already held, ${String(total.failed)} failed`,
   );
 
   return total;

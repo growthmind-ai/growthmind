@@ -52,16 +52,36 @@ export type SessionRecordingCitation = {
   readonly recordingId: string;
   readonly provider: ReplaySourceKind;
   readonly transcriptVersion: number | null;
-  readonly actions: readonly PersistedSessionAction[];
+  readonly actions: readonly PersistedSessionAction[] | null;
   readonly omitted: number;
   readonly pullStop: TranscriptPullStop | null;
   readonly pullReason: string | null;
+};
+
+export type TranscriptRefreshInput = {
+  readonly projectId: string;
+  readonly recordingId: string;
+  readonly transcript: string;
+  readonly pages: readonly string[];
+  readonly durationMs: number;
+  readonly actionCount: number;
+  readonly notableCount: number;
+  readonly droppedEvents: number;
+  readonly actions: PersistedTranscript | null;
+  readonly actionsVersion: number | null;
+  readonly actionsOmitted: number | null;
+  readonly pullStop: TranscriptPullStop | null;
+  readonly pullReason: string | null;
+  readonly pullWatermarkAt: Date | null;
+  readonly bytesReceived: number | null;
 };
 
 export interface TranscriptRepoUnderContract {
   persist(input: TranscriptPersistInput): Promise<TranscriptRecord>;
   findFor(projectId: string, recordingId: string): Promise<TranscriptRecord | null>;
   summarisedIds(projectId: string, recordingIds: readonly string[]): Promise<Set<string>>;
+  retryablePullIds(projectId: string, recordingIds: readonly string[]): Promise<Set<string>>;
+  refreshFailedPull(input: TranscriptRefreshInput): Promise<TranscriptRecord | null>;
   latestStartedAt(projectId: string): Promise<Date | null>;
   citationsFor(
     projectId: string,

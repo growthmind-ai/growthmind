@@ -6,6 +6,7 @@ import type {
   PersistRecordingSummaryInput,
   RecordingSummariesRepo,
   RecordingSummaryRecord,
+  RefreshFailedPullInput,
 } from "@growthmind/db";
 import type {
   ReplayEventsResult,
@@ -81,8 +82,14 @@ function fakeSource(overrides: Partial<ReplaySource> = {}): ReplaySource {
   };
 }
 
+// The fake mirrors the two predicates the real repository enforces in SQL: a row is retryable
+// only while its pull is "failed", and a refresh only lands while that is still true.
 function fakeRepo() {
   const rows: PersistRecordingSummaryInput[] = [];
+  const refreshed: RefreshFailedPullInput[] = [];
+
+  const rowFor = (recordingId: string): PersistRecordingSummaryInput | undefined =>
+    rows.find((row) => row.recordingId === recordingId);
 
   const repo: RecordingSummariesRepo = {
     persist: (input) => {
@@ -91,12 +98,27 @@ function fakeRepo() {
     },
     findFor: () => Promise.resolve(null),
     summarisedIds: (_projectId, ids) =>
-      Promise.resolve(new Set(ids.filter((id) => rows.some((row) => row.recordingId === id)))),
+      Promise.resolve(new Set(ids.filter((id) => rowFor(id) !== undefined))),
+    retryablePullIds: (_projectId, ids) =>
+      Promise.resolve(new Set(ids.filter((id) => rowFor(id)?.pullStop === "failed"))),
+    refreshFailedPull: (input) => {
+      const index = rows.findIndex((row) => row.recordingId === input.recordingId);
+      const held = rows[index];
+
+      if (held === undefined || held.pullStop !== "failed" || held.actionCount > input.actionCount) {
+        return Promise.resolve(null);
+      }
+
+      refreshed.push(input);
+      rows[index] = { ...held, ...input };
+
+      return Promise.resolve({ id: `row-${String(index + 1)}` } as RecordingSummaryRecord);
+    },
     latestStartedAt: () => Promise.resolve(null),
     citationsFor: () => Promise.resolve([]),
   };
 
-  return { repo, rows };
+  return { repo, rows, refreshed };
 }
 
 function okNarration(): SummaryRenderResult {
@@ -122,6 +144,7 @@ function depsFor(rows: ReturnType<typeof fakeRepo>, overrides: Overrides = {}) {
     contextFor: () => CTX,
     narrator: { port: { narrate: () => Promise.resolve(narrate()) }, resolvedModelId: MODEL_ID },
     perProjectCap: 10,
+    perTickCap: 100,
     listPages: 1,
     logger: {
       info: (message: string) => logs.push(message),
@@ -349,7 +372,7 @@ describe("failure isolation", () => {
 
     const outcome = await runReplayNarrationTick(deps);
 
-    expect(outcome).toEqual({ lanesRead: 0, summarised: 0, skipped: 0, failed: 0 });
+    expect(outcome).toEqual({ lanesRead: 0, summarised: 0, retried: 0, skipped: 0, failed: 0 });
   });
 });
 
@@ -613,6 +636,135 @@ describe("how a pull that stopped short reaches the row", () => {
     expect(store.rows[0]?.projectId).toBe(SECOND_LANE.projectId);
   });
 
+  test("should read a recording whose pull failed again on the next tick", async () => {
+    const store = fakeRepo();
+    let pulls = 0;
+    let narrations = 0;
+
+    const { deps } = depsFor(store, {
+      narrator: {
+        port: {
+          narrate: () => {
+            narrations += 1;
+            return Promise.resolve(okNarration());
+          },
+        },
+        resolvedModelId: MODEL_ID,
+      },
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            pullEvents: () => {
+              pulls += 1;
+              return Promise.resolve(
+                pulls === 1 ? partialPull(eventsFor()) : eventsOk(manyEvents(4)),
+              );
+            },
+          }),
+        }),
+    });
+
+    const first = await runReplayNarrationTick(deps);
+    const second = await runReplayNarrationTick(deps);
+
+    expect(first.summarised).toBe(1);
+    expect(second.retried).toBe(1);
+    expect(second.skipped).toBe(0);
+    expect(pulls).toBe(2);
+    expect(narrations).toBe(1);
+    expect(store.rows).toHaveLength(1);
+    expect(transcriptRows(store)[0]?.pullStop).toBe("exhausted");
+    expect(String(transcriptRows(store)[0]?.headline)).toBe("Someone looked at pricing and left");
+  });
+
+  test("should never read a byte-capped recording again, because the bound is deliberate", async () => {
+    const store = fakeRepo();
+    let pulls = 0;
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            pullEvents: () => {
+              pulls += 1;
+              return Promise.resolve(byteCappedPull(eventsFor()));
+            },
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+    const second = await runReplayNarrationTick(deps);
+
+    expect(pulls).toBe(1);
+    expect(second.retried).toBe(0);
+    expect(second.skipped).toBe(1);
+  });
+
+  test("should keep offering a recording whose retry failed again, without narrating twice", async () => {
+    const store = fakeRepo();
+    let narrations = 0;
+
+    const { deps } = depsFor(store, {
+      narrator: {
+        port: {
+          narrate: () => {
+            narrations += 1;
+            return Promise.resolve(okNarration());
+          },
+        },
+        resolvedModelId: MODEL_ID,
+      },
+      sourceFor: () =>
+        Promise.resolve({ ok: true, source: sourceReturning(partialPull(eventsFor())) }),
+    });
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+    const third = await runReplayNarrationTick(deps);
+
+    expect(third.retried).toBe(1);
+    expect(narrations).toBe(1);
+    expect(store.rows).toHaveLength(1);
+    expect(transcriptRows(store)[0]?.pullStop).toBe("failed");
+  });
+
+  test("should read a recording with no row at all before one waiting on a retry", async () => {
+    const store = fakeRepo();
+    const pulled: string[] = [];
+
+    const listing = [recording("rec-stuck")];
+
+    const { deps } = depsFor(store, {
+      perProjectCap: 1,
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk(listing)),
+            pullEvents: (recordingId: string) => {
+              pulled.push(recordingId);
+              return Promise.resolve(
+                recordingId === "rec-stuck"
+                  ? partialPull(eventsFor())
+                  : eventsOk(eventsFor()),
+              );
+            },
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+    listing.push(recording("rec-new"));
+    const second = await runReplayNarrationTick(deps);
+
+    expect(pulled).toEqual(["rec-stuck", "rec-new"]);
+    expect(second.summarised).toBe(1);
+    expect(second.retried).toBe(0);
+  });
+
   test("should persist a transcript when the provider has no session-key mapping", async () => {
     const store = fakeRepo();
 
@@ -626,5 +778,59 @@ describe("how a pull that stopped short reaches the row", () => {
     expect(row).toBeDefined();
     expect(row?.sessionKey).toBeNull();
     expect((row?.actions?.actions ?? []).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the tick carries a ceiling of its own, because the lane list carries none", () => {
+  function twoLaneDeps(store: ReturnType<typeof fakeRepo>, perTickCap: number) {
+    const pulled: string[] = [];
+
+    const { deps, logs } = depsFor(store, {
+      lanes: { listDueLanes: () => Promise.resolve([LANE, SECOND_LANE]) },
+      perProjectCap: 3,
+      perTickCap,
+      sourceFor: (_ctx, projectId) =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () =>
+              Promise.resolve(
+                listOk([
+                  recording(`${projectId}-a`),
+                  recording(`${projectId}-b`),
+                  recording(`${projectId}-c`),
+                ]),
+              ),
+            pullEvents: (recordingId: string) => {
+              pulled.push(recordingId);
+              return Promise.resolve(eventsOk(eventsFor()));
+            },
+          }),
+        }),
+    });
+
+    return { deps, logs, pulled };
+  }
+
+  test("should bound the recordings a whole tick pulls, not only the ones one lane pulls", async () => {
+    const store = fakeRepo();
+    const { deps, pulled } = twoLaneDeps(store, 4);
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(pulled).toHaveLength(4);
+    expect(outcome.summarised).toBe(4);
+    expect(outcome.lanesRead).toBe(2);
+  });
+
+  test("should leave the lanes it could not reach for the next tick, and say so", async () => {
+    const store = fakeRepo();
+    const { deps, logs, pulled } = twoLaneDeps(store, 3);
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(pulled.every((recordingId) => recordingId.startsWith(LANE.projectId))).toBe(true);
+    expect(outcome.lanesRead).toBe(1);
+    expect(logs.join(" ")).toContain("reached its ceiling");
   });
 });

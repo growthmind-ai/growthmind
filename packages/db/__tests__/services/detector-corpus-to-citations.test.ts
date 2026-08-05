@@ -159,7 +159,8 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
       expect(citation.recordingId).toBe(seededByRecording.get(citation.sessionId) ?? "unseeded");
       expect(citation.provider).toBe("posthog");
       expect(citation.transcriptVersion).toBe(1);
-      expect(citation.actions.map((action) => action.atMs)).toEqual([0, RAGE_CLICK_AT_MS]);
+      expect(citation.actions).not.toBeNull();
+      expect(citation.actions?.map((action) => action.atMs)).toEqual([0, RAGE_CLICK_AT_MS]);
     }
   });
 });
