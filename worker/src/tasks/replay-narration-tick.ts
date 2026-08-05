@@ -314,6 +314,18 @@ async function narrateOne(
   );
 }
 
+// The watermark is max(started_at) over the rows a project holds, and `sinceAt` drops everything
+// at or below it. That is only safe while every recording below the newest held row is already
+// held — so a lane drains from the oldest end. Reading the newest first advanced the watermark
+// past a backlog that was then never listed again (B-053).
+function oldestFirst(
+  recordings: readonly ReplayRecordingSummary[],
+): readonly ReplayRecordingSummary[] {
+  return recordings.toSorted(
+    (left, right) => (left.startedAt?.getTime() ?? 0) - (right.startedAt?.getTime() ?? 0),
+  );
+}
+
 type LaneTally = {
   summarised: number;
   retried: number;
@@ -366,8 +378,9 @@ async function runLane(
   tally.skipped = recordings.length - fresh.length - retries.length;
 
   // Recordings with no row at all go first: one the source will never serve comes back every
-  // tick, and must not hold a slot ahead of a recording nobody has read yet.
-  const due = [...fresh, ...retries].slice(0, budget);
+  // tick, and must not hold a slot ahead of a recording nobody has read yet. A retry already
+  // holds a row, so it cannot move the watermark whichever slot it takes.
+  const due = [...oldestFirst(fresh), ...oldestFirst(retries)].slice(0, budget);
 
   for (const recording of due) {
     const attempt: PullAttempt = retryable.has(recording.recordingId) ? "retry" : "first";
@@ -394,7 +407,8 @@ async function runLane(
   if (fresh.length + retries.length > due.length) {
     deps.logger.info(
       `replay narration: project ${lane.projectId} had ${String(fresh.length + retries.length)} ` +
-        `recordings to read and this tick read ${String(due.length)}; the rest follow next tick`,
+        `recordings to read and this tick read the ${String(due.length)} oldest; the rest start ` +
+        `later than the watermark this tick advanced to, so the next tick lists them again`,
     );
   }
 

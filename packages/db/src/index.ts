@@ -88,6 +88,7 @@ export {
 
 export {
   createDetectorCorpusService,
+  type DetectorCorpusRead,
   type DetectorCorpusService,
 } from "./services/detector-corpus.service";
 

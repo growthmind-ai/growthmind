@@ -15,7 +15,6 @@ import {
 } from "../../src/testing";
 import {
   SESSION_GROUPING_VERSION,
-  citationsFor,
   recordingSessionKey,
   transcriptOf,
   transcriptRepo,
@@ -37,6 +36,8 @@ const RECORDING_IDS = [
   "0198c4f2-7a1b-7c3d-9e4f-000000000002",
 ] as const;
 
+const SET_ASIDE_RECORDING_ID = "0198c4f2-7a1b-7c3d-9e4f-000000000003";
+
 const CLEAN = scannedTextFor("Someone pressed buy four times and left", [
   "They opened pricing, pressed buy, and went no further.",
 ]);
@@ -53,15 +54,15 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
     await close();
   });
 
-  it("should resolve a finding's corpus session set to recordings and per-action offsets", async () => {
+  async function seedProjectWithRecordings(label: string) {
     const org = await seedOrgWithOwner(db, {
-      orgName: NAMES.orgName("chain"),
-      userName: NAMES.userName("chain"),
-      email: NAMES.email("chain"),
+      orgName: NAMES.orgName(label),
+      userName: NAMES.userName(label),
+      email: NAMES.email(label),
     });
     const project = await seedProject(db, {
       organizationId: org.organizationId,
-      name: NAMES.projectName("chain"),
+      name: NAMES.projectName(label),
     });
     const connection = await seedConnection(db, {
       organizationId: org.organizationId,
@@ -76,7 +77,7 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
 
     const seededByRecording = new Map<string, string>();
 
-    for (const recordingId of RECORDING_IDS) {
+    for (const recordingId of [...RECORDING_IDS, SET_ASIDE_RECORDING_ID]) {
       const sessionKey = recordingSessionKey("posthog", recordingId);
       if (sessionKey === null) {
         throw new Error(`recordingSessionKey returned no key for ${recordingId}`);
@@ -89,6 +90,7 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
         sessionKey,
         startedAt: SESSION_STARTED_AT,
         entryUrlPath: "/pricing",
+        exclusionReason: recordingId === SET_ASIDE_RECORDING_ID ? "automation_headless" : "none",
       });
       await seedEvent(db, {
         organizationId: org.organizationId,
@@ -139,28 +141,52 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
       organizationId: org.organizationId,
       organizationName: org.organizationName,
     });
-    const corpus = await createDetectorCorpusService(db, analysisCtx).read(project.id, WINDOW);
+
+    return { projectId: project.id, analysisCtx, seededByRecording };
+  }
+
+  it("should return a corpus already carrying its sessions' recordings and per-action offsets", async () => {
+    const { projectId, analysisCtx, seededByRecording } = await seedProjectWithRecordings("chain");
+
+    // The call worker/src/analysis-lane-source.ts makes on every analysis tick. Nothing below
+    // constructs an id: the citations arrive on the corpus the read produced.
+    const corpus = await createDetectorCorpusService(db, analysisCtx).read(projectId, WINDOW);
 
     const keptSessionIds = corpus.sessions
       .filter((session) => session.exclusionReason === "none")
       .map((session) => session.sessionId);
 
     expect(keptSessionIds).toHaveLength(RECORDING_IDS.length);
+    expect(corpus.basis.kept).toBe(RECORDING_IDS.length);
 
-    const citations = await citationsFor(
-      transcriptRepo(db, analysisCtx),
-      project.id,
-      keptSessionIds,
+    expect(new Set(corpus.citations.map((citation) => citation.sessionId))).toEqual(
+      new Set(keptSessionIds),
     );
 
-    expect(citations).toHaveLength(keptSessionIds.length);
-
-    for (const citation of citations) {
+    for (const citation of corpus.citations) {
       expect(citation.recordingId).toBe(seededByRecording.get(citation.sessionId) ?? "unseeded");
       expect(citation.provider).toBe("posthog");
       expect(citation.transcriptVersion).toBe(1);
       expect(citation.actions).not.toBeNull();
       expect(citation.actions?.map((action) => action.atMs)).toEqual([0, RAGE_CLICK_AT_MS]);
     }
+  });
+
+  it("should carry no citation for a session the corpus set aside", async () => {
+    const { projectId, analysisCtx, seededByRecording } =
+      await seedProjectWithRecordings("set-aside");
+
+    const corpus = await createDetectorCorpusService(db, analysisCtx).read(projectId, WINDOW);
+
+    const setAsideSessionIds = corpus.sessions
+      .filter((session) => session.exclusionReason !== "none")
+      .map((session) => session.sessionId);
+
+    expect(setAsideSessionIds).toHaveLength(1);
+    expect(seededByRecording.get(setAsideSessionIds[0] ?? "")).toBe(SET_ASIDE_RECORDING_ID);
+
+    expect(
+      corpus.citations.filter((citation) => setAsideSessionIds.includes(citation.sessionId)),
+    ).toEqual([]);
   });
 });

@@ -57,6 +57,12 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
         window,
       );
 
+      deps.logger.info(
+        `analysis lane source: project ${project.projectId} kept ` +
+          `${String(corpus.basis.kept)} sessions this window, ` +
+          `${String(corpus.citations.length)} of them with a recording to cite`,
+      );
+
       const { candidates, rejected } = assembleCandidates(
         [detectFunnelDropoff(corpus, rules), detectErrorEvent(corpus, rules)],
         rules,

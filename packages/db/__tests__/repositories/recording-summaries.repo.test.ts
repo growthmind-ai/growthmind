@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { DETECTOR_CORPUS_MAX_SESSIONS } from "@growthmind/core";
 import type { TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -554,6 +556,17 @@ describe("recording summaries repository", () => {
     );
 
     await expect(citationsFor(repo, project.id, overCap)).rejects.toThrow();
+  });
+
+  // The detector corpus reads at most this many sessions and asks for citations across the
+  // subset it kept, so the throw above sits one id beyond anything read() can produce.
+  it("should query rather than throw at exactly the corpus cap", async () => {
+    const { org, project } = await seedOrg("citation-cap-edge");
+    const repo = transcriptRepo(db, org.ctx);
+
+    const atCap = Array.from({ length: DETECTOR_CORPUS_MAX_SESSIONS }, () => randomUUID());
+
+    expect(await citationsFor(repo, project.id, atCap)).toEqual([]);
   });
 
   it("should return an empty list for an empty session id list without querying", async () => {

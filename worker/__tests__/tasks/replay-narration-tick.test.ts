@@ -114,7 +114,19 @@ function fakeRepo() {
 
       return Promise.resolve({ id: `row-${String(index + 1)}` } as RecordingSummaryRecord);
     },
-    latestStartedAt: () => Promise.resolve(null),
+    // The real read: the newest start instant this project holds, ignoring rows with none.
+    // Stubbing it to null hid B-053, because no fake could then advance a watermark.
+    latestStartedAt: (projectId) => {
+      let newest: Date | null = null;
+
+      for (const row of rows) {
+        const startedAt = row.startedAt;
+        if (row.projectId !== projectId || startedAt === null) continue;
+        if (newest === null || startedAt > newest) newest = startedAt;
+      }
+
+      return Promise.resolve(newest);
+    },
     citationsFor: () => Promise.resolve([]),
   };
 
@@ -261,7 +273,7 @@ describe("the model is never asked twice about one recording", () => {
     expect(store.rows).toHaveLength(1);
   });
 
-  test("the per-project cap bounds one tick and the rest are logged, not lost", async () => {
+  test("the per-project cap bounds one tick, and the log names what it left", async () => {
     const store = fakeRepo();
     const many = [recording("a"), recording("b"), recording("c")];
 
@@ -274,7 +286,79 @@ describe("the model is never asked twice about one recording", () => {
     const outcome = await runReplayNarrationTick(deps);
 
     expect(outcome.summarised).toBe(2);
-    expect(logs.join(" ")).toContain("the rest follow next tick");
+    expect(logs.join(" ")).toContain("the next tick lists them again");
+  });
+});
+
+// Every other fake source here ignores sinceAt, so no test above can see a recording the
+// watermark has excluded. These use a listing that honours it, against the faithful
+// latestStartedAt in fakeRepo — the pair B-053 needed and the suite could not express.
+describe("a backlog is drained, not stranded below the watermark", () => {
+  function backlogSource(
+    backlog: readonly ReplayRecordingSummary[],
+    pulled: string[],
+  ): ReplaySource {
+    return fakeSource({
+      listRecordings: (request) =>
+        Promise.resolve(
+          listOk(
+            backlog.filter(
+              (candidate) =>
+                request.sinceAt === null ||
+                candidate.startedAt === null ||
+                candidate.startedAt.getTime() > request.sinceAt.getTime(),
+            ),
+          ),
+        ),
+      pullEvents: (recordingId: string) => {
+        pulled.push(recordingId);
+        return Promise.resolve(eventsOk(eventsFor()));
+      },
+    });
+  }
+
+  // Newest first, the order PostHog's recordings listing returns.
+  const BACKLOG = [
+    recording("rec-new-1", "2026-08-05T12:00:00.000Z"),
+    recording("rec-new-2", "2026-08-05T11:00:00.000Z"),
+    recording("rec-old-1", "2026-08-05T10:00:00.000Z"),
+    recording("rec-old-2", "2026-08-05T09:00:00.000Z"),
+  ];
+
+  test("should transcript every recording of a backlog larger than the per-lane cap", async () => {
+    const store = fakeRepo();
+    const pulled: string[] = [];
+
+    const { deps } = depsFor(store, {
+      perProjectCap: 2,
+      sourceFor: () => Promise.resolve({ ok: true, source: backlogSource(BACKLOG, pulled) }),
+    });
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+    const third = await runReplayNarrationTick(deps);
+
+    expect(new Set(store.rows.map((row) => row.recordingId))).toEqual(
+      new Set(BACKLOG.map((candidate) => candidate.recordingId)),
+    );
+    expect(third.summarised).toBe(0);
+  });
+
+  test("should read the oldest recordings first, so the watermark never passes an unread one", async () => {
+    const store = fakeRepo();
+    const pulled: string[] = [];
+
+    const { deps } = depsFor(store, {
+      perProjectCap: 2,
+      sourceFor: () => Promise.resolve({ ok: true, source: backlogSource(BACKLOG, pulled) }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    expect(pulled).toEqual(["rec-old-2", "rec-old-1"]);
+
+    const watermark = await store.repo.latestStartedAt(LANE.projectId);
+    expect(watermark?.toISOString()).toBe("2026-08-05T10:00:00.000Z");
   });
 });
 

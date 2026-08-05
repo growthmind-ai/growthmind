@@ -9,6 +9,8 @@ import type { AudienceRule, ExclusionReason, TenantContext } from "@growthmind/s
 import { confirmedAudienceRules, evaluateAudience, readBusinessContext } from "@growthmind/shared";
 import { asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
+import { createRecordingSummariesRepo } from "../repositories/recording-summaries.repo";
+import type { SessionRecordingCitation } from "../repositories/recording-summaries.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { events } from "../schema/events";
@@ -18,8 +20,14 @@ import { sessions } from "../schema/sessions";
 import { deriveConnectionState, findLatestConnection } from "./connection-state";
 import { buildSetAsideBreakdown } from "./set-aside-breakdown";
 
+// The corpus arrives with its evidence attached, so no caller has to remember to ask for it and
+// no session id is ever hand-assembled between the two reads (edge-case taxonomy D11).
+export type DetectorCorpusRead = DetectorCorpus & {
+  readonly citations: readonly SessionRecordingCitation[];
+};
+
 export interface DetectorCorpusService {
-  read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpus>;
+  read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpusRead>;
 }
 
 const CAP_PROBE_LIMIT = DETECTOR_CORPUS_MAX_SESSIONS + 1;
@@ -51,7 +59,7 @@ export function createDetectorCorpusService(
   const s = scoped(db, ctx);
 
   return {
-    async read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpus> {
+    async read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpusRead> {
       const audienceRules = await readConfirmedAudienceRules(db, ctx, projectId);
 
       const windowRows = await db
@@ -146,11 +154,11 @@ export function createDetectorCorpusService(
         };
       });
 
-      let kept = 0;
+      const keptSessionIds: string[] = [];
       const sessionsByReason = new Map<ExclusionReason, number>();
       for (const timeline of timelines) {
         if (timeline.exclusionReason === "none") {
-          kept += 1;
+          keptSessionIds.push(timeline.sessionId);
           continue;
         }
         sessionsByReason.set(
@@ -163,6 +171,13 @@ export function createDetectorCorpusService(
         unit: "sessions",
         countsByReason: sessionsByReason,
       });
+
+      // Bounded by the same constant citationsFor refuses to exceed: keptSessionIds is a subset
+      // of `selected`, which is sliced to DETECTOR_CORPUS_MAX_SESSIONS above.
+      const citations = await createRecordingSummariesRepo(db, ctx).citationsFor(
+        projectId,
+        keptSessionIds,
+      );
 
       const connection = await findLatestConnection(db, ctx, projectId);
 
@@ -192,9 +207,10 @@ export function createDetectorCorpusService(
           hasEvents: anyEvent !== undefined,
         }),
         sessions: timelines,
+        citations,
         basis: {
           totalInWindow: timelines.length,
-          kept,
+          kept: keptSessionIds.length,
           setAside,
           keptUnchecked: unchecked,
         },
