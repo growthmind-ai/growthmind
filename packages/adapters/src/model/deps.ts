@@ -5,7 +5,7 @@ export interface SummaryOutput {
   readonly context: string;
 }
 
-export interface AnthropicSummariserDeps {
+export interface SummariserDeps {
   readonly model: LanguageModel;
 
   readonly resolvedModelId: string;

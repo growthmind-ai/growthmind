@@ -56,9 +56,9 @@ export {
 } from "./slack/errors";
 export type { SlackPosterConfig, SlackPosterDeps } from "./slack/deps";
 
-export { createAnthropicSessionSummariser } from "./anthropic/summariser";
-export type { SessionSummariser, SummariseInput } from "./anthropic/summariser";
-export { DEFAULT_COLDSTART_MODEL } from "./anthropic/constants";
+export { createSessionSummariser } from "./model/summariser";
+export type { SessionSummariser, SummariseInput } from "./model/summariser";
+export { DEFAULT_COLDSTART_MODEL } from "./model/constants";
 
 export type { ReplaySource } from "./replay-source";
 
@@ -66,16 +66,16 @@ export { createRrwebReplaySource } from "./rrweb/replay-source";
 export { RRWEB_SOURCE_KIND } from "./rrweb/constants";
 export type { RrwebSourceConfig, RrwebSourceDeps } from "./rrweb/deps";
 
-export { createAnthropicModel } from "./anthropic/model";
-export type { AnthropicModelConfig } from "./anthropic/model";
+export { createColdstartModel } from "./model/provider";
+export type { ColdstartModelConfig } from "./model/provider";
 export {
   mapSummaryError,
   summaryFailure,
   SUMMARY_FAILURE_MESSAGES,
   UNCLASSIFIED_SUMMARY_ERROR_CODE,
-} from "./anthropic/errors";
-export type { SummaryFailureArgs } from "./anthropic/errors";
-export type { AnthropicSummariserDeps, SummaryOutput } from "./anthropic/deps";
+} from "./model/errors";
+export type { SummaryFailureArgs } from "./model/errors";
+export type { SummariserDeps, SummaryOutput } from "./model/deps";
 
 export {
   fetchSite,

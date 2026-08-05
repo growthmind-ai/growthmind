@@ -3,9 +3,9 @@ import { APICallError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 
-import { CANDIDATE_DATA_DELIMITER, MODEL_REQUEST_TIMEOUT_MS } from "../../src/anthropic/constants";
-import { createAnthropicSessionSummariser } from "../../src/anthropic/summariser";
-import type { SummariseInput } from "../../src/anthropic/summariser";
+import { CANDIDATE_DATA_DELIMITER, MODEL_REQUEST_TIMEOUT_MS } from "../../src/model/constants";
+import { createSessionSummariser } from "../../src/model/summariser";
+import type { SummariseInput } from "../../src/model/summariser";
 
 const OUTPUT_SCHEMA = z
   .object({
@@ -14,7 +14,7 @@ const OUTPUT_SCHEMA = z
   })
   .strict();
 
-const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-anthropic-id";
+const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-gemini-id";
 
 const INPUT: SummariseInput = {
   finalClass: "form_abandonment",
@@ -60,7 +60,7 @@ function stubGenerateResult(objectText: string, usage = stubUsage()) {
 }
 
 function summariserWith(model: MockLanguageModelV3) {
-  return createAnthropicSessionSummariser({
+  return createSessionSummariser({
     model,
     resolvedModelId: CONFIGURED_MODEL_ID,
     outputSchema: OUTPUT_SCHEMA,

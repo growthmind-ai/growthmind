@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogle } from "@ai-sdk/google";
 import { APICallError, generateObject, NoObjectGeneratedError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
+
+import { DEFAULT_COLDSTART_MODEL } from "../../src/model/constants";
 
 const PROBE_SCHEMA = z.object({
   headline: z.string(),
@@ -267,21 +269,21 @@ describe("maxRetries controls how many upstream requests one call issues", () =>
   });
 });
 
-describe("createAnthropic constructs a provider without throwing when no api key is present", () => {
-  test("createAnthropic constructs a provider without throwing when no api key is present", () => {
-    const previousKey = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+describe("createGoogle constructs a provider without throwing when no api key is present", () => {
+  test("createGoogle constructs a provider without throwing when no api key is present", () => {
+    const previousKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     try {
-      expect(() => createAnthropic({})).not.toThrow();
+      expect(() => createGoogle({})).not.toThrow();
 
-      const provider = createAnthropic({});
+      const provider = createGoogle({});
 
-      expect(() => provider("claude-sonnet-5")).not.toThrow();
+      expect(() => provider(DEFAULT_COLDSTART_MODEL)).not.toThrow();
     } finally {
       if (previousKey === undefined) {
-        delete process.env.ANTHROPIC_API_KEY;
+        delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       } else {
-        process.env.ANTHROPIC_API_KEY = previousKey;
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousKey;
       }
     }
   });

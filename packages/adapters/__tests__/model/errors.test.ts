@@ -9,13 +9,9 @@ import {
   type SummaryFailureCode,
 } from "@growthmind/shared";
 
-import {
-  mapSummaryError,
-  summaryFailure,
-  SUMMARY_FAILURE_MESSAGES,
-} from "../../src/anthropic/errors";
+import { mapSummaryError, summaryFailure, SUMMARY_FAILURE_MESSAGES } from "../../src/model/errors";
 
-const RESOLVED_MODEL_ID = "claude-fixture-model-5";
+const RESOLVED_MODEL_ID = "gemini-fixture-model-3";
 
 const FIXTURE_USAGE = { inputTokens: 12, outputTokens: 8 } as const;
 
@@ -23,15 +19,16 @@ const OUTPUT_SHAPE = z.object({ headline: z.string(), context: z.string() });
 
 const PLANTED_FRAGMENTS: readonly string[] = [
   "req_01PLANTEDREQUESTID9999",
-  "org-01PLANTEDORGID4242",
-  "sk-ant-api03-PLANTEDKEYTAIL",
-  "https://api.anthropic.com/v1/messages",
+  "projects/01PLANTEDPROJECT4242",
+  "AIzaSyPLANTEDKEYTAIL0000000000000000000",
+  "https://generativelanguage.googleapis.com/v1beta/models",
 ];
 
 const PLANTED_VENDOR_MESSAGE =
   `AI_APICallError: request req_01PLANTEDREQUESTID9999 to ` +
-  `https://api.anthropic.com/v1/messages failed for org-01PLANTEDORGID4242 ` +
-  `using key sk-ant-api03-PLANTEDKEYTAIL (429 rate_limit_error)`;
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent ` +
+  `failed for projects/01PLANTEDPROJECT4242 ` +
+  `using key AIzaSyPLANTEDKEYTAIL0000000000000000000 (429 RESOURCE_EXHAUSTED)`;
 
 function plantedFragmentsFoundIn(text: string): readonly string[] {
   return PLANTED_FRAGMENTS.filter((fragment) => text.includes(fragment));
@@ -188,17 +185,19 @@ describe("the whole error map", () => {
       {
         label: "auth failure",
         error: plantedVendorErrorWith(
-          "401 authentication_error: invalid x-api-key sk-ant-api03-PLANTEDKEYTAIL",
+          "403 PERMISSION_DENIED: API key not valid AIzaSyPLANTEDKEYTAIL0000000000000000000",
         ),
       },
       {
         label: "rate limit",
-        error: plantedVendorErrorWith("429 rate_limit_error (request req_01PLANTEDREQUESTID9999)"),
+        error: plantedVendorErrorWith(
+          "429 RESOURCE_EXHAUSTED (request req_01PLANTEDREQUESTID9999)",
+        ),
       },
       {
         label: "timeout",
         error: plantedVendorErrorWith(
-          "Request timed out after 60000ms: https://api.anthropic.com/v1/messages",
+          "Request timed out after 60000ms: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
         ),
       },
       { label: "a thrown string, not an Error", error: PLANTED_VENDOR_MESSAGE },
@@ -227,7 +226,7 @@ describe("the whole error map", () => {
         leaked: [],
       });
       expect(failure.message.includes("AI_APICallError")).toBe(false);
-      expect(failure.message.includes("anthropic")).toBe(false);
+      expect(failure.message.includes("googleapis")).toBe(false);
     }
 
     expect([...seenCodes].toSorted()).toEqual([...allCodes].toSorted());

@@ -44,7 +44,7 @@ const webShape = {
 
 const workerShape = {
   ...baseShape,
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
   GROWTHMIND_COLDSTART_MODEL: z.string().min(1).optional(),
 } as const;
 

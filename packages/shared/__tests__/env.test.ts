@@ -286,7 +286,7 @@ describe("parseWorkerEnv", () => {
 
   test("the analysis lane's two variables are optional everywhere", () => {
     const env = parseWorkerEnv(WORKER_PROD_COMPLETE);
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.GOOGLE_GENERATIVE_AI_API_KEY).toBeUndefined();
     expect(env.GROWTHMIND_COLDSTART_MODEL).toBeUndefined();
   });
 

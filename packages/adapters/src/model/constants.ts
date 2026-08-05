@@ -1,4 +1,4 @@
-export const DEFAULT_COLDSTART_MODEL = "claude-sonnet-5";
+export const DEFAULT_COLDSTART_MODEL = "gemini-3.6-flash";
 
 export const MODEL_REQUEST_TIMEOUT_MS = 30_000;
 
