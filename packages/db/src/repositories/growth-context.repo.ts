@@ -11,6 +11,7 @@ import {
   capFactsPerKind,
   logger,
   readBusinessContext,
+  type AudienceRule,
   type BusinessContext,
   type BusinessFact,
   type BusinessFactKind,
@@ -84,6 +85,15 @@ export interface DecideAudienceInput {
 
 export type DecideAudienceOutcome = "decided" | "not_found";
 
+export interface ProposeAudienceInput {
+  readonly projectId: string;
+  readonly statement: string;
+
+  // Null is a sentence that named nothing a session records. Recorded as an answer rather
+  // than dropped, or every re-read would ask the model the same question again.
+  readonly rule: AudienceRule | null;
+}
+
 export interface GrowthContextSnapshot {
   readonly context: GrowthContext;
 
@@ -135,6 +145,10 @@ export interface GrowthContextRepo {
   // because the browser's copy predates whatever the last read wrote.
   stateFact(input: StateFactInput): Promise<StateFactOutcome>;
   decideAudience(input: DecideAudienceInput): Promise<DecideAudienceOutcome>;
+
+  // The model's answer for one `who_counts` sentence. Never overwrites a proposal a person
+  // has already answered — a re-read must not un-confirm what they confirmed.
+  proposeAudience(input: ProposeAudienceInput): Promise<void>;
 
   // One page, stated by a person. A whole-list write from a page loaded before last night's
   // run would revert everything that run added, so the merge happens here against the row as
@@ -466,6 +480,45 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       // Contended past the retries reads the same as a row that moved: the browser goes back
       // for a re-read rather than being told a decision stuck when it did not.
       return outcome ?? "not_found";
+    },
+
+    async proposeAudience(input: ProposeAudienceInput): Promise<void> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      await whileContended(STATE_FACT_ATTEMPTS, async () => {
+        const current = await readResearch(input.projectId);
+        if (current === null) return "gone";
+
+        const context = current.businessContext;
+
+        const target = context.facts.find(
+          (fact) => fact.kind === "who_counts" && fact.statement === input.statement,
+        );
+
+        // The sentence was edited or removed between the job being queued and it running.
+        if (target === undefined) return "gone";
+
+        // A person's answer outranks the model's. Re-proposing over a confirmed rule would
+        // silently widen a denominator they had narrowed.
+        if (target.audience !== null && target.audience.status !== "proposed") return "gone";
+
+        const proposed: BusinessFact = {
+          ...target,
+          audience:
+            input.rule === null ? null : { rule: input.rule, status: "proposed", decidedAt: null },
+        };
+
+        const others = context.facts.filter((fact) => fact !== target);
+
+        const written = await writeFactsIfUnchanged(
+          input.projectId,
+          [...others, proposed],
+          context.removed,
+          current.updatedAt,
+        );
+
+        return written ? "written" : null;
+      });
     },
 
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {

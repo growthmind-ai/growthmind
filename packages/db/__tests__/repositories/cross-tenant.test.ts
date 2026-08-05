@@ -848,6 +848,53 @@ describe("detector-corpus.service — the T1 corpus read", () => {
     expect(afterReject.basis.setAside).toEqual([]);
   });
 
+  it("never lets a re-proposal overwrite an answer a person already gave", async () => {
+    const org = await seedCorpusOrg(db, "reproposal");
+    const growth = createGrowthContextRepo(db, org.ctx);
+    const WHO = "Only signed-in customers.";
+    const AT = new Date("2026-07-24T09:00:00.000Z");
+
+    await growth.stateSiteDomain({ projectId: org.projectId, siteDomain: "example.com" });
+    await growth.recordResearch({
+      projectId: org.projectId,
+      facts: [
+        {
+          kind: "who_counts",
+          statement: WHO,
+          provenance: { source: "site", at: AT, citation: "https://example.com/", seen: null },
+          correctedFrom: null,
+          audience: {
+            rule: { clauses: [{ attribute: "identity", is: "resolved" }] },
+            status: "proposed",
+            decidedAt: null,
+          },
+        },
+      ],
+      researchedAt: AT,
+    });
+
+    await growth.decideAudience({
+      projectId: org.projectId,
+      statement: WHO,
+      decision: "confirm",
+      decidedAt: AT,
+    });
+
+    // A later reduction of the same sentence must not silently widen a denominator the
+    // person had narrowed.
+    await growth.proposeAudience({
+      projectId: org.projectId,
+      statement: WHO,
+      rule: { clauses: [{ attribute: "email_domain", is: "work" }] },
+    });
+
+    const after = await growth.readBusinessResearch(org.projectId);
+    const fact = after?.businessContext.facts.find((row) => row.statement === WHO);
+
+    expect(fact?.audience?.status).toBe("confirmed");
+    expect(fact?.audience?.rule).toEqual({ clauses: [{ attribute: "identity", is: "resolved" }] });
+  });
+
   it("detector-corpus.service excludes exclusion_reason != 'none' sessions from the denominator and reports them in basis", async () => {
     const org = await seedCorpusOrg(db, "basis");
     const BASIS_BASE = new Date("2026-07-24T09:00:00.000Z");

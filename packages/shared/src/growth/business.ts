@@ -186,6 +186,18 @@ export type BusinessResearchPayload = z.infer<typeof businessResearchPayloadSche
 // error rather than a job nothing is registered to run (D9).
 export const BUSINESS_RESEARCH_TASK = "business:research";
 
+export const AUDIENCE_REDUCE_TASK = "business:reduce-audience";
+
+export const audienceReducePayloadSchema = z.object({
+  projectId: z.string().min(1),
+
+  // The sentence to reduce. Carried rather than re-read so a later edit to the same kind
+  // cannot have this job attach a rule to a sentence nobody wrote.
+  statement: z.string().min(1).max(STATEMENT_MAX),
+});
+
+export type AudienceReducePayload = z.infer<typeof audienceReducePayloadSchema>;
+
 // The name this task shipped under. Registered alongside the current one so a job queued
 // before the rename runs rather than retrying against nothing forever (D9).
 export const BUSINESS_RESEARCH_TASK_BEFORE_RENAME = "icp:research";

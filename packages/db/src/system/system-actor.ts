@@ -6,6 +6,7 @@ export const SYSTEM_ACTOR = {
   DELIVERY_TICK: "system:delivery-tick",
   GROWTH_CONTEXT_TICK: "system:growth-context-tick",
   BUSINESS_RESEARCH: "system:business-research",
+  REDUCE_AUDIENCE: "system:reduce-audience",
 } as const;
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];
