@@ -10,12 +10,20 @@ import { createSessionsRepo } from "../../src/repositories/sessions.repo";
 import { persistPullResult } from "../../src/services/intake.service";
 import {
   claimDuePollableConnections,
+  systemContextFor,
   systemTenantContextFor,
+  SYSTEM_ACTOR,
   type PollableConnection,
 } from "../../src/system";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames } from "../../src/testing";
+import { laneNames, scannedTextFor } from "../../src/testing";
 import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import {
+  SESSION_GROUPING_VERSION,
+  recordingSessionKey,
+  transcriptOf,
+  transcriptRepo,
+} from "../helpers/transcript-contract";
 
 import { createHash } from "node:crypto";
 
@@ -257,6 +265,53 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(aggregate.runsCompleted).toBe(1);
     expect(aggregate.runsFailed).toBe(0);
     expect(aggregate.lastSuccessfulFinishedAt).not.toBeNull();
+  });
+
+  it("should read back the session_key the narration tick stamped", async () => {
+    const scope = await claimAsWorker(db, "recording-summary");
+    const narrationCtx = systemContextFor(SYSTEM_ACTOR.REPLAY_NARRATION_TICK, {
+      organizationId: scope.requestCtx.organizationId,
+      organizationName: scope.requestCtx.organizationName,
+    });
+
+    const recordingId = "0198c4f2-7a1b-7c3d-9e4f-stamp-symmetry";
+    const sessionKey = recordingSessionKey("posthog", recordingId);
+    const scanned = scannedTextFor("Someone pressed buy and nothing happened", [
+      "They opened pricing, pressed buy four times, and left.",
+    ]);
+
+    await transcriptRepo(db, narrationCtx).persist({
+      projectId: scope.projectId,
+      recordingId,
+      summarySource: "model_rendered",
+      headline: scanned.headline,
+      context: scanned.context,
+      transcript: "0:00  opened /pricing",
+      pages: ["/pricing"],
+      durationMs: 92_000,
+      actionCount: 2,
+      notableCount: 1,
+      droppedEvents: 0,
+      startedAt: EVENT_AT,
+      resolvedModelId: "test-model",
+      provider: "posthog",
+      sessionKey,
+      sessionGroupingVersion: SESSION_GROUPING_VERSION,
+      actions: transcriptOf([{ kind: "page", atMs: 0 }]),
+      actionsVersion: 1,
+      actionsOmitted: 0,
+      pullStop: "exhausted",
+      pullReason: null,
+      pullWatermarkAt: EVENT_AT,
+    });
+
+    const served = await transcriptRepo(db, scope.requestCtx).findFor(scope.projectId, recordingId);
+
+    expect(served).not.toBeNull();
+    expect(served?.organizationId).toBe(scope.requestCtx.organizationId);
+    expect(served?.projectId).toBe(scope.projectId);
+    expect(served?.sessionKey).toBe(sessionKey);
+    expect(served?.sessionGroupingVersion).toBe(SESSION_GROUPING_VERSION);
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ReplaySource } from "@growthmind/adapters";
+import { NARRATION_MAX_ACTIONS, buildTranscript, compactTranscript } from "@growthmind/core";
 import type {
   PersistRecordingSummaryInput,
   RecordingSummariesRepo,
@@ -366,5 +367,258 @@ describe("what is persisted alongside the words", () => {
 
     expect(store.rows[0]?.tokensIn).toBe(30);
     expect(store.rows[0]?.tokensOut).toBe(12);
+  });
+});
+
+type PersistedActionShape = { readonly kind: string; readonly atMs: number };
+
+type PersistedTranscriptShape = {
+  readonly v: number;
+  readonly actions: readonly PersistedActionShape[];
+};
+
+type TranscriptRow = PersistRecordingSummaryInput & {
+  readonly provider?: string;
+  readonly sessionKey?: string | null;
+  readonly actions?: PersistedTranscriptShape | null;
+  readonly actionsVersion?: number | null;
+  readonly actionsOmitted?: number | null;
+  readonly pullStop?: string | null;
+  readonly pullReason?: string | null;
+  readonly pullWatermarkAt?: Date | null;
+};
+
+function transcriptRows(store: ReturnType<typeof fakeRepo>): readonly TranscriptRow[] {
+  return store.rows as readonly TranscriptRow[];
+}
+
+function manyEvents(clicks: number): readonly RrwebEvent[] {
+  const events: RrwebEvent[] = [
+    { type: 4, timestamp: 1_000, data: { href: "/pricing", width: 800, height: 600 } },
+  ];
+
+  for (let index = 0; index < clicks; index += 1) {
+    events.push({
+      type: 3,
+      timestamp: 2_000 + index * 1_000,
+      data: { source: 2, type: 2, id: 5 + index, x: 10, y: 10 },
+    });
+  }
+
+  return events;
+}
+
+function partialPull(events: readonly RrwebEvent[]): ReplayEventsResult {
+  return {
+    ok: false,
+    failure: { code: "rate_limited", message: "Your recording source asked us to slow down." },
+    partialEvents: [...events],
+    pagesFetched: 1,
+    droppedMalformed: 0,
+    eventsReceived: events.length,
+  };
+}
+
+function byteCappedPull(events: readonly RrwebEvent[]): ReplayEventsResult {
+  return {
+    ...eventsOk(events),
+    stop: "byte_cap",
+    resumeCursor: "63",
+  } as unknown as ReplayEventsResult;
+}
+
+function sourceReturning(result: ReplayEventsResult): ReplaySource {
+  return fakeSource({ pullEvents: () => Promise.resolve(result) });
+}
+
+const SECOND_LANE: ReplayLane = {
+  organizationId: "org-1",
+  organizationName: "Acme",
+  projectId: "project-2",
+};
+
+describe("the structured transcript the tick persists", () => {
+  test("should persist the session key derived from the source kind and recording id", async () => {
+    const store = fakeRepo();
+    const { deps } = depsFor(store);
+
+    await runReplayNarrationTick(deps);
+
+    expect(transcriptRows(store)[0]?.sessionKey).toBe("ph:rec-1");
+    expect(transcriptRows(store)[0]?.provider).toBe("posthog");
+  });
+
+  test("should persist exactly the actions the narrator read", async () => {
+    const store = fakeRepo();
+    const events = manyEvents(200);
+    const digest = compactTranscript(buildTranscript(events));
+
+    expect(digest.actions.length + digest.omitted).toBeGreaterThan(NARRATION_MAX_ACTIONS);
+    expect(digest.omitted).toBeGreaterThan(0);
+
+    const { deps } = depsFor(store, {
+      sourceFor: () => Promise.resolve({ ok: true, source: sourceReturning(eventsOk(events)) }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const row = transcriptRows(store)[0];
+    expect(row?.actions?.actions).toHaveLength(digest.actions.length);
+    expect(row?.actionsOmitted).toBe(digest.omitted);
+    expect(row?.actionCount).toBe(digest.actions.length + digest.omitted);
+  });
+
+  test("should persist an integer atMs on every action", async () => {
+    const store = fakeRepo();
+    const { deps } = depsFor(store);
+
+    await runReplayNarrationTick(deps);
+
+    const actions = transcriptRows(store)[0]?.actions?.actions ?? [];
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect(Number.isInteger(action.atMs)).toBe(true);
+    }
+  });
+
+  test("should persist the watermark the listing ran with, and null on a full re-list", async () => {
+    const watermark = new Date("2026-08-05T08:30:00.000Z");
+
+    const withWatermark = fakeRepo();
+    await runReplayNarrationTick(
+      depsFor(withWatermark, {
+        summariesFor: () => ({
+          ...withWatermark.repo,
+          latestStartedAt: () => Promise.resolve(watermark),
+        }),
+      }).deps,
+    );
+
+    const fullRelist = fakeRepo();
+    await runReplayNarrationTick(depsFor(fullRelist).deps);
+
+    expect(transcriptRows(withWatermark)[0]?.pullWatermarkAt?.toISOString()).toBe(
+      watermark.toISOString(),
+    );
+    expect(transcriptRows(fullRelist)[0]?.pullWatermarkAt).toBeNull();
+  });
+
+  test("should ask the model once when the tick runs twice over one recording", async () => {
+    const store = fakeRepo();
+    let narrations = 0;
+
+    const { deps } = depsFor(store, {
+      narrator: {
+        port: {
+          narrate: () => {
+            narrations += 1;
+            return Promise.resolve(okNarration());
+          },
+        },
+        resolvedModelId: MODEL_ID,
+      },
+    });
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+
+    expect(narrations).toBe(1);
+    expect(store.rows).toHaveLength(1);
+  });
+});
+
+describe("how a pull that stopped short reaches the row", () => {
+  test("should record a failed pull on the row with a plain-English reason", async () => {
+    const store = fakeRepo();
+    const arrived = eventsFor();
+    const digest = compactTranscript(buildTranscript(arrived));
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({ ok: true, source: sourceReturning(partialPull(arrived)) }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const row = transcriptRows(store)[0];
+    expect(row?.pullStop).toBe("failed");
+    expect(String(row?.pullReason).trim().length).toBeGreaterThan(20);
+    expect(String(row?.pullReason).trim().endsWith(".")).toBe(true);
+    expect(row?.actions?.actions).toHaveLength(digest.actions.length);
+  });
+
+  test("should record a byte-capped pull as a bounded partial, not a failure", async () => {
+    const store = fakeRepo();
+    const arrived = eventsFor();
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({ ok: true, source: sourceReturning(byteCappedPull(arrived)) }),
+    });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    const row = transcriptRows(store)[0];
+    expect(outcome.summarised).toBe(1);
+    expect(outcome.failed).toBe(0);
+    expect(row?.pullStop).toBe("byte_cap");
+    expect(String(row?.pullReason).trim().endsWith(".")).toBe(true);
+    expect((row?.actions?.actions ?? []).length).toBeGreaterThan(0);
+  });
+
+  test("should write no row and continue when the replay source rejects", async () => {
+    const store = fakeRepo();
+
+    const throwing = fakeSource({
+      listRecordings: () => Promise.resolve(listOk([recording("rec-throws"), recording("rec-next")])),
+      pullEvents: (recordingId: string) =>
+        recordingId === "rec-throws"
+          ? Promise.reject(new Error("the vendor closed the connection"))
+          : Promise.resolve(eventsOk(eventsFor())),
+    });
+
+    const { deps, logs } = depsFor(store, {
+      sourceFor: () => Promise.resolve({ ok: true, source: throwing }),
+    });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(store.rows.map((row) => row.recordingId)).toEqual(["rec-next"]);
+    expect(outcome.failed).toBe(1);
+    expect(outcome.summarised).toBe(1);
+    expect(logs.join(" ")).toContain("rec-throws");
+    expect(logs.join(" ")).toContain(LANE.projectId);
+  });
+
+  test("should not let one lane's failure stop another lane", async () => {
+    const store = fakeRepo();
+
+    const { deps } = depsFor(store, {
+      lanes: { listDueLanes: () => Promise.resolve([LANE, SECOND_LANE]) },
+      sourceFor: (_ctx, projectId) =>
+        projectId === LANE.projectId
+          ? Promise.reject(new Error("this lane's credential could not be read"))
+          : Promise.resolve({ ok: true, source: fakeSource() }),
+    });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.summarised).toBe(1);
+    expect(store.rows[0]?.projectId).toBe(SECOND_LANE.projectId);
+  });
+
+  test("should persist a transcript when the provider has no session-key mapping", async () => {
+    const store = fakeRepo();
+
+    const { deps } = depsFor(store, {
+      sourceFor: () => Promise.resolve({ ok: true, source: fakeSource({ kind: "rrweb" }) }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const row = transcriptRows(store)[0];
+    expect(row).toBeDefined();
+    expect(row?.sessionKey).toBeNull();
+    expect((row?.actions?.actions ?? []).length).toBeGreaterThan(0);
   });
 });

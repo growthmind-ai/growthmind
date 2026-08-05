@@ -289,6 +289,61 @@ describe("replayEventsResultSchema", () => {
   });
 });
 
+describe("the pull's byte bound reaches the shared contract (ADD §7)", () => {
+  test("should accept byte_cap as a pullEvents stop reason", () => {
+    expect(replayEventsStopSchema.safeParse("byte_cap").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("page_cap").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("exhausted").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("watermark").success).toBe(false);
+  });
+
+  test("should require bytesReceived on both arms of replayEventsResultSchema", () => {
+    const okArmWithoutBytes = {
+      ok: true,
+      events: [],
+      stop: "exhausted",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+    const failureArmWithoutBytes = {
+      ok: false,
+      failure: FAILURE,
+      partialEvents: [],
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+
+    expect(replayEventsResultSchema.safeParse(okArmWithoutBytes).success).toBe(false);
+    expect(replayEventsResultSchema.safeParse(failureArmWithoutBytes).success).toBe(false);
+
+    expect(
+      replayEventsResultSchema.safeParse({ ...okArmWithoutBytes, bytesReceived: 4096 }).success,
+    ).toBe(true);
+    expect(
+      replayEventsResultSchema.safeParse({ ...failureArmWithoutBytes, bytesReceived: 4096 })
+        .success,
+    ).toBe(true);
+  });
+
+  test("should require a resumeCursor on the failure arm so a throttled pull can resume", () => {
+    const failureArm = {
+      ok: false,
+      failure: FAILURE,
+      partialEvents: [],
+      bytesReceived: 4096,
+      ...TELEMETRY,
+    };
+
+    expect(replayEventsResultSchema.safeParse(failureArm).success).toBe(false);
+    expect(replayEventsResultSchema.safeParse({ ...failureArm, resumeCursor: "21" }).success).toBe(
+      true,
+    );
+    expect(replayEventsResultSchema.safeParse({ ...failureArm, resumeCursor: null }).success).toBe(
+      true,
+    );
+  });
+});
+
 describe("replaySourceValidationSchema", () => {
   test("accepts an ok validation with just ok and checkedAt", () => {
     const result = { ok: true, checkedAt: new Date() };

@@ -71,6 +71,40 @@ describe("the plain-English audit", () => {
   });
 });
 
+const PULL_STOPS_NEEDING_A_REASON = ["page_cap", "byte_cap"] as const;
+
+function pullStopMessages(): Record<string, unknown> {
+  const exported = (messagesModule as unknown as Record<string, unknown>).REPLAY_PULL_STOP_MESSAGES;
+
+  if (typeof exported !== "object" || exported === null) {
+    throw new Error(
+      "packages/shared/src/replay-source/messages.ts exports no REPLAY_PULL_STOP_MESSAGES. " +
+        "ADD §5.3 requires one plain-English sentence per non-exhausted pull stop, so O-044 can " +
+        'say "N recordings withheld" without translating an error code.',
+    );
+  }
+
+  return exported as Record<string, unknown>;
+}
+
+describe("the reason a pull stopped short", () => {
+  test("should carry a plain-English reason for every pull stop that is not exhausted", () => {
+    const messages = pullStopMessages();
+
+    for (const stop of PULL_STOPS_NEEDING_A_REASON) {
+      const message = messages[stop];
+      expect(typeof message).toBe("string");
+
+      const sentence = String(message).trim();
+      expect(sentence.length).toBeGreaterThan(20);
+      expect(sentence.endsWith(".")).toBe(true);
+
+      expect(sentence).not.toMatch(/\b[a-z]+_[a-z]+\b/);
+      expect(sentence).not.toMatch(/\b[1-5]\d{2}\b/);
+    }
+  });
+});
+
 describe("failure code coverage", () => {
   test("REPLAY_FAILURE_MESSAGES covers exactly the six replay failure codes", () => {
     const codes = replayFailureCodeSchema.options;

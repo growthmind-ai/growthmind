@@ -1,7 +1,10 @@
+import { Buffer } from "node:buffer";
+
 import type { IdentityHmacKey } from "@growthmind/shared";
 import { deriveIdentityHmacKey } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import * as posthogConstants from "../../src/posthog/constants";
 import { MAX_BLOB_CHUNKS_PER_PULL, MAX_BLOB_KEY_SPAN } from "../../src/posthog/constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "../../src/posthog/deps";
 import { createPostHogReplaySource } from "../../src/posthog/replay-source";
@@ -569,5 +572,170 @@ describe("createPostHogReplaySource", () => {
       expect(result.pagesFetched).toBe(2);
       expect(fake.requests).toHaveLength(2);
     });
+  });
+});
+
+const MAX_PULL_BYTES_FROZEN_BY_M0 = 33_554_432;
+
+const CHUNK_SPAN = MAX_BLOB_KEY_SPAN + 1;
+
+function blobKeysSpanning(chunks: number): readonly string[] {
+  return Array.from({ length: chunks * CHUNK_SPAN }, (_, index) => String(index));
+}
+
+function jsonlOfSize(padCharacter: string, padLength: number): string {
+  return snapshotJsonl([
+    {
+      windowId: "win-1",
+      type: 4,
+      timestamp: 1722600000000,
+      data: { pad: padCharacter.repeat(padLength) },
+    },
+  ]);
+}
+
+type PullTelemetryUnderContract = {
+  readonly bytesReceived?: number;
+  readonly resumeCursor?: string | null;
+};
+
+function telemetryOf(result: object): PullTelemetryUnderContract {
+  return result as unknown as PullTelemetryUnderContract;
+}
+
+function buildSourceRecordingSleeps(
+  fetchImpl: PostHogSourceDeps["fetch"],
+  sleeps: number[],
+): ReplaySource {
+  return createPostHogReplaySource(AD_CONFIG, {
+    fetch: fetchImpl,
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
+    now: () => FAKE_NOW,
+    random: () => 0,
+    identityHmacKey: AD_IDENTITY_HMAC_KEY,
+  });
+}
+
+describe("pullEvents is bounded by bytes, not only by chunks (FR-6)", () => {
+  test("should bound a pull at the MAX_PULL_BYTES M-0 froze, 32 MiB", () => {
+    const declared = (posthogConstants as unknown as Record<string, unknown>).MAX_PULL_BYTES;
+
+    expect(declared).toBe(MAX_PULL_BYTES_FROZEN_BY_M0);
+  });
+
+  test("should stop a pull with byte_cap once the accumulated bodies reach MAX_PULL_BYTES", async () => {
+    const twelveMib = jsonlOfSize("a", 12 * 1024 * 1024);
+    expect(Buffer.byteLength(twelveMib, "utf8") * 3).toBeGreaterThan(MAX_PULL_BYTES_FROZEN_BY_M0);
+    expect(Buffer.byteLength(twelveMib, "utf8") * 2).toBeLessThan(MAX_PULL_BYTES_FROZEN_BY_M0);
+
+    const fake = createPagedFetch([
+      { status: 200, body: snapshotSourcesBody(blobKeysSpanning(4)) },
+      { status: 200, rawBody: twelveMib },
+    ]);
+
+    const result = await buildSource(fake.fetch).pullEvents("rec-heavy");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.stop as string).toBe("byte_cap");
+    expect(result.resumeCursor).toBe(String(3 * CHUNK_SPAN));
+    expect(result.events).toHaveLength(3);
+    expect(fake.requests).toHaveLength(4);
+  });
+
+  test("should count received bytes as UTF-8 bytes, not characters", async () => {
+    const multiByte = jsonlOfSize("é", 1000);
+    expect(Buffer.byteLength(multiByte, "utf8")).toBeGreaterThan(multiByte.length);
+
+    const fake = createPagedFetch([
+      { status: 200, body: snapshotSourcesBody(["0", "15"]) },
+      { status: 200, rawBody: multiByte },
+    ]);
+
+    const result = await buildSource(fake.fetch).pullEvents("rec-multibyte");
+
+    expect(result.ok).toBe(true);
+    expect(telemetryOf(result).bytesReceived).toBe(Buffer.byteLength(multiByte, "utf8"));
+    expect(telemetryOf(result).bytesReceived).toBeGreaterThan(multiByte.length);
+  });
+
+  test("should leave stop as exhausted and report the summed bytes when under the bound", async () => {
+    const first = jsonlOfSize("a", 64);
+    const second = jsonlOfSize("b", 128);
+
+    const fake = createPagedFetch([
+      { status: 200, body: snapshotSourcesBody(blobKeysSpanning(2)) },
+      { status: 200, rawBody: first },
+      { status: 200, rawBody: second },
+    ]);
+
+    const result = await buildSource(fake.fetch).pullEvents("rec-small");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.stop).toBe("exhausted");
+    expect(telemetryOf(result).bytesReceived).toBe(
+      Buffer.byteLength(first, "utf8") + Buffer.byteLength(second, "utf8"),
+    );
+    expect(fake.requests.length).toBeLessThanOrEqual(1 + MAX_BLOB_CHUNKS_PER_PULL);
+  });
+});
+
+describe("a throttled pull backs off and resumes rather than restarting (M-0, decision 0001)", () => {
+  test("should honour the Retry-After the vendor sent rather than hammering the endpoint", async () => {
+    const sleeps: number[] = [];
+    const fake = createFakeFetch((_url, index) => {
+      if (index === 0) return { status: 200, body: snapshotSourcesBody(["0", "15"]) };
+      if (index === 1) {
+        return { status: 429, body: { detail: "slow down" }, headers: { "retry-after": "2" } };
+      }
+      return {
+        status: 200,
+        rawBody: snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]),
+      };
+    });
+
+    const result = await buildSourceRecordingSleeps(fake.fetch, sleeps).pullEvents("rec-throttled");
+
+    expect(sleeps).toEqual([2000]);
+    expect(fake.requests).toHaveLength(3);
+    expect(result.ok).toBe(true);
+  });
+
+  test("should resume a throttled pull from the blob key it stopped at rather than restarting", async () => {
+    const arrived = snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]);
+    const sleeps: number[] = [];
+    const fake = createFakeFetch((_url, index) => {
+      if (index === 0) return { status: 200, body: snapshotSourcesBody(blobKeysSpanning(4)) };
+      if (index === 1) return { status: 200, rawBody: arrived };
+      return { status: 429, body: { detail: "slow down" }, headers: { "retry-after": "1" } };
+    });
+
+    const result = await buildSourceRecordingSleeps(fake.fetch, sleeps).pullEvents("rec-throttled");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.partialEvents).toHaveLength(1);
+    expect(telemetryOf(result).resumeCursor).toBe(String(CHUNK_SPAN));
+  });
+
+  test("should record a throttled pull as a reason with the bytes that arrived, not as a success", async () => {
+    const arrived = snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]);
+    const sleeps: number[] = [];
+    const fake = createFakeFetch((_url, index) => {
+      if (index === 0) return { status: 200, body: snapshotSourcesBody(blobKeysSpanning(4)) };
+      if (index === 1) return { status: 200, rawBody: arrived };
+      return { status: 429, body: { detail: "slow down" }, headers: { "retry-after": "1" } };
+    });
+
+    const result = await buildSourceRecordingSleeps(fake.fetch, sleeps).pullEvents("rec-throttled");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.failure.code).toBe("rate_limited");
+    expect(result.failure.message.trim().endsWith(".")).toBe(true);
+    expect(telemetryOf(result).bytesReceived).toBe(Buffer.byteLength(arrived, "utf8"));
   });
 });
