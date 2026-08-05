@@ -1,0 +1,120 @@
+/* rrweb-player ships a white, indigo-accented chrome whose selectors carry the Svelte
+ * scope hash three to six times over, so a plain override loses on specificity; the
+ * progress marks take their colour from an inline style. !important is what reaches
+ * both from outside the package. */
+
+.player {
+  display: flow-root;
+}
+
+.player :global(.rr-player) {
+  background: var(--mantine-color-body) !important;
+  border: 1px solid var(--mantine-color-default-border) !important;
+  border-radius: var(--mantine-radius-sm) !important;
+  box-shadow: none !important;
+}
+
+.player :global(.rr-player__frame) {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.player :global(.rr-controller) {
+  background: var(--mantine-color-default) !important;
+  color: var(--mantine-color-text) !important;
+  border-radius: 0 0 var(--mantine-radius-sm) var(--mantine-radius-sm) !important;
+}
+
+.player :global(.rr-timeline__time) {
+  color: var(--mantine-color-dimmed) !important;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+}
+
+/* The track's top and bottom borders are spacers, so they carry the controller's colour. */
+.player :global(.rr-progress) {
+  background: var(--hair) !important;
+  border-top-color: var(--mantine-color-default) !important;
+  border-bottom-color: var(--mantine-color-default) !important;
+}
+
+/* Every mark on the track is absolutely positioned at the same offset, so paint order
+ * alone decides what the dead-time bands cover. Stack them: elapsed, then events, then
+ * the handle. */
+.player :global(.rr-progress__step) {
+  background: var(--mantine-color-band-6) !important;
+  z-index: 1;
+}
+
+.player :global(.rr-progress__handler) {
+  background: var(--mantine-primary-color-filled) !important;
+  z-index: 3;
+}
+
+/* Dead time is a hint, so it sits just above the empty track; a recorded event is a
+ * landmark, so it takes the accent. Both carry their colour inline. */
+.player :global(.rr-progress > div[title="inactive period"]) {
+  background: var(--mantine-color-dark-4) !important;
+}
+
+.player :global(.rr-progress > div[title]:not([title="inactive period"])) {
+  background: var(--stamp) !important;
+  z-index: 2;
+}
+
+.player :global(.rr-controller__btns button) {
+  color: var(--mantine-color-text) !important;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* The packaged icons set no fill, which paints them black against the dark chrome. */
+.player :global(.rr-controller__btns button svg) {
+  fill: currentColor;
+}
+
+.player :global(.rr-controller__btns button.active) {
+  background: var(--mantine-primary-color-filled) !important;
+  color: var(--onband) !important;
+}
+
+.player :global(.rr-controller__btns button:active) {
+  background: var(--hair) !important;
+}
+
+@media (hover: hover) {
+  .player :global(.rr-controller__btns button:hover) {
+    background: var(--hair) !important;
+  }
+
+  .player :global(.rr-controller__btns button.active:hover) {
+    background: var(--mantine-primary-color-filled) !important;
+  }
+}
+
+.player :global(.switch label::before) {
+  background: var(--hair) !important;
+}
+
+.player :global(.switch label::after) {
+  background: var(--soft) !important;
+  box-shadow: none !important;
+}
+
+.player :global(.switch input[type="checkbox"]:checked + label::before) {
+  background: var(--mantine-primary-color-filled) !important;
+}
+
+.player :global(.switch input[type="checkbox"]:checked + label::after) {
+  background: var(--onband) !important;
+}
+
+.player :global(.replayer-mouse::after) {
+  background: var(--mantine-primary-color-filled) !important;
+}
+
+.player :global(.replayer-mouse.touch-device.touch-active) {
+  border-color: var(--mantine-primary-color-filled) !important;
+}
