@@ -312,7 +312,9 @@ function candidateOf(assembled: AssembledCandidates, detector: string): Candidat
   return found;
 }
 
-function struggleSignalOf(candidate: CandidateFinding): Extract<EvidenceSignal, { kind: "struggle" }> {
+function struggleSignalOf(
+  candidate: CandidateFinding,
+): Extract<EvidenceSignal, { kind: "struggle" }> {
   const struggle = (signalsOf(candidate) ?? []).find((signal) => signal.kind === "struggle");
   if (struggle === undefined || struggle.kind !== "struggle") {
     throw new Error(`the ${candidate.detector} candidate must carry a struggle signal`);

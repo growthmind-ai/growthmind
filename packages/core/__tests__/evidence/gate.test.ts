@@ -14,11 +14,7 @@ import { DOWNGRADE_PATH, evaluate } from "../../src/evidence/gate";
 import type { DowngradeDestination, GateOutcome, ProposedClaim } from "../../src/evidence/gate";
 import { changedMindProofSatisfied } from "../../src/evidence/predicates";
 import type { EvidenceSignal } from "../../src/evidence/signals";
-import type {
-  ElementIdentity,
-  SessionAction,
-  SessionTranscript,
-} from "../../src/replay/types";
+import type { ElementIdentity, SessionAction, SessionTranscript } from "../../src/replay/types";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import { findingClassSchema } from "../../src/rules/types";
 import type { FindingClass, ThresholdRuleSet } from "../../src/rules/types";
@@ -817,11 +813,7 @@ describe("evidence gate — O-041 grade-unchanged regressions", () => {
 
     for (const subkind of subkinds) {
       for (const magnitude of everyMagnitude(ruleSet)) {
-        const signal = struggleOfSubkind(
-          subkind,
-          magnitude.attempts,
-          magnitude.strugglingSessions,
-        );
+        const signal = struggleOfSubkind(subkind, magnitude.attempts, magnitude.strugglingSessions);
 
         expect(changedMindProofSatisfied([cleanExit(), signal], ruleSet)).toBe(false);
       }
