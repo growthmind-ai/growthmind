@@ -208,6 +208,14 @@ export {
 } from "./repositories/findings.repo";
 
 export {
+  createRecordingSummariesRepo,
+  RECORDING_SUMMARY_CONFLICT_TARGET,
+  type RecordingSummariesRepo,
+  type RecordingSummaryRecord,
+  type PersistRecordingSummaryInput,
+} from "./repositories/recording-summaries.repo";
+
+export {
   createAnalysisRunsRepo,
   ANALYSIS_RUN_LEASE_MS,
   type AnalysisRunsRepo,

@@ -5,6 +5,7 @@ export const SYSTEM_ACTOR = {
   ANALYSIS_TICK: "system:analysis-tick",
   DELIVERY_TICK: "system:delivery-tick",
   GROWTH_CONTEXT_TICK: "system:growth-context-tick",
+  REPLAY_NARRATION_TICK: "system:replay-narration-tick",
   BUSINESS_RESEARCH: "system:business-research",
   REDUCE_AUDIENCE: "system:reduce-audience",
 } as const;

@@ -26,7 +26,7 @@ const PLANTED_FRAGMENTS: readonly string[] = [
 
 const PLANTED_VENDOR_MESSAGE =
   `AI_APICallError: request req_01PLANTEDREQUESTID9999 to ` +
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent ` +
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent ` +
   `failed for projects/01PLANTEDPROJECT4242 ` +
   `using key AIzaSyPLANTEDKEYTAIL0000000000000000000 (429 RESOURCE_EXHAUSTED)`;
 
@@ -197,7 +197,7 @@ describe("the whole error map", () => {
       {
         label: "timeout",
         error: plantedVendorErrorWith(
-          "Request timed out after 60000ms: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          "Request timed out after 60000ms: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
         ),
       },
       { label: "a thrown string, not an Error", error: PLANTED_VENDOR_MESSAGE },

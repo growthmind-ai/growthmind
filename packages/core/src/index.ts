@@ -380,3 +380,17 @@ export {
   EMPTY_TRANSCRIPT_LINE,
   renderTranscript,
 } from "./replay/render";
+export {
+  NARRATION_MAX_ACTIONS,
+  NOTABLE_KINDS,
+  narrationOutputSchema,
+  compactTranscript,
+  renderDigest,
+  renderRecordingFloor,
+  renderWithheldRecordingFloor,
+  describeSessionDuration,
+  countNotable,
+  type NarrationOutput,
+  type TranscriptDigest,
+  type FloorNarration,
+} from "./replay/narration";

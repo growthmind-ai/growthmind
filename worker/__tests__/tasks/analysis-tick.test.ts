@@ -1501,6 +1501,12 @@ const DB_SRC = path.join(REPO_ROOT, "packages", "db", "src");
 
 const FINDINGS_REPO = path.join(DB_SRC, "repositories", "findings.repo.ts");
 
+const RECORDING_SUMMARIES_REPO = path.join(
+  DB_SRC,
+  "repositories",
+  "recording-summaries.repo.ts",
+);
+
 const PLAN_SOURCE = path.join(REPO_ROOT, "worker", "src", "analysis", "plan.ts");
 
 // `src/testing/` is the sanctioned home of the one helper that writes an unscanned row
@@ -1561,11 +1567,18 @@ test("a second write path to the findings table cannot bypass FindingsRepo.persi
     .filter((file) => writesFindingText(readFileSync(file, "utf8")))
     .map((file) => path.relative(REPO_ROOT, file).split(path.sep).join("/"));
 
-  expect(writers).toEqual(["packages/db/src/repositories/findings.repo.ts"]);
+  // Two seams write scanned text now, and both must demand the brand. A new writer added
+  // here without its ScannedText assertion below is the bypass this test exists to catch.
+  expect(writers.toSorted()).toEqual([
+    "packages/db/src/repositories/findings.repo.ts",
+    "packages/db/src/repositories/recording-summaries.repo.ts",
+  ]);
 
-  const repo = stripComments(readFileSync(FINDINGS_REPO, "utf8"));
-  expect(repo).toMatch(/headline:\s*ScannedText/);
-  expect(repo).toMatch(/context:\s*readonly ScannedText\[\]/);
+  for (const seam of [FINDINGS_REPO, RECORDING_SUMMARIES_REPO]) {
+    const repo = stripComments(readFileSync(seam, "utf8"));
+    expect(repo).toMatch(/headline:\s*ScannedText/);
+    expect(repo).toMatch(/context:\s*readonly ScannedText\[\]/);
+  }
 });
 
 const OWNER_GATE = "ADD Wave 1.1 (packages/core/src/delivery/finding-text.ts)";

@@ -58,6 +58,8 @@ export type { SlackPosterConfig, SlackPosterDeps } from "./slack/deps";
 
 export { createSessionSummariser } from "./model/summariser";
 export type { SessionSummariser, SummariseInput } from "./model/summariser";
+export { createRecordingNarrator, describeDuration } from "./model/narrator";
+export type { RecordingNarrator, NarrateInput } from "./model/narrator";
 export { DEFAULT_COLDSTART_MODEL } from "./model/constants";
 
 export type { ReplaySource } from "./replay-source";

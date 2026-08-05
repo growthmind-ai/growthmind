@@ -4,11 +4,12 @@ import {
   DEFAULT_COLDSTART_MODEL,
   createBusinessResearcher,
   createColdstartModel,
+  createRecordingNarrator,
   createSessionSummariser,
   createSlackDeliveryPoster,
   fetchSite,
 } from "@growthmind/adapters";
-import { modelSummaryOutputSchema } from "@growthmind/core";
+import { modelSummaryOutputSchema, narrationOutputSchema } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import {
   createAnalysisRunsRepo,
@@ -17,6 +18,7 @@ import {
   createFindingPayloadsRepo,
   createFindingsRepo,
   createGrowthContextRepo,
+  createRecordingSummariesRepo,
   createSignatureLedgerService,
   createSlackConnectionsRepo,
   createSurfaceObservationsService,
@@ -43,6 +45,10 @@ import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
 import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { createDeliveryLaneSource } from "./delivery-lane-source";
 import { createGrowthContextLaneSource } from "./growth-context-lane-source";
+import { createReplayLaneSource, makeReplaySourceFor } from "./replay-lane-source";
+import { RECORDINGS_NARRATED_PER_TICK } from "./analysis-cap";
+import { runReplayNarrationTick } from "./tasks/replay-narration-tick";
+import type { ConfiguredNarrator } from "./tasks/narrator-deps";
 
 import { TASK } from "./task-names";
 import { taskLoggerFor } from "./task-logger";
@@ -163,6 +169,24 @@ function resolveBusinessResearcher(env: WorkerEnv): BusinessResearcherPort | nul
     shapingSchema: shapingReadOutputSchema,
     audienceSchema: audienceReductionOutputSchema,
   });
+}
+
+function resolveNarrator(env: WorkerEnv): ConfiguredNarrator | null {
+  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (apiKey === undefined) {
+    return null;
+  }
+
+  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
+
+  return {
+    port: createRecordingNarrator({
+      model: createColdstartModel({ apiKey, resolvedModelId }),
+      resolvedModelId,
+      outputSchema: narrationOutputSchema,
+    }),
+    resolvedModelId,
+  };
 }
 
 function resolveAnalysisLanes(): AnalysisLaneSource | null {
@@ -364,6 +388,22 @@ export const taskList: TaskList = {
     });
   },
 
+  [TASK.REPLAY_NARRATION_TICK]: async (_payload, helpers) => {
+    const { db, env } = resolveResources();
+    const taskLogger = taskLoggerFor(logger);
+
+    await runReplayNarrationTick({
+      lanes: createReplayLaneSource({ db, logger: taskLogger }),
+      sourceFor: makeReplaySourceFor(db, resolveCredentialKey(env), globalThis.fetch),
+      summariesFor: (ctx) => createRecordingSummariesRepo(db, ctx),
+      contextFor: (lane) => systemContextFor(SYSTEM_ACTOR.REPLAY_NARRATION_TICK, lane),
+      narrator: resolveNarrator(env),
+      perProjectCap: RECORDINGS_NARRATED_PER_TICK,
+      listPages: 2,
+      logger: helpers.logger,
+    });
+  },
+
   [TASK.BUSINESS_RESEARCH]: businessResearchHandler,
 
   [TASK.REDUCE_AUDIENCE]: reduceAudienceHandler,
@@ -390,4 +430,5 @@ export const crontab = [
   `0 * * * * ${TASK.ANALYSIS_TICK}`,
   `* * * * * ${TASK.PROVIDER_INTEREST_TICK}`,
   `30 3 * * * ${TASK.GROWTH_CONTEXT_TICK}`,
+  `*/10 * * * * ${TASK.REPLAY_NARRATION_TICK}`,
 ].join("\n");
