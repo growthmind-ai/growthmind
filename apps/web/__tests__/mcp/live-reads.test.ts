@@ -481,8 +481,9 @@ describe("the MCP route withholding a row whose persisted text is held (O-021)",
     }
 
     // The withhold has to have been logged at all, or the search below is of an empty
-    // haystack and reports green over nothing.
-    expect(logged.filter((record) => record.level === "error").length).toBeGreaterThan(0);
+    // haystack and reports green over nothing. `warn`, because every row written before
+    // the scan existed reaches this seam on every read.
+    expect(logged.filter((record) => record.level === "warn").length).toBeGreaterThan(0);
 
     expect(bodies).not.toContain(PII_OFFENDER);
     expect(JSON.stringify(logged)).not.toContain(PII_OFFENDER);

@@ -3,7 +3,7 @@ import { RESIDUAL_PII_KINDS } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import type { FindingText, FindingTextInput } from "../../src/delivery/finding-text";
-import { joinScanned, reviewFindingText } from "../../src/delivery/finding-text";
+import { joinScanned, reviewFindingText, trimScanned } from "../../src/delivery/finding-text";
 
 type CleanVerdict = Extract<FindingText, { held: false }>;
 type HeldVerdict = Extract<FindingText, { held: true }>;
@@ -145,6 +145,37 @@ describe("reviewFindingText", () => {
   });
 });
 
+describe("reviewFindingText — element types are checked before anything is branded", () => {
+  test("a non-string element is held rather than coerced by the join and branded as itself", () => {
+    const verdict = reviewFindingText({
+      headline: CLEAN_HEADLINE,
+      context: [CLEAN_CONTEXT[0], 42 as unknown as string],
+    });
+
+    // The scan reads a join, and a join coerces: without the check this element passes
+    // the scan as "42" and is then branded as scanned text it never was.
+    expect(heldVerdict(verdict).why).toBe("unreadable");
+    expect("context" in verdict).toBe(false);
+  });
+
+  test("a context that is not an array at all is held rather than spread", () => {
+    const verdict = reviewFindingText({
+      headline: CLEAN_HEADLINE,
+      context: CLEAN_CONTEXT[0] as unknown as readonly string[],
+    });
+
+    expect(heldVerdict(verdict).why).toBe("unreadable");
+  });
+
+  test("every element of a clean verdict's context is a string", () => {
+    const verdict = cleanVerdict(
+      reviewFindingText({ headline: CLEAN_HEADLINE, context: CLEAN_CONTEXT }),
+    );
+
+    expect(verdict.context.map((part) => typeof part)).toEqual(["string", "string"]);
+  });
+});
+
 describe("joinScanned", () => {
   test("scanned parts join to the same string Array.join produces", () => {
     const verdict = cleanVerdict(
@@ -183,5 +214,37 @@ describe("joinScanned", () => {
     });
 
     expect(rescanned.held).toBe(false);
+  });
+});
+
+describe("trimScanned", () => {
+  const padded = (...context: readonly string[]) =>
+    cleanVerdict(reviewFindingText({ headline: CLEAN_HEADLINE, context })).context;
+
+  test("surrounding whitespace goes, and the result is still scanned text", () => {
+    const joined = joinScanned(padded("", CLEAN_CONTEXT[0]), " ");
+    const before: string = joined;
+
+    // Feeding the result back into `joinScanned` only compiles if the brand survived,
+    // so this line is the compile-time half of the assertion.
+    const trimmed: string = joinScanned([trimScanned(joined)], "");
+
+    expect(before).toBe(` ${CLEAN_CONTEXT[0]}`);
+    expect(trimmed).toBe(CLEAN_CONTEXT[0]);
+  });
+
+  test("text with nothing to trim comes back unchanged", () => {
+    const trimmed: string = trimScanned(joinScanned(padded(CLEAN_CONTEXT[0]), " "));
+
+    expect(trimmed).toBe(CLEAN_CONTEXT[0]);
+  });
+
+  test("text that is only separators trims to empty, which is what an emptiness test reads", () => {
+    const joined = joinScanned(padded("", ""), " ");
+    const before: string = joined;
+    const trimmed: string = trimScanned(joined);
+
+    expect(before).toBe(" ");
+    expect(trimmed).toBe("");
   });
 });

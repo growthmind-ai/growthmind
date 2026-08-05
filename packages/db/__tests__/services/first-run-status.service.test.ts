@@ -425,6 +425,7 @@ describe("first-run status service — two legs, three tables, one read", () => 
       finding: null,
       findingId: null,
       findingUnavailable: false,
+      findingWithheld: false,
     });
   });
 
@@ -719,18 +720,27 @@ describe("a residual-PII hold follows the fromThisWatch rule", () => {
       expect(shapeFacts.findingUnavailable).toBe(true);
       expect(shapeFacts.finding).toBeNull();
 
-      const errors = logged.filter((record) => record.level === "error");
-      for (const record of errors) {
+      // The two faults part company here and nowhere the reader can see: a held row is
+      // refused by the delivery lane too, so no channel holds a copy of it.
+      expect(heldFacts.findingWithheld).toBe(true);
+      expect(shapeFacts.findingWithheld).toBe(false);
+
+      const seams = logged.filter((record) => record.level === "error" || record.level === "warn");
+      for (const record of seams) {
         expect(CLOSED_REASONS as readonly unknown[]).toContain(record.fields.reason);
       }
 
-      const heldLines = errors.filter((record) => record.fields.findingId === heldId);
+      // `warn` for the hold: every row written before the scan existed reaches it, on
+      // every poll. The shape refusal stays an error — it names a row nothing can read.
+      const heldLines = seams.filter((record) => record.fields.findingId === heldId);
       expect(heldLines).toHaveLength(1);
+      expect(heldLines[0]?.level).toBe("warn");
       expect(heldLines[0]?.fields.reason).toBe("residual_pii");
       expect(RESIDUAL_PII_KINDS as readonly unknown[]).toContain(heldLines[0]?.fields.kind);
 
-      const shapeLines = errors.filter((record) => record.fields.findingId === shapeId);
+      const shapeLines = seams.filter((record) => record.fields.findingId === shapeId);
       expect(shapeLines).toHaveLength(1);
+      expect(shapeLines[0]?.level).toBe("error");
       expect(shapeLines[0]?.fields.reason).toBe("shape");
 
       for (const record of logged) {
@@ -765,12 +775,13 @@ describe("a residual-PII hold follows the fromThisWatch rule", () => {
       // B-042 at the scale of the whole legacy table: every pre-sprint row is unscanned,
       // so a hold that went terminal would end a fresh watch on arrival.
       expect(facts.findingUnavailable).toBe(false);
+      expect(facts.findingWithheld).toBe(false);
       expect(facts.finding).toBeNull();
       expect(facts.findingId).toBeNull();
 
       // The branch differs; the log does not (FR-4).
       const lines = logged.filter(
-        (record) => record.level === "error" && record.fields.findingId === heldId,
+        (record) => record.level === "warn" && record.fields.findingId === heldId,
       );
       expect(lines).toHaveLength(1);
       expect(lines[0]?.fields.reason).toBe("residual_pii");

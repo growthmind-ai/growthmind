@@ -1,4 +1,5 @@
 import type { ResidualPiiKind } from "@growthmind/shared";
+import { z } from "zod";
 
 import { scanResidualPii, type ResidualPiiScan } from "./residual-pii";
 
@@ -26,13 +27,27 @@ export function joinScanned(parts: readonly ScannedText[], separator: string): S
   return parts.join(separator) as ScannedText;
 }
 
-export function reviewFindingText(input: FindingTextInput): FindingText {
-  let scan: ResidualPiiScan;
+// Trimming removes characters; it can add nothing the scan refused. Callers that need a
+// trimmed value get it through the brand rather than dropping to `string` at the seam.
+export function trimScanned(text: ScannedText): ScannedText {
+  return text.trim() as ScannedText;
+}
 
-  // Composition sits inside the guard: an element that cannot be read as text detonates
-  // in the join, before the scanner ever sees it.
+export const findingContextSchema = z.array(z.string());
+
+export function reviewFindingText(input: FindingTextInput): FindingText {
+  // The scan reads a join, which coerces; the verdict brands the elements. Without this
+  // parse a non-string element is scanned as its coercion and branded as itself.
+  const parsed = findingContextSchema.safeParse(input.context);
+  if (!parsed.success) {
+    return { held: true, why: "unreadable" };
+  }
+
+  const context: readonly string[] = parsed.data;
+
+  let scan: ResidualPiiScan;
   try {
-    scan = scanResidualPii([input.headline, ...input.context].join("\n"));
+    scan = scanResidualPii([input.headline, ...context].join("\n"));
   } catch {
     return { held: true, why: "unreadable" };
   }
@@ -45,6 +60,6 @@ export function reviewFindingText(input: FindingTextInput): FindingText {
   return {
     held: false,
     headline: input.headline as ScannedText,
-    context: input.context as readonly ScannedText[],
+    context: context as readonly ScannedText[],
   };
 }

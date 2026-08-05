@@ -34,11 +34,35 @@ interface StageProps {
 
   readonly findingUnavailable: boolean;
 
+  // Whether the row was refused before the delivery lane could post it. Separate from the
+  // flag above, and never rendered as a reason — what was refused stays unnamed.
+  readonly findingWithheld: boolean;
+
   readonly delivery: FirstRunDeliveryState;
 
   // Written by the delivery lane when the post failed, so the repair is the sentence
   // that already exists rather than a second one composed on this screen.
   readonly deliveryReason: string | null;
+}
+
+// Where it went, for the one state that cannot show it. NOT `renderDeliveryClosure`: an
+// unrenderable row correlates no delivery, so `delivery` is always "none" here and that
+// helper would answer "nowhere" for a channel that did receive it.
+function unreadableClosureOf(props: StageProps): string | null {
+  const { channelId } = props;
+
+  if (!props.findingUnavailable) return null;
+
+  if (!isDeliveryAddress(channelId)) return STAGE_NO_DELIVERY_LINE;
+
+  // The delivery lane drops a withheld row on the same terms this read did, so the
+  // channel holds no copy and nobody is sent there to look for one.
+  if (props.findingWithheld) return null;
+
+  return STAGE_UNREADABLE_DELIVERED_TEMPLATE.replaceAll(
+    "{channel}",
+    props.channelLabel?.trim() || channelId,
+  );
 }
 
 export function Stage(props: StageProps) {
@@ -49,17 +73,7 @@ export function Stage(props: StageProps) {
   const mountedAs = useRef(state.kind);
   const arriving = state.kind !== mountedAs.current;
 
-  // Where it went, for the one state that cannot show it. NOT `renderDeliveryClosure`:
-  // an unrenderable row correlates no delivery, so `delivery` is always "none" here and
-  // that helper would answer "nowhere" for a channel that did receive it (B-042).
-  const unreadableClosure = !props.findingUnavailable
-    ? null
-    : isDeliveryAddress(props.channelId)
-      ? STAGE_UNREADABLE_DELIVERED_TEMPLATE.replaceAll(
-          "{channel}",
-          props.channelLabel?.trim() || props.channelId,
-        )
-      : STAGE_NO_DELIVERY_LINE;
+  const unreadableClosure = unreadableClosureOf(props);
 
   return (
     <Stack gap="sm">

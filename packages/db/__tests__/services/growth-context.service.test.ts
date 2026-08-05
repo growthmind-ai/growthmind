@@ -15,7 +15,10 @@ import { createFindingsRepo, type MeasuredCountRow } from "../../src/repositorie
 import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
 import type { ScopedDb } from "../../src/repositories/types";
 import { createFixesService } from "../../src/services/fixes.service";
-import { createGrowthContextService } from "../../src/services/growth-context.service";
+import {
+  createGrowthContextService,
+  GROWTH_CONTEXT_ITEM_LIMIT,
+} from "../../src/services/growth-context.service";
 import { sha256Hex, type SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import {
@@ -150,6 +153,51 @@ async function seedHeldFinding(
 
   return { findingId: row.id, signature };
 }
+
+// Written straight to the table so `createdAt` is chosen rather than defaulted: the cap
+// only reorders rows if the order is deterministic.
+async function seedRowAt(
+  db: TestDb,
+  seed: SeedUnscannedFinding,
+  seeded: Seeded,
+  input: {
+    readonly label: string;
+    readonly surface: string;
+    readonly headline: string;
+    readonly createdAt: Date;
+  },
+): Promise<{ readonly findingId: string; readonly signature: SignatureHex }> {
+  const run = await seedAnalysisRun(db, { ctx: seeded.org.ctx, projectId: seeded.projectId });
+  const signature = sha256Hex(`growth-context.service.test:${input.label}`);
+
+  const row = await seed(db, {
+    ctx: seeded.org.ctx,
+    projectId: seeded.projectId,
+    runId: run.id,
+    headline: input.headline,
+    context: ["Something was measured here."],
+    signature,
+    surface: input.surface,
+    counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
+    createdAt: input.createdAt,
+  });
+
+  await createFindingPayloadsRepo(db, seeded.org.ctx).upsertFor({
+    findingId: row.id,
+    payload: fixSpecPayload({ surface: input.surface }),
+  });
+
+  return { findingId: row.id, signature };
+}
+
+const CAP_EPOCH = new Date("2026-07-20T00:00:00.000Z");
+
+const MINUTE_MS = 60_000;
+
+const minutesAfterEpoch = (minutes: number): Date =>
+  new Date(CAP_EPOCH.getTime() + minutes * MINUTE_MS);
+
+const HELD_HEADLINE = `People stop at the second step, and one wrote in as ${OFFENDER}`;
 
 describe("growth context service", () => {
   let db: TestDb;
@@ -445,6 +493,110 @@ describe("growth context service", () => {
       "Ask for a company name on the first screen",
     ]);
 
+    expect(JSON.stringify(read)).not.toContain(OFFENDER);
+  });
+
+  test("a held row inside the cap does not spend the slot of a clean row just past it", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+    const seeded = await seedProjectFor(db, "held-cap");
+    const surface = "/onboarding";
+
+    // The clean row is the oldest of the eleven, so every held row sorts ahead of it.
+    const clean = await seedRowAt(db, seedUnscannedFinding, seeded, {
+      label: "held-cap-clean",
+      surface,
+      headline: "People stop at the second step",
+      createdAt: CAP_EPOCH,
+    });
+
+    for (let held = 0; held < GROWTH_CONTEXT_ITEM_LIMIT; held += 1) {
+      await seedRowAt(db, seedUnscannedFinding, seeded, {
+        label: `held-cap-held-${held}`,
+        surface,
+        headline: HELD_HEADLINE,
+        createdAt: minutesAfterEpoch(held + 1),
+      });
+    }
+
+    const read = await createGrowthContextService(db, seeded.org.ctx).read({
+      projectId: seeded.projectId,
+      surface,
+    });
+
+    expect(read.knownProblems.map((problem) => problem.findingId)).toEqual([clean.findingId]);
+    expect(JSON.stringify(read)).not.toContain(OFFENDER);
+  });
+
+  test("the cap still holds once the rows surviving it fill it", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+    const seeded = await seedProjectFor(db, "clean-cap");
+    const surface = "/onboarding";
+
+    for (let clean = 0; clean < GROWTH_CONTEXT_ITEM_LIMIT + 2; clean += 1) {
+      await seedRowAt(db, seedUnscannedFinding, seeded, {
+        label: `clean-cap-${clean}`,
+        surface,
+        headline: "People stop at the second step",
+        createdAt: minutesAfterEpoch(clean),
+      });
+    }
+
+    const read = await createGrowthContextService(db, seeded.org.ctx).read({
+      projectId: seeded.projectId,
+      surface,
+    });
+
+    expect(read.knownProblems).toHaveLength(GROWTH_CONTEXT_ITEM_LIMIT);
+  });
+
+  test("a held dismissal inside the cap does not spend the slot of a clean one just past it", async () => {
+    const seedUnscannedFinding = await loadSeedUnscannedFinding();
+    const seeded = await seedProjectFor(db, "held-cap-declined");
+    const surface = "/onboarding";
+    const dismissals = createDismissalsRepo(db, seeded.org.ctx);
+
+    const clean = await seedRowAt(db, seedUnscannedFinding, seeded, {
+      label: "held-cap-declined-clean",
+      surface,
+      headline: "Ask for a company name on the first screen",
+      createdAt: CAP_EPOCH,
+    });
+
+    await dismissals.record({
+      projectId: seeded.projectId,
+      findingId: clean.findingId,
+      signature: clean.signature,
+      action: "not_useful",
+      dismissedByUserId: seeded.org.ctx.userId,
+      dismissedAt: CAP_EPOCH,
+    });
+
+    for (let held = 0; held < GROWTH_CONTEXT_ITEM_LIMIT; held += 1) {
+      const row = await seedRowAt(db, seedUnscannedFinding, seeded, {
+        label: `held-cap-declined-${held}`,
+        surface,
+        headline: HELD_HEADLINE,
+        createdAt: minutesAfterEpoch(held + 1),
+      });
+
+      await dismissals.record({
+        projectId: seeded.projectId,
+        findingId: row.findingId,
+        signature: row.signature,
+        action: "not_useful",
+        dismissedByUserId: seeded.org.ctx.userId,
+        dismissedAt: minutesAfterEpoch(held + 1),
+      });
+    }
+
+    const read = await createGrowthContextService(db, seeded.org.ctx).read({
+      projectId: seeded.projectId,
+      surface,
+    });
+
+    expect(read.declined.map((row): string => row.headline)).toEqual([
+      "Ask for a company name on the first screen",
+    ]);
     expect(JSON.stringify(read)).not.toContain(OFFENDER);
   });
 });

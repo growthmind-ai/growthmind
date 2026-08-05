@@ -122,6 +122,7 @@ const stageMarkup = (
       channelId,
       channelLabel: channelId,
       findingUnavailable: false,
+      findingWithheld: false,
       delivery,
       deliveryReason,
     }),
@@ -805,7 +806,12 @@ describe("the delivery read may never cost the screen", () => {
         db: blind,
         ctx: orgA.scope.ctx,
         projectId: orgA.projectId,
-        facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
+        facts: {
+          ...FOUND,
+          findingId: orgA.findingId,
+          findingUnavailable: false,
+          findingWithheld: false,
+        },
       });
     } finally {
       restore();
@@ -851,7 +857,12 @@ describe("the delivery read may never cost the screen", () => {
       db: bed.db,
       ctx: orgA.scope.ctx,
       projectId: orgA.projectId,
-      facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
+      facts: {
+        ...FOUND,
+        findingId: orgA.findingId,
+        findingUnavailable: false,
+        findingWithheld: false,
+      },
     });
     expect(readable.agentConnection).toEqual({ kind: "waiting" });
 
@@ -872,7 +883,12 @@ describe("the delivery read may never cost the screen", () => {
         db: blind,
         ctx: orgA.scope.ctx,
         projectId: orgA.projectId,
-        facts: { ...FOUND, findingId: orgA.findingId, findingUnavailable: false },
+        facts: {
+          ...FOUND,
+          findingId: orgA.findingId,
+          findingUnavailable: false,
+          findingWithheld: false,
+        },
       });
     } finally {
       restore();
@@ -915,6 +931,7 @@ describe("the delivery read may never cost the screen", () => {
       facts: {
         findingId: null,
         findingUnavailable: false,
+        findingWithheld: false,
         armedAt: null,
         retrievedAt: null,
         readingAt: null,

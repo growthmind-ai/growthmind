@@ -191,6 +191,43 @@ async function seedHeldFindingIn(
   return seeded;
 }
 
+// Written unscanned so the stored context is exactly what the test names: `persist` only
+// accepts text a mint has already branded, which is the shape under test here.
+async function seedRawContext(
+  db: TestDb,
+  seed: SeedUnscannedFinding,
+  label: string,
+  context: readonly string[],
+): Promise<{ readonly org: SeededOrgWithOwner; readonly id: string }> {
+  const org = await seedOrgWithOwner(db, {
+    orgName: NAMES.orgName(label),
+    userName: NAMES.userName(label),
+    email: NAMES.email(label),
+  });
+  const projectId = (
+    await seedProject(db, { organizationId: org.organizationId, name: NAMES.projectName(label) })
+  ).id;
+  const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId });
+
+  const seeded = await seed(db, {
+    ctx: org.ctx,
+    projectId,
+    runId: run.id,
+    headline: CLEAN_TEXT.headline,
+    context,
+    signature: sha256Hex(`fixes.service.test:${label}`),
+    surface: RENDERABLE_SURFACE,
+    counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
+  });
+
+  await createFindingPayloadsRepo(db, org.ctx).upsertFor({
+    findingId: seeded.id,
+    payload: fixSpecPayload({ surface: RENDERABLE_SURFACE }),
+  });
+
+  return { org, id: seeded.id };
+}
+
 async function teammateContextFor(db: TestDb, org: SeededOrgWithOwner): Promise<TenantContext> {
   const teammate = await seedUser(db, {
     name: NAMES.userName("teammate"),
@@ -639,9 +676,12 @@ describe("fixes service", () => {
     try {
       expect(await createFixesService(db, org.ctx).readFinding(held.id)).toBeNull();
 
+      // `warn`: every legacy row is unscanned, so one read over them must not emit an
+      // error line per row.
       const lines = logged.filter(
-        (record) => record.level === "error" && record.fields.findingId === held.id,
+        (record) => record.level === "warn" && record.fields.findingId === held.id,
       );
+      expect(logged.filter((record) => record.level === "error")).toEqual([]);
       expect(lines).toHaveLength(1);
       expect(HOLD_REASONS as readonly unknown[]).toContain(lines[0]?.fields.reason);
       expect([...RESIDUAL_PII_KINDS, null] as readonly unknown[]).toContain(lines[0]?.fields.kind);
@@ -653,6 +693,33 @@ describe("fixes service", () => {
     } finally {
       restore();
     }
+  });
+
+  test("readFinding trims the detail it returns, so padding a row cannot widen get_finding's answer", async () => {
+    const seeded = await seedRawContext(db, await loadSeedUnscannedFinding(), "padded-detail", [
+      "  ",
+      CLEAN_TEXT.context[0],
+      "  ",
+    ]);
+
+    const read = await createFixesService(db, seeded.org.ctx).readFinding(seeded.id);
+    const detail: string = read?.detail ?? "";
+
+    expect(detail).toBe(CLEAN_TEXT.context[0]);
+    expect(detail).toBe(detail.trim());
+  });
+
+  test("a context that is nothing but padding still falls back to the headline", async () => {
+    // The value tested for emptiness and the value returned are the same one, so a row
+    // that reads as empty cannot be returned as whitespace.
+    const seeded = await seedRawContext(db, await loadSeedUnscannedFinding(), "empty-detail", [
+      "  ",
+      "  ",
+    ]);
+
+    const read = await createFixesService(db, seeded.org.ctx).readFinding(seeded.id);
+
+    expect(read?.detail).toBe(CLEAN_TEXT.headline);
   });
 });
 

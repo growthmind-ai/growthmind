@@ -175,6 +175,10 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const findingUnavailable = current.findingUnavailable === true;
   const terminal = kind === "finding" || kind === "ended" || findingUnavailable;
 
+  // Read off the payload beside the flag above rather than inferred from it: the stage
+  // may only name a channel for a row the delivery lane was willing to post.
+  const findingWithheld = current.findingWithheld === true;
+
   const connectionState = current.counter.state;
   const attached = isAnalyticsAttached(
     connectionState.status === "not_connected" ? null : connectionState.status,
@@ -359,6 +363,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
               channelId={current.channelId}
               channelLabel={current.channelLabel}
               findingUnavailable={findingUnavailable}
+              findingWithheld={findingWithheld}
               delivery={current.deliveryState}
               deliveryReason={current.deliveryFailureReason ?? null}
             />

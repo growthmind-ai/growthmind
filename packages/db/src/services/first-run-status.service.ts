@@ -19,6 +19,10 @@ export interface FirstRunStatusFacts extends StagePersistedFacts {
 
   // A row is there and will not render — not simply `finding === null`.
   readonly findingUnavailable: boolean;
+
+  // The text was refused at the read seam, and the delivery lane refuses it on the same
+  // terms — so no channel holds a copy, and no screen may send a reader to one.
+  readonly findingWithheld: boolean;
 }
 
 export interface FirstRunStatusService {
@@ -38,14 +42,23 @@ interface NewestFinding {
   readonly id: string | null;
   readonly finding: OnboardingFinding | null;
   readonly unavailable: boolean;
+  readonly withheld: boolean;
 }
 
 // Absent, and could-not-read-it-just-now. `findingUnavailable` stops the poll, so a pool
 // timeout that reported one ended the watch for good (B-042).
-const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false };
+const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false, withheld: false };
 
 // A row IS there and will not render; re-reading changes nothing.
-const UNRENDERABLE: NewestFinding = { id: null, finding: null, unavailable: true };
+const UNRENDERABLE: NewestFinding = {
+  id: null,
+  finding: null,
+  unavailable: true,
+  withheld: false,
+};
+
+// Unrenderable here AND undelivered anywhere, which the shape refusal above is not.
+const WITHHELD: NewestFinding = { id: null, finding: null, unavailable: true, withheld: true };
 
 // A malformed row arrives as a `ZodError` from the repository DTO boundary; a pool
 // timeout arrives as a driver error. Same catch, opposite meanings.
@@ -121,15 +134,16 @@ async function readNewestFinding(
   const text = record.text;
   if (text.held) {
     // Both branches log, so a hold is never silent to an operator. The screen is told only
-    // that nothing renders: naming which hold describes what was withheld.
-    logger.error("first-run status: the newest finding's text is held, so no card is shown", {
+    // that nothing renders: naming which hold describes what was withheld. `warn`, not
+    // `error`: every row written before the scan existed reaches this line on every poll.
+    logger.warn("first-run status: the newest finding's text is held, so no card is shown", {
       organizationId: ctx.organizationId,
       projectId,
       findingId: record.id,
       ...describeHold(text),
     });
 
-    return fromThisWatch ? UNRENDERABLE : NO_FINDING;
+    return fromThisWatch ? WITHHELD : NO_FINDING;
   }
 
   const parsed = onboardingFindingSchema.safeParse({
@@ -161,7 +175,7 @@ async function readNewestFinding(
     return fromThisWatch ? UNRENDERABLE : NO_FINDING;
   }
 
-  return { id: record.id, finding: parsed.data, unavailable: false };
+  return { id: record.id, finding: parsed.data, unavailable: false, withheld: false };
 }
 
 export function createFirstRunStatusService(
@@ -184,6 +198,7 @@ export function createFirstRunStatusService(
         finding: newest.finding,
         findingId: newest.id,
         findingUnavailable: newest.unavailable,
+        findingWithheld: newest.withheld,
       };
 
       if (armedAt === null) {

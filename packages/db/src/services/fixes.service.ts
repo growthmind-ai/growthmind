@@ -33,6 +33,7 @@ import {
   describeHold,
   joinScanned,
   readFindingText,
+  trimScanned,
   type HeldFindingText,
   type ScannedText,
 } from "../repositories/finding-text";
@@ -143,8 +144,10 @@ function renders(spec: FixSpecInput): boolean {
   }
 }
 
+// `warn`, not `error`: every finding written before the scan existed is unscanned, so one
+// read over legacy rows would emit an error line per row and drown the ones that matter.
 function heldOut(findingId: string, text: HeldFindingText): void {
-  logger.error("fixes: a finding's text is held, so it is not read back", {
+  logger.warn("fixes: a finding's text is held, so it is not read back", {
     findingId,
     ...describeHold(text),
   });
@@ -273,13 +276,17 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       }
 
       const fix = await repo.findForFinding(findingId);
-      const detail = joinScanned(text.context, " ");
+
+      // Trimmed through the brand, and the same value is both tested and returned: reading
+      // an emptiness verdict off a trim the caller never receives is how `get_finding`
+      // came to answer text with leading and trailing whitespace.
+      const detail = trimScanned(joinScanned(text.context, " "));
 
       return {
         findingId: finding.id,
         fixId: fix?.id ?? null,
         headline: text.headline,
-        detail: detail.trim() === "" ? text.headline : detail,
+        detail: detail === "" ? text.headline : detail,
         surface: finding.surface,
         affected,
         firstSeenAt: finding.windowStart,

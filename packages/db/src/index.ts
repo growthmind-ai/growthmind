@@ -188,6 +188,7 @@ export {
   findingContextSchema,
   joinScanned,
   readFindingText,
+  trimScanned,
   type FindingText,
   type FindingTextRow,
   type HeldFindingText,

@@ -191,7 +191,12 @@ async function statusFor(lane: Lane): Promise<Record<string, unknown>> {
     db,
     ctx: lane.ctx,
     projectId: lane.projectId,
-    facts: { ...NO_MILESTONES, findingId: null, findingUnavailable: false },
+    facts: {
+      ...NO_MILESTONES,
+      findingId: null,
+      findingUnavailable: false,
+      findingWithheld: false,
+    },
   });
 
   return payload as unknown as Record<string, unknown>;

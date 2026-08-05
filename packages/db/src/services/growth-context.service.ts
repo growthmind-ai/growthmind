@@ -31,6 +31,11 @@ import { fixes } from "../schema/fixes";
 
 export const GROWTH_CONTEXT_ITEM_LIMIT = 10;
 
+// Held rows are dropped after SQL returns, so the cap cannot be the SQL limit: a held row
+// inside the window would take a slot from a clean row just past it. Bounded, because an
+// unscanned table can hold more of them than any multiple would cover.
+const GROWTH_CONTEXT_SCAN_LIMIT = GROWTH_CONTEXT_ITEM_LIMIT * 10;
+
 export interface RoledSurfaceNote {
   readonly surface: string;
   readonly role: SurfaceRole;
@@ -83,8 +88,10 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// `warn`, not `error`: every finding written before the scan existed is unscanned, so one
+// read over legacy rows would emit an error line per row and drown the ones that matter.
 function heldOut(findingId: string, text: HeldFindingText): void {
-  logger.error("growth context: a finding's text is held, so it is left out of the answer", {
+  logger.warn("growth context: a finding's text is held, so it is left out of the answer", {
     findingId,
     ...describeHold(text),
   });
@@ -162,7 +169,7 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         .from(findings)
         .where(s.owned(findings, eq(findings.projectId, input.projectId), surfaceFilter))
         .orderBy(desc(findings.createdAt))
-        .limit(GROWTH_CONTEXT_ITEM_LIMIT);
+        .limit(GROWTH_CONTEXT_SCAN_LIMIT);
 
       const findingIds = recent.map((row) => row.id);
       const affected = await affectedFor(findingIds);
@@ -179,8 +186,10 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
 
       const knownProblems: KnownProblemRow[] = [];
       for (const row of recent) {
-        // Nothing here is counted, so a held entry is simply absent — there is no total to
-        // correct, unlike `list_open_fixes`.
+        // The cap is applied to what survived, never in SQL: nothing here is counted, so a
+        // held row needs no total corrected — but it must not spend a slot either.
+        if (knownProblems.length === GROWTH_CONTEXT_ITEM_LIMIT) break;
+
         const text = readFindingText(row);
         if (text.held) {
           heldOut(row.id, text);
@@ -212,10 +221,12 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         .innerJoin(findings, and(eq(findings.id, dismissals.findingId), s.org(findings)))
         .where(s.owned(dismissals, eq(dismissals.projectId, input.projectId), surfaceFilter))
         .orderBy(desc(dismissals.dismissedAt))
-        .limit(GROWTH_CONTEXT_ITEM_LIMIT);
+        .limit(GROWTH_CONTEXT_SCAN_LIMIT);
 
       const declined: DeclinedIdeaRow[] = [];
       for (const row of declinedRows) {
+        if (declined.length === GROWTH_CONTEXT_ITEM_LIMIT) break;
+
         const text = readFindingText(row);
         if (text.held) {
           heldOut(row.findingId, text);

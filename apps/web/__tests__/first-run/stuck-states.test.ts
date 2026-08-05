@@ -48,6 +48,7 @@ const stageMarkup = (findingUnavailable: boolean): string =>
         channelId: null,
         channelLabel: null,
         findingUnavailable,
+        findingWithheld: false,
         delivery: "none" as const,
         deliveryReason: null,
       }),
@@ -251,7 +252,11 @@ describe("B-040 — a founder who armed and broke nothing can still leave", () =
 describe("B-042 — the fault state says where the finding went, and the exit says what it costs", () => {
   const CHANNEL = "C01AB2CD3EF";
 
-  const withChannel = (channelId: string | null, channelLabel: string | null): string =>
+  const withChannel = (
+    channelId: string | null,
+    channelLabel: string | null,
+    findingWithheld = false,
+  ): string =>
     renderToStaticMarkup(
       createElement(
         MantineProvider,
@@ -262,6 +267,7 @@ describe("B-042 — the fault state says where the finding went, and the exit sa
           channelId,
           channelLabel,
           findingUnavailable: true,
+          findingWithheld,
           delivery: "none" as const,
           deliveryReason: null,
         }),
@@ -298,6 +304,7 @@ describe("B-042 — the fault state says where the finding went, and the exit sa
             channelId: CHANNEL,
             channelLabel: "growth",
             findingUnavailable: false,
+            findingWithheld: false,
             delivery: "none" as const,
             deliveryReason: null,
           }),
@@ -307,6 +314,41 @@ describe("B-042 — the fault state says where the finding went, and the exit sa
 
     expect(healthy.text).not.toContain("#growth");
     expect(healthy.text).not.toContain(STAGE_NO_DELIVERY_LINE);
+  });
+
+  test("a withheld row names no channel, because the delivery lane refused it too", () => {
+    const rendered = readMarkup(withChannel(CHANNEL, "growth", true));
+
+    expect(rendered.text).not.toContain("#growth");
+    expect(rendered.text).not.toContain(`#${CHANNEL}`);
+
+    // The state is still terminal and still says so; what it stops doing is sending a
+    // reader to a channel that holds nothing.
+    expect(rendered.text).toContain(STAGE_UNREADABLE_HEADING);
+    expect(rendered.text).toContain(STAGE_FINDING_UNAVAILABLE);
+
+    // A connected channel makes this sentence false whatever the row's fault was.
+    expect(rendered.text).not.toContain(STAGE_NO_DELIVERY_LINE);
+  });
+
+  test("a withheld row with nowhere to deliver still says nowhere", () => {
+    for (const absent of [null, "", "null"]) {
+      expect(readMarkup(withChannel(absent, null, true)).text).toContain(STAGE_NO_DELIVERY_LINE);
+    }
+  });
+
+  test("the screen never names why a row was withheld, only that nothing renders", () => {
+    const withheld = readMarkup(withChannel(CHANNEL, "growth", true)).text;
+    const unparseable = readMarkup(withChannel(CHANNEL, "growth")).text;
+
+    for (const leak of ["residual_pii", "unreadable", "held", "withheld", "PII"]) {
+      expect(withheld).not.toContain(leak);
+    }
+
+    // Both faults render the same heading and the same sentence; only the delivery claim
+    // differs, and it differs because one of them is provably untrue.
+    expect(withheld).toContain(STAGE_UNREADABLE_HEADING);
+    expect(unparseable).toContain(STAGE_UNREADABLE_HEADING);
   });
 
   test("the exit warns what it costs while still waiting, and is not the dominant control", () => {

@@ -1,8 +1,7 @@
-import { reviewFindingText, type FindingText } from "@growthmind/core";
+import { findingContextSchema, reviewFindingText, type FindingText } from "@growthmind/core";
 import type { ResidualPiiKind } from "@growthmind/shared";
-import { z } from "zod";
 
-export { joinScanned } from "@growthmind/core";
+export { findingContextSchema, joinScanned, trimScanned } from "@growthmind/core";
 export type { FindingText, ScannedText } from "@growthmind/core";
 
 export type HeldFindingText = Extract<FindingText, { held: true }>;
@@ -11,8 +10,6 @@ export interface HoldDescription {
   readonly reason: HeldFindingText["why"];
   readonly kind: ResidualPiiKind | null;
 }
-
-export const findingContextSchema = z.array(z.string());
 
 export interface FindingTextRow {
   readonly headline: string;

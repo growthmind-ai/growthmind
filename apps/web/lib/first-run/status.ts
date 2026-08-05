@@ -40,6 +40,10 @@ import { slackOAuthConfigured } from "@/lib/slack/oauth";
 export type FirstRunStatusPayload = FirstRunStatus & {
   readonly findingUnavailable: boolean;
 
+  // Both REQUIRED, and never derived from each other: a row this screen cannot render
+  // may still have reached Slack, and a withheld one provably did not.
+  readonly findingWithheld: boolean;
+
   readonly connectionMessage: string;
 
   readonly slackSkippedAt: Date | null;
@@ -208,6 +212,7 @@ export async function buildFirstRunStatus(
   return {
     finding: facts.finding,
     findingUnavailable: facts.findingUnavailable,
+    findingWithheld: facts.findingWithheld,
     armedAt: facts.armedAt,
 
     retrievedAt: facts.retrievedAt,
