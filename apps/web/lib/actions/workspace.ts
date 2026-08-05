@@ -1,7 +1,7 @@
 "use server";
 
 import { createOrganizationsRepo } from "@growthmind/db";
-import { logger, workspaceNameSchema } from "@growthmind/shared";
+import { logger, mayAdminister, workspaceNameSchema } from "@growthmind/shared";
 
 import { getDb } from "@/lib/db";
 import { getTenantContext } from "@/lib/tenant";
@@ -22,7 +22,7 @@ export async function renameWorkspace(name: string): Promise<RenameWorkspaceResu
     return { ok: false, error: SAVE_FAILURE_MESSAGE };
   }
 
-  if (tenantContext.role !== "owner" && tenantContext.role !== "admin") {
+  if (!mayAdminister(tenantContext)) {
     logger.error("renameWorkspace: non-admin member attempted rename", {
       organizationId: tenantContext.organizationId,
       role: tenantContext.role,

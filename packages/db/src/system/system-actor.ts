@@ -1,4 +1,4 @@
-import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import { tenantContextSchema, type MachineRole, type TenantContext } from "@growthmind/shared";
 
 export const SYSTEM_ACTOR = {
   SESSION_SOURCE_POLL: "system:session-source-poll",
@@ -12,7 +12,7 @@ export const SYSTEM_ACTOR = {
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];
 
-export const SYSTEM_ACTOR_ROLE = "system";
+export const SYSTEM_ACTOR_ROLE = "system" satisfies MachineRole;
 
 export interface SystemScopeSource {
   readonly organizationId: string;

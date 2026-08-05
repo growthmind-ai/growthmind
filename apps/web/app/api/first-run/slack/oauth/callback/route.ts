@@ -130,7 +130,6 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
         slackCredentialAad(ctx),
       ),
       credentialKeyId: keyIdOf(resolution.key),
-      connectedByUserId: ctx.userId,
       connectedAt: deps.now(),
     });
   } catch (error) {

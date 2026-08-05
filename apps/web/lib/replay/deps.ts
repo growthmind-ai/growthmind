@@ -1,7 +1,7 @@
 import type { ReplaySource } from "@growthmind/adapters";
 import { createPostHogReplaySource } from "@growthmind/adapters";
 import type { ScopedDb } from "@growthmind/db";
-import { createProjectConnectionsRepo, ensureProject } from "@growthmind/db";
+import { createProjectConnectionsRepo, findFirstProjectForOrg } from "@growthmind/db";
 import type { CredentialKey, CredentialKeyResolution, TenantContext } from "@growthmind/shared";
 import {
   deriveIdentityHmacKey,
@@ -48,7 +48,14 @@ function makeSourceFor(
   const key: CredentialKey = resolution.key;
 
   return async (ctx) => {
-    const { projectId } = await ensureProject(db, ctx);
+    // Reading recordings must not provision anything. No project yet means nothing has been
+    // connected yet, which is the answer the connection lookup below would give anyway.
+    const project = await findFirstProjectForOrg(db, ctx);
+    if (project === undefined) {
+      return { ok: false, code: "no_connection" };
+    }
+
+    const projectId = project.id;
     const repo = createProjectConnectionsRepo(db, ctx);
 
     const connection = await repo.getActiveForProject(projectId);

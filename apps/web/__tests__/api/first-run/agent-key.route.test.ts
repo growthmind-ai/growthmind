@@ -62,7 +62,7 @@ async function rawRows(query: string): Promise<Record<string, unknown>[]> {
 
 async function keyRows(organizationId: string): Promise<Record<string, unknown>[]> {
   return rawRows(
-    `select id, organization_id, name, key_hash, key_prefix from api_keys ` +
+    `select id, organization_id, name, key_hash, key_prefix, created_by_user_id from api_keys ` +
       `where organization_id = '${organizationId}'`,
   );
 }
@@ -151,6 +151,21 @@ describe("POST /api/first-run/agent/key — the mint (D-5, AC-1)", () => {
       const value = String(rows[0]?.[column]);
       expect(`${column} leaked: ${serialized.includes(value)}`).toBe(`${column} leaked: false`);
     }
+  });
+
+  // A key reads this organization's findings for as long as it lives, so "who issued this"
+  // has to be answerable. The route passes no actor — the repository stamps it off the
+  // context, which is the one place that cannot be forgotten at a call site.
+  test("names the member who minted it", async () => {
+    const handle = await loadRouteHandler(AGENT_KEY);
+    const scope = await bed.member("attributed");
+
+    const response = await handle(routeRequest(AGENT_KEY, { provider: "cursor" }), depsFor(scope));
+    expect(response.status).toBe(200);
+
+    const rows = await keyRows(scope.organizationId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.created_by_user_id).toBe(scope.userId);
   });
 
   test("the strict object refuses a client-supplied organization, never strips it (D7)", async () => {

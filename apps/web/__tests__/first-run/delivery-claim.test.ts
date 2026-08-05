@@ -307,7 +307,6 @@ async function seedLane(scope: SeededMemberScope): Promise<Lane> {
     workspaceName: "Acme",
     credentialCiphertext: "v1.deadbeef.aaaa.bbbb.cccc",
     credentialKeyId: "deadbeef",
-    connectedByUserId: scope.userId,
     connectedAt: new Date("2026-08-01T09:00:00.000Z"),
   });
 

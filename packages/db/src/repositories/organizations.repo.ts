@@ -1,6 +1,6 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 
-import type { TenantContext } from "@growthmind/shared";
+import { parseMemberRoles, type TenantContext } from "@growthmind/shared";
 
 import { member, organization, user } from "../schema/auth";
 import { scoped } from "./scope";
@@ -37,17 +37,18 @@ export function createOrganizationsRepo(db: ScopedExecutor, ctx: TenantContext):
     },
 
     async creatorEmail(): Promise<string | null> {
-      const row = s.maybe(
-        await db
-          .select({ email: user.email })
-          .from(member)
-          .innerJoin(user, eq(user.id, member.userId))
-          .where(and(s.org(member), eq(member.role, "owner")))
-          .orderBy(asc(member.createdAt))
-          .limit(1),
-      );
+      // The role filter is applied here rather than in SQL because the column holds several
+      // roles comma-joined, which `eq(member.role, "owner")` does not match.
+      const rows = await db
+        .select({ email: user.email, role: member.role })
+        .from(member)
+        .innerJoin(user, eq(user.id, member.userId))
+        .where(s.org(member))
+        .orderBy(asc(member.createdAt));
 
-      const email = row?.email ?? null;
+      const owner = rows.find((row) => parseMemberRoles(row.role).includes("owner"));
+
+      const email = owner?.email ?? null;
       return email !== null && email.length > 0 ? email : null;
     },
   };

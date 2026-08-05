@@ -56,6 +56,19 @@ export {
 export { resolveActiveOrganization } from "./tenancy/resolve-active-organization";
 export { deriveTenantContext } from "./tenancy/derive-tenant-context";
 export { deriveWorkspaceName } from "./tenancy/derive-workspace-name";
+export {
+  MEMBER_ROLES,
+  ADMINISTERING_ROLES,
+  MACHINE_ROLES,
+  memberRoleSchema,
+  parseMemberRoles,
+  isMachinePrincipal,
+  mayAdminister,
+  memberUserId,
+  type MemberRole,
+  type MachineRole,
+  type PrincipalRole,
+} from "./tenancy/roles";
 
 export {
   writeKeyKindSchema,

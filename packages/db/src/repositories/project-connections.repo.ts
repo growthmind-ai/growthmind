@@ -8,7 +8,7 @@ import type {
   SourceFailureCode,
   TenantContext,
 } from "@growthmind/shared";
-import { credentialAad, decryptSecret } from "@growthmind/shared";
+import { credentialAad, decryptSecret, memberUserId } from "@growthmind/shared";
 import { eq, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
@@ -151,6 +151,7 @@ export function createProjectConnectionsRepo(
           credentialKeyId: input.credentialKeyId,
           isActive: true,
           health: input.health,
+          connectedByUserId: memberUserId(ctx),
           connectedAt: input.connectedAt,
           nextPollAt: input.nextPollAt,
         });

@@ -129,7 +129,6 @@ beforeAll(async () => {
     channelId: CHANNEL_ID,
     credentialCiphertext: CIPHERTEXT,
     credentialKeyId: CREDENTIAL_KEY_ID,
-    connectedByUserId: connected.userId,
     connectedAt: CONNECTED_AT,
   });
 

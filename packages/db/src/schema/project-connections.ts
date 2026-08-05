@@ -17,7 +17,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { organization, user } from "./auth";
 import { projects } from "./projects";
 
 const SOURCE_KINDS = ["posthog"] as const satisfies readonly [
@@ -79,6 +79,13 @@ export const projectConnections = pgTable(
     nextPollAt: timestamp("next_poll_at", { withTimezone: true }).defaultNow().notNull(),
 
     pollIntervalSeconds: integer("poll_interval_seconds").default(60).notNull(),
+
+    // Who attached this org's analytics. Nullable: rows written before the column, and any
+    // written by a non-human principal, have no user to name. `set null` because losing the
+    // author's account must not take the org's connection with it.
+    connectedByUserId: text("connected_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
     connectedAt: timestamp("connected_at", { withTimezone: true }).defaultNow().notNull(),
 
     inferredInternalDomain: text("inferred_internal_domain"),
