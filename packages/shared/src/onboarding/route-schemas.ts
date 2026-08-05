@@ -2,7 +2,8 @@
 // (WIRE-Z1). Every one is `z.strictObject`: a plain `z.object` strips a tenancy key and 200s.
 import { z } from "zod";
 
-import { ICP_STATEMENT_MAX, icpBeliefKindSchema } from "../growth/icp";
+import { businessFactKindSchema } from "../growth/business";
+import { STATEMENT_MAX } from "../growth/provenance";
 import { surfaceRoleSchema } from "../growth/types";
 
 export const firstRunStatusInputSchema = z.strictObject({});
@@ -76,12 +77,24 @@ export const settingsSiteInputSchema = z.strictObject({
 });
 export type SettingsSiteInput = z.infer<typeof settingsSiteInputSchema>;
 
-export const settingsBeliefInputSchema = z.strictObject({
-  kind: icpBeliefKindSchema,
+export const settingsBusinessFactInputSchema = z
+  .strictObject({
+    kind: businessFactKindSchema,
 
-  was: z.string().min(1).max(ICP_STATEMENT_MAX),
+    // Null adds a fact rather than replacing one. Five of the twelve kinds have no reader
+    // that could ever propose them, so adding is the only way they are ever filled.
+    was: z.string().min(1).max(STATEMENT_MAX).nullable(),
 
-  // Null removes the belief.
-  statement: z.string().min(1).max(ICP_STATEMENT_MAX).nullable(),
-});
-export type SettingsBeliefInput = z.infer<typeof settingsBeliefInputSchema>;
+    // Null removes the fact named by `was`.
+    statement: z.string().min(1).max(STATEMENT_MAX).nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.was === null && value.statement === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["statement"],
+        message: "an addition has to say something: there is no earlier statement to remove",
+      });
+    }
+  });
+export type SettingsBusinessFactInput = z.infer<typeof settingsBusinessFactInputSchema>;

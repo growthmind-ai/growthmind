@@ -57,7 +57,7 @@ const ALLOWED: readonly Allowed[] = [
     why: "the Slack HTTP port, not the database",
   },
   {
-    file: "tasks/icp-research.ts",
+    file: "tasks/business-research.ts",
     wraps: "deps.fetchSite",
     why: "someone else's web server over HTTP, not the database; the write beside it uses the driver-safe describer",
   },

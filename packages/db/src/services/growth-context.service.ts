@@ -7,9 +7,12 @@ import {
   type MeasuredCount,
 } from "@growthmind/core";
 import {
+  isObservedProvenance,
+  isStatedByAPerson,
   logger,
+  type BusinessFactKind,
+  type FactSeen,
   type ForbiddenReason,
-  type IcpBeliefKind,
   type SurfaceRole,
   type TenantContext,
 } from "@growthmind/shared";
@@ -55,11 +58,13 @@ export interface DeclinedIdeaRow {
   readonly declinedAt: Date;
 }
 
-export interface AudienceBeliefRow {
-  readonly kind: IcpBeliefKind;
+export interface BusinessFactRow {
+  readonly kind: BusinessFactKind;
   readonly statement: string;
   readonly statedByAPerson: boolean;
   readonly readFrom: string | null;
+  readonly observed: boolean;
+  readonly seen: FactSeen | null;
 }
 
 export interface GrowthContextReadModel {
@@ -72,7 +77,7 @@ export interface GrowthContextReadModel {
   readonly whatMatters: readonly RoledSurfaceNote[];
   readonly knownProblems: readonly KnownProblemRow[];
   readonly declined: readonly DeclinedIdeaRow[];
-  readonly audience: readonly AudienceBeliefRow[];
+  readonly business: readonly BusinessFactRow[];
 }
 
 export interface ReadGrowthContextInput {
@@ -139,7 +144,7 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
   return {
     async read(input: ReadGrowthContextInput): Promise<GrowthContextReadModel> {
       const context = await growth.findForProject(input.projectId);
-      const site = await growth.readSiteResearch(input.projectId);
+      const site = await growth.readBusinessResearch(input.projectId);
 
       const changeable =
         input.surface === null
@@ -243,13 +248,16 @@ export function createGrowthContextService(db: ScopedDb, ctx: TenantContext): Gr
         whatMatters: roled,
         knownProblems,
         declined,
-        // Not narrowed by surface: who the product is for is true of the product, not of
-        // one page, and an agent asking about `/checkout` still wants to know who arrives.
-        audience: (site?.icp.beliefs ?? []).slice(0, GROWTH_CONTEXT_ITEM_LIMIT).map((belief) => ({
-          kind: belief.kind,
-          statement: belief.statement,
-          statedByAPerson: belief.provenance.source === "stated_by_customer",
-          readFrom: belief.provenance.citation,
+        // Not narrowed by surface, and not capped at the same ten as the rest: a licence or
+        // a forbidden move is true of the business whatever page an agent is asking about,
+        // and a constraint that fell off the end of a list is a constraint nothing enforces.
+        business: (site?.businessContext.facts ?? []).map((fact) => ({
+          kind: fact.kind,
+          statement: fact.statement,
+          statedByAPerson: isStatedByAPerson(fact.provenance),
+          readFrom: fact.provenance.citation,
+          observed: isObservedProvenance(fact.provenance),
+          seen: fact.provenance.seen,
         })),
       };
     },

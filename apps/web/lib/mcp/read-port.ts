@@ -1,5 +1,6 @@
 import type { FixSpecInput } from "@growthmind/core";
 import type {
+  BusinessFactKind,
   FindingEvidence,
   FixStatus,
   McpMeasuredCount,
@@ -97,11 +98,16 @@ export interface DeclinedIdeaRow {
   readonly declinedAt: string;
 }
 
-export interface AudienceBeliefRow {
-  readonly about: "who it is for" | "what they believe" | "what they are trying to do";
+export interface BusinessFactRow {
+  readonly about: BusinessFactKind;
+  readonly heading: string;
+  readonly means: string;
   readonly statement: string;
+  readonly binding: boolean;
   readonly toldToUs: boolean;
   readonly readFrom: string | null;
+  readonly observed: boolean;
+  readonly seenIn: string | null;
 }
 
 export interface GrowthContextRecord {
@@ -112,7 +118,7 @@ export interface GrowthContextRecord {
   readonly whatMatters: readonly SurfaceNoteRow[];
   readonly knownProblems: readonly KnownProblemRow[];
   readonly declined: readonly DeclinedIdeaRow[];
-  readonly audience: readonly AudienceBeliefRow[];
+  readonly business: readonly BusinessFactRow[];
 }
 
 export interface GetGrowthContextQuery {

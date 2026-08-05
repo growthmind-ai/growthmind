@@ -1,60 +1,33 @@
 import type { ScopedDb } from "@growthmind/db";
 import { createGrowthContextRepo, describeDriverError } from "@growthmind/db";
+import { logger, type TenantContext } from "@growthmind/shared";
+
 import {
-  logger,
-  type IcpBeliefKind,
-  type ResearchStatus,
-  type TenantContext,
-} from "@growthmind/shared";
+  NOTHING_READ,
+  toBindingLanes,
+  toShapingLanes,
+  type BusinessResearchView,
+} from "./business";
 
-export interface SiteBeliefView {
-  readonly kind: IcpBeliefKind;
-  readonly statement: string;
-
-  // Null when a person told us rather than a page saying it.
-  readonly readFrom: string | null;
-
-  // What this replaced, when a person corrected it.
-  readonly correctedFrom: string | null;
-}
-
-export interface SiteResearchView {
-  readonly domain: string | null;
-  readonly status: ResearchStatus;
-  readonly failure: string | null;
-  readonly beliefs: readonly SiteBeliefView[];
-}
-
-const NOTHING_READ: SiteResearchView = {
-  domain: null,
-  status: "never_run",
-  failure: null,
-  beliefs: [],
-};
-
-export async function readSiteResearch(
+export async function readBusinessResearch(
   db: ScopedDb,
   ctx: TenantContext,
   projectId: string,
-): Promise<SiteResearchView> {
+): Promise<BusinessResearchView> {
   try {
-    const row = await createGrowthContextRepo(db, ctx).readSiteResearch(projectId);
+    const row = await createGrowthContextRepo(db, ctx).readBusinessResearch(projectId);
     if (row === null) return NOTHING_READ;
 
     return {
       domain: row.siteDomain,
       status: row.researchStatus,
       failure: row.researchFailure,
-      beliefs: row.icp.beliefs.map((belief) => ({
-        kind: belief.kind,
-        statement: belief.statement,
-        readFrom: belief.provenance.citation,
-        correctedFrom: belief.correctedFrom,
-      })),
+      binding: toBindingLanes(row.businessContext),
+      shaping: toShapingLanes(row.businessContext),
     };
   } catch (error) {
     // This section failing must not take the connection and delivery controls with it.
-    logger.error("settings: the site section could not be read", {
+    logger.error("settings: the business section could not be read", {
       projectId,
       reason: describeDriverError(error),
     });

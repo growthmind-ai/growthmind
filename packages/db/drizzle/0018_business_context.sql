@@ -1,0 +1,1 @@
+ALTER TABLE "growth_context" ADD COLUMN "business_context" jsonb DEFAULT '{"facts":[]}'::jsonb NOT NULL;

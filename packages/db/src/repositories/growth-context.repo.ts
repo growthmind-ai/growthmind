@@ -5,12 +5,15 @@ import {
   type RoledSurface,
 } from "@growthmind/core";
 import {
-  EMPTY_ICP,
+  BUSINESS_FACT_LIMIT,
+  FACTS_PER_KIND_MAX,
   URL_PATH_NORMALISATION_VERSION,
-  icpModelSchema,
+  capFactsPerKind,
   logger,
-  type IcpBeliefKind,
-  type IcpModel,
+  readBusinessContext,
+  type BusinessContext,
+  type BusinessFact,
+  type BusinessFactKind,
   type ResearchStatus,
   type SurfaceRole,
   type TenantContext,
@@ -41,26 +44,33 @@ export interface StatePageRoleInput {
   readonly changeable?: boolean;
 }
 
-export interface SiteResearchRow {
+export interface BusinessResearchRow {
   readonly siteDomain: string | null;
-  readonly icp: IcpModel;
+  readonly businessContext: BusinessContext;
   readonly researchStatus: ResearchStatus;
   readonly researchedAt: Date | null;
   readonly researchFailure: string | null;
+
+  // The stamp a later write checks itself against. The nightly tick, the site read and a
+  // person editing all write this one row.
+  readonly updatedAt: Date;
 }
 
-export interface CorrectBeliefInput {
+export interface StateFactInput {
   readonly projectId: string;
-  readonly kind: IcpBeliefKind;
+  readonly kind: BusinessFactKind;
 
-  // The statement being replaced, as the person saw it.
-  readonly was: string;
+  // Null adds. Five of the twelve kinds have no reader that could ever propose them, so
+  // this is the only way they are ever filled.
+  readonly was: string | null;
 
-  // Null removes the belief outright: a claim that is simply untrue of this product is
-  // worth less than no claim.
+  // Null removes the fact named by `was`: a rule that is simply untrue of this business is
+  // worth less than no rule.
   readonly statement: string | null;
   readonly statedAt: Date;
 }
+
+export type StateFactOutcome = "stated" | "not_found" | "full";
 
 export interface GrowthContextSnapshot {
   readonly context: GrowthContext;
@@ -88,24 +98,30 @@ export interface GrowthContextRepo {
   // the read and the write must not have that confirmation derived away.
   saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean>;
 
-  // The site the ICP is read from, and where the research got to. Read together because a
-  // domain with no outcome beside it is a screen that cannot say whether anything happened.
-  readSiteResearch(projectId: string): Promise<SiteResearchRow | null>;
+  // The site the business context is read from, and where the read got to. Read together
+  // because a domain with no outcome beside it is a screen that cannot say whether anything
+  // happened.
+  readBusinessResearch(projectId: string): Promise<BusinessResearchRow | null>;
 
-  // A person naming the site. Clears the previous outcome: the beliefs on the row describe
-  // the domain that was there before, and leaving them beside a new one is a lie of layout.
+  // A person naming the site. Drops what the previous domain's pages said and keeps what a
+  // person stated: a conversion or a licence is true of the business, not of the URL.
   stateSiteDomain(input: { projectId: string; siteDomain: string | null }): Promise<void>;
 
   markResearchRunning(projectId: string): Promise<void>;
 
-  recordResearch(input: { projectId: string; icp: IcpModel; researchedAt: Date }): Promise<void>;
+  // Replaces what the last read of the site said and nothing else. A person's corrections
+  // outrank every later read of the pages they corrected.
+  recordResearch(input: {
+    projectId: string;
+    facts: readonly BusinessFact[];
+    researchedAt: Date;
+  }): Promise<void>;
 
   recordResearchFailure(input: { projectId: string; failure: string }): Promise<void>;
 
-  // A person disagreeing with a belief. `statement: null` removes it. Either way the row is
-  // re-read and re-merged here, because the browser's copy predates whatever the last read
-  // wrote. Returns false when the belief being corrected is no longer there.
-  correctBelief(input: CorrectBeliefInput): Promise<boolean>;
+  // A person adding, correcting or removing a fact. The row is re-read and re-merged here,
+  // because the browser's copy predates whatever the last read wrote.
+  stateFact(input: StateFactInput): Promise<StateFactOutcome>;
 
   // One page, stated by a person. A whole-list write from a page loaded before last night's
   // run would revert everything that run added, so the merge happens here against the row as
@@ -114,6 +130,8 @@ export interface GrowthContextRepo {
 }
 
 export const STATE_PAGE_ROLE_ATTEMPTS = 3;
+
+export const STATE_FACT_ATTEMPTS = 3;
 
 const notOurProject = (): Error =>
   new Error("growth context: the project named is not this organization's");
@@ -142,6 +160,36 @@ function readBack(row: GrowthContextRow): GrowthContext | null {
 export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext): GrowthContextRepo {
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, growthContext);
+
+  // Only if the row has not moved since it was read. The nightly tick, the site read and a
+  // second person editing all write this one row, and a plain UPDATE here would put back
+  // whatever the browser last saw (D6).
+  async function writeFactsIfUnchanged(
+    projectId: string,
+    facts: readonly BusinessFact[],
+    removed: readonly string[],
+    since: Date,
+  ): Promise<boolean> {
+    const written = await db
+      .update(growthContext)
+      .set({
+        businessContext: {
+          facts: capFactsPerKind(facts).slice(0, BUSINESS_FACT_LIMIT),
+          removed: removed.slice(0, BUSINESS_FACT_LIMIT),
+        },
+        updatedAt: new Date(),
+      })
+      .where(
+        s.owned(
+          growthContext,
+          eq(growthContext.projectId, projectId),
+          eq(growthContext.updatedAt, since),
+        ),
+      )
+      .returning();
+
+    return written.length > 0;
+  }
 
   return {
     async findForProject(projectId: string): Promise<GrowthContext | null> {
@@ -230,47 +278,78 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
     },
 
     // The whole list is rewritten to change one entry, so two people answering different
-    // pages at the same moment would each write the other's stale value back and one answer
+    // kinds at the same moment would each write the other's stale value back and one answer
     // would vanish with nothing said. Every attempt re-reads and re-merges against the row
-    // as it is now, and only writes if it has not moved since.
-    async correctBelief(input: CorrectBeliefInput): Promise<boolean> {
+    // as it is now.
+    async stateFact(input: StateFactInput): Promise<StateFactOutcome> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const current = await this.readSiteResearch(input.projectId);
-      if (current === null) return false;
+      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
+        const current = await this.readBusinessResearch(input.projectId);
+        if (current === null) return "not_found";
 
-      const target = current.icp.beliefs.find(
-        (belief) => belief.kind === input.kind && belief.statement === input.was,
-      );
-      if (target === undefined) return false;
+        const target =
+          input.was === null
+            ? undefined
+            : current.businessContext.facts.find(
+                (fact) => fact.kind === input.kind && fact.statement === input.was,
+              );
 
-      const others = current.icp.beliefs.filter((belief) => belief !== target);
+        if (input.was !== null && target === undefined) return "not_found";
 
-      const beliefs =
-        input.statement === null
-          ? others
-          : [
-              ...others,
-              {
-                kind: input.kind,
-                statement: input.statement,
-                // A correction is the highest-signal row in the table, so it keeps what it
-                // replaced rather than overwriting it into silence.
-                correctedFrom: target.correctedFrom ?? target.statement,
-                provenance: {
-                  source: "stated_by_customer" as const,
-                  at: input.statedAt,
-                  citation: null,
-                },
-              },
-            ];
+        const others = current.businessContext.facts.filter((fact) => fact !== target);
 
-      await db
-        .update(growthContext)
-        .set({ icp: { beliefs }, updatedAt: new Date() })
-        .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
+        const removed = current.businessContext.removed;
 
-      return true;
+        if (input.statement === null) {
+          // The sentence is kept as a tombstone, not as a fact: without it the next read of
+          // the page it came from proposes it again and the removal silently undoes itself.
+          const tombstoned =
+            input.was === null ? removed : [...new Set([...removed, input.was])];
+
+          if (await writeFactsIfUnchanged(input.projectId, others, tombstoned, current.updatedAt)) {
+            return "stated";
+          }
+          continue;
+        }
+
+        const ofKind = others.filter((fact) => fact.kind === input.kind).length;
+        if (ofKind >= FACTS_PER_KIND_MAX) return "full";
+
+        const stated: BusinessFact = {
+          kind: input.kind,
+          statement: input.statement,
+          // A correction is the highest-signal row in the table, so it keeps what it replaced
+          // rather than overwriting it into silence — and the next read of the site is
+          // suppressed against it.
+          correctedFrom: target === undefined ? null : (target.correctedFrom ?? target.statement),
+          provenance: {
+            source: "stated_by_customer",
+            at: input.statedAt,
+            citation: null,
+            seen: null,
+          },
+        };
+
+        // Typing a deleted sentence back in is a person changing their mind about the
+        // removal, so the tombstone goes with it.
+        const revived = removed.filter((gone) => gone !== input.statement);
+
+        if (
+          await writeFactsIfUnchanged(
+            input.projectId,
+            [...others, stated],
+            revived,
+            current.updatedAt,
+          )
+        ) {
+          return "stated";
+        }
+      }
+
+      // Answering not_found sends the browser back for a re-read, which is the honest end
+      // to a row that kept moving underneath this write.
+      return "not_found";
     },
 
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {
@@ -324,7 +403,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       throw new Error("growth context: this page kept being answered by someone else mid-write");
     },
 
-    async readSiteResearch(projectId: string): Promise<SiteResearchRow | null> {
+    async readBusinessResearch(projectId: string): Promise<BusinessResearchRow | null> {
       const rows = await db
         .select()
         .from(growthContext)
@@ -334,27 +413,38 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       const row = s.maybe(rows);
       if (row === null) return null;
 
-      const parsed = icpModelSchema.safeParse(row.icp);
-
       return {
         siteDomain: row.siteDomain,
-        // An unreadable model reads as no beliefs rather than throwing: the rest of the
-        // settings page is what someone mid-setup actually came for.
-        icp: parsed.success ? parsed.data : EMPTY_ICP,
+        // One unreadable fact costs that fact, never the table: the rest of the settings
+        // page is what someone mid-setup actually came for.
+        businessContext: readBusinessContext(row.businessContext),
         researchStatus: row.researchStatus,
         researchedAt: row.researchedAt,
         researchFailure: row.researchFailure,
+        updatedAt: row.updatedAt,
       };
     },
 
     async stateSiteDomain(input: { projectId: string; siteDomain: string | null }): Promise<void> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
+      const current = await this.readBusinessResearch(input.projectId);
+
+      // Only what the old domain's pages said goes. Wiping a conversion someone typed
+      // because they fixed a typo in their address would be ours to lose, not theirs.
+      const kept = (current?.businessContext.facts ?? []).filter(
+        (fact) => fact.provenance.source !== "site",
+      );
+
+      // A deletion is a statement about the business too, so it outlives the address the
+      // sentence was read from.
+      const removed = current?.businessContext.removed ?? [];
+
       await c.insertOrFetch(
         {
           projectId: input.projectId,
           siteDomain: input.siteDomain,
-          icp: EMPTY_ICP,
+          businessContext: { facts: kept, removed },
           researchStatus: "never_run",
           researchedAt: null,
           researchFailure: null,
@@ -363,7 +453,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           target: [growthContext.organizationId, growthContext.projectId],
           set: {
             siteDomain: input.siteDomain,
-            icp: EMPTY_ICP,
+            businessContext: { facts: kept, removed },
             researchStatus: "never_run",
             researchedAt: null,
             researchFailure: null,
@@ -383,18 +473,65 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
 
     async recordResearch(input: {
       projectId: string;
-      icp: IcpModel;
+      facts: readonly BusinessFact[];
       researchedAt: Date;
     }): Promise<void> {
+      const settled = {
+        researchStatus: "done" as const,
+        researchedAt: input.researchedAt,
+        researchFailure: null,
+      };
+
+      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
+        const current = await this.readBusinessResearch(input.projectId);
+        if (current === null) return;
+
+        // A whole-column overwrite would erase every correction on every re-read, which is
+        // the one row in this table that cost a person their time.
+        const kept = current.businessContext.facts.filter(
+          (fact) => fact.provenance.source !== "site",
+        );
+
+        // A person who corrected or deleted a sentence should not be handed it back by the
+        // next read of the page it came from.
+        const removed = current.businessContext.removed;
+        const alreadyAnswered = new Set([
+          ...removed,
+          ...kept.flatMap((fact) =>
+            fact.correctedFrom === null ? [fact.statement] : [fact.statement, fact.correctedFrom],
+          ),
+        ]);
+
+        const merged = capFactsPerKind([
+          ...kept,
+          ...input.facts.filter((fact) => !alreadyAnswered.has(fact.statement)),
+        ]).slice(0, BUSINESS_FACT_LIMIT);
+
+        const written = await db
+          .update(growthContext)
+          .set({ businessContext: { facts: merged, removed }, ...settled, updatedAt: new Date() })
+          .where(
+            s.owned(
+              growthContext,
+              eq(growthContext.projectId, input.projectId),
+              eq(growthContext.updatedAt, current.updatedAt),
+            ),
+          )
+          .returning();
+
+        if (written.length > 0) return;
+      }
+
+      // Contended past the retries. The status still has to settle or a person watches
+      // "running" forever (D8), and what this read found is re-derivable by pressing the
+      // button again — whatever they typed in the meantime is not.
+      logger.warn("growth context: the site read kept being overtaken, so only its status was recorded", {
+        projectId: input.projectId,
+      });
+
       await db
         .update(growthContext)
-        .set({
-          icp: input.icp,
-          researchStatus: "done",
-          researchedAt: input.researchedAt,
-          researchFailure: null,
-          updatedAt: new Date(),
-        })
+        .set({ ...settled, updatedAt: new Date() })
         .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)));
     },
 

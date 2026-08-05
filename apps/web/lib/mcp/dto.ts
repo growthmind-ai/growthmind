@@ -1,24 +1,22 @@
 import type { FixSpecInput } from "@growthmind/core";
 import {
+  BUSINESS_FACT_HEADINGS,
+  BUSINESS_FACT_NOTES,
   FIX_SURFACE_FORBIDDEN_REFUSALS,
   SURFACE_ROLE_NOTES,
+  isBindingKind,
   isNormalisedUrlPath,
   mcpMeasuredCountSchema,
+  renderSeenSentence,
+  type BusinessFactKind,
   type FindingEvidence,
   type FixStatus,
   type ForbiddenReason,
-  type IcpBeliefKind,
   type McpMeasuredCount,
   type SurfaceRole,
 } from "@growthmind/shared";
 
-import type {
-  AudienceBeliefRow,
-  FindingRecord,
-  FixRecord,
-  GrowthContextRecord,
-  OpenFixRow,
-} from "./read-port";
+import type { FindingRecord, FixRecord, GrowthContextRecord, OpenFixRow } from "./read-port";
 
 // Every timestamp below is read off a persisted row, and a jsonb column carries every shape
 // ever written into it, so the declared type of one is a claim rather than a guarantee.
@@ -158,20 +156,37 @@ export interface PersistedGrowthContext {
     readonly headline: string;
     readonly declinedAt: unknown;
   }[];
-  readonly audience: readonly {
-    readonly kind: IcpBeliefKind;
+  readonly business: readonly {
+    readonly kind: BusinessFactKind;
     readonly statement: string;
     readonly statedByAPerson: boolean;
     readonly readFrom: string | null;
+    readonly observed: boolean;
+    readonly seen: {
+      readonly sessions: number;
+      readonly of: number;
+      readonly from: unknown;
+      readonly to: unknown;
+    } | null;
   }[];
 }
 
-// The three questions the model is asked, said the way an agent reads them.
-const ABOUT: Record<IcpBeliefKind, AudienceBeliefRow["about"]> = {
-  who_it_is_for: "who it is for",
-  what_they_believe: "what they believe",
-  what_they_are_trying_to_do: "what they are trying to do",
-};
+// A fact with an unreadable window loses its evidence sentence, not the whole read: a jsonb
+// column carries every shape ever written into it (D5).
+function seenSentenceOf(seen: PersistedGrowthContext["business"][number]["seen"]): string | null {
+  if (seen === null) return null;
+
+  try {
+    return renderSeenSentence({
+      sessions: seen.sessions,
+      of: seen.of,
+      from: new Date(toIso(seen.from)),
+      to: new Date(toIso(seen.to)),
+    });
+  } catch {
+    return null;
+  }
+}
 
 export function toGrowthContextRecord(read: PersistedGrowthContext): GrowthContextRecord {
   return {
@@ -205,11 +220,19 @@ export function toGrowthContextRecord(read: PersistedGrowthContext): GrowthConte
       headline: idea.headline,
       declinedAt: toIso(idea.declinedAt),
     })),
-    audience: read.audience.map((belief) => ({
-      about: ABOUT[belief.kind],
-      statement: belief.statement,
-      toldToUs: belief.statedByAPerson,
-      readFrom: belief.readFrom,
+    // The heading and the note are the same sentences the person who owns this business
+    // reads on their settings page, per §10's one-output-two-audiences rule — an agent-only
+    // wording here would be a second copy to drift.
+    business: read.business.map((fact) => ({
+      about: fact.kind,
+      heading: BUSINESS_FACT_HEADINGS[fact.kind],
+      means: BUSINESS_FACT_NOTES[fact.kind],
+      statement: fact.statement,
+      binding: isBindingKind(fact.kind),
+      toldToUs: fact.statedByAPerson,
+      readFrom: fact.readFrom,
+      observed: fact.observed,
+      seenIn: seenSentenceOf(fact.seen),
     })),
   };
 }
