@@ -78,6 +78,19 @@ export function buildStepSpine(
         comparePathsAscending(left.path, right.path),
     );
 
+  let rank = ORIGIN_INDEX;
+  let rankedOffset: number | null = null;
+
+  const steps: SpineStep[] = [origin];
+  for (const step of ranked) {
+    if (rankedOffset === null || step.typicalOffset !== rankedOffset) {
+      rank += FIRST_STEP_AFTER_ORIGIN;
+      rankedOffset = step.typicalOffset;
+    }
+
+    steps.push({ path: step.path, index: rank, sessionsReaching: step.sessionsReaching });
+  }
+
   return {
     identity: {
       surface,
@@ -86,14 +99,8 @@ export function buildStepSpine(
       spineVersion: STEP_SPINE_VERSION,
     },
     minReachRatioPercent,
-    steps: [
-      origin,
-      ...ranked.map((step, position) => ({
-        path: step.path,
-        index: position + FIRST_STEP_AFTER_ORIGIN,
-        sessionsReaching: step.sessionsReaching,
-      })),
-    ],
+    branching: new Set(steps.map((step) => step.index)).size !== steps.length,
+    steps,
   };
 }
 
