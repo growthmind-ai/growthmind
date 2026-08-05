@@ -11,6 +11,7 @@ export function toCountRows(candidate: CandidateFinding): readonly MeasuredCount
     basis: {
       totalInWindow: count.basis.totalInWindow,
       kept: count.basis.kept,
+      keptUnchecked: count.basis.keptUnchecked,
       setAside: count.basis.setAside.map((row) => ({
         reason: row.reason,
         count: row.count,

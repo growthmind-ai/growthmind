@@ -61,7 +61,7 @@ function sessions(numerator: number, kept: number): MeasuredCount {
       start: new Date("2026-07-20T00:00:00.000Z"),
       end: new Date("2026-07-27T00:00:00.000Z"),
     },
-    basis: { totalInWindow: kept, kept, setAside: [] },
+    basis: { totalInWindow: kept, kept, keptUnchecked: 0, setAside: [] },
   });
 }
 

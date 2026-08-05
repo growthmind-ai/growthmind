@@ -34,7 +34,7 @@ function struggleSignal(surface: string): EvidenceSignal {
       denominator: 10,
       unit: "sessions",
       timeframe: { start: FIXED_AT, end: FIXED_WINDOW_END },
-      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+      basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
     }),
   };
 }

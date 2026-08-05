@@ -1,5 +1,11 @@
 import { admitBusinessFacts } from "@growthmind/core";
-import type { BusinessReadResult, FetchedPage, ReadFact, SiteFetchResult } from "@growthmind/adapters";
+import type {
+  AudienceReductionResult,
+  BusinessReadResult,
+  FetchedPage,
+  ReadFact,
+  SiteFetchResult,
+} from "@growthmind/adapters";
 import type { GrowthContextRepo } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import type { BusinessFact, TenantContext } from "@growthmind/shared";
@@ -23,6 +29,33 @@ export type ResearchFailureCode = keyof typeof RESEARCH_FAILURES;
 export interface BusinessResearcherPort {
   readBinding(pages: readonly FetchedPage[]): Promise<BusinessReadResult>;
   readShaping(pages: readonly FetchedPage[]): Promise<BusinessReadResult>;
+  reduceAudience(statement: string): Promise<AudienceReductionResult>;
+}
+
+// A proposal nobody has confirmed narrows nothing, so a reduction that fails costs the
+// screen a suggestion and costs the count nothing (D8).
+async function withAudienceProposals(
+  facts: readonly BusinessFact[],
+  researcher: BusinessResearcherPort,
+  logger: TaskLogger,
+): Promise<readonly BusinessFact[]> {
+  return Promise.all(
+    facts.map(async (fact) => {
+      if (fact.kind !== "who_counts") return fact;
+
+      const reduced = await researcher.reduceAudience(fact.statement);
+      if (!reduced.ok) {
+        logger.warn(
+          `business research: a who_counts sentence could not be reduced to a rule — ${reduced.reason}`,
+        );
+        return fact;
+      }
+
+      if (reduced.rule === null) return fact;
+
+      return { ...fact, audience: { rule: reduced.rule, status: "proposed" as const, decidedAt: null } };
+    }),
+  );
 }
 
 export interface BusinessResearchDeps {
@@ -63,6 +96,7 @@ function factsFrom(
         statement: fact.statement.trim(),
         provenance: { source: "site" as const, at, citation: page.url, seen: null },
         correctedFrom: null,
+        audience: null,
       },
     ];
   });
@@ -146,7 +180,11 @@ export async function runBusinessResearch(
   }
 
   const read = [...(binding.ok ? binding.facts : []), ...(shaping.ok ? shaping.facts : [])];
-  const facts = factsFrom(read, fetched.pages, deps.now());
+  const facts = await withAudienceProposals(
+    factsFrom(read, fetched.pages, deps.now()),
+    deps.researcher,
+    deps.logger,
+  );
 
   await growth.recordResearch({
     projectId: input.projectId,

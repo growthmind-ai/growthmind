@@ -52,7 +52,7 @@ const REPEATED_ATTEMPTS: EvidenceSignal = {
     denominator: 30,
     unit: "sessions",
     timeframe: { start: WINDOW.start, end: WINDOW.end },
-    basis: { totalInWindow: 30, kept: 30, setAside: [] },
+    basis: { totalInWindow: 30, kept: 30, setAside: [], keptUnchecked: 0 },
   }),
 };
 
@@ -68,7 +68,7 @@ const CORRELATED_FAILURE: EvidenceSignal = {
     denominator: 10,
     unit: "sessions",
     timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
-    basis: { totalInWindow: 10, kept: 10, setAside: [] },
+    basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
   }),
 };
 

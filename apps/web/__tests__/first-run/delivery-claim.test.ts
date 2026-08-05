@@ -228,7 +228,7 @@ const MEASURED_COUNT: MeasuredCountRow = {
     start: new Date("2026-07-30T00:00:00.000Z"),
     end: new Date("2026-08-01T00:00:00.000Z"),
   },
-  basis: { totalInWindow: 10, kept: 10, setAside: [] },
+  basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
 };
 
 interface Lane {

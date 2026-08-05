@@ -135,7 +135,7 @@ describe("state and refusal coverage", () => {
   test("the set-aside labels cover every exclusion reason and read distinctly", () => {
     const labels = Object.values(EXCLUSION_REASON_LABELS);
     expect(new Set(labels).size).toBe(labels.length);
-    expect(labels).toHaveLength(5);
+    expect(labels).toHaveLength(6);
   });
 
   test("the second-source refusal names the existing attachment and the cutover path", () => {

@@ -492,7 +492,7 @@ describe("every count on this surface carries its denominator", () => {
         numerator: 3,
         unit: "sessions",
         timeframe: WINDOW,
-        basis: { totalInWindow: 28, kept: 28, setAside: [] },
+        basis: { totalInWindow: 28, kept: 28, setAside: [], keptUnchecked: 0 },
       }).success,
     ).toBe(false);
 
@@ -509,7 +509,7 @@ describe("every count on this surface carries its denominator", () => {
   test("a basis that does not account for every session in the window is refused", () => {
     const unaccounted = {
       ...count(3, 28),
-      basis: { totalInWindow: 40, kept: 28, setAside: [] },
+      basis: { totalInWindow: 40, kept: 28, setAside: [], keptUnchecked: 0 },
     };
     expect(mcpMeasuredCountSchema.safeParse(unaccounted).success).toBe(false);
   });

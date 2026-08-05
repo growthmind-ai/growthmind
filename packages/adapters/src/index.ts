@@ -102,6 +102,7 @@ export {
   createBusinessResearcher,
   type ReadFact,
   type BusinessReadOutput,
+  type AudienceReductionResult,
   type BusinessReadResult,
   type BusinessResearcherDeps,
 } from "./site/researcher";

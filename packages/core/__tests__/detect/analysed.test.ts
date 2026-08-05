@@ -86,7 +86,12 @@ function t1anlCorpus(
       label: `t1anl-${reason}`,
     }));
 
-  const basis: CountBasis = { totalInWindow: sessions.length, kept, setAside };
+  const basis: CountBasis = {
+    totalInWindow: sessions.length,
+    kept,
+    setAside,
+    keptUnchecked: 0,
+  };
 
   return {
     projectId: "t1anl-project",

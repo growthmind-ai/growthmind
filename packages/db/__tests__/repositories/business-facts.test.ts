@@ -20,6 +20,7 @@ function readFact(statement: string, kind: BusinessFact["kind"] = "regime"): Bus
     statement,
     provenance: { source: "site", at: READ_AT, citation: "https://example.com/", seen: null },
     correctedFrom: null,
+    audience: null,
   };
 }
 

@@ -29,24 +29,28 @@ function setAside(reason: ExclusionReason, count: number): SetAsideBasis {
 const KEPT_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 28,
+  keptUnchecked: 0,
   setAside: [setAside("automation_known_agent", 9), setAside("internal_domain", 3)],
 };
 
 const ALL_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 0,
+  keptUnchecked: 0,
   setAside: [setAside("automation_headless", 31), setAside("internal_domain", 9)],
 };
 
 const NOTHING_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 28,
   kept: 28,
+  keptUnchecked: 0,
   setAside: [],
 };
 
 const INCONSISTENT_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 28,
+  keptUnchecked: 0,
   setAside: [setAside("internal_domain", 3)],
 };
 

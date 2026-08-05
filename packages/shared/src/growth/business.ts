@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { type AudienceRule, audienceProposalSchema } from "./audience";
 import { STATEMENT_MAX, factProvenanceSchema } from "./provenance";
 
 // A fact here can kill a fix spec or void a keep-or-kill verdict. Nothing in this group is
@@ -83,6 +84,10 @@ export const businessFactSchema = z.object({
   // A correction is the highest-signal row in the table, so it keeps what it replaced
   // rather than overwriting it into silence.
   correctedFrom: z.string().max(STATEMENT_MAX).nullable(),
+
+  // Only `who_counts` carries one, and only once a person has confirmed it does it narrow
+  // a denominator. Null on every row written before this field existed.
+  audience: audienceProposalSchema.nullable().default(null),
 });
 
 export type BusinessFact = z.infer<typeof businessFactSchema>;
@@ -131,6 +136,14 @@ export function factsOfKind(
   kind: BusinessFactKind,
 ): readonly BusinessFact[] {
   return context.facts.filter((fact) => fact.kind === kind);
+}
+
+// Only a rule a person confirmed narrows anything. A proposal nobody has looked at, and
+// one that was rejected, both leave the denominator exactly as wide as it was.
+export function confirmedAudienceRules(context: BusinessContext): readonly AudienceRule[] {
+  return factsOfKind(context, "who_counts").flatMap((fact) =>
+    fact.audience !== null && fact.audience.status === "confirmed" ? [fact.audience.rule] : [],
+  );
 }
 
 // Order decides who survives, so callers put what a person said first.

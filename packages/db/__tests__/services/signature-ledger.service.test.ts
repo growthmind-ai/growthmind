@@ -47,7 +47,7 @@ function fixtureCount(now: Date) {
     denominator: 28,
     unit: "sessions",
     timeframe: windowEndingAt(now),
-    basis: { totalInWindow: 28, kept: 28, setAside: [] },
+    basis: { totalInWindow: 28, kept: 28, setAside: [], keptUnchecked: 0 },
   });
 }
 

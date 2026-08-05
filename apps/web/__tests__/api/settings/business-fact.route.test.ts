@@ -68,6 +68,7 @@ function read(kind: BusinessFactKind, statement: string): BusinessFact {
       seen: null,
     },
     correctedFrom: null,
+    audience: null,
   };
 }
 

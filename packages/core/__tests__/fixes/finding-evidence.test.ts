@@ -15,7 +15,7 @@ const WINDOW = {
 
 const KEPT = 20;
 
-const BASIS: CountBasis = { totalInWindow: KEPT, kept: KEPT, setAside: [] };
+const BASIS: CountBasis = { totalInWindow: KEPT, kept: KEPT, setAside: [], keptUnchecked: 0 };
 
 const CORRELATED_EVENT = "t1fe_exception_correlated";
 const UNCORRELATED_EVENT = "t1fe_exception_loose";

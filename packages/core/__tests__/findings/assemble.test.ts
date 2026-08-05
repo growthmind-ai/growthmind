@@ -128,6 +128,7 @@ function corpusOf(sessions: readonly SessionTimeline[]): DetectorCorpus {
   const basis: CountBasis = {
     totalInWindow: sessions.length,
     kept: sessions.length,
+    keptUnchecked: 0,
     setAside: [],
   };
   return {
@@ -257,7 +258,7 @@ describe("assembleCandidates", () => {
 
   test("a downgraded claim's identity follows the gate's conclusion, not the detector's ambition", () => {
     const rules = ruleSet();
-    const basis: CountBasis = { totalInWindow: 5, kept: 5, setAside: [] };
+    const basis: CountBasis = { totalInWindow: 5, kept: 5, setAside: [], keptUnchecked: 0 };
     const count = (numerator: number) =>
       measuredCount({ numerator, denominator: 5, unit: "sessions", timeframe: WINDOW, basis });
 
@@ -315,7 +316,7 @@ describe("assembleCandidates", () => {
 
   test("carries signals forward from the detector candidate", () => {
     const rules = ruleSet();
-    const basis: CountBasis = { totalInWindow: 5, kept: 5, setAside: [] };
+    const basis: CountBasis = { totalInWindow: 5, kept: 5, setAside: [], keptUnchecked: 0 };
     const count = (numerator: number) =>
       measuredCount({ numerator, denominator: 5, unit: "sessions", timeframe: WINDOW, basis });
 

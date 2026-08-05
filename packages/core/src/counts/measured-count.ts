@@ -16,6 +16,12 @@ export type CountBasis = {
 
   readonly kept: number;
   readonly setAside: readonly SetAsideBasis[];
+
+  // Of `kept`, how many no confirmed `who_counts` rule could be checked against — a session
+  // carrying no identity cannot be shown to be outside an audience, so it is counted. The
+  // number travels with the denominator it qualifies, because a denominator narrowed on
+  // some rows and not others means nothing without it.
+  readonly keptUnchecked: number;
 };
 
 export type MeasuredCount = {
@@ -45,6 +51,9 @@ export const countBasisSchema = z.object({
   totalInWindow: z.number().int().nonnegative(),
   kept: z.number().int().nonnegative(),
   setAside: z.array(setAsideBasisSchema),
+
+  // Absent from every count persisted before who_counts could narrow anything (D5).
+  keptUnchecked: z.number().int().nonnegative().default(0),
 });
 
 export const measuredCountInputSchema = z.object({
@@ -75,6 +84,14 @@ const consistentMeasuredCountInputSchema = measuredCountInputSchema.superRefine(
         code: "custom",
         path: ["basis"],
         message: `a basis must account for every session in the window: kept (${value.basis.kept}) + set aside (${setAsideTotal}) is not totalInWindow (${value.basis.totalInWindow})`,
+      });
+    }
+
+    if (value.basis.keptUnchecked > value.basis.kept) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["basis", "keptUnchecked"],
+        message: `sessions kept unchecked are a subset of those kept: ${String(value.basis.keptUnchecked)} is more than ${value.basis.kept}`,
       });
     }
 
@@ -111,6 +128,7 @@ export function measuredCount(input: MeasuredCountInput): MeasuredCount {
     basis: {
       totalInWindow: parsed.basis.totalInWindow,
       kept: parsed.basis.kept,
+      keptUnchecked: parsed.basis.keptUnchecked,
       setAside: parsed.basis.setAside.map((row) => ({
         reason: row.reason,
         count: row.count,

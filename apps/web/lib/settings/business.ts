@@ -7,7 +7,9 @@ import {
   isObservableKind,
   isObservedProvenance,
   isStatedOnlyKind,
+  renderAudienceRule,
   renderSeenSentence,
+  type AudienceRuleStatus,
   type BusinessContext,
   type BusinessFact,
   type BusinessFactKind,
@@ -24,6 +26,13 @@ export interface StatedFactView {
 
   // What this replaced, when a person corrected it.
   readonly correctedFrom: string | null;
+
+  // Only `who_counts` ever carries one, and only when the sentence named something a
+  // session actually records. Null everywhere else.
+  readonly audience: {
+    readonly sentence: string;
+    readonly status: AudienceRuleStatus;
+  } | null;
 }
 
 // What people were observed doing. Not editable: a person may argue with their own copy,
@@ -96,6 +105,13 @@ function toLanes(
           statement: fact.statement,
           readFrom: fact.provenance.citation,
           correctedFrom: fact.correctedFrom,
+          audience:
+            fact.audience === null
+              ? null
+              : {
+                  sentence: renderAudienceRule(fact.audience.rule),
+                  status: fact.audience.status,
+                },
         })),
       observed: forKind
         .filter((fact) => isObservedProvenance(fact.provenance))

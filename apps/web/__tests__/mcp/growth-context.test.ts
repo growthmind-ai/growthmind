@@ -59,7 +59,7 @@ function persistedCount(numerator: number, denominator: number) {
     denominator,
     unit: "sessions" as const,
     timeframe: { start: WINDOW_START, end: WINDOW_END },
-    basis: { totalInWindow: denominator, kept: denominator, setAside: [] },
+    basis: { totalInWindow: denominator, kept: denominator, setAside: [], keptUnchecked: 0 },
   };
 }
 

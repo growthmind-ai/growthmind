@@ -123,6 +123,7 @@ function corpusOf(sessions: readonly SessionTimeline[]): DetectorCorpus {
   const basis: CountBasis = {
     totalInWindow: sessions.length,
     kept: sessions.length,
+    keptUnchecked: 0,
     setAside: [],
   };
   return {
@@ -551,6 +552,7 @@ function t1psvCorpus(sessions: readonly SessionTimeline[]): DetectorCorpus {
   const basis: CountBasis = {
     totalInWindow: sessions.length,
     kept: sessions.length,
+    keptUnchecked: 0,
     setAside: [],
   };
   return {
@@ -879,6 +881,7 @@ function t1cntCorpus(sessions: readonly SessionTimeline[]): DetectorCorpus {
   const basis: CountBasis = {
     totalInWindow: sessions.length,
     kept: sessions.length,
+    keptUnchecked: 0,
     setAside: [],
   };
   return {
