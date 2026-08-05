@@ -31,8 +31,16 @@ export const REPLAY_EMPTY_RECORDING =
 export const REPLAY_LIST_TRUNCATED =
   "These are the most recent recordings. Older ones are still in your analytics — we read one page at a time so this screen stays quick.";
 
+export const REPLAY_PULL_STOP_MESSAGES: Record<"page_cap" | "byte_cap", string> = {
+  page_cap:
+    "This recording has more activity than we read in one visit, so we stopped part way through. What we did read is here, and the rest is still in your analytics.",
+  byte_cap:
+    "This recording is larger than we read in one visit, so we stopped part way through to keep things quick. What we did read is here, and the rest is still in your analytics.",
+};
+
 export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   ...Object.values(REPLAY_FAILURE_MESSAGES),
+  ...Object.values(REPLAY_PULL_STOP_MESSAGES),
   REPLAY_NO_CONNECTION,
   REPLAY_NONE_YET,
   REPLAY_LIST_UNREADABLE,

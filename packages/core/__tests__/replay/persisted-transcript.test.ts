@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import {
+  PERSISTED_TRANSCRIPT_VERSION,
+  readPersistedTranscript,
+  serialisePersistedTranscript,
+} from "../../src/index";
 import type { ElementIdentity, SessionAction } from "../../src/replay/types";
 import {
   bytesOf,
@@ -112,5 +117,14 @@ describe("readPersistedTranscript — the only path from a stored jsonb value to
     expect(read).not.toBeNull();
     expect(read?.actions).toHaveLength(FIXTURE_ACTIONS.length);
     expect(read?.actions[0]?.atMs).toBe(0);
+  });
+});
+
+describe("the barrel is the entry point O-044 reads, not the module path", () => {
+  test("should round-trip through the statically imported @growthmind/core symbols", () => {
+    const written = serialisePersistedTranscript(FIXTURE_ACTIONS, PERSISTED_TRANSCRIPT_VERSION);
+
+    expect(written.v).toBe(PERSISTED_TRANSCRIPT_VERSION);
+    expect(readPersistedTranscript(written)?.actions).toHaveLength(FIXTURE_ACTIONS.length);
   });
 });

@@ -394,3 +394,14 @@ export {
   type TranscriptDigest,
   type FloorNarration,
 } from "./replay/narration";
+export {
+  PERSISTED_TRANSCRIPT_VERSION,
+  PERSISTED_TRANSCRIPT_MAX_CLASSES,
+  PERSISTED_TRANSCRIPT_SERIALISERS,
+  serialisePersistedTranscript,
+  readPersistedTranscript,
+  type PersistedElement,
+  type PersistedSessionAction,
+  type PersistedTranscript,
+  type PersistedTranscriptSerialiser,
+} from "./replay/persisted-transcript";
