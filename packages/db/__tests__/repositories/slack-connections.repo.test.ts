@@ -732,6 +732,16 @@ const SECOND_DOOR_FIXTURE = `
   }
 `;
 
+// The zero-door case, which no shipped repository demonstrates any more: both now open a
+// credential for their composition root. Without this the "writes are not doors" half of
+// the control would only ever be checked on a surface that also has a real door.
+const WRITE_ONLY_FIXTURE = `
+  export interface WriteOnlyRepo {
+    updateCredential(id: string, input: { credentialCiphertext: string }): Promise<void>;
+    rotateSecret(id: string): Promise<void>;
+  }
+`;
+
 describe("planted-offender control — proving the one-door check bites", () => {
   test("the collector reads the public surface and finds only the named door", () => {
     const names = publicSurfaceNames(CLEAN_SURFACE_FIXTURE);
@@ -750,13 +760,25 @@ describe("planted-offender control — proving the one-door check bites", () => 
     ).toEqual(["botTokenFor", "openCredentialForOrg"]);
   });
 
-  test("a credential WRITE on the shipped PostHog repository is not read as a door", () => {
+  test("a surface with only credential writes has no door at all", () => {
+    const names = publicSurfaceNames(WRITE_ONLY_FIXTURE);
+
+    expect(names.has("updateCredential")).toBe(true);
+    expect([...names].filter(isCredentialDoor)).toEqual([]);
+  });
+
+  // The PostHog repository gained a reader when the replay viewer needed one: a web route
+  // opening that credential must not reach system/readConnectionCredential, which is a
+  // bypass context. The one-door rule now binds here too — `updateCredential` is still a
+  // write and still not counted, and the single reader carries the same naming.
+  test("the shipped PostHog repository has exactly one door, and its write is not one", () => {
     const precedent = readSourceUnderConstruction({
       repoRelativePath: "packages/db/src/repositories/project-connections.repo.ts",
       ownedBy: "already shipped (O-003)",
     });
     const names = publicSurfaceNames(precedent);
+
     expect(names.has("updateCredential")).toBe(true);
-    expect([...names].filter(isCredentialDoor)).toEqual([]);
+    expect([...names].filter(isCredentialDoor).toSorted()).toEqual(["openCredentialForProject"]);
   });
 });

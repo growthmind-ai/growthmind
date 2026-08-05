@@ -1,3 +1,5 @@
+import type { CredentialKey } from "@growthmind/shared";
+import { credentialAad, encryptSecret, keyIdOf } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 
@@ -492,5 +494,119 @@ describe("project-connections repository", () => {
 
     const repoB = createProjectConnectionsRepo(db, orgB.ctx);
     expect(await repoB.getActiveForProject(project.id)).toBeNull();
+  });
+
+  // The door the recordings viewer opens. It exists so a web route never reaches
+  // system/readConnectionCredential, which is a bypass context — so the thing that must be
+  // true of it is that it carries the org filter like every other read here.
+  describe("openCredentialForProject", () => {
+    const KEY: CredentialKey = { bytes: Uint8Array.from({ length: 32 }, (_, i) => i) };
+
+    it("opens the credential for the org that owns the connection", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("open-own"),
+        userName: NAMES.userName("open-own"),
+        email: NAMES.email("open-own"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("open-own"),
+      });
+      const repo = createProjectConnectionsRepo(db, org.ctx);
+
+      await repo.insertActive(
+        makeInsertInput(project.id, {
+          credentialCiphertext: encryptSecret(
+            "phx_ad_fake_personal_key",
+            KEY,
+            credentialAad(org.organizationId, project.id),
+          ),
+          credentialKeyId: keyIdOf(KEY),
+        }),
+      );
+
+      const opened = await repo.openCredentialForProject(project.id, KEY);
+
+      expect(opened?.ok).toBe(true);
+      expect(opened !== null && opened.ok ? opened.value : null).toBe("phx_ad_fake_personal_key");
+    });
+
+    it("returns null for a foreign org naming another org's project, never the plaintext", async () => {
+      const orgA = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("open-a"),
+        userName: NAMES.userName("open-a"),
+        email: NAMES.email("open-a"),
+      });
+      const orgB = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("open-b"),
+        userName: NAMES.userName("open-b"),
+        email: NAMES.email("open-b"),
+      });
+      const project = await seedProject(db, {
+        organizationId: orgA.organizationId,
+        name: NAMES.projectName("open-cross"),
+      });
+
+      await createProjectConnectionsRepo(db, orgA.ctx).insertActive(
+        makeInsertInput(project.id, {
+          credentialCiphertext: encryptSecret(
+            "phx_ad_fake_personal_key",
+            KEY,
+            credentialAad(orgA.organizationId, project.id),
+          ),
+          credentialKeyId: keyIdOf(KEY),
+        }),
+      );
+
+      expect(
+        await createProjectConnectionsRepo(db, orgB.ctx).openCredentialForProject(project.id, KEY),
+      ).toBeNull();
+    });
+
+    it("returns null when the project has no active connection", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("open-none"),
+        userName: NAMES.userName("open-none"),
+        email: NAMES.email("open-none"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("open-none"),
+      });
+
+      expect(
+        await createProjectConnectionsRepo(db, org.ctx).openCredentialForProject(project.id, KEY),
+      ).toBeNull();
+    });
+
+    // The AAD binds the envelope to org and project. A ciphertext sealed under a different
+    // project cannot be opened here, so a row moved between projects fails closed.
+    it("refuses a credential sealed against a different project", async () => {
+      const org = await seedOrgWithOwner(db, {
+        orgName: NAMES.orgName("open-aad"),
+        userName: NAMES.userName("open-aad"),
+        email: NAMES.email("open-aad"),
+      });
+      const project = await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("open-aad"),
+      });
+      const repo = createProjectConnectionsRepo(db, org.ctx);
+
+      await repo.insertActive(
+        makeInsertInput(project.id, {
+          credentialCiphertext: encryptSecret(
+            "phx_ad_fake_personal_key",
+            KEY,
+            credentialAad(org.organizationId, "a-different-project"),
+          ),
+          credentialKeyId: keyIdOf(KEY),
+        }),
+      );
+
+      const opened = await repo.openCredentialForProject(project.id, KEY);
+
+      expect(opened?.ok).toBe(false);
+    });
   });
 });

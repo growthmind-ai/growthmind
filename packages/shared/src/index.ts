@@ -166,7 +166,14 @@ export {
   type ReplayEventsResult,
   type ReplaySourceValidation,
 } from "./replay-source/types";
-export { REPLAY_FAILURE_MESSAGES, ALL_REPLAY_SOURCE_MESSAGES } from "./replay-source/messages";
+export {
+  REPLAY_FAILURE_MESSAGES,
+  ALL_REPLAY_SOURCE_MESSAGES,
+  REPLAY_NO_CONNECTION,
+  REPLAY_NONE_YET,
+  REPLAY_LIST_UNREADABLE,
+  REPLAY_EMPTY_RECORDING,
+} from "./replay-source/messages";
 
 export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
 

@@ -15,6 +15,11 @@ export const ROUTES = {
   experiments: "/experiments",
   experimentDetail: "/experiments/[id]",
 
+  // Live for any org whose analytics is connected: recordings come from the same
+  // connection the events do, so there is nothing extra to set up.
+  replays: "/replays",
+  replayDetail: "/replays/[recordingId]",
+
   // Standing reference about the customer's own product.
   audience: "/audience",
   plan: "/plan",
