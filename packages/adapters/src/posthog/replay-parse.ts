@@ -6,6 +6,7 @@ import { replayRecordingSummarySchema, rrwebEventSchema } from "@growthmind/shar
 
 const RECORDING_META_KEYS = [
   "recording_duration",
+  "active_seconds",
   "click_count",
   "keypress_count",
   "mouse_activity_count",

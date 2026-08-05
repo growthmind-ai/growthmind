@@ -1,35 +1,21 @@
 "use client";
 
-import { Anchor, Badge, Group, Skeleton, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Skeleton, Stack, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 
-import { REPLAY_LIST_UNREADABLE, REPLAY_NONE_YET } from "@growthmind/shared";
+import { REPLAY_LIST_TRUNCATED, REPLAY_LIST_UNREADABLE, REPLAY_NONE_YET } from "@growthmind/shared";
 
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-
-interface Listed {
-  readonly recordingId: string;
-  readonly startedAt: string | null;
-  readonly meta: Record<string, unknown>;
-}
+import { ReplayRow, type ListedRecording } from "@/components/replay/ReplayRow";
 
 type Load =
   | { readonly state: "loading" }
-  | { readonly state: "ready"; readonly recordings: Listed[]; readonly message: string | null }
+  | {
+      readonly state: "ready";
+      readonly recordings: ListedRecording[];
+      readonly message: string | null;
+      readonly truncated: boolean;
+    }
   | { readonly state: "failed"; readonly message: string };
-
-function seconds(value: unknown): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-  const minutes = Math.floor(value / 60);
-  return minutes > 0 ? `${minutes}m ${Math.round(value % 60)}s` : `${Math.round(value)}s`;
-}
-
-function count(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
-}
 
 export function ReplayList() {
   const [load, setLoad] = useState<Load>({ state: "loading" });
@@ -41,8 +27,9 @@ export function ReplayList() {
       try {
         const response = await fetch("/api/replays", { signal: abort.signal });
         const body = (await response.json()) as {
-          recordings?: Listed[];
+          recordings?: ListedRecording[];
           message?: string;
+          truncated?: boolean;
         };
 
         if (!response.ok) {
@@ -54,6 +41,7 @@ export function ReplayList() {
           state: "ready",
           recordings: body.recordings ?? [],
           message: body.message ?? null,
+          truncated: body.truncated === true,
         });
       } catch {
         if (abort.signal.aborted) return;
@@ -84,51 +72,21 @@ export function ReplayList() {
     return <Text c="dimmed">{load.message ?? REPLAY_NONE_YET}</Text>;
   }
 
+  // A shortened list without its sentence reads as "that is all there is". A partial
+  // failure outranks the page cap: both stop the list early, one of them is worse.
+  const note = load.message ?? (load.truncated ? REPLAY_LIST_TRUNCATED : null);
+
   return (
     <Stack gap="sm">
-      {load.recordings.map((recording) => {
-        const duration = seconds(recording.meta.recording_duration);
-        const errors = count(recording.meta.console_error_count);
-        const clicks = count(recording.meta.click_count);
-        const startUrl = recording.meta.start_url;
+      {load.recordings.map((recording) => (
+        <ReplayRow key={recording.recordingId} recording={recording} />
+      ))}
 
-        return (
-          <SurfaceCard key={recording.recordingId}>
-            <Group justify="space-between" gap="md" wrap="wrap">
-              <Stack gap={2}>
-                <Anchor component={Link} href={`/replays/${recording.recordingId}`} fw={600}>
-                  {typeof startUrl === "string" && startUrl !== ""
-                    ? startUrl
-                    : recording.recordingId}
-                </Anchor>
-                <Text size="xs" c="dimmed">
-                  {recording.startedAt === null
-                    ? "Time not recorded"
-                    : new Date(recording.startedAt).toLocaleString()}
-                </Text>
-              </Stack>
-
-              <Group gap="xs">
-                {duration === null ? null : (
-                  <Badge variant="light" color="gray">
-                    {duration}
-                  </Badge>
-                )}
-                {clicks === null ? null : (
-                  <Badge variant="light" color="gray">
-                    {clicks} clicks
-                  </Badge>
-                )}
-                {errors === null ? null : (
-                  <Badge variant="light" color="red">
-                    {errors} errors
-                  </Badge>
-                )}
-              </Group>
-            </Group>
-          </SurfaceCard>
-        );
-      })}
+      {note === null ? null : (
+        <Text size="sm" c="dimmed">
+          {note}
+        </Text>
+      )}
     </Stack>
   );
 }

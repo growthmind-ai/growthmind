@@ -47,16 +47,20 @@ describe("parseRecordingsPage", () => {
     expect(recording?.startedAt).toEqual(new Date("2026-08-05T06:27:54.726Z"));
     expect(recording?.lastActivityAt).toEqual(new Date("2026-08-05T06:30:51.838Z"));
 
-    // active_seconds/inactive_seconds/person/retention_period_days are not
-    // in the "worth fetching" set — only the fields named in the task survive.
+    // inactive_seconds is derivable from the two that survive; person and
+    // retention_period_days carry identity and storage policy, neither of which
+    // this screen reads.
     expect(recording?.meta).toEqual({
       recording_duration: 177,
+      active_seconds: 34,
       click_count: 15,
       keypress_count: 0,
       mouse_activity_count: 125,
       console_error_count: 0,
       start_url: "https://app.growthmind.ai/settings",
     });
+    expect(recording?.meta.person).toBeUndefined();
+    expect(recording?.meta.distinct_id).toBeUndefined();
   });
 
   test("an empty results array yields zero recordings and zero drops", () => {
