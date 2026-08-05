@@ -63,15 +63,20 @@ describe("REPLAY_CAPTURE_CONFIG", () => {
     expect((REPLAY_CAPTURE_CONFIG as Record<string, unknown>).includePii).toBe(false);
   });
 
-  test("masks every input by default", () => {
-    expect((REPLAY_CAPTURE_CONFIG as Record<string, unknown>).maskAllInputs).toBe(true);
+  // Masking is deliberately off while only the team uses the app (B-050 is the trip-wire).
+  // Both recorders read one config, so this asserts the same posture replay-masking.test.ts
+  // states — the point being that they cannot answer differently.
+  test("records inputs as typed, except passwords", () => {
+    const config = REPLAY_CAPTURE_CONFIG as Record<string, unknown>;
+
+    expect(config.maskAllInputs).toBe(false);
+    expect((config.maskInputOptions as Record<string, unknown>).password).toBe(true);
   });
 
-  test("masks all text via a catch-all selector and exempts nothing (no unmask/allowlist key)", () => {
-    expect((REPLAY_CAPTURE_CONFIG as Record<string, unknown>).maskTextSelector).toBe("*");
-
+  test("names no text-masking rule at all, rather than a rule that exempts things", () => {
     const keys = Object.keys(REPLAY_CAPTURE_CONFIG);
-    expect(keys.some((key) => /unmask|allow/i.test(key))).toBe(false);
+
+    expect(keys.some((key) => /maskText/i.test(key))).toBe(false);
 
     const strings = collectStrings(REPLAY_CAPTURE_CONFIG);
     expect(strings.some((value) => value.includes("gm-replay-unmasked"))).toBe(false);
