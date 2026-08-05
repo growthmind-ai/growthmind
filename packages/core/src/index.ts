@@ -54,6 +54,18 @@ export { detectErrorEvent } from "./detect/error-event";
 export { NOT_BUILT_DETECTORS, type NotBuiltDetector } from "./detect/not-built";
 
 export {
+  STEP_SPINE_VERSION,
+  SPINE_MIN_REACH_RATIO_PERCENT,
+  type SpineIdentity,
+  type SpineStep,
+  type StepSpine,
+  type SpineOptions,
+  type SessionPlacement,
+} from "./spine/types";
+export { sessionWalk, transitionsOf, surfaceNormalisationVersionOf } from "./spine/walk";
+export { buildStepSpine, placeOnSpine } from "./spine/spine";
+
+export {
   evidenceSignalSchema,
   evidenceSignalKindSchema,
   BROKEN_PROOF_SIGNALS_V1,
