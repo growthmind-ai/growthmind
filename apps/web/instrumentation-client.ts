@@ -1,6 +1,7 @@
 import posthog from "posthog-js";
 
 import { POSTHOG_PROXY_PATH, resolvePostHogHosts } from "./lib/posthog-hosts";
+import { REPLAY_MASKING } from "./lib/replay-masking";
 import { startReplayCapture } from "./lib/rrweb-capture";
 
 import { logger } from "@growthmind/shared";
@@ -25,6 +26,7 @@ if (token) {
     defaults: "2026-01-30",
     capture_exceptions: true,
     debug: process.env.NODE_ENV === "development",
+    session_recording: REPLAY_MASKING,
   });
 }
 

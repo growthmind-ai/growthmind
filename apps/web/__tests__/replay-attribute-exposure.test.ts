@@ -52,8 +52,6 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "components/slack/SlackConnection.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/CopyableBlock.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/Logo.tsx": { bindings: 1, kind: "our-copy" },
-  // Interpolates the customer's own page paths into an aria-label.
-  "components/settings/PageRoles.tsx": { bindings: 2, kind: "customer-data" },
 };
 
 type Kind = "our-copy" | "customer-data";
@@ -108,14 +106,15 @@ describe("replay attribute exposure", () => {
     expect(countBindings("<div data-user-email={customer.email} />")).toBe(1);
   });
 
-  test("the register records that capture must stay off while a binding carries customer data", () => {
-    // Not a gate on the recorder — the key being unset is what keeps capture off. This
-    // says why it must stay unset, and goes red when the last such binding is resolved,
-    // which is the moment to revisit both this row and the warning in .env.example.
+  // B-049 proved this channel is real: a live PostHog recording of /settings held
+  // "What /settings is for" verbatim, from an aria-label. The fix was to stop putting the
+  // path in the attribute (aria-labelledby names the visible element instead), not to
+  // classify it and move on — so the register now holds the stronger rule.
+  test("no binding carries customer data, because there is nowhere safe to put it", () => {
     const carrying = Object.entries(REVIEWED)
       .filter(([, row]) => row.kind === "customer-data")
       .map(([file]) => file);
 
-    expect(carrying).toEqual(["components/settings/PageRoles.tsx"]);
+    expect(carrying).toEqual([]);
   });
 });

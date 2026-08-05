@@ -2,14 +2,13 @@ import { start as startRrweb, type browserClientRecordOptions } from "@rrweb/bro
 
 import { logger } from "@growthmind/shared";
 
-// AD-5a: the installed SDK has no unmask/allowlist seam, so masking has no
-// exemptions — a rule that misses must fail toward masking (architecture §5).
-// AD-5b: this covers text nodes and input values only. rrweb 2.1.1 serialises
-// title/alt/aria-label/placeholder/data-* verbatim and offers no hook to mask them.
+import { REPLAY_MASKING } from "./replay-masking";
+
+// includePii is this vendor's own switch; the masking it shares with the PostHog recorder
+// comes from one place so the two cannot answer the same question differently (B-049).
 export const REPLAY_CAPTURE_CONFIG = {
   includePii: false,
-  maskAllInputs: true,
-  maskTextSelector: "*",
+  ...REPLAY_MASKING,
 } as const;
 
 type StartFn = (options: browserClientRecordOptions) => void;
