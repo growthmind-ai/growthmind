@@ -10,7 +10,7 @@ import {
   EXCLUSION_REASON_LABELS,
   URL_PATH_NORMALISATION_VERSION,
   type CredentialKeyResolution,
-  type ExclusionReason,
+  type StampedExclusionReason,
   type TenantContext,
 } from "@growthmind/shared";
 
@@ -430,7 +430,7 @@ interface CorpusEventSpec {
 interface CorpusSessionSpec {
   readonly sessionKey: string;
   readonly startedAt: Date;
-  readonly exclusionReason?: ExclusionReason;
+  readonly exclusionReason?: StampedExclusionReason;
   readonly events: readonly CorpusEventSpec[];
 }
 
@@ -752,7 +752,7 @@ describe("detector-corpus.service — the T1 corpus read", () => {
   it("detector-corpus.service excludes exclusion_reason != 'none' sessions from the denominator and reports them in basis", async () => {
     const org = await seedCorpusOrg(db, "basis");
     const BASIS_BASE = new Date("2026-07-24T09:00:00.000Z");
-    const plan: readonly { readonly key: string; readonly reason: ExclusionReason }[] = [
+    const plan: readonly { readonly key: string; readonly reason: StampedExclusionReason }[] = [
       { key: "kept-1", reason: "none" },
       { key: "kept-2", reason: "none" },
       { key: "kept-3", reason: "none" },

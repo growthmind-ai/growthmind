@@ -234,6 +234,7 @@ function basisOf(sessions: readonly SessionTimeline[]): CountBasis {
   return {
     totalInWindow: sessions.length,
     kept: sessions.filter((session) => session.exclusionReason === "none").length,
+    keptUnchecked: 0,
     setAside,
   };
 }

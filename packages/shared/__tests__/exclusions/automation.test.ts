@@ -185,6 +185,7 @@ describe("no host-based or domain-pattern predicate exists in src/exclusions", (
       "automation_headless",
       "automation_known_agent",
       "automation_coding_agent",
+      "outside_who_counts",
     ]);
   });
 });

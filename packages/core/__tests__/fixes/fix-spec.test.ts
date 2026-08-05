@@ -46,13 +46,14 @@ const SET_ASIDE = 3;
 const CLEAN_COVERAGE: DetectorCoverage = { truncated: false, eventsWithoutUrlPath: 0 };
 
 function keptBasis(kept: number): CountBasis {
-  return { totalInWindow: kept, kept, setAside: [] };
+  return { totalInWindow: kept, kept, keptUnchecked: 0, setAside: [] };
 }
 
 function allSetAsideBasis(total: number): CountBasis {
   return {
     totalInWindow: total,
     kept: 0,
+    keptUnchecked: 0,
     setAside: [
       { reason: "internal_domain", count: total, label: EXCLUSION_REASON_LABELS.internal_domain },
     ],

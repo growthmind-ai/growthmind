@@ -39,7 +39,7 @@ function failureCorrelated(): EvidenceSignal {
       denominator: 10,
       unit: "sessions",
       timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
-      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+      basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
     }),
   };
 }
@@ -85,7 +85,7 @@ function sessionsCount(numerator: number, denominator: number): MeasuredCount {
     denominator,
     unit: "sessions",
     timeframe: { start: WINDOW_START, end: WINDOW_END },
-    basis: { totalInWindow: denominator, kept: denominator, setAside: [] },
+    basis: { totalInWindow: denominator, kept: denominator, setAside: [], keptUnchecked: 0 },
   });
 }
 

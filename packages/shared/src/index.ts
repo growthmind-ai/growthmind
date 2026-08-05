@@ -191,7 +191,9 @@ export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
 
 export {
   exclusionReasonSchema,
+  stampedExclusionReasonSchema,
   type ExclusionReason,
+  type StampedExclusionReason,
   type SessionFacts,
   type ExclusionRuleSet,
 } from "./exclusions/types";
@@ -809,6 +811,25 @@ export {
   type WorthBasis,
 } from "./growth/types";
 export {
+  AUDIENCE_CLAUSE_MAX,
+  AUDIENCE_DOMAIN_MAX,
+  AUDIENCE_RULE_STATUSES,
+  audienceClauseSchema,
+  audienceRuleSchema,
+  audienceProposalSchema,
+  evaluateAudience,
+  evaluateAudienceRule,
+  evaluateAudienceClause,
+  renderAudienceRule,
+  renderAudienceClause,
+  type AudienceClause,
+  type AudienceRule,
+  type AudienceRuleStatus,
+  type AudienceProposal,
+  type AudienceFacts,
+  type AudienceVerdict,
+} from "./growth/audience";
+export {
   FACT_SOURCES,
   STATEMENT_MAX,
   RESEARCH_STATUSES,
@@ -843,6 +864,7 @@ export {
   shapingReadOutputSchema,
   businessResearchPayloadSchema,
   readBusinessContext,
+  confirmedAudienceRules,
   factsOfKind,
   capFactsPerKind,
   isBindingKind,

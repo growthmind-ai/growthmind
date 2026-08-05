@@ -22,6 +22,7 @@ function persistedFact(kind: string, extra: Record<string, unknown> = {}) {
     statement: "Licensed by the UK Gambling Commission.",
     provenance: { source: "site", at: AT.toISOString(), citation: "https://example.com/terms" },
     correctedFrom: null,
+    audience: null,
     ...extra,
   };
 }
@@ -32,6 +33,7 @@ function fact(kind: BusinessFact["kind"], statement: string): BusinessFact {
     statement,
     provenance: { source: "site", at: AT, citation: "https://example.com/", seen: null },
     correctedFrom: null,
+    audience: null,
   };
 }
 

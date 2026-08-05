@@ -5,7 +5,7 @@ import {
   matchesToken,
 } from "./automation";
 import { FREE_MAIL_DOMAINS } from "./free-mail";
-import type { ExclusionReason, ExclusionRuleSet, SessionFacts } from "./types";
+import type { ExclusionRuleSet, SessionFacts, StampedExclusionReason } from "./types";
 
 export const EXCLUSION_RULE_SET_VERSION = 1;
 
@@ -23,7 +23,10 @@ export const EXCLUSION_RULE_SETS: ReadonlyMap<number, ExclusionRuleSet> = new Ma
 
 export const CURRENT_EXCLUSION_RULE_SET: ExclusionRuleSet = RULE_SET_V1;
 
-export function classifyExclusion(facts: SessionFacts, rules: ExclusionRuleSet): ExclusionReason {
+export function classifyExclusion(
+  facts: SessionFacts,
+  rules: ExclusionRuleSet,
+): StampedExclusionReason {
   const userAgent = facts.userAgent?.trim() ?? "";
 
   if (userAgent.length > 0) {

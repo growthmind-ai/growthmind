@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import type {
-  ExclusionReason,
+  StampedExclusionReason,
   IdentityResolution,
   Origin,
   PollRunOutcome,
@@ -49,7 +49,7 @@ export async function seedSession(
     startedAt?: Date;
     lastEventAt?: Date;
     origin?: Origin;
-    exclusionReason?: ExclusionReason;
+    exclusionReason?: StampedExclusionReason;
     internalDomainAtStamp?: string | null;
     exclusionRuleSetVersion?: number;
     groupingVersion?: number;

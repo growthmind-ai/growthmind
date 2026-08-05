@@ -1,5 +1,5 @@
 import type {
-  ExclusionReason,
+  StampedExclusionReason,
   IdentityResolution,
   Origin,
   TenantContext,
@@ -26,7 +26,7 @@ export interface SessionUpsertRow {
   startedAt: Date;
   lastEventAt: Date;
   origin: Origin;
-  exclusionReason: ExclusionReason;
+  exclusionReason: StampedExclusionReason;
   internalDomainAtStamp: string | null;
   exclusionRuleSetVersion: number;
   groupingVersion: number;

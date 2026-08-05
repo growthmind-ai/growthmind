@@ -31,6 +31,7 @@ function keptSessionCount(now: Date): MeasuredCount {
     basis: {
       totalInWindow: 40,
       kept: 28,
+      keptUnchecked: 0,
       setAside: [
         {
           reason: "internal_domain",
@@ -158,7 +159,7 @@ describe("candidateFindingSchema — counts carry denominators", () => {
       denominator: 28,
       unit: "sessions",
       timeframe: windowEndingAt(FIXTURE_NOW),
-      basis: { totalInWindow: 40, kept: 28, setAside: [] },
+      basis: { totalInWindow: 40, kept: 28, setAside: [], keptUnchecked: 0 },
     };
 
     for (const count of [noDenominator, unbranded]) {

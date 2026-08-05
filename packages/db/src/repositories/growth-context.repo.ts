@@ -379,6 +379,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         const stated: BusinessFact = {
           kind: input.kind,
           statement: input.statement,
+          audience: null,
           // A correction is the highest-signal row in the table, so it keeps what it replaced
           // rather than overwriting it into silence — and the next read of the site is
           // suppressed against it.

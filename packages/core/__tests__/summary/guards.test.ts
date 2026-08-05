@@ -92,7 +92,7 @@ function corpusOf(sessions: readonly SessionTimeline[]) {
     window: FIXTURE_WINDOW,
     connectionState: FIXTURE_CONNECTION_STATE,
     sessions,
-    basis: { totalInWindow: sessions.length, kept: sessions.length, setAside: [] },
+    basis: { totalInWindow: sessions.length, kept: sessions.length, setAside: [], keptUnchecked: 0 },
     coverage: { truncated: false, eventsWithoutUrlPath: 0 },
   };
 }

@@ -172,6 +172,7 @@ function basisOf(sessions: readonly SessionTimeline[]): CountBasis {
   return {
     totalInWindow: sessions.length,
     kept: sessions.filter((session) => session.exclusionReason === "none").length,
+    keptUnchecked: 0,
     setAside,
   };
 }
@@ -372,7 +373,7 @@ describe("detectFunnelDropoff", () => {
 
   test("should return an empty result for zero sessions, distinguishable from did-not-run", () => {
     const corpus = emptyCorpus(CONNECTED_NO_EVENTS_YET);
-    expect(corpus.basis).toEqual({ totalInWindow: 0, kept: 0, setAside: [] });
+    expect(corpus.basis).toEqual({ totalInWindow: 0, kept: 0, setAside: [], keptUnchecked: 0 });
 
     const result = detectFunnelDropoff(corpus, ruleSetV1());
 
@@ -895,7 +896,7 @@ describe("detectFunnelDropoff — struggle.attempts (PL ruling 31)", () => {
           denominator: 1,
           unit: "sessions",
           timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
-          basis: { totalInWindow: 1, kept: 1, setAside: [] },
+          basis: { totalInWindow: 1, kept: 1, setAside: [], keptUnchecked: 0 },
         }),
       }),
     ).toMatchObject({ kind: "struggle", subkind: "backtrack" });

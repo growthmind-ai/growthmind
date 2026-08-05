@@ -24,7 +24,7 @@ function count(numerator: number, denominator: number) {
     denominator,
     unit: "sessions",
     timeframe: WINDOW,
-    basis: { totalInWindow: denominator, kept: denominator, setAside: [] },
+    basis: { totalInWindow: denominator, kept: denominator, setAside: [], keptUnchecked: 0 },
   });
 }
 

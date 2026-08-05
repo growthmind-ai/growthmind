@@ -34,7 +34,7 @@ function correlatedFailure(overrides: { readonly occurredAt?: Date } = {}): Evid
       denominator: 10,
       unit: "sessions",
       timeframe: { start: FIRST_EXCEPTION_AT, end: LATER_EXCEPTION_AT },
-      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+      basis: { totalInWindow: 10, kept: 10, keptUnchecked: 0, setAside: [] },
     }),
   };
 }
@@ -56,7 +56,7 @@ function struggleSignal(input: {
       denominator: input.kept,
       unit: "sessions",
       timeframe: { start: FIRST_EXCEPTION_AT, end: LATER_EXCEPTION_AT },
-      basis: { totalInWindow: input.kept, kept: input.kept, setAside: [] },
+      basis: { totalInWindow: input.kept, kept: input.kept, keptUnchecked: 0, setAside: [] },
     }),
   };
 }

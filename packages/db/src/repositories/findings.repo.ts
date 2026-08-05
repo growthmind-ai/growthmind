@@ -16,6 +16,9 @@ export const measuredCountRowSchema = z.object({
   basis: z.object({
     totalInWindow: z.number().int().nonnegative(),
     kept: z.number().int().nonnegative(),
+
+    // Absent from every finding persisted before who_counts could narrow anything (D5).
+    keptUnchecked: z.number().int().nonnegative().default(0),
     setAside: z.array(
       z.object({
         reason: z.string(),

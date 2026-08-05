@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ExclusionReason, IdentityResolution, Origin } from "@growthmind/shared";
+import type { IdentityResolution, Origin, StampedExclusionReason } from "@growthmind/shared";
 import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
@@ -20,7 +20,7 @@ const EXCLUSION_REASONS = [
   "automation_headless",
   "automation_known_agent",
   "automation_coding_agent",
-] as const satisfies readonly [ExclusionReason, ...ExclusionReason[]];
+] as const satisfies readonly [StampedExclusionReason, ...StampedExclusionReason[]];
 
 export const sessions = pgTable(
   "sessions",

@@ -50,12 +50,14 @@ function setAside(reason: ExclusionReason, count: number): SetAsideBasis {
 const KEPT_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 28,
+  keptUnchecked: 0,
   setAside: [setAside("automation_known_agent", 9), setAside("internal_domain", 3)],
 };
 
 const ALL_SET_ASIDE_BASIS: CountBasis = {
   totalInWindow: 40,
   kept: 0,
+  keptUnchecked: 0,
   setAside: [setAside("automation_headless", 31), setAside("internal_domain", 9)],
 };
 
@@ -135,7 +137,7 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("should not print 0% for a numerator that rounds to zero", () => {
-    const basis: CountBasis = { totalInWindow: 900, kept: 900, setAside: [] };
+    const basis: CountBasis = { totalInWindow: 900, kept: 900, setAside: [], keptUnchecked: 0 };
     const sentence = renderCountSentence(observation(3, LABEL, basis), VOCABULARY);
 
     expect(sentence).toContain("under 1%");
@@ -143,7 +145,7 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("should not print 100% while some sessions did not do it", () => {
-    const basis: CountBasis = { totalInWindow: 900, kept: 900, setAside: [] };
+    const basis: CountBasis = { totalInWindow: 900, kept: 900, setAside: [], keptUnchecked: 0 };
     const sentence = renderCountSentence(observation(899, LABEL, basis), VOCABULARY);
 
     expect(sentence).toContain("over 99%");
@@ -151,7 +153,7 @@ describe("renderCountSentence — a count never travels without its denominator"
   });
 
   test("prints a true 0% and a true 100% without hedging", () => {
-    const basis: CountBasis = { totalInWindow: 28, kept: 28, setAside: [] };
+    const basis: CountBasis = { totalInWindow: 28, kept: 28, setAside: [], keptUnchecked: 0 };
     expect(renderCountSentence(observation(0, LABEL, basis), VOCABULARY)).toContain("(0%)");
     expect(renderCountSentence(observation(28, LABEL, basis), VOCABULARY)).toContain("(100%)");
   });

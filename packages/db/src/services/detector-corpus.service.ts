@@ -5,12 +5,14 @@ import type {
   TimelineEvent,
 } from "@growthmind/core";
 import { DETECTOR_CORPUS_MAX_SESSIONS } from "@growthmind/core";
-import type { ExclusionReason, TenantContext } from "@growthmind/shared";
+import type { AudienceRule, ExclusionReason, TenantContext } from "@growthmind/shared";
+import { confirmedAudienceRules, evaluateAudience, readBusinessContext } from "@growthmind/shared";
 import { asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
 import { events } from "../schema/events";
+import { growthContext } from "../schema/growth-context";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 import { sessions } from "../schema/sessions";
 import { deriveConnectionState, findLatestConnection } from "./connection-state";
@@ -24,6 +26,24 @@ const CAP_PROBE_LIMIT = DETECTOR_CORPUS_MAX_SESSIONS + 1;
 
 const NOT_COMPUTED_BY_THE_READ = 0;
 
+async function readConfirmedAudienceRules(
+  db: ScopedDb,
+  ctx: TenantContext,
+  projectId: string,
+): Promise<readonly AudienceRule[]> {
+  const s = scoped(db, ctx);
+
+  const [row] = await db
+    .select({ businessContext: growthContext.businessContext })
+    .from(growthContext)
+    .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
+    .limit(1);
+
+  if (row === undefined) return [];
+
+  return confirmedAudienceRules(readBusinessContext(row.businessContext));
+}
+
 export function createDetectorCorpusService(
   db: ScopedDb,
   ctx: TenantContext,
@@ -32,12 +52,16 @@ export function createDetectorCorpusService(
 
   return {
     async read(projectId: string, window: AnalysisWindow): Promise<DetectorCorpus> {
+      const audienceRules = await readConfirmedAudienceRules(db, ctx, projectId);
+
       const windowRows = await db
         .select({
           id: sessions.id,
           startedAt: sessions.startedAt,
           exclusionReason: sessions.exclusionReason,
           entryUrlPath: sessions.entryUrlPath,
+          identityEmailDomain: sessions.identityEmailDomain,
+          identityResolution: sessions.identityResolution,
         })
         .from(sessions)
         .where(
@@ -95,13 +119,32 @@ export function createDetectorCorpusService(
         }
       }
 
-      const timelines: SessionTimeline[] = selected.map((row) => ({
-        sessionId: row.id,
-        startedAt: row.startedAt,
-        exclusionReason: row.exclusionReason satisfies ExclusionReason,
-        entryUrlPath: row.entryUrlPath,
-        events: eventsBySession.get(row.id) ?? [],
-      }));
+      let unchecked = 0;
+
+      const timelines: SessionTimeline[] = selected.map((row) => {
+        const stamped = row.exclusionReason satisfies ExclusionReason;
+
+        // A session already set aside keeps the reason it was set aside for: re-labelling it
+        // would move a count between two rows of the same breakdown.
+        const verdict =
+          stamped === "none"
+            ? evaluateAudience(audienceRules, {
+                identityEmailDomain: row.identityEmailDomain,
+                identityResolution: row.identityResolution,
+                entryUrlPath: row.entryUrlPath,
+              })
+            : "counts";
+
+        if (verdict === "unknown") unchecked += 1;
+
+        return {
+          sessionId: row.id,
+          startedAt: row.startedAt,
+          exclusionReason: verdict === "outside" ? "outside_who_counts" : stamped,
+          entryUrlPath: row.entryUrlPath,
+          events: eventsBySession.get(row.id) ?? [],
+        };
+      });
 
       let kept = 0;
       const sessionsByReason = new Map<ExclusionReason, number>();
@@ -153,6 +196,7 @@ export function createDetectorCorpusService(
           totalInWindow: timelines.length,
           kept,
           setAside,
+          keptUnchecked: unchecked,
         },
         coverage: { truncated, eventsWithoutUrlPath: NOT_COMPUTED_BY_THE_READ },
       };

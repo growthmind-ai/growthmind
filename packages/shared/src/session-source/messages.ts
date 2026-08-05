@@ -50,6 +50,7 @@ export const EXCLUSION_REASON_LABELS: Record<ExclusionReason, string> = {
   automation_headless: "Automated browser tests",
   automation_known_agent: "Crawlers, monitors and scripts",
   automation_coding_agent: "Coding agents",
+  outside_who_counts: "Not who you said counts",
 };
 
 export const COUNTER_LABELS = {

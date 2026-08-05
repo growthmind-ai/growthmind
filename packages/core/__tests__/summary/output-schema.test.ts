@@ -27,7 +27,7 @@ function candidateWithCount(numerator: number, denominator: number): CandidateFi
     denominator,
     unit: "sessions",
     timeframe: FIXTURE_WINDOW,
-    basis: { totalInWindow: denominator, kept: denominator, setAside: [] },
+    basis: { totalInWindow: denominator, kept: denominator, setAside: [], keptUnchecked: 0 },
   });
 
   return candidateFindingSchema.parse({

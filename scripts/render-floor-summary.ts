@@ -16,6 +16,7 @@ const WINDOW = {
 const BASIS = {
   totalInWindow: 260,
   kept: 240,
+  keptUnchecked: 0,
   setAside: [{ reason: "internal_domain" as const, count: 20, label: "internal traffic" }],
 };
 

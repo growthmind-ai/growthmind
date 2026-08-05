@@ -74,7 +74,7 @@ const HELD_COUNTS: readonly MeasuredCountRow[] = [
       start: new Date("2026-07-30T00:00:00.000Z"),
       end: new Date("2026-08-01T00:00:00.000Z"),
     },
-    basis: { totalInWindow: 10, kept: 10, setAside: [] },
+    basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
   },
 ];
 
@@ -157,7 +157,7 @@ async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<
           start: new Date("2026-07-30T00:00:00.000Z"),
           end: new Date("2026-08-01T00:00:00.000Z"),
         },
-        basis: { totalInWindow: 10, kept: 10, setAside: [] },
+        basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
       },
     ],
     confidenceBasis: "few_sessions",

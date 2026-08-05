@@ -58,7 +58,7 @@ function failureCorrelated(ruleSet: ThresholdRuleSet): EvidenceSignal {
       denominator: 10,
       unit: "sessions",
       timeframe: { start: new Date("2026-04-06"), end: new Date("2026-04-13") },
-      basis: { totalInWindow: 10, kept: 10, setAside: [] },
+      basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
     }),
   };
 }
@@ -108,7 +108,7 @@ function sessions(numerator: number, kept: number): MeasuredCount {
     denominator: kept,
     unit: "sessions",
     timeframe: WINDOW,
-    basis: { totalInWindow: kept, kept, setAside: [] },
+    basis: { totalInWindow: kept, kept, keptUnchecked: 0, setAside: [] },
   });
 }
 

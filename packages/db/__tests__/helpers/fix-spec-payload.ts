@@ -29,6 +29,7 @@ function persistedCount(numerator: number, denominator: number): unknown {
     basis: {
       totalInWindow: denominator + SET_ASIDE_COUNT,
       kept: denominator,
+      keptUnchecked: 0,
       setAside: [
         { reason: "internal_domain", count: SET_ASIDE_COUNT, label: "Your own team's visits" },
       ],
@@ -96,6 +97,7 @@ export function findingCountRow(numerator: number, denominator: number): Measure
     basis: {
       totalInWindow: denominator + SET_ASIDE_COUNT,
       kept: denominator,
+      keptUnchecked: 0,
       setAside: [
         { reason: "internal_domain", count: SET_ASIDE_COUNT, label: "Your own team's visits" },
       ],

@@ -63,6 +63,7 @@ function factsFrom(
         statement: fact.statement.trim(),
         provenance: { source: "site" as const, at, citation: page.url, seen: null },
         correctedFrom: null,
+        audience: null,
       },
     ];
   });

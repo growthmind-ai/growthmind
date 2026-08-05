@@ -121,7 +121,7 @@ function count(numerator: number): MeasuredCount {
     denominator: KEPT,
     unit: "sessions",
     timeframe: { start: WINDOW_START, end: WINDOW_END },
-    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [] },
+    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [], keptUnchecked: 0 },
   });
 }
 

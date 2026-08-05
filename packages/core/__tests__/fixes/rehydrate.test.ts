@@ -32,7 +32,7 @@ const LEFT = 14;
 
 const CLEAN_COVERAGE: DetectorCoverage = { truncated: false, eventsWithoutUrlPath: 0 };
 
-const BASIS: CountBasis = { totalInWindow: REACHED, kept: REACHED, setAside: [] };
+const BASIS: CountBasis = { totalInWindow: REACHED, kept: REACHED, setAside: [], keptUnchecked: 0 };
 
 function countOf(numerator: number): MeasuredCount {
   return measuredCount({

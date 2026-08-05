@@ -10,6 +10,7 @@ const READ_OFF_THE_SITE: BusinessFact = {
   statement: "People arriving from a search for a specific product.",
   provenance: { source: "site", at: AT, citation: "https://example.com/about", seen: null },
   correctedFrom: null,
+  audience: null,
 };
 
 const OBSERVED: BusinessFact = {
@@ -27,6 +28,7 @@ const OBSERVED: BusinessFact = {
     },
   },
   correctedFrom: null,
+  audience: null,
 };
 
 const CORRECTED: BusinessFact = {
@@ -34,6 +36,7 @@ const CORRECTED: BusinessFact = {
   statement: "Solo founders, mostly.",
   provenance: { source: "stated_by_customer", at: AT, citation: null, seen: null },
   correctedFrom: "People arriving from a search for a specific product.",
+  audience: null,
 };
 
 function contextOf(facts: readonly BusinessFact[]): BusinessContext {

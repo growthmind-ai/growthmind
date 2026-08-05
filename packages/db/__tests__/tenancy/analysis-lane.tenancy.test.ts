@@ -40,7 +40,7 @@ const FIXTURE_COUNTS = [
     denominator: 40,
     unit: "sessions",
     timeframe: { start: WINDOW_START, end: WINDOW_END },
-    basis: { totalInWindow: 40, kept: 40, setAside: [] },
+    basis: { totalInWindow: 40, kept: 40, setAside: [], keptUnchecked: 0 },
   },
 ] as unknown as readonly MeasuredCountRow[];
 

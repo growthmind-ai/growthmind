@@ -44,7 +44,7 @@ function coreCount(numerator: number): MeasuredCount {
     denominator: KEPT,
     unit: "sessions",
     timeframe: { start: WINDOW_START, end: WINDOW_END },
-    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [] },
+    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [], keptUnchecked: 0 },
   });
 }
 
@@ -54,7 +54,7 @@ export function wireCount(numerator: number): McpMeasuredCount {
     denominator: KEPT,
     unit: "sessions",
     timeframe: { start: WINDOW_START.toISOString(), end: WINDOW_END.toISOString() },
-    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [] },
+    basis: { totalInWindow: KEPT, kept: KEPT, setAside: [], keptUnchecked: 0 },
   });
 }
 
