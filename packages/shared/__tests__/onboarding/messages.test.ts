@@ -59,7 +59,7 @@ const AGENT_COPY: readonly (readonly [string, string])[] = [
   ["AGENT_PRE_MINT_LINE", "agentPreMintLine"],
   ["AGENT_PASTE_INTO_TEMPLATE", "agentPasteIntoTemplate"],
   ["AGENT_RUN_ANYWHERE_LINE", "agentRunAnywhereLine"],
-  ["AGENT_MINT_TEMPLATE", "agentMintTemplate"],
+  ["AGENT_MINT_LABEL", "agentMintLabel"],
   ["AGENT_MINT_PENDING", "agentMintPending"],
   ["AGENT_MINT_AGAIN_LABEL", "agentMintAgainLabel"],
   ["AGENT_MINT_FAILED_LINE", "agentMintFailedLine"],

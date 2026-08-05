@@ -21,7 +21,13 @@ interface CopyableBlockProps {
 export function CopyableBlock(props: CopyableBlockProps) {
   return (
     <Stack gap="xs">
-      <Code block fz="sm" style={{ maxWidth: "100%", overflowX: "auto", whiteSpace: "pre" }}>
+      {/* Wraps rather than scrolls: a sideways scrollbar hides the end of a line,
+          and the longest line here is a URL with nothing to break on but itself. */}
+      <Code
+        block
+        fz="xs"
+        style={{ maxWidth: "100%", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+      >
         {props.block}
       </Code>
 
