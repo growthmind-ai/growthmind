@@ -18,8 +18,8 @@ function duration(value: unknown): string | null {
   return minutes > 0 ? `${minutes}m ${Math.round(value % 60)}s` : `${Math.round(value)}s`;
 }
 
-// `total` comes back only when the badge is showing active time, so the caller can
-// render the wall-clock alongside it without saying the same number twice.
+// `total` comes back only when it says something the badge does not: absent when there is
+// no active time to compare it against, and absent when a session was active throughout.
 export function timeOnPage(meta: Record<string, unknown>): TimeOnPage | null {
   const total = duration(meta.recording_duration);
   const active = duration(meta.active_seconds);
@@ -28,7 +28,7 @@ export function timeOnPage(meta: Record<string, unknown>): TimeOnPage | null {
     return total === null ? null : { badge: total, total: null };
   }
 
-  return { badge: `${active} active`, total };
+  return { badge: `${active} active`, total: total === active ? null : total };
 }
 
 function truncate(value: string): string {

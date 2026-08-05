@@ -107,6 +107,18 @@ describe("timeOnPage", () => {
     expect(totalOnly?.total).toBeNull();
   });
 
+  test("drops the total when the session was active throughout", () => {
+    expect(timeOnPage({ recording_duration: 7, active_seconds: 7 })).toEqual({
+      badge: "7s active",
+      total: null,
+    });
+  });
+
+  test("drops the total when rounding makes the two read identically", () => {
+    // 177s and 176.6s both render "2m 57s"; printing it twice is noise either way.
+    expect(timeOnPage({ recording_duration: 177, active_seconds: 176.6 })?.total).toBeNull();
+  });
+
   test("reports active time even when the total is missing", () => {
     expect(timeOnPage({ active_seconds: 34 })).toEqual({
       badge: "34s active",
