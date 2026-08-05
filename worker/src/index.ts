@@ -34,6 +34,7 @@ import {
   logger,
   parseWorkerEnv,
   resolveCredentialKey,
+  audienceReducePayloadSchema,
   audienceReductionOutputSchema,
   shapingReadOutputSchema,
 } from "@growthmind/shared";
@@ -55,6 +56,7 @@ import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tick";
 import { runGrowthContextTick } from "./tasks/growth-context-tick";
 import { runBusinessResearch, type BusinessResearcherPort } from "./tasks/business-research";
+import { runReduceAudience } from "./tasks/reduce-audience";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
@@ -235,6 +237,38 @@ const businessResearchHandler: NonNullable<TaskList[string]> = async (payload, h
   );
 };
 
+const reduceAudienceHandler: NonNullable<TaskList[string]> = async (payload, helpers) => {
+  const { db, env } = resolveResources();
+  const taskLogger = taskLoggerFor(logger);
+
+  const parsed = audienceReducePayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    helpers.logger.error("reduce audience: a job arrived with a payload this task cannot read");
+    return;
+  }
+
+  const project = await findAnalysableProject(db, parsed.data.projectId);
+  if (project === null) {
+    taskLogger.error(
+      `reduce audience: project ${parsed.data.projectId} has no readable organization, so nothing was reduced`,
+    );
+    return;
+  }
+
+  await runReduceAudience(
+    {
+      growthFor: (ctx) => createGrowthContextRepo(db, ctx),
+      researcher: resolveBusinessResearcher(env),
+      logger: taskLogger,
+    },
+    {
+      ctx: systemContextFor(SYSTEM_ACTOR.REDUCE_AUDIENCE, project),
+      projectId: parsed.data.projectId,
+      statement: parsed.data.statement,
+    },
+  );
+};
+
 export const taskList: TaskList = {
   [TASK.HEARTBEAT]: (_payload, helpers) => {
     helpers.logger.info(heartbeatMessage(new Date()));
@@ -331,6 +365,8 @@ export const taskList: TaskList = {
   },
 
   [TASK.BUSINESS_RESEARCH]: businessResearchHandler,
+
+  [TASK.REDUCE_AUDIENCE]: reduceAudienceHandler,
 
   [TASK.BUSINESS_RESEARCH_BEFORE_RENAME]: businessResearchHandler,
 

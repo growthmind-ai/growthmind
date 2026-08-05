@@ -2,8 +2,8 @@
 // fact the next read of the site will not overwrite, and the only one that may say a person
 // said it.
 import { admitStatement } from "@growthmind/core";
-import { createGrowthContextRepo, ensureProject } from "@growthmind/db";
-import { settingsBusinessFactInputSchema } from "@growthmind/shared";
+import { createGrowthContextRepo, enqueueJob, ensureProject } from "@growthmind/db";
+import { AUDIENCE_REDUCE_TASK, settingsBusinessFactInputSchema } from "@growthmind/shared";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
@@ -46,7 +46,22 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   if (outcome === "not_found") return refusalResponse(FACT_NOT_FOUND);
   if (outcome === "full") return refusalResponse(FACT_KIND_FULL);
 
-  return Response.json({ saved: true, removed: parsed.data.statement === null });
+  // Whoever writes a `who_counts` sentence gets it read for a rule, not just whoever pressed
+  // "Read it again" — the reduction lives behind a job because a model call in this request
+  // would make saving a fact fail whenever the model is down (D8).
+  const statement = parsed.data.statement;
+  if (parsed.data.kind === "who_counts" && statement !== null) {
+    await enqueueJob(deps.db, {
+      task: AUDIENCE_REDUCE_TASK,
+      payload: { projectId, statement },
+
+      // Keyed on the sentence: editing it twice queues one reduction of the latest, and the
+      // job for a sentence that no longer exists is a no-op the task already handles.
+      jobKey: `${AUDIENCE_REDUCE_TASK}:${projectId}:${statement}`,
+    });
+  }
+
+  return Response.json({ saved: true, removed: statement === null });
 }
 
 export async function POST(request: Request): Promise<Response> {
