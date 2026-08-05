@@ -16,6 +16,12 @@ function map(
 
 const AD_PLANTED_READ_KEY = "rrweb_read_key_PLANTED123";
 
+// The 400 body shape observed 2026-08-05 for a recording id that is not a UUID.
+const AD_ZOD_ERROR_BODY: unknown = {
+  success: false,
+  error: { name: "ZodError", message: '[{ "code": "invalid_format", "format": "uuid" }]' },
+};
+
 // The live probe (2026-08-04) returned this as a plain-text body, not JSON.
 const AD_MISSING_SCOPE_TEXT_BODY: unknown =
   "Upstream authentication error: missing scope read:recordingMetadata";
@@ -49,6 +55,18 @@ describe("mapRrwebFailure", () => {
 
   test("404 maps to misconfigured when validating the connection, since the base path itself is unverified", () => {
     expect(map(404, {}, "validate").code).toBe("misconfigured");
+  });
+
+  // Observed 2026-08-05: rrweb.com validates the recording id and answers 400 with a
+  // ZodError body, so this is the status a caller actually meets — not 404. It used to
+  // fall through to unreachable, which reads as "the service is down" for what is only a
+  // bad id (scripts/spikes/notes/rrweb-read-api.md).
+  test("400 maps to recording_not_found when reading one recording's events", () => {
+    expect(map(400, AD_ZOD_ERROR_BODY, "events").code).toBe("recording_not_found");
+  });
+
+  test("400 maps to misconfigured when validating the connection", () => {
+    expect(map(400, AD_ZOD_ERROR_BODY, "validate").code).toBe("misconfigured");
   });
 
   test("429 maps to rate_limited", () => {

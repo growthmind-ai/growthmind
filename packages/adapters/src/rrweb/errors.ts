@@ -48,7 +48,11 @@ export function mapRrwebFailure(
   if (status === 403) {
     return replayFailure("invalid_credentials", secrets);
   }
-  if (status === 404) {
+  // 400 sits beside 404 rather than falling through to `unreachable`: rrweb.com validates
+  // the recording id and answers a ZodError body, so an id that cannot exist arrives as
+  // 400 and an id that merely does not arrives as 404. Both are the same thing to a
+  // caller, and neither is the service being unreachable.
+  if (status === 400 || status === 404) {
     return replayFailure(context === "events" ? "recording_not_found" : "misconfigured", secrets);
   }
   if (status === 429) {

@@ -7,8 +7,17 @@ const RECORDING_ENVELOPE_KEYS = ["recordings", "results", "data", "items"] as co
 const EVENT_ENVELOPE_KEYS = ["events", "results", "data"] as const;
 
 const RECORDING_ID_KEYS = ["id", "recordingId", "recording_id"] as const;
-const STARTED_AT_KEYS = ["startedAt", "started_at", "createdAt", "created_at"] as const;
+// `timestamp` is what rrweb.com actually sends, as epoch milliseconds, and it is the only
+// time on the item — observed 2026-08-05, scripts/spikes/notes/rrweb-read-api.md.
+const STARTED_AT_KEYS = [
+  "startedAt",
+  "started_at",
+  "createdAt",
+  "created_at",
+  "timestamp",
+] as const;
 const LAST_ACTIVITY_AT_KEYS = ["endedAt", "lastActivityAt", "updated_at"] as const;
+const META_KEYS = ["metadata", "meta"] as const;
 const CURSOR_KEYS = ["next", "nextCursor", "next_cursor"] as const;
 
 export interface ParsedRecordingsPage {
@@ -60,11 +69,29 @@ function firstString(record: Record<string, unknown>, keys: readonly string[]): 
 }
 
 function parseInstant(value: unknown): Date | null {
+  // Numbers are epoch milliseconds: rrweb.com sends `timestamp` that way, and a
+  // string-only reader silently returned null for every recording it listed.
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? new Date(value) : null;
+  }
   if (typeof value !== "string" || value.trim() === "") {
     return null;
   }
   const epochMs = Date.parse(value);
   return Number.isNaN(epochMs) ? null : new Date(epochMs);
+}
+
+function firstRecord(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> | null {
+  for (const key of keys) {
+    const nested = asRecord(record[key]);
+    if (nested !== null) {
+      return nested;
+    }
+  }
+  return null;
 }
 
 function firstInstant(record: Record<string, unknown>, keys: readonly string[]): Date | null {
@@ -107,7 +134,7 @@ function parseRecordingItem(value: unknown): ReplayRecordingSummary | null {
     recordingId,
     startedAt: firstInstant(item, STARTED_AT_KEYS),
     lastActivityAt: firstInstant(item, LAST_ACTIVITY_AT_KEYS),
-    meta: asRecord(item.meta) ?? {},
+    meta: firstRecord(item, META_KEYS) ?? {},
   };
 
   const parsed = replayRecordingSummarySchema.safeParse(candidate);

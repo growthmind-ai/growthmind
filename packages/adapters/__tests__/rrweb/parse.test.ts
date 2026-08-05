@@ -219,3 +219,72 @@ describe("parseEventsPage", () => {
     expect(parseEventsPage([validEvent], AD_HOST).next).toBeNull();
   });
 });
+
+// The shape rrweb.com actually returns, observed 2026-08-05 once a read-scoped key and a
+// real recording existed (scripts/spikes/notes/rrweb-read-api.md). Ids and domain are
+// fabricated in the real shape; the keys and their types are verbatim. Every assertion
+// here failed before the run: the item carries `timestamp` and `metadata`, and the reader
+// was looking for `startedAt`/`createdAt` and `meta`.
+describe("parseRecordingsPage against the live rrweb.com shape", () => {
+  const AD_LIVE_ID = "11111111-2222-4333-8444-555555555555";
+  const AD_LIVE_ITEM = {
+    recordingId: AD_LIVE_ID,
+    timestamp: 1785924582248,
+    links: {
+      self: `/recordings/${AD_LIVE_ID}`,
+      events: `/recordings/${AD_LIVE_ID}/events`,
+    },
+    metadata: {
+      domain: "ad-fake.invalid",
+      ingestOrigin: "https://ad-fake.invalid",
+      includePii: "false",
+      recordVersion: "2.1.1",
+      jsEntrypoint: "programmatic",
+    },
+  };
+
+  test("reads the recording id from `recordingId`", () => {
+    const parsed = parseRecordingsPage({ recordings: [AD_LIVE_ITEM] }, AD_HOST);
+    expect(parsed.recordings.map((r: ReplayRecordingSummary) => r.recordingId)).toEqual([
+      AD_LIVE_ID,
+    ]);
+    expect(parsed.droppedMalformed).toBe(0);
+  });
+
+  test("reads `timestamp` epoch milliseconds as startedAt, rather than leaving it null", () => {
+    const parsed = parseRecordingsPage({ recordings: [AD_LIVE_ITEM] }, AD_HOST);
+    expect(parsed.recordings[0]?.startedAt).toEqual(new Date(1785924582248));
+  });
+
+  test("keeps `metadata` as the recording's meta, so the origin survives the parse", () => {
+    const parsed = parseRecordingsPage({ recordings: [AD_LIVE_ITEM] }, AD_HOST);
+    expect(parsed.recordings[0]?.meta.ingestOrigin).toBe("https://ad-fake.invalid");
+  });
+
+  test("a `meta` key still wins where a vendor sends that name instead", () => {
+    const parsed = parseRecordingsPage(
+      { recordings: [{ recordingId: AD_LIVE_ID, meta: { domain: "ad-fake.invalid" } }] },
+      AD_HOST,
+    );
+    expect(parsed.recordings[0]?.meta.domain).toBe("ad-fake.invalid");
+  });
+
+  test("a non-finite or non-positive timestamp is null rather than an Invalid Date", () => {
+    for (const timestamp of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const parsed = parseRecordingsPage(
+        { recordings: [{ recordingId: AD_LIVE_ID, timestamp }] },
+        AD_HOST,
+      );
+      expect(parsed.recordings[0]?.startedAt).toBeNull();
+    }
+  });
+
+  test("the events endpoint's bare array of rrweb events parses whole", () => {
+    const parsed = parseEventsPage(
+      [{ type: 4, timestamp: 1785924111227, data: { height: 898, width: 1707 } }],
+      AD_HOST,
+    );
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.droppedMalformed).toBe(0);
+  });
+});
