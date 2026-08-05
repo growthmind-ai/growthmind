@@ -141,6 +141,36 @@ function struggleSignal(surface: string): EvidenceSignal {
   };
 }
 
+const SIGNALS_SOURCE = `${import.meta.dir}/../../src/evidence/signals.ts`.replaceAll("\\", "/");
+
+// TODO(O-041 D-7): replace this deferred load and the cast below with a static import of
+// observedStruggleSubkindSchema once src/evidence/signals.ts declares it.
+async function observedStruggleSubkinds(): Promise<readonly string[]> {
+  const loaded = (await import(SIGNALS_SOURCE)) as {
+    readonly observedStruggleSubkindSchema?: { readonly options?: readonly string[] };
+  };
+
+  const options = loaded.observedStruggleSubkindSchema?.options;
+  if (options === undefined || options.length === 0) {
+    throw new Error(
+      "src/evidence/signals.ts must export observedStruggleSubkindSchema — the one declaration " +
+        "of the observed struggle subkinds (O-041 D-7)",
+    );
+  }
+
+  return options;
+}
+
+function struggleSignalWithSubkind(surface: string, subkind: string): EvidenceSignal {
+  return {
+    kind: "struggle",
+    subkind,
+    surface,
+    attempts: 3,
+    strugglingSessions: countOf(5, keptBasis(REACHED)),
+  } as unknown as EvidenceSignal;
+}
+
 function correlatedFailureSignal(): EvidenceSignal {
   return {
     kind: "failure_correlated",
@@ -366,6 +396,25 @@ describe("renderFixSpec — structured state as plain sentences", () => {
       signals: oneSignalOfEveryKind(FUNNEL_SURFACE),
     });
     expect(spec.evidence).toHaveLength(kinds.length);
+  });
+
+  test("should render the same kind-keyed struggle template for every observed subkind", async () => {
+    const inferred = renderFixSpec({
+      candidate: funnelCandidate(),
+      signals: [struggleSignal(FUNNEL_SURFACE)],
+    });
+
+    expect(inferred.evidence).toHaveLength(1);
+    expect(inferred.evidence[0]).toContain(FUNNEL_SURFACE);
+
+    for (const subkind of await observedStruggleSubkinds()) {
+      const observed = renderFixSpec({
+        candidate: funnelCandidate(),
+        signals: [struggleSignalWithSubkind(FUNNEL_SURFACE, subkind)],
+      });
+
+      expect(observed.sentences).toEqual(inferred.sentences);
+    }
   });
 
   test("should render a surface containing a cohort noun verbatim, never rewriting a customer's own page address", () => {

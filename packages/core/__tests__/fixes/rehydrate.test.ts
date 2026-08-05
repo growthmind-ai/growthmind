@@ -110,6 +110,76 @@ function persistedPayloadOf(): unknown {
   return JSON.parse(JSON.stringify(serialiseFixSpecInput(fixSpecInputOf())));
 }
 
+const SRC_DIR = `${import.meta.dir}/../../src`.replaceAll("\\", "/");
+const SIGNALS_SOURCE = `${SRC_DIR}/evidence/signals.ts`;
+const REHYDRATE_SOURCE = `${SRC_DIR}/fixes/rehydrate.ts`;
+
+const UNDECLARED_SUBKIND = "probe_only";
+const OBSERVED_SUBKIND_CONTROL = "rage_click";
+
+// TODO(O-041 D-7): replace this deferred load with static imports of struggleSubkindSchema
+// and observedStruggleSubkindSchema once src/evidence/signals.ts declares them.
+type SubkindEnum = { readonly options?: readonly string[] };
+
+type DeclaredSubkinds = {
+  readonly declared: readonly string[];
+  readonly observed: readonly string[];
+};
+
+async function declaredStruggleSubkinds(): Promise<DeclaredSubkinds> {
+  const loaded = (await import(SIGNALS_SOURCE)) as {
+    readonly struggleSubkindSchema?: SubkindEnum;
+    readonly observedStruggleSubkindSchema?: SubkindEnum;
+  };
+
+  const declared = loaded.struggleSubkindSchema?.options;
+  if (declared === undefined || declared.length === 0) {
+    throw new Error(
+      "src/evidence/signals.ts must export struggleSubkindSchema — the one declaration of the " +
+        "struggle subkind union (O-041 D-7)",
+    );
+  }
+
+  const observed = loaded.observedStruggleSubkindSchema?.options;
+  if (observed === undefined || observed.length === 0) {
+    throw new Error(
+      "src/evidence/signals.ts must export observedStruggleSubkindSchema (O-041 D-7)",
+    );
+  }
+
+  const outside = observed.filter((subkind) => !declared.includes(subkind));
+  if (outside.length > 0) {
+    throw new Error(
+      `every observed subkind must be a member of struggleSubkindSchema; ` +
+        `${outside.join(", ")} is not (O-041 D-7)`,
+    );
+  }
+
+  return { declared, observed };
+}
+
+type PersistedPayload = {
+  readonly payloadVersion: number;
+  readonly candidate: unknown;
+  readonly signals: readonly Record<string, unknown>[];
+};
+
+function payloadWithStruggleSubkind(subkind: string): unknown {
+  const payload = persistedPayloadOf() as PersistedPayload;
+
+  return {
+    ...payload,
+    signals: payload.signals.map((signal) =>
+      signal.kind === "struggle" ? { ...signal, subkind } : signal,
+    ),
+  };
+}
+
+function rehydratedStruggleSubkinds(payload: unknown): readonly string[] {
+  const { signals } = rehydrateFixSpecInput(payload);
+  return signals.filter((signal) => signal.kind === "struggle").map((signal) => signal.subkind);
+}
+
 type CountSite = { readonly site: string; readonly count: MeasuredCount };
 
 function countSitesIn(input: FixSpecInput): readonly CountSite[] {
@@ -261,5 +331,33 @@ describe("the fix-spec payload boundary", () => {
     const refusal = thrown as UnknownFixSpecPayloadVersionError;
     expect(refusal.payloadVersion).toBe(unknownVersion);
     expect(refusal.message).toBe(new UnknownFixSpecPayloadVersionError(unknownVersion).message);
+  });
+});
+
+describe("the struggle subkind persistence boundary", () => {
+  test("should rehydrate a struggle signal of every declared subkind", async () => {
+    const { declared } = await declaredStruggleSubkinds();
+
+    const roundTripped = declared.map((subkind) =>
+      rehydratedStruggleSubkinds(payloadWithStruggleSubkind(subkind)),
+    );
+
+    expect(roundTripped).toEqual(declared.map((subkind) => [subkind]));
+  });
+
+  test("should reject a persisted struggle signal whose subkind is not declared", () => {
+    expect(() => rehydrateFixSpecInput(payloadWithStruggleSubkind(UNDECLARED_SUBKIND))).toThrow();
+
+    expect(
+      rehydratedStruggleSubkinds(payloadWithStruggleSubkind(OBSERVED_SUBKIND_CONTROL)),
+    ).toEqual([OBSERVED_SUBKIND_CONTROL]);
+  });
+
+  test("should not re-declare the struggle subkind list outside signals.ts", async () => {
+    const source = await Bun.file(REHYDRATE_SOURCE).text();
+
+    expect(source).toContain("persistedSignalSchema");
+    expect(source).toContain("struggleSubkindSchema");
+    expect(source).not.toContain("repeated_attempt");
   });
 });
