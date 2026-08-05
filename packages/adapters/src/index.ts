@@ -15,7 +15,7 @@ export {
   POSTHOG_KEY_PATTERN,
   REDACTED_PLACEHOLDER,
   REASON_MAX_LENGTH,
-} from "./posthog/scrub";
+} from "./http/scrub";
 
 export { createSlackDeliveryPoster } from "./slack/poster";
 export {
@@ -59,6 +59,12 @@ export type { SlackPosterConfig, SlackPosterDeps } from "./slack/deps";
 export { createAnthropicSessionSummariser } from "./anthropic/summariser";
 export type { SessionSummariser, SummariseInput } from "./anthropic/summariser";
 export { DEFAULT_COLDSTART_MODEL } from "./anthropic/constants";
+
+export type { ReplaySource } from "./replay-source";
+
+export { createRrwebReplaySource } from "./rrweb/replay-source";
+export { RRWEB_SOURCE_KIND } from "./rrweb/constants";
+export type { RrwebSourceConfig, RrwebSourceDeps } from "./rrweb/deps";
 
 export { createAnthropicModel } from "./anthropic/model";
 export type { AnthropicModelConfig } from "./anthropic/model";

@@ -2,7 +2,7 @@ import type { SourceFailure, SourceFailureCode } from "@growthmind/shared";
 import { CONNECT_REFUSAL_MESSAGES } from "@growthmind/shared";
 import { z } from "zod";
 
-import { scrubSecrets } from "./scrub";
+import { scrubSecrets } from "../http/scrub";
 
 export const posthogErrorEnvelopeSchema = z.object({
   type: z.string().optional(),

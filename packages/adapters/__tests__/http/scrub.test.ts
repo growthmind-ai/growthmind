@@ -5,7 +5,7 @@ import {
   REDACTED_PLACEHOLDER,
   scrubSecrets,
   truncateForReason,
-} from "../../src/posthog/scrub";
+} from "../../src/http/scrub";
 import { AD_FAKE_ENCODABLE_KEY, AD_FAKE_PERSONAL_KEY, AD_HOST } from "../helpers/fakes";
 
 describe("scrubSecrets", () => {

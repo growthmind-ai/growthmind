@@ -48,6 +48,9 @@ services:
         NEXT_PUBLIC_POSTHOG_HOST:
         NEXT_PUBLIC_POSTHOG_ASSETS_HOST:
         NEXT_PUBLIC_POSTHOG_UI_HOST:
+        # rrweb.com session-replay capture key, same build-time/valueless treatment
+        # as the PostHog quartet above. Unset disables replay capture.
+        NEXT_PUBLIC_RRWEB_PUBLIC_KEY:
     ports:
       - "3000:3000"
     environment:

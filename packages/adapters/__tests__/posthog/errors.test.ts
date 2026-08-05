@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { mapFailure } from "../../src/posthog/errors";
-import { REDACTED_PLACEHOLDER } from "../../src/posthog/scrub";
+import { REDACTED_PLACEHOLDER } from "../../src/http/scrub";
 import { AD_FAKE_PERSONAL_KEY } from "../helpers/fakes";
 
 const AD_INVALID_KEY_BODY = {

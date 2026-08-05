@@ -1,11 +1,11 @@
 import type { SourceFailure } from "@growthmind/shared";
 import { z } from "zod";
 
+import { readJsonBody } from "../http/read-json-body";
 import { PROBE_ORIGINS, projectsUrl, REQUEST_TIMEOUT_MS } from "./constants";
 import type { PostHogSourceDeps } from "./deps";
 import { mapFailure, sourceFailure } from "./errors";
 import { checkHost } from "./host-guard";
-import { readJsonBody } from "./read-json-body";
 
 export interface DiscoveredProject {
   readonly sourceProjectId: string;

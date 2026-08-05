@@ -142,6 +142,32 @@ export {
   ALL_CUSTOMER_FACING_MESSAGES,
 } from "./session-source/messages";
 
+export {
+  replaySourceKindSchema,
+  replayFailureCodeSchema,
+  replayFailureSchema,
+  rrwebEventSchema,
+  replayRecordingSummarySchema,
+  replayListRequestSchema,
+  replayListStopSchema,
+  replayListResultSchema,
+  replayEventsStopSchema,
+  replayEventsResultSchema,
+  replaySourceValidationSchema,
+  type ReplaySourceKind,
+  type ReplayFailureCode,
+  type ReplayFailure,
+  type RrwebEvent,
+  type ReplayRecordingSummary,
+  type ReplayListRequest,
+  type ReplayListStop,
+  type ReplayListResult,
+  type ReplayEventsStop,
+  type ReplayEventsResult,
+  type ReplaySourceValidation,
+} from "./replay-source/types";
+export { REPLAY_FAILURE_MESSAGES, ALL_REPLAY_SOURCE_MESSAGES } from "./replay-source/messages";
+
 export { GATE_REASON_MESSAGES, type GateReasonKey } from "./gate/messages";
 
 export {

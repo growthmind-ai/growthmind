@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { computeBackoffDelayMs, parseRetryAfterSeconds } from "../../src/posthog/backoff";
+import { computeBackoffDelayMs, parseRetryAfterSeconds } from "../../src/http/backoff";
 import {
   BASE_DELAY_MS,
   JITTER_SPREAD_MS,
   MAX_BACKOFF_MS,
   RETRY_AFTER_CAP_MS,
-} from "../../src/posthog/constants";
+} from "../../src/http/constants";
 
 describe("parseRetryAfterSeconds", () => {
   test("parses a bare integer and rejects an HTTP-date and garbage", () => {
