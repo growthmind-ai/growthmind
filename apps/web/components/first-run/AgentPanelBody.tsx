@@ -125,6 +125,10 @@ function withCommand(template: string, command: string): string {
 
 // The key is the workspace's and works with any of the five, so the assistant only
 // picks which block to paste — a tab strip over that block, not a gate before it.
+// Constant rather than `useId`: this file is hook-free by contract, and the panel
+// mounts once per page.
+const PICK_PROMPT_ID = "agent-assistant-tabs-label";
+
 function AssistantTabs(props: {
   readonly provider: AgentProviderId;
   readonly providerOrder: readonly AgentProviderId[];
@@ -137,11 +141,11 @@ function AssistantTabs(props: {
       onChange={(value) => props.onPick((value ?? props.provider) as AgentProviderId)}
       variant="outline"
     >
-      <Text size="sm" fw={600} mb="xs">
+      <Text id={PICK_PROMPT_ID} size="sm" fw={600} mb="xs">
         {AGENT_PICK_PROMPT}
       </Text>
 
-      <Tabs.List>
+      <Tabs.List aria-labelledby={PICK_PROMPT_ID}>
         {props.providerOrder.map((id) => (
           <Tabs.Tab key={id} value={id} style={tapTargetStyle}>
             {providerDisplayName(id)}
