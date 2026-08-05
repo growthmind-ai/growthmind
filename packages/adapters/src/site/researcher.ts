@@ -2,11 +2,7 @@ import { generateObject } from "ai";
 import type { FlexibleSchema, LanguageModel } from "ai";
 
 import { BINDING_FACT_KINDS, SHAPING_FACT_KINDS, STATEMENT_MAX } from "@growthmind/shared";
-import type {
-  AudienceReductionOutput,
-  AudienceRule,
-  BusinessFactKind,
-} from "@growthmind/shared";
+import type { AudienceReductionOutput, AudienceRule, BusinessFactKind } from "@growthmind/shared";
 
 import {
   CANDIDATE_DATA_DELIMITER,

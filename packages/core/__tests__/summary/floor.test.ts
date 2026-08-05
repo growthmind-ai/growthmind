@@ -97,7 +97,12 @@ function corpusOf(sessions: readonly SessionTimeline[]): DetectorCorpus {
     window: FIXTURE_WINDOW,
     connectionState: FIXTURE_CONNECTION_STATE,
     sessions,
-    basis: { totalInWindow: sessions.length, kept: sessions.length, setAside: [], keptUnchecked: 0 },
+    basis: {
+      totalInWindow: sessions.length,
+      kept: sessions.length,
+      setAside: [],
+      keptUnchecked: 0,
+    },
     coverage: { truncated: false, eventsWithoutUrlPath: 0 },
   };
 }
@@ -672,7 +677,12 @@ function fiveDigitCount(numerator: number): MeasuredCount {
     denominator: FIVE_DIGIT_DENOMINATOR,
     unit: "sessions",
     timeframe: FIXTURE_WINDOW,
-    basis: { totalInWindow: FIVE_DIGIT_DENOMINATOR, kept: FIVE_DIGIT_DENOMINATOR, setAside: [], keptUnchecked: 0 },
+    basis: {
+      totalInWindow: FIVE_DIGIT_DENOMINATOR,
+      kept: FIVE_DIGIT_DENOMINATOR,
+      setAside: [],
+      keptUnchecked: 0,
+    },
   });
 }
 

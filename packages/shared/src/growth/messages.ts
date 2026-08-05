@@ -154,8 +154,7 @@ export const AUDIENCE_UNCONFIRMED_NOTE =
 
 export const AUDIENCE_CONFIRMED_NOTE = "Findings are counted over these sessions only.";
 
-export const AUDIENCE_REJECTED_NOTE =
-  "Set aside. Findings are counted over everyone who visits.";
+export const AUDIENCE_REJECTED_NOTE = "Set aside. Findings are counted over everyone who visits.";
 
 export const FACT_SEEN_TEMPLATE = "Seen in {sessions} of {of} sessions, {from} to {to}";
 

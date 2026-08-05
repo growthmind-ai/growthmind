@@ -130,7 +130,12 @@ const SEEDED_KEPT_SESSIONS = 28;
 
 function seededCounts(at: Date): PersistFindingInput["counts"] {
   const timeframe = { start: new Date(at.getTime() - 7 * 24 * 60 * 60 * 1_000), end: at };
-  const basis = { totalInWindow: SEEDED_KEPT_SESSIONS, kept: SEEDED_KEPT_SESSIONS, setAside: [], keptUnchecked: 0 };
+  const basis = {
+    totalInWindow: SEEDED_KEPT_SESSIONS,
+    kept: SEEDED_KEPT_SESSIONS,
+    setAside: [],
+    keptUnchecked: 0,
+  };
 
   return [
     {
