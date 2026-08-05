@@ -6,6 +6,7 @@ import type {
   ReplayListResult,
   ReplayRecordingSummary,
   ReplaySourceValidation,
+  RrwebEvent,
   SourceFailure,
   SourceFailureCode,
 } from "@growthmind/shared";
@@ -13,7 +14,13 @@ import { REPLAY_FAILURE_MESSAGES } from "@growthmind/shared";
 
 import { scrubSecrets } from "../http/scrub";
 import type { ReplaySource } from "../replay-source";
-import { MAX_PAGES_PER_RUN, POSTHOG_REPLAY_SOURCE_KIND, RECORDINGS_PAGE_LIMIT } from "./constants";
+import {
+  MAX_BLOB_CHUNKS_PER_PULL,
+  MAX_BLOB_KEY_SPAN,
+  MAX_PAGES_PER_RUN,
+  POSTHOG_REPLAY_SOURCE_KIND,
+  RECORDINGS_PAGE_LIMIT,
+} from "./constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "./deps";
 import { createPostHogReplayClient } from "./replay-client";
 import {
@@ -187,37 +194,63 @@ export function createPostHogReplaySource(
         };
       }
 
-      const blobResponse = await client.getSnapshotBlob(
-        client.snapshotBlobUrl(recordingId, range.start, range.end),
-      );
-      if (!blobResponse.ok) {
-        return {
-          ok: false,
-          failure: toReplayFailure(blobResponse.failure, "snapshots"),
-          partialEvents: [],
-          pagesFetched: 2,
-          droppedMalformed: sourcesPage.droppedMalformed,
-          eventsReceived: 0,
-        };
-      }
-
-      const jsonl = parseSnapshotJsonl(blobResponse.value);
+      const events: RrwebEvent[] = [];
+      let pagesFetched = 1;
       // A gzip failure loses an event exactly like a shape failure does, and the shared
       // result type carries no separate field for it — the caller's signal is just
       // "we did not get everything", so it folds into the same count.
-      const droppedMalformed =
-        sourcesPage.droppedMalformed + jsonl.droppedMalformed + jsonl.decompressionFailures;
+      let droppedMalformed = sourcesPage.droppedMalformed;
 
-      // One ranged request covers the whole recording, so there is no cap to hit here —
-      // every other exit above is a failure, and this is the sole success path.
+      const endBlobKey = Number(range.end);
+      let chunkStart = Number(range.start);
+      let chunksFetched = 0;
+
+      while (chunkStart <= endBlobKey) {
+        if (chunksFetched >= MAX_BLOB_CHUNKS_PER_PULL) {
+          return {
+            ok: true,
+            events,
+            stop: "page_cap",
+            resumeCursor: String(chunkStart),
+            pagesFetched,
+            droppedMalformed,
+            eventsReceived: events.length,
+          };
+        }
+
+        const chunkEnd = Math.min(chunkStart + MAX_BLOB_KEY_SPAN, endBlobKey);
+        const blobResponse = await client.getSnapshotBlob(
+          client.snapshotBlobUrl(recordingId, String(chunkStart), String(chunkEnd)),
+        );
+        pagesFetched += 1;
+        chunksFetched += 1;
+
+        if (!blobResponse.ok) {
+          return {
+            ok: false,
+            failure: toReplayFailure(blobResponse.failure, "snapshots"),
+            partialEvents: events,
+            pagesFetched,
+            droppedMalformed,
+            eventsReceived: events.length,
+          };
+        }
+
+        const jsonl = parseSnapshotJsonl(blobResponse.value);
+        droppedMalformed += jsonl.droppedMalformed + jsonl.decompressionFailures;
+        events.push(...jsonl.events);
+
+        chunkStart = chunkEnd + 1;
+      }
+
       return {
         ok: true,
-        events: jsonl.events,
+        events,
         stop: "exhausted",
         resumeCursor: null,
-        pagesFetched: 2,
+        pagesFetched,
         droppedMalformed,
-        eventsReceived: jsonl.events.length,
+        eventsReceived: events.length,
       };
     },
   };

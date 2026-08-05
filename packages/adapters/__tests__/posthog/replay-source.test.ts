@@ -2,6 +2,7 @@ import type { IdentityHmacKey } from "@growthmind/shared";
 import { deriveIdentityHmacKey } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
+import { MAX_BLOB_CHUNKS_PER_PULL, MAX_BLOB_KEY_SPAN } from "../../src/posthog/constants";
 import type { PostHogSourceConfig, PostHogSourceDeps } from "../../src/posthog/deps";
 import { createPostHogReplaySource } from "../../src/posthog/replay-source";
 import type { ReplaySource } from "../../src/replay-source";
@@ -119,6 +120,14 @@ function recordingsPage(
 
 function snapshotSourcesBody(blobKeys: readonly string[]): Record<string, unknown> {
   return { sources: blobKeys.map((blobKey) => ({ source: "blob_v2", blob_key: blobKey })) };
+}
+
+function parsedBlobRange(url: string): { start: string | null; end: string | null } {
+  const parsed = new URL(url);
+  return {
+    start: parsed.searchParams.get("start_blob_key"),
+    end: parsed.searchParams.get("end_blob_key"),
+  };
 }
 
 interface JsonlEventSpec {
@@ -353,7 +362,8 @@ describe("createPostHogReplaySource", () => {
   describe("#pullEvents", () => {
     test("happy path parses the ranged blob into rrweb events", async () => {
       const fake = createPagedFetch([
-        { status: 200, body: snapshotSourcesBody(["100", "200"]) },
+        // Span of 15, inside MAX_BLOB_KEY_SPAN, so this stays a single chunk request.
+        { status: 200, body: snapshotSourcesBody(["100", "115"]) },
         {
           status: 200,
           rawBody: snapshotJsonl([
@@ -374,7 +384,126 @@ describe("createPostHogReplaySource", () => {
       expect(result.eventsReceived).toBe(2);
 
       expect(fake.requests[1]).toContain("start_blob_key=100");
-      expect(fake.requests[1]).toContain("end_blob_key=200");
+      expect(fake.requests[1]).toContain("end_blob_key=115");
+    });
+
+    test("a blob-key range wider than MAX_BLOB_KEY_SPAN is walked in more than one request, none of them exceeding the vendor's span cap", async () => {
+      const blobKeys = Array.from({ length: 30 }, (_, index) => String(index));
+      const fake = createPagedFetch([
+        { status: 200, body: snapshotSourcesBody(blobKeys) },
+        {
+          status: 200,
+          rawBody: snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]),
+        },
+        {
+          status: 200,
+          rawBody: snapshotJsonl([{ windowId: "win-1", type: 3, timestamp: 1722600001000 }]),
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents("rec-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fake.requests).toHaveLength(3);
+
+      const blobRequests = fake.requests.slice(1);
+      for (const url of blobRequests) {
+        const parsed = new URL(url);
+        const span =
+          Number(parsed.searchParams.get("end_blob_key")) -
+          Number(parsed.searchParams.get("start_blob_key"));
+        expect(span).toBeLessThanOrEqual(MAX_BLOB_KEY_SPAN);
+      }
+
+      expect(parsedBlobRange(blobRequests[0])).toEqual({ start: "0", end: "20" });
+      expect(parsedBlobRange(blobRequests[1])).toEqual({ start: "21", end: "29" });
+
+      // Events from every chunk appear, in key order.
+      expect(result.events.map((event) => event.type)).toEqual([4, 3]);
+      expect(result.stop).toBe("exhausted");
+      expect(result.resumeCursor).toBeNull();
+      expect(result.pagesFetched).toBe(3);
+      expect(result.eventsReceived).toBe(2);
+    });
+
+    test("exactly 21 keys (a span of 20) is fetched in a single request, the boundary the vendor accepts", async () => {
+      const blobKeys = Array.from({ length: 21 }, (_, index) => String(index));
+      const fake = createPagedFetch([
+        { status: 200, body: snapshotSourcesBody(blobKeys) },
+        {
+          status: 200,
+          rawBody: snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]),
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents("rec-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fake.requests).toHaveLength(2);
+      expect(parsedBlobRange(fake.requests[1])).toEqual({ start: "0", end: "20" });
+      expect(result.pagesFetched).toBe(2);
+    });
+
+    test("hitting the chunk-count bound stops with page_cap and a resumeCursor at the first unfetched blob key", async () => {
+      const chunkSpan = MAX_BLOB_KEY_SPAN + 1;
+      const totalKeys = MAX_BLOB_CHUNKS_PER_PULL * chunkSpan + 5;
+      const blobKeys = Array.from({ length: totalKeys }, (_, index) => String(index));
+      const fake = createPagedFetch([
+        { status: 200, body: snapshotSourcesBody(blobKeys) },
+        { status: 200, rawBody: "" },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents("rec-1");
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.stop).toBe("page_cap");
+      expect(result.resumeCursor).toBe(String(MAX_BLOB_CHUNKS_PER_PULL * chunkSpan));
+      expect(result.pagesFetched).toBe(1 + MAX_BLOB_CHUNKS_PER_PULL);
+      expect(fake.requests).toHaveLength(1 + MAX_BLOB_CHUNKS_PER_PULL);
+    });
+
+    test("a failure on the second chunk returns the first chunk's events as partials, not an empty list", async () => {
+      const blobKeys = Array.from({ length: 30 }, (_, index) => String(index));
+      const fake = createPagedFetch([
+        { status: 200, body: snapshotSourcesBody(blobKeys) },
+        {
+          status: 200,
+          rawBody: snapshotJsonl([{ windowId: "win-1", type: 4, timestamp: 1722600000000 }]),
+        },
+        { networkError: true },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents("rec-1");
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failure.code).toBe("unreachable");
+      expect(result.partialEvents.map((event) => event.type)).toEqual([4]);
+      expect(result.pagesFetched).toBe(3);
+    });
+
+    test("a 400 (blob-key span rejected by the vendor) maps to misconfigured, not unreachable", async () => {
+      const fake = createPagedFetch([
+        { status: 200, body: snapshotSourcesBody(["100", "115"]) },
+        {
+          status: 400,
+          body: {
+            type: "validation_error",
+            code: "invalid_input",
+            detail: "Cannot request more than 20 blob keys at once",
+          },
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).pullEvents("rec-1");
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.failure.code).toBe("misconfigured");
+      expect(result.partialEvents).toEqual([]);
     });
 
     test("an empty source list returns ok:true with zero events, not a failure", async () => {

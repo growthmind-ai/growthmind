@@ -47,6 +47,15 @@ export const MAX_PAGES_PER_RUN = 25;
 // PAGE_LIMIT/PINNED_PAGE_LIMIT_FLOOR above (those are pinned to the events endpoint).
 export const RECORDINGS_PAGE_LIMIT = 100;
 
+// The vendor answers HTTP 400 "Cannot request more than 20 blob keys at once" above this
+// span (verified live against eu.posthog.com, 2026-08-05); a recording of a few minutes
+// already exceeds it, so pullEvents must chunk the blob-key range rather than request it whole.
+export const MAX_BLOB_KEY_SPAN = 20;
+
+// Bounds pullEvents' chunk walk the same way MAX_PAGES_PER_RUN bounds listRecordings' page
+// walk — this package's structural test forbids an unbounded loop.
+export const MAX_BLOB_CHUNKS_PER_PULL = 25;
+
 export const OVERLAP_WINDOW_SECONDS = 900;
 
 export const IDENTITY_LOOKUP_BUDGET = 50;
