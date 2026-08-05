@@ -56,6 +56,11 @@ export const MAX_BLOB_KEY_SPAN = 20;
 // walk — this package's structural test forbids an unbounded loop.
 export const MAX_BLOB_CHUNKS_PER_PULL = 25;
 
+// Bounds the same walk by bytes: the measured complete-pull p90 of 16.26 MiB, rounded up
+// to the next power of two. Re-derive it from complete pulls only — a pooled p90 rounds
+// to 16 MiB and truncates the largest recording measured.
+export const MAX_PULL_BYTES = 33_554_432;
+
 export const OVERLAP_WINDOW_SECONDS = 900;
 
 export const IDENTITY_LOOKUP_BUDGET = 50;

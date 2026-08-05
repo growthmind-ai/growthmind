@@ -133,6 +133,8 @@ export function createRrwebReplaySource(
       };
     },
 
+    // bytesReceived is 0 on every arm below: this source reads parsed JSON pages, so it has
+    // no body size to report and a number here would be an invented one.
     async pullEvents(recordingId: string): Promise<ReplayEventsResult> {
       const events: RrwebEvent[] = [];
       let pagesFetched = 0;
@@ -150,6 +152,7 @@ export function createRrwebReplaySource(
             events,
             stop: "page_cap",
             resumeCursor: cursor,
+            bytesReceived: 0,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
@@ -162,6 +165,8 @@ export function createRrwebReplaySource(
             ok: false,
             failure: response.failure,
             partialEvents: events,
+            resumeCursor: cursor,
+            bytesReceived: 0,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
@@ -183,6 +188,7 @@ export function createRrwebReplaySource(
         events,
         stop: "exhausted",
         resumeCursor: null,
+        bytesReceived: 0,
         pagesFetched,
         droppedMalformed,
         eventsReceived: events.length,

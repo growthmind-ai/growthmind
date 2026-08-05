@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import type {
   ReplayEventsResult,
   ReplayFailure,
@@ -18,6 +20,7 @@ import {
   MAX_BLOB_CHUNKS_PER_PULL,
   MAX_BLOB_KEY_SPAN,
   MAX_PAGES_PER_RUN,
+  MAX_PULL_BYTES,
   POSTHOG_REPLAY_SOURCE_KIND,
   RECORDINGS_PAGE_LIMIT,
 } from "./constants";
@@ -171,6 +174,8 @@ export function createPostHogReplaySource(
           ok: false,
           failure: toReplayFailure(sourcesResponse.failure, "snapshots"),
           partialEvents: [],
+          resumeCursor: null,
+          bytesReceived: 0,
           pagesFetched: 1,
           droppedMalformed: 0,
           eventsReceived: 0,
@@ -188,6 +193,7 @@ export function createPostHogReplaySource(
           events: [],
           stop: "exhausted",
           resumeCursor: null,
+          bytesReceived: 0,
           pagesFetched: 1,
           droppedMalformed: sourcesPage.droppedMalformed,
           eventsReceived: 0,
@@ -196,6 +202,7 @@ export function createPostHogReplaySource(
 
       const events: RrwebEvent[] = [];
       let pagesFetched = 1;
+      let bytesReceived = 0;
       // A gzip failure loses an event exactly like a shape failure does, and the shared
       // result type carries no separate field for it — the caller's signal is just
       // "we did not get everything", so it folds into the same count.
@@ -212,6 +219,22 @@ export function createPostHogReplaySource(
             events,
             stop: "page_cap",
             resumeCursor: String(chunkStart),
+            bytesReceived,
+            pagesFetched,
+            droppedMalformed,
+            eventsReceived: events.length,
+          };
+        }
+
+        // Soft by one chunk, bounded above by MAX_RESPONSE_BYTES: a hard cap needs a
+        // streamed body, which readTextBody does not give.
+        if (bytesReceived >= MAX_PULL_BYTES) {
+          return {
+            ok: true,
+            events,
+            stop: "byte_cap",
+            resumeCursor: String(chunkStart),
+            bytesReceived,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
@@ -230,11 +253,15 @@ export function createPostHogReplaySource(
             ok: false,
             failure: toReplayFailure(blobResponse.failure, "snapshots"),
             partialEvents: events,
+            resumeCursor: String(chunkStart),
+            bytesReceived,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
           };
         }
+
+        bytesReceived += Buffer.byteLength(blobResponse.value, "utf8");
 
         const jsonl = parseSnapshotJsonl(blobResponse.value);
         droppedMalformed += jsonl.droppedMalformed + jsonl.decompressionFailures;
@@ -248,6 +275,7 @@ export function createPostHogReplaySource(
         events,
         stop: "exhausted",
         resumeCursor: null,
+        bytesReceived,
         pagesFetched,
         droppedMalformed,
         eventsReceived: events.length,
