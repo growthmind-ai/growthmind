@@ -274,6 +274,7 @@ export function createRecordingPoster(
 
 export interface RecordingDeliveryLogger extends DeliveryLogger {
   readonly infos: string[];
+  readonly warns: string[];
   readonly errors: string[];
 
   lines(): string[];
@@ -281,13 +282,18 @@ export interface RecordingDeliveryLogger extends DeliveryLogger {
 
 export function createRecordingDeliveryLogger(): RecordingDeliveryLogger {
   const infos: string[] = [];
+  const warns: string[] = [];
   const errors: string[] = [];
   return {
     infos,
+    warns,
     errors,
-    lines: () => [...infos, ...errors],
+    lines: () => [...infos, ...warns, ...errors],
     info: (message: string) => {
       infos.push(message);
+    },
+    warn: (message: string) => {
+      warns.push(message);
     },
     error: (message: string) => {
       errors.push(message);

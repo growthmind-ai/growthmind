@@ -50,6 +50,11 @@ export const DELIVERY_WEEK_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export const FINDINGS_CONSIDERED_PER_LANE = 50;
 
+// A row that can never become a message spends no slot, so the read has to reach past
+// those rows to fill the lane. Fifty permanently-skipped rows would otherwise be a
+// silent stop on every later finding this project produces.
+export const FINDINGS_READ_PER_LANE = FINDINGS_CONSIDERED_PER_LANE * 4;
+
 const OBSERVATION_LABELS: Record<CountRole, string> = {
   reached_surface: "reached this step",
   left_without_continuing: "left without continuing",
@@ -127,6 +132,7 @@ function sampleSizeFor(counts: readonly MeasuredCountRow[]): {
 
 function deliverableFor(
   finding: FindingRecord,
+  text: ScannedFindingText,
   growth: GrowthContext | null,
   logger: DeliveryLogger,
 ): DeliverableFinding | null {
@@ -151,17 +157,6 @@ function deliverableFor(
   if (sampleSize === null) {
     logger.error(
       `delivery lane source: finding ${finding.id} carries no counts, so there is no magnitude to rank it on and it was held back`,
-    );
-    return null;
-  }
-
-  // Ahead of the `summarySource` branch below, never instead of it: a floor-rendered row
-  // is scanned on the same terms as a model-rendered one.
-  const text = finding.text;
-  if (text.held) {
-    const hold = describeHold(text);
-    logger.error(
-      `delivery lane source: finding ${finding.id} carries written text that must not be shown (${hold.reason}/${String(hold.kind)}), so it was held back`,
     );
     return null;
   }
@@ -271,18 +266,38 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       const growth = await weightingFor(deps, ctx, projectId);
 
       const recent = await findings.listForProject(projectId, {
-        limit: FINDINGS_CONSIDERED_PER_LANE,
+        limit: FINDINGS_READ_PER_LANE,
       });
 
       const candidates: DeliverableFinding[] = [];
       let deliveredThisWeek = 0;
+      let considered = 0;
 
       for (const finding of recent) {
+        if (considered >= FINDINGS_CONSIDERED_PER_LANE) {
+          break;
+        }
+
         // Before the dedup read, not after: the read is what would come back empty for a
         // finding the OLD channel already received.
         if (isBeforeCutover(finding, organization.deliveryCutoverAt)) {
           continue;
         }
+
+        // Scanned on the same terms as a model-rendered row, and ahead of the
+        // `summarySource` branch in `messageInputFor`, never instead of it. `warn`: a held
+        // row repeats every tick for as long as it exists, and a level that fires forever
+        // on a state the analysis lane already recorded is not an alarm.
+        const text = finding.text;
+        if (text.held) {
+          const hold = describeHold(text);
+          deps.logger.warn(
+            `delivery lane source: finding ${finding.id} carries written text that must not be shown (${hold.reason}/${String(hold.kind)}), so it was held back`,
+          );
+          continue;
+        }
+
+        considered += 1;
 
         // Keyed on the same `(finding, channel)` tuple the claim conflicts on. This is
         // why `findFor` still takes a `string` (AD-4 row 7): a null channel would not
@@ -298,7 +313,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
           continue;
         }
 
-        const deliverable = deliverableFor(finding, growth, deps.logger);
+        const deliverable = deliverableFor(finding, text, growth, deps.logger);
         if (deliverable !== null) {
           candidates.push(deliverable);
         }

@@ -16,6 +16,46 @@ type Detector = {
   readonly flags: string;
 };
 
+const CREDENTIAL_PREFIXES: readonly string[] = [
+  "sk",
+  "pk",
+  "rk",
+  "api",
+  "key",
+  "token",
+  "bearer",
+  "ghp",
+  "gho",
+  "xoxb",
+  "xoxa",
+  "xoxp",
+  "xoxr",
+  "xoxs",
+];
+
+// Written out rather than carried on the `i` flag, which would also make the tail's
+// `[A-Z]` match lower case and collapse the whole distinction below.
+function anyCase(word: string): string {
+  return [...word].map((letter) => `[${letter}${letter.toUpperCase()}]`).join("");
+}
+
+const CREDENTIAL_PREFIX = String.raw`(?:${CREDENTIAL_PREFIXES.map(anyCase).join("|")})[-_]`;
+const CREDENTIAL_TAIL = String.raw`[A-Za-z0-9\-_]{16,}`;
+
+// One alphanumeric segment must carry an upper-case letter, mix letters with digits, or run
+// 16 characters unbroken. Relaxed against a run of ordinary hyphenated words, so it is only
+// safe where a run of words is expected: `normaliseUrlPath` already redacts a path segment
+// of this shape, and nothing upstream of prose does.
+const CREDENTIAL_SEGMENT = String.raw`(?:[A-Za-z0-9]*(?:[A-Z]|[A-Za-z][0-9]|[0-9][A-Za-z])[A-Za-z0-9]*|[A-Za-z0-9]{16,})`;
+const SEGMENT_LOOKAHEAD = String.raw`(?=(?:[A-Za-z0-9]*[-_])*${CREDENTIAL_SEGMENT}(?![A-Za-z0-9]))`;
+
+// Position decides, not tail shape: `/api-reference-getting-started` is a page and
+// `api-secretvaluehere-more` is a key, and the only thing that separates them is the `/`.
+const CREDENTIAL_IN_PROSE = String.raw`(?<!/)\b${CREDENTIAL_PREFIX}${CREDENTIAL_TAIL}`;
+const CREDENTIAL_IN_PATH = String.raw`(?<=/)${CREDENTIAL_PREFIX}${SEGMENT_LOOKAHEAD}${CREDENTIAL_TAIL}`;
+
+const CREDENTIAL_SOURCE = `${CREDENTIAL_IN_PROSE}|${CREDENTIAL_IN_PATH}`;
+
 const DETECTORS: readonly Detector[] = [
   {
     kind: "email_address",
@@ -25,8 +65,8 @@ const DETECTORS: readonly Detector[] = [
 
   {
     kind: "credential",
-    source: String.raw`\b(?:sk|pk|rk|api|key|token|bearer|ghp|gho|xox[baprs])[-_][A-Za-z0-9\-_]{16,}`,
-    flags: "gi",
+    source: CREDENTIAL_SOURCE,
+    flags: "g",
   },
   {
     kind: "credential",

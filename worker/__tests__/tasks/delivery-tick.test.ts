@@ -323,6 +323,7 @@ function createRecordingLogger(): RecordingLogger & { logger: DeliveryTickDeps["
     all: () => [...info, ...error],
     logger: {
       info: (message: string) => info.push(message),
+      warn: (message: string) => info.push(message),
       error: (message: string) => error.push(message),
     },
   };

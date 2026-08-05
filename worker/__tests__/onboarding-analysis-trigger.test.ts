@@ -221,17 +221,23 @@ function lane(overrides: Partial<AnalysisLane> = {}): AnalysisLane {
 
 interface RecordingLogger extends AnalysisLogger {
   readonly infos: string[];
+  readonly warns: string[];
   readonly errors: string[];
 }
 
 function createRecordingLogger(): RecordingLogger {
   const infos: string[] = [];
+  const warns: string[] = [];
   const errors: string[] = [];
   return {
     infos,
+    warns,
     errors,
     info: (message: string) => {
       infos.push(message);
+    },
+    warn: (message: string) => {
+      warns.push(message);
     },
     error: (message: string) => {
       errors.push(message);
@@ -937,6 +943,7 @@ test("a side effect that throws is logged with its cause and does not reach the 
   const lines: string[] = [];
   const logger = {
     info: () => undefined,
+    warn: () => undefined,
     error: (message: string) => void lines.push(message),
   };
 
@@ -956,6 +963,7 @@ test("a side effect that succeeds logs nothing and reports success", async () =>
   const lines: string[] = [];
   const logger = {
     info: () => undefined,
+    warn: () => undefined,
     error: (message: string) => void lines.push(message),
   };
 

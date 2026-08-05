@@ -12,6 +12,7 @@ import {
   candidateFindingSchema,
   measuredCount,
   renderFloorSummary,
+  renderWithheldFloorSummary,
   reviewFindingText,
   scanResidualPii,
 } from "@growthmind/core";
@@ -454,6 +455,7 @@ interface Harness {
 function recordingLogger(sink: string[], errorSink: string[]): AnalysisLogger {
   return {
     info: (message: string) => sink.push(message),
+    warn: (message: string) => sink.push(message),
     error: (message: string) => {
       sink.push(message);
       errorSink.push(message);
@@ -1428,7 +1430,11 @@ test("a candidate whose model text is clean persists model_rendered unchanged", 
   expect(calls[0]?.context).toEqual(CLEAN_TEXT.context);
 });
 
-test("a candidate whose floor text itself is dirty withholds the summary entirely and logs at error level", async () => {
+const WITHHELD_FLOOR = renderWithheldFloorSummary("floor_no_key_configured");
+
+const WITHHELD_FLOOR_TEXT = scannedFixture(WITHHELD_FLOOR.headline, WITHHELD_FLOOR.context);
+
+test("a candidate whose floor text itself is dirty records the finding with the words withheld and logs at error level", async () => {
   const floor = renderFloorSummary({
     candidate: CANDIDATE_FLOOR_DIRTY,
     source: "floor_no_key_configured",
@@ -1457,7 +1463,7 @@ test("a candidate whose floor text itself is dirty withholds the summary entirel
     TICK_AT,
   );
 
-  expect(plan.action).toEqual({ kind: "unrenderable" });
+  expect(plan.action.kind).toBe("persist");
 
   const h = harness({
     lanes: [lane({ candidates: [CANDIDATE_FLOOR_DIRTY] })],
@@ -1465,8 +1471,27 @@ test("a candidate whose floor text itself is dirty withholds the summary entirel
   });
   const summary = await runAnalysisTick(h.deps);
 
-  expect(h.findings.persistCalls()).toEqual([]);
-  expect(summary.candidatesUnrenderable).toBe(1);
+  const calls = h.findings.persistCalls();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.summarySource).toBe("floor_no_key_configured");
+  expect(calls[0]?.headline).toBe(WITHHELD_FLOOR_TEXT.headline);
+  expect(calls[0]?.context).toEqual(WITHHELD_FLOOR_TEXT.context);
+
+  // The counts, the surface and the evidence shape are what a later re-render and every
+  // reader are built from, so the hold must cost the words and nothing else.
+  expect(calls[0]?.counts.map((row) => [row.numerator, row.denominator])).toEqual(
+    CANDIDATE_FLOOR_DIRTY.counts.map((row) => [row.numerator, row.denominator]),
+  );
+  expect(calls[0]?.surface).toBe(DIRTY_FLOOR_SURFACE);
+  expect(calls[0]?.evidenceShape).toBe(CANDIDATE_FLOOR_DIRTY.evidenceShape);
+  expect(calls[0]?.signature).toBe(signatureOf(CANDIDATE_FLOOR_DIRTY));
+
+  // Nothing was recorded meant it was re-planned every tick; the ledger entry is what
+  // stops that.
+  expect(h.ledger.recorded()).toEqual([DIRTY_FLOOR_SURFACE]);
+
+  expect(summary.findingsPersisted).toBe(1);
+  expect(summary.candidatesUnrenderable).toBe(0);
   expect(h.errors().filter((line) => line.includes(DIRTY_FLOOR_KIND))).toHaveLength(1);
 });
 

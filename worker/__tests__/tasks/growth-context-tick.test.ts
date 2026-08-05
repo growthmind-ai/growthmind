@@ -73,6 +73,7 @@ function depsFor(input: {
       now: () => NOW,
       logger: {
         info: (message: string) => recorded.logged.push(message),
+        warn: (message: string) => recorded.logged.push(message),
         error: (message: string) => recorded.logged.push(message),
       },
     },

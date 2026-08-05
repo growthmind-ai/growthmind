@@ -8,7 +8,10 @@ import { createTestDb } from "@growthmind/db/testing";
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
-import { createDeliveryLaneSource } from "../src/delivery-lane-source";
+import {
+  FINDINGS_CONSIDERED_PER_LANE,
+  createDeliveryLaneSource,
+} from "../src/delivery-lane-source";
 import { DELIVERY_ACTOR_ID } from "../src/tasks/delivery-tick";
 import {
   createRecordingDeliveryLogger,
@@ -67,7 +70,7 @@ function deliveryContextFor(organizationId: string, organizationName: string): T
   });
 }
 
-test("a finding whose persisted text is held never becomes a delivery candidate, and the hold is logged with its kind", async () => {
+test("a finding whose persisted text is held never becomes a delivery candidate, and the hold is logged with its kind at warn", async () => {
   expect(scanResidualPii(HELD_CONTEXT.join("\n")).clean).toBe(false);
   expect(scanResidualPii(CLEAN_CONTEXT.join("\n")).clean).toBe(true);
 
@@ -104,12 +107,14 @@ test("a finding whose persisted text is held never becomes a delivery candidate,
     expect(candidateIds).not.toContain(held.findingId);
     expect(candidateIds).toContain(sibling.findingId);
 
+    // `warn`, not `error`: this line repeats on every tick for as long as the row exists.
     expect(
-      logger.errors.filter(
+      logger.warns.filter(
         (line) => line.includes(held.findingId) && line.includes(PLANTED_EMAIL_KIND),
       ),
     ).toHaveLength(1);
-    expect(logger.errors.filter((line) => line.includes(sibling.findingId))).toEqual([]);
+    expect(logger.errors.filter((line) => line.includes(held.findingId))).toEqual([]);
+    expect(logger.lines().filter((line) => line.includes(sibling.findingId))).toEqual([]);
 
     for (const line of logger.lines()) {
       expect(line).not.toContain(PLANTED_EMAIL);
@@ -118,3 +123,47 @@ test("a finding whose persisted text is held never becomes a delivery candidate,
     await close();
   }
 });
+
+test("held findings spend no consideration slot, so a project with a lane's worth of them still delivers", async () => {
+  const { db, close } = await createTestDb();
+
+  try {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o21-slot-", now: NOW });
+    const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+    await seedSlackConnection(
+      db,
+      { organizationId: workspace.organizationId, channelId: CHANNEL },
+      OWNER_SCHEMA,
+    );
+
+    // Oldest first, so it sits past the consideration budget once the held rows are in
+    // front of it — the exact arrangement that used to stop this project delivering.
+    const deliverable = await seedFinding(db, ctx, {
+      projectId: workspace.projectId,
+      surface: "/checkout/review",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    for (let index = 0; index < FINDINGS_CONSIDERED_PER_LANE; index += 1) {
+      await seedFinding(db, ctx, {
+        projectId: workspace.projectId,
+        surface: "/checkout/payment",
+        context: HELD_CONTEXT,
+        at: NOW,
+      });
+    }
+
+    const logger = createRecordingDeliveryLogger();
+    const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+
+    expect((lane?.candidates ?? []).map((candidate) => candidate.findingId)).toContain(
+      deliverable.findingId,
+    );
+    expect(logger.warns).toHaveLength(FINDINGS_CONSIDERED_PER_LANE);
+    expect(logger.errors).toEqual([]);
+  } finally {
+    await close();
+  }
+}, 60_000);

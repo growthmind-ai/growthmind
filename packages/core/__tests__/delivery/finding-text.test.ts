@@ -14,7 +14,7 @@ const OFFENDERS: Record<ResidualPiiKind, string> = {
   phone_number: "+44 7700 900123",
   payment_card: "4111 1111 1111 1111",
   ip_address: "203.0.113.42",
-  credential: "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHH",
+  credential: "sk-fixture-NeverARealKeyAAAA",
 };
 
 const CLEAN_HEADLINE = "Sign-up stalled at the pricing page.";

@@ -1,5 +1,15 @@
-import type { CandidateFinding, FloorSummary, FloorSummarySource } from "@growthmind/core";
-import { SIGNATURE_TUPLE_VERSION, renderFloorSummary, reviewFindingText } from "@growthmind/core";
+import type {
+  CandidateFinding,
+  FindingText,
+  FloorSummary,
+  FloorSummarySource,
+} from "@growthmind/core";
+import {
+  SIGNATURE_TUPLE_VERSION,
+  renderFloorSummary,
+  renderWithheldFloorSummary,
+  reviewFindingText,
+} from "@growthmind/core";
 import { computeFindingSignature, describeHold } from "@growthmind/db";
 import { describeError, isNormalisedUrlPath } from "@growthmind/shared";
 
@@ -59,6 +69,38 @@ export function identityFor(
   }
 }
 
+function persistAction(
+  source: FloorSummarySource,
+  text: Extract<FindingText, { held: false }>,
+  attribution: CallAttribution,
+  identity: CandidateIdentity,
+): CandidateAction {
+  return {
+    kind: "persist",
+    identity,
+    summary: {
+      summarySource: source,
+      headline: text.headline,
+      context: text.context,
+      attribution,
+    },
+  };
+}
+
+// Withholding the words is not withholding the finding: the counts, the surface, the
+// evidence shape and the signature ledger entry all survive a hold, and a row recorded
+// with fixed-constant text can be written up again later.
+function withheldAction(
+  source: FloorSummarySource,
+  attribution: CallAttribution,
+  identity: CandidateIdentity,
+): CandidateAction {
+  const withheld = renderWithheldFloorSummary(source);
+  const text = reviewFindingText({ headline: withheld.headline, context: withheld.context });
+
+  return text.held ? { kind: "unrenderable" } : persistAction(source, text, attribution, identity);
+}
+
 export function floorAction(
   floor: FloorSummary,
   attribution: CallAttribution,
@@ -72,19 +114,10 @@ export function floorAction(
   if (text.held) {
     const hold = describeHold(text);
     logger.error(
-      `analysis tick: candidate ${identity.signature} was written up without a model and the result still could not be shown (${hold.reason}/${String(hold.kind)}), so nothing was recorded for it`,
+      `analysis tick: candidate ${identity.signature} was written up without a model and the result still could not be shown (${hold.reason}/${String(hold.kind)}), so the numbers were recorded without any words beside them`,
     );
-    return { kind: "unrenderable" };
+    return withheldAction(floor.source, attribution, identity);
   }
 
-  return {
-    kind: "persist",
-    identity,
-    summary: {
-      summarySource: floor.source,
-      headline: text.headline,
-      context: text.context,
-      attribution,
-    },
-  };
+  return persistAction(floor.source, text, attribution, identity);
 }
