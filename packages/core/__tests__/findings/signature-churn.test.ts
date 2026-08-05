@@ -71,6 +71,61 @@ function testLocalSerialiseEvidenceShapeV3(input: TestLocalEvidenceShapeV3Input)
   return canonicalJson(shape);
 }
 
+const SRC_DIR = `${import.meta.dir}/../../src`.replaceAll("\\", "/");
+const SIGNALS_SOURCE = `${SRC_DIR}/evidence/signals.ts`;
+
+type ObservedSubkindModule = {
+  readonly observedStruggleSubkindSchema: { readonly options: readonly string[] };
+};
+
+// TODO(O-041 T3.1): replace with a static import of observedStruggleSubkindSchema once D-7's
+// single declaration lands in src/evidence/signals.ts.
+async function observedStruggleSubkinds(): Promise<ReadonlySet<string>> {
+  const loaded = (await import(SIGNALS_SOURCE)) as Partial<ObservedSubkindModule>;
+  const options = loaded.observedStruggleSubkindSchema?.options;
+
+  if (options === undefined) {
+    throw new Error(
+      "src/evidence/signals.ts must export observedStruggleSubkindSchema (D-7): a v3 that claims " +
+        "the payload moves only in `v` for a legacy signal set can only be built against the one " +
+        "declared observed set.",
+    );
+  }
+
+  return new Set(options);
+}
+
+type TestLocalSubkindVisibleSerialiser = (
+  input: EvidenceShapeInput,
+  observedSubkinds: ReadonlySet<string>,
+) => string;
+
+// The other hypothetical v3 D-4 names: one that makes the struggle subkind visible. A signal set
+// carrying no observed subkind projects no key at all, so its payload moves only in `v`.
+function testLocalSerialiseEvidenceShapeV3SubkindVisible(
+  input: EvidenceShapeInput,
+  observedSubkinds: ReadonlySet<string>,
+): string {
+  const visible = input.signals.flatMap((signal) =>
+    signal.kind === "struggle" && observedSubkinds.has(signal.subkind) ? [signal.subkind] : [],
+  );
+
+  const shape: CanonicalObject = {
+    v: 3,
+    detector: input.detector,
+    surface: input.surface,
+    signalKinds: input.signals.map((signal) => signal.kind),
+    symptomClass: input.symptomClass,
+  };
+
+  return canonicalJson(visible.length === 0 ? shape : { ...shape, observedSubkinds: visible });
+}
+
+const TEST_LOCAL_SUBKIND_VISIBLE_SERIALISERS: ReadonlyMap<
+  number,
+  TestLocalSubkindVisibleSerialiser
+> = new Map([[3, testLocalSerialiseEvidenceShapeV3SubkindVisible]]);
+
 function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
   return canonicalJson({
     v: 2,
@@ -108,6 +163,14 @@ const GOLDEN_V1_TUPLE_BASELINE =
 
 const GOLDEN_TUPLE_BASELINE =
   '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"symptomClass\\":\\"broken\\",\\"v\\":2}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
+
+function legacyRepeatedAttemptInput(): EvidenceShapeInput {
+  return shapeInputWithSurface(BASELINE_SURFACE);
+}
+
+function struggleSubkindsOf(input: EvidenceShapeInput): readonly string[] {
+  return input.signals.flatMap((signal) => (signal.kind === "struggle" ? [signal.subkind] : []));
+}
 
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
@@ -325,6 +388,58 @@ describe("signature-churn — negative control and anti-vacuity control", () => 
     );
 
     expect(brokenTuple).not.toBe(confusingTuple);
+  });
+});
+
+describe("signature-churn — D12 identity across O-041 (the outcome's named gate, D-4)", () => {
+  test("should hold one identity for a pre-O-041 repeated_attempt candidate under the current evidence shape", () => {
+    const legacyInput = legacyRepeatedAttemptInput();
+
+    // Anti-vacuity: this pin is worth nothing unless the fixture is the candidate it claims to
+    // protect — a pre-O-041 one, provable before the sprint existed.
+    expect(struggleSubkindsOf(legacyInput)).toEqual(["repeated_attempt", "repeated_attempt"]);
+
+    const shape = evidenceShape(legacyInput, EVIDENCE_SHAPE_VERSION);
+    expect(shape).toBe(GOLDEN_EVIDENCE_SHAPE_V2);
+
+    expect(
+      signatureTuple(
+        {
+          projectId: PROJECT_ID,
+          surfaceId: BASELINE_SURFACE,
+          symptomClass: "broken",
+          evidenceShape: shape,
+        },
+        SIGNATURE_TUPLE_VERSION,
+      ),
+    ).toBe(GOLDEN_TUPLE_BASELINE);
+  });
+
+  test("should hold one identity across a test-local evidence shape v2 to v3 for a signal set with no observed subkind", async () => {
+    const observed = await observedStruggleSubkinds();
+    const serialiseV3 = TEST_LOCAL_SUBKIND_VISIBLE_SERIALISERS.get(3);
+    expect(serialiseV3).toBeDefined();
+
+    const legacyInput = legacyRepeatedAttemptInput();
+    expect(struggleSubkindsOf(legacyInput).some((subkind) => observed.has(subkind))).toBe(false);
+
+    const v2Shape = evidenceShape(legacyInput, 2);
+    const v3Shape = serialiseV3?.(legacyInput, observed) ?? "";
+
+    // FR-15 read as D-4 rules it: a v3 cannot byte-equal a v2, because `v` itself differs. What is
+    // provable, and what the ledger actually needs, is that nothing ELSE differs.
+    expect(v3Shape).toBe(v2Shape.replace('"v":2', '"v":3'));
+
+    const tupleFromV2 = signatureTuple(
+      { ...BASELINE_TUPLE_INPUT, evidenceShape: v2Shape },
+      SIGNATURE_TUPLE_VERSION,
+    );
+    const tupleFromV3Normalised = signatureTuple(
+      { ...BASELINE_TUPLE_INPUT, evidenceShape: v3Shape.replace('"v":3', '"v":2') },
+      SIGNATURE_TUPLE_VERSION,
+    );
+
+    expect(tupleFromV3Normalised).toBe(tupleFromV2);
   });
 });
 
