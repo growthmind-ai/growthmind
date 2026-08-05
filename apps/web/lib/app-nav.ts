@@ -16,6 +16,8 @@ const ROOT: NavGroup = {
   items: [{ href: ROUTES.home, label: "Home" }],
 };
 
+const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
+
 // Slack first: that is where the work arrives (product decisions §10).
 const WORK: NavGroup = {
   label: "Work",
@@ -24,8 +26,13 @@ const WORK: NavGroup = {
     { href: ROUTES.findings, label: "Findings" },
     { href: ROUTES.fixes, label: "Fixes" },
     { href: ROUTES.experiments, label: "Experiments" },
+    RECORDINGS,
   ],
 };
+
+// Recordings read through the analytics connection the org already has, so they answer
+// for everyone rather than only the preview list — the same reason the agent page does.
+const WORK_LIVE: NavGroup = { label: "Work", items: [RECORDINGS] };
 
 const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };
 
@@ -47,5 +54,5 @@ const PRODUCT_LIVE: NavGroup = { label: "Your product", items: [AGENT] };
 // Off the preview allow list every Work route is a `notFound`, and of Your product only
 // the agent page answers.
 export function navGroupsFor(canSeePreview: boolean): readonly NavGroup[] {
-  return canSeePreview ? [ROOT, WORK, PRODUCT] : [ROOT, PRODUCT_LIVE];
+  return canSeePreview ? [ROOT, WORK, PRODUCT] : [ROOT, WORK_LIVE, PRODUCT_LIVE];
 }

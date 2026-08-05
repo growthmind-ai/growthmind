@@ -1,11 +1,14 @@
 import type {
   ConnectionHealth,
   ConnectionSummary,
+  CredentialKey,
+  DecryptResult,
   InternalDomainProvenance,
   SessionSourceKind,
   SourceFailureCode,
   TenantContext,
 } from "@growthmind/shared";
+import { credentialAad, decryptSecret } from "@growthmind/shared";
 import { eq, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
@@ -49,6 +52,11 @@ export interface SetInferredInternalDomainInput {
 
 export interface ProjectConnectionsRepo {
   getActiveForProject(projectId: string): Promise<ConnectionSummary | null>;
+
+  // The sibling of SlackConnectionsRepo.openCredentialForOrg. It exists so a user-triggered
+  // path never reaches `system/readConnectionCredential`, which is a bypass context: this
+  // read carries the org filter like every other method here. `null` = no active connection.
+  openCredentialForProject(projectId: string, key: CredentialKey): Promise<DecryptResult | null>;
 
   insertActive(input: InsertActiveConnectionInput): Promise<ConnectionSummary>;
 
@@ -205,6 +213,29 @@ export function createProjectConnectionsRepo(
         inferredInternalDomain: input.domain,
         internalDomainProvenance: input.provenance,
       });
+    },
+
+    async openCredentialForProject(
+      projectId: string,
+      key: CredentialKey,
+    ): Promise<DecryptResult | null> {
+      const row = await c.maybe(
+        eq(projectConnections.projectId, projectId),
+        eq(projectConnections.isActive, true),
+      );
+
+      if (!row) {
+        return null;
+      }
+
+      // The row's own ids, never the caller's: `c.maybe` has already proved the row belongs
+      // to this context, and an AAD built from an argument would authenticate the request
+      // rather than the record.
+      return decryptSecret(
+        row.credentialCiphertext,
+        key,
+        credentialAad(row.organizationId, row.projectId),
+      );
     },
   };
 }
