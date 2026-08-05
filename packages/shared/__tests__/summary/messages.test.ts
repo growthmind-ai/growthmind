@@ -130,13 +130,26 @@ describe("degradation states — enum totality", () => {
 
     const CAUSE_WORDS = [
       /\baccuracy\b/i,
-      /\bbecause\b/i,
-      /\bfailed\b/i,
-      /\brejected\b/i,
+      /\baccurate\b/i,
+      /\bprivacy\b/i,
+      /\bprivate\b/i,
       /\bpersonal\b/i,
-      /\bdid not pass\b/i,
+      /\bemail\b/i,
+      /\bsentences?\b/i,
     ];
     expect(CAUSE_WORDS.filter((word) => word.test(message)).map((word) => word.source)).toEqual([]);
+
+    const UNMET_CHECK_PHRASES = [
+      /\bdid not pass\b/i,
+      /\bdid not meet\b/i,
+      /\bfailed\b/i,
+      /\bwas rejected\b/i,
+      /\bcould not be checked\b/i,
+    ];
+    expect({
+      bar: "names that a check was not satisfied",
+      satisfied: UNMET_CHECK_PHRASES.some((phrase) => phrase.test(message)),
+    }).toEqual({ bar: "names that a check was not satisfied", satisfied: true });
 
     const sentences = message
       .trim()
