@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const replaySourceKindSchema = z.enum(["rrweb"]);
+export const replaySourceKindSchema = z.enum(["rrweb", "posthog"]);
 export type ReplaySourceKind = z.infer<typeof replaySourceKindSchema>;
 
 export const replayFailureCodeSchema = z.enum([

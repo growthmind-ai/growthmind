@@ -1,6 +1,7 @@
-import type { SessionSourceKind } from "@growthmind/shared";
+import type { ReplaySourceKind, SessionSourceKind } from "@growthmind/shared";
 
 export const POSTHOG_SOURCE_KIND = "posthog" satisfies SessionSourceKind;
+export const POSTHOG_REPLAY_SOURCE_KIND = "posthog" satisfies ReplaySourceKind;
 
 function trimHost(host: string): string {
   return host.replace(/\/+$/, "");
@@ -41,6 +42,10 @@ export const PAGE_LIMIT = 200;
 export const PINNED_PAGE_LIMIT_FLOOR = 220;
 
 export const MAX_PAGES_PER_RUN = 25;
+
+// Recordings are a different listing endpoint from events, sized independently of
+// PAGE_LIMIT/PINNED_PAGE_LIMIT_FLOOR above (those are pinned to the events endpoint).
+export const RECORDINGS_PAGE_LIMIT = 100;
 
 export const OVERLAP_WINDOW_SECONDS = 900;
 

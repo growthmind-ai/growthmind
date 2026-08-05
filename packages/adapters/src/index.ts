@@ -66,6 +66,9 @@ export { createRrwebReplaySource } from "./rrweb/replay-source";
 export { RRWEB_SOURCE_KIND } from "./rrweb/constants";
 export type { RrwebSourceConfig, RrwebSourceDeps } from "./rrweb/deps";
 
+export { createPostHogReplaySource } from "./posthog/replay-source";
+export { POSTHOG_REPLAY_SOURCE_KIND } from "./posthog/constants";
+
 export { createColdstartModel } from "./model/provider";
 export type { ColdstartModelConfig } from "./model/provider";
 export {
