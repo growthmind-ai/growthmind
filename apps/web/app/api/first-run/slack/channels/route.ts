@@ -5,7 +5,11 @@
 // AD-7 decided, not omitted: fetched live and stored nowhere, so a channel made a minute ago is pickable.
 import { firstRunSlackChannelsInputSchema } from "@growthmind/shared";
 
-import { resolveChannelsFor, resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
+import {
+  resolveChannelsFor,
+  resolveFirstRunDeps,
+  type FirstRunRouteDeps,
+} from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
 import { LISTING_REFUSALS, refusalResponse } from "@/lib/first-run/refusals";
 

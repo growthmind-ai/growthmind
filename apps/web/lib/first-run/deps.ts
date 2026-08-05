@@ -161,9 +161,7 @@ function makeChannelsFor(
       const listed = await listChannels(credential.token, { fetch: fetchImpl });
 
       // The token went one call into the adapter; `{ id, name }` crosses back.
-      return listed.ok
-        ? { ok: true, channels: listed.channels }
-        : { ok: false, code: listed.code };
+      return listed.ok ? { ok: true, channels: listed.channels } : { ok: false, code: listed.code };
     },
   );
 }

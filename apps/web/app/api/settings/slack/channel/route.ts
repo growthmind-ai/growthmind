@@ -10,7 +10,11 @@ import {
   settingsSlackChannelInputSchema,
 } from "@growthmind/shared";
 
-import { resolveChannelsFor, resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
+import {
+  resolveChannelsFor,
+  resolveFirstRunDeps,
+  type FirstRunRouteDeps,
+} from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
 import {
   CHANNEL_MOVE_LOST,

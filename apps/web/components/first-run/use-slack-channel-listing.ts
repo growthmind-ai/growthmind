@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 
 import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
-import { FIRST_RUN_API, getJson, readChannelList, readRefusal, type SlackChannelChoice } from "./api";
+import {
+  FIRST_RUN_API,
+  getJson,
+  readChannelList,
+  readRefusal,
+  type SlackChannelChoice,
+} from "./api";
 
 // Shared by `SlackConnection` and `SlackDeliveryControls`: both list the org's Slack
 // channels the same way, fetched only while `active` and re-fetched only on `relist()`

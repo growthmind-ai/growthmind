@@ -57,7 +57,9 @@ async function readSource(
 ): Promise<SettingsSourceView> {
   return readOrFallback(
     async () => {
-      const view = toOnboardingCounterView(await createEventsCounterService(db, ctx).read(projectId));
+      const view = toOnboardingCounterView(
+        await createEventsCounterService(db, ctx).read(projectId),
+      );
       const { state } = view;
 
       if (state.status === "not_connected") {
