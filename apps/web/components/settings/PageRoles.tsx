@@ -1,7 +1,7 @@
 "use client";
 
 import { Checkbox, Group, Select, Stack, Text } from "@mantine/core";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   PAGES_CHANGEABLE_LABEL,
@@ -42,6 +42,7 @@ interface RowState {
 }
 
 export function PageRoles({ pages, sourceAttached }: PageRolesProps) {
+  const labelPrefix = useId();
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
       pages.map((page) => [
@@ -97,24 +98,30 @@ export function PageRoles({ pages, sourceAttached }: PageRolesProps) {
         {PAGES_SECTION_LEAD}
       </Text>
 
-      {pages.map((page) => {
+      {pages.map((page, index) => {
         const row = rows[page.surface] ?? {
           role: page.role,
           changeable: page.changeable,
           statedByAPerson: page.statedByAPerson,
         };
 
+        // Named by the path rendered beside it rather than by an interpolated aria-label:
+        // session replay masks text and cannot mask attributes, so a customer's own page
+        // paths would leave the browser in the clear. Indexed, never the path itself.
+        const surfaceId = `${labelPrefix}-surface-${index}`;
+        const changeableId = `${labelPrefix}-changeable-${index}`;
+
         return (
           <Stack key={page.surface} gap={4}>
             <Group gap="sm" wrap="wrap" align="center">
-              <Text ff="monospace" size="sm" style={{ minWidth: 180 }}>
+              <Text id={surfaceId} ff="monospace" size="sm" style={{ minWidth: 180 }}>
                 {page.surface}
               </Text>
 
               <Select
                 data={CHOICES}
                 value={row.role}
-                aria-label={`What ${page.surface} is for`}
+                aria-labelledby={surfaceId}
                 allowDeselect={false}
                 onChange={(value) => {
                   if (value === null) return;
@@ -142,8 +149,8 @@ export function PageRoles({ pages, sourceAttached }: PageRolesProps) {
               <Group gap="xs" align="flex-start" pl="xs">
                 <Checkbox
                   checked={row.changeable}
-                  label={PAGES_CHANGEABLE_LABEL}
-                  aria-label={`${PAGES_CHANGEABLE_LABEL}: ${page.surface}`}
+                  label={<span id={changeableId}>{PAGES_CHANGEABLE_LABEL}</span>}
+                  aria-labelledby={`${changeableId} ${surfaceId}`}
                   onChange={(event) => {
                     void state(page.surface, { ...row, changeable: event.currentTarget.checked });
                   }}
