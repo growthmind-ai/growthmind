@@ -161,7 +161,9 @@ export async function seedFinding(
     params.signature ?? randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64);
   const surface = params.surface ?? "/checkout/payment";
   const headline = params.headline ?? "The payment step is losing sessions";
-  const context = params.context ?? ["Sessions reached the payment step and left without finishing."];
+  const context = params.context ?? [
+    "Sessions reached the payment step and left without finishing.",
+  ];
 
   const counts = seededCounts(params.at);
   const confidenceBasis = "threshold_met";

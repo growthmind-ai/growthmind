@@ -45,9 +45,10 @@ import {
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
 
-const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
-  "We saw sessions reach the reports page and stop there.",
-]);
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 

@@ -36,9 +36,10 @@ const INTERACTIVITY_URL = "http://localhost:3000/api/slack/interactivity";
 
 const SIGNING_SECRET = "slack-fixture-signing-secret-never-real";
 
-const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
-  "We saw sessions reach the reports page and stop there.",
-]);
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const SIGNATURE_VERSION = "v0";
 

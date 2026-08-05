@@ -55,9 +55,10 @@ const EVENT_NAME = "checkout_payment_failed";
 
 const CONTEXT_MARKER = "a sentence only this finding's narrative carries";
 
-const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
-  CONTEXT_MARKER,
-]);
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  [CONTEXT_MARKER],
+);
 
 // An address the residual scanner classifies as `email_address`, distinctive enough that
 // finding it anywhere downstream can only be this row's persisted text.

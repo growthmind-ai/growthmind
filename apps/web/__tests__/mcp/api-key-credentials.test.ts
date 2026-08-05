@@ -42,9 +42,10 @@ import {
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
 
-const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
-  "We saw sessions reach the reports page and stop there.",
-]);
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const UNKNOWN_BUT_WELL_FORMED = `${API_KEY_PREFIX}${"a".repeat(43)}`;
 

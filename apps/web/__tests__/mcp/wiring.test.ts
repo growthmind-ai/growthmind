@@ -48,9 +48,10 @@ const PRE_SDK_CONTENT_TYPE = "application/json;charset=utf-8";
 
 const LIVE_SURFACE = "/mcpwire/reports";
 
-const CLEAN_TEXT = scannedTextFor("People are leaving the reports page without going any further.", [
-  "We saw sessions reach the reports page and stop there.",
-]);
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
 
