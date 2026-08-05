@@ -69,7 +69,7 @@ export function ReplayPlayer({ recordingId }: ReplayPlayerProps) {
       if (mountRef.current === null) return;
       player = new RrwebPlayer({
         target: mount,
-        props: { events: load.events as never, autoPlay: false, width: mount.clientWidth },
+        props: { events: load.events as never, autoPlay: true, width: mount.clientWidth },
       }) as { $destroy?: () => void };
     });
 
