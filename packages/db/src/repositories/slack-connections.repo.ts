@@ -2,6 +2,7 @@ import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/sh
 import {
   decryptSecret,
   isDeliveryAddress,
+  memberUserId,
   NON_ADDRESS_VALUES,
   TRIMMED_WHITESPACE,
 } from "@growthmind/shared";
@@ -50,7 +51,10 @@ export interface InsertActiveSlackConnectionInput {
   readonly credentialCiphertext: string;
 
   readonly credentialKeyId: string;
-  readonly connectedByUserId: string;
+
+  // No `connectedByUserId`: the actor is the context's, stamped below from `memberUserId`.
+  // A caller-supplied one is a second copy of a fact this repository already holds, and the
+  // copy is what would carry a machine actor's synthetic id into a `user.id` column.
   readonly connectedAt: Date;
 }
 
@@ -150,7 +154,7 @@ export function createSlackConnectionsRepo(
           credentialCiphertext: input.credentialCiphertext,
           credentialKeyId: input.credentialKeyId,
           isActive: true,
-          connectedByUserId: input.connectedByUserId,
+          connectedByUserId: memberUserId(ctx),
           connectedAt: input.connectedAt,
         });
 

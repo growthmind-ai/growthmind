@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { organization, user } from "./auth";
 
 export const apiKeys = pgTable(
   "api_keys",
@@ -20,6 +20,13 @@ export const apiKeys = pgTable(
     keyHash: text("key_hash").notNull(),
 
     keyPrefix: text("key_prefix").notNull(),
+
+    // Who minted it. A key reads this org's findings through MCP for as long as it lives, so
+    // "who issued this" has to be answerable. Nullable: rows predating the column, and any
+    // minted by a non-human principal, name nobody.
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
 
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),

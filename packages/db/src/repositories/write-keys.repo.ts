@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
   hashWriteKeyMaterial,
   isWriteKeyFormat,
+  memberUserId,
   WRITE_KEY_PREFIX,
   type TenantContext,
   type WriteKeyKind,
@@ -66,6 +67,7 @@ export function createWriteKeysRepo(db: ScopedExecutor, ctx: TenantContext): Wri
         kind: input.kind,
         keyHash,
         keyPrefix,
+        createdByUserId: memberUserId(ctx),
         revokedAt: null,
       });
 

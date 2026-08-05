@@ -63,7 +63,6 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
       ),
       credentialKeyId: keyIdOf(resolution.key),
 
-      connectedByUserId: gate.ctx.userId,
       connectedAt: deps.now(),
     });
 

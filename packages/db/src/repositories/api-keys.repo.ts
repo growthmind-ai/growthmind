@@ -5,8 +5,10 @@ import {
   API_KEY_PREFIX,
   hashApiKeyMaterial,
   isApiKeyFormat,
+  memberUserId,
   type ApiKeyMetadata,
   type ApiKeyUseSummary,
+  type MachineRole,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -61,7 +63,16 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
       const keyHash = hashApiKeyMaterial(raw);
       const keyPrefix = raw.slice(0, API_KEY_DISPLAY_PREFIX_LENGTH);
 
-      const row = await c.insert({ name: input.name, keyHash, keyPrefix, revokedAt: null });
+      // The actor comes from the context, never from an argument: a `createdByUserId`
+      // parameter is a wire a caller can forget, and the one value it could carry wrongly is
+      // a machine principal's synthetic id, which this column's foreign key would reject.
+      const row = await c.insert({
+        name: input.name,
+        keyHash,
+        keyPrefix,
+        createdByUserId: memberUserId(ctx),
+        revokedAt: null,
+      });
 
       return { raw, key: toMetadata(row) };
     },
@@ -106,7 +117,7 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
 
 export const API_KEY_ACTOR_PREFIX = "api-key:";
 
-export const API_KEY_ACTOR_ROLE = "api_key";
+export const API_KEY_ACTOR_ROLE = "api_key" satisfies MachineRole;
 
 export const API_KEY_USE_STAMP_INTERVAL_SECONDS = 300;
 
