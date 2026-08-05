@@ -31,6 +31,12 @@ export type ThresholdRuleSet = {
   readonly funnelDropoffRateThresholdPercent: number;
   readonly struggleRepeatedAttemptMin: number;
   readonly struggleMinStrugglingSessions: number;
+  readonly struggleRageClickMin: number;
+  readonly struggleDeadClickMin: number;
+  readonly struggleFieldAbandonedMin: number;
+  readonly struggleFieldRefocusMin: number;
+  readonly struggleScrollBackMin: number;
+  readonly struggleObservedMinSessions: number;
   readonly instrumentationDropRatioPercent: number;
   readonly instrumentationMinExpected: number;
   readonly brokenProofSignals: readonly EvidenceSignalKind[];

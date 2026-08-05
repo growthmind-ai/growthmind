@@ -19,7 +19,7 @@ function ruleSetV1(): ThresholdRuleSet {
 const IMMUTABILITY_MESSAGE =
   "v1 is a shipped decision and is immutable. Add version 2 — do not edit version 1.";
 
-const V1_CONTENT_HASH: string = "de73a91a398a32b3c5ff0696bd86b9d8fbb12df3a5ca51c94dc7d201414e92ab";
+const V1_CONTENT_HASH: string = "1bc8500b799c6d292520ffb6d74849a5e534ced50c45c879d21d7b2b72f61cfc";
 
 // Deliberately NOT typed as ThresholdRuleSet: growing that type must never force an edit here.
 const V1_PRE_O041_VALUES: Readonly<Record<string, unknown>> = Object.freeze({
@@ -200,6 +200,12 @@ describe("THRESHOLD_RULE_SETS", () => {
       funnelDropoffRateThresholdPercent: 40,
       struggleRepeatedAttemptMin: 3,
       struggleMinStrugglingSessions: 3,
+      struggleRageClickMin: 4,
+      struggleDeadClickMin: 2,
+      struggleFieldAbandonedMin: 2,
+      struggleFieldRefocusMin: 3,
+      struggleScrollBackMin: 3,
+      struggleObservedMinSessions: 5,
       instrumentationDropRatioPercent: 20,
       instrumentationMinExpected: 50,
       brokenProofSignals: ["failure_correlated"],
@@ -328,6 +334,12 @@ describe("THRESHOLD_RULE_SETS", () => {
       funnelDropoffRateThresholdPercent: 40,
       struggleRepeatedAttemptMin: 3,
       struggleMinStrugglingSessions: 3,
+      struggleRageClickMin: 4,
+      struggleDeadClickMin: 2,
+      struggleFieldAbandonedMin: 2,
+      struggleFieldRefocusMin: 3,
+      struggleScrollBackMin: 3,
+      struggleObservedMinSessions: 5,
       instrumentationDropRatioPercent: 20,
       instrumentationMinExpected: 50,
       brokenProofSignals: ["failure_correlated"],
