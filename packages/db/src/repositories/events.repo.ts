@@ -50,7 +50,7 @@ export function createEventsRepo(db: ScopedExecutor, ctx: TenantContext): Events
         .insert(events)
         .values(
           ourRows.map((row) => ({
-            ...s.stamp,
+            organizationId: s.stamp.organizationId,
             projectId: row.projectId,
             connectionId: row.connectionId,
             sessionId: row.sessionId,

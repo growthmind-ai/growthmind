@@ -158,6 +158,25 @@ function readBack(row: GrowthContextRow): GrowthContext | null {
   }
 }
 
+// Every write in this file is a read-merge-write against one row the nightly tick, the site
+// read and a person editing all contend for. `null` from an attempt means the row moved
+// underneath it, so the next attempt has to re-read whatever won: a dependency chain, not a
+// fan-out, which is why these awaits are sequential and cannot be batched.
+// `T` excludes null so a settled answer can never be mistaken for a lost attempt.
+async function whileContended<T extends NonNullable<unknown>>(
+  attempts: number,
+  attempt: () => Promise<T | null>,
+): Promise<T | null> {
+  for (let n = 0; n < attempts; n += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const settled = await attempt();
+
+    if (settled !== null) return settled;
+  }
+
+  return null;
+}
+
 export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext): GrowthContextRepo {
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, growthContext);
@@ -167,6 +186,78 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
   // for that (D11).
   async function announce(): Promise<void> {
     await publishLive(db, { organizationId: ctx.organizationId, topic: "business_context" });
+  }
+
+  async function readRow(projectId: string): Promise<GrowthContextRow | null> {
+    return s.maybe(
+      await db
+        .select()
+        .from(growthContext)
+        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
+        .limit(1),
+    );
+  }
+
+  async function readSnapshot(projectId: string): Promise<GrowthContextSnapshot | null> {
+    const row = await readRow(projectId);
+    if (row === null) return null;
+
+    const context = readBack(row);
+
+    return context === null ? null : { context, updatedAt: row.updatedAt };
+  }
+
+  async function readResearch(projectId: string): Promise<BusinessResearchRow | null> {
+    const row = await readRow(projectId);
+    if (row === null) return null;
+
+    return {
+      siteDomain: row.siteDomain,
+      // One unreadable fact costs that fact, never the table: the rest of the settings page
+      // is what someone mid-setup actually came for.
+      businessContext: readBusinessContext(row.businessContext),
+      researchStatus: row.researchStatus,
+      researchedAt: row.researchedAt,
+      researchFailure: row.researchFailure,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  // Returns the row it wrote rather than a boolean: `claim` already carries it back, and a
+  // caller that needs the row would otherwise re-select what it had just produced.
+  async function saveRowIfUnchanged(
+    input: SaveGrowthContextInput,
+    since: Date | null,
+  ): Promise<GrowthContextRow | null> {
+    const parsed = growthContextSchema.parse({
+      surfaces: input.surfaces,
+      confirmedChangeable: input.confirmedChangeable,
+    });
+
+    await s.assertProjectOwned(input.projectId, notOurProject);
+
+    const claimed = await c.claim(
+      {
+        projectId: input.projectId,
+        surfaces: parsed.surfaces,
+        confirmedChangeable: parsed.confirmedChangeable,
+      },
+      {
+        target: [growthContext.organizationId, growthContext.projectId],
+        set: {
+          surfaces: parsed.surfaces,
+          confirmedChangeable: parsed.confirmedChangeable,
+          updatedAt: new Date(),
+        },
+        // `since === null` means the caller read no row at all, so a row existing now is one
+        // that appeared underneath it. `false` refuses the update rather than overwriting
+        // whatever arrived.
+        setWhere: since === null ? sql`false` : eq(growthContext.updatedAt, since),
+        fetch: [eq(growthContext.projectId, input.projectId)],
+      },
+    );
+
+    return claimed.claimed ? claimed.row : null;
   }
 
   // Only if the row has not moved since it was read. The nightly tick, the site read and a
@@ -204,13 +295,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
 
   return {
     async findForProject(projectId: string): Promise<GrowthContext | null> {
-      const rows = await db
-        .select()
-        .from(growthContext)
-        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
-        .limit(1);
-
-      const row = s.maybe(rows);
+      const row = await readRow(projectId);
 
       // One unreadable row costs this project its weighting, not its delivery: the caller
       // treats null as "weigh everything the same", which is the ordering that shipped
@@ -241,51 +326,12 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       return byProject;
     },
 
-    async snapshotForProject(projectId: string): Promise<GrowthContextSnapshot | null> {
-      const rows = await db
-        .select()
-        .from(growthContext)
-        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
-        .limit(1);
-
-      const row = s.maybe(rows);
-      if (row === null) return null;
-
-      const context = readBack(row);
-
-      return context === null ? null : { context, updatedAt: row.updatedAt };
+    snapshotForProject(projectId: string): Promise<GrowthContextSnapshot | null> {
+      return readSnapshot(projectId);
     },
 
     async saveIfUnchanged(input: SaveGrowthContextInput, since: Date | null): Promise<boolean> {
-      const parsed = growthContextSchema.parse({
-        surfaces: input.surfaces,
-        confirmedChangeable: input.confirmedChangeable,
-      });
-
-      await s.assertProjectOwned(input.projectId, notOurProject);
-
-      const claimed = await c.claim(
-        {
-          projectId: input.projectId,
-          surfaces: parsed.surfaces,
-          confirmedChangeable: parsed.confirmedChangeable,
-        },
-        {
-          target: [growthContext.organizationId, growthContext.projectId],
-          set: {
-            surfaces: parsed.surfaces,
-            confirmedChangeable: parsed.confirmedChangeable,
-            updatedAt: new Date(),
-          },
-          // `since === null` means the caller read no row at all, so a row existing now is
-          // one that appeared underneath it. `false` refuses the update rather than
-          // overwriting whatever arrived.
-          setWhere: since === null ? sql`false` : eq(growthContext.updatedAt, since),
-          fetch: [eq(growthContext.projectId, input.projectId)],
-        },
-      );
-
-      return claimed.claimed;
+      return (await saveRowIfUnchanged(input, since)) !== null;
     },
 
     // The whole list is rewritten to change one entry, so two people answering different
@@ -295,8 +341,8 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
     async stateFact(input: StateFactInput): Promise<StateFactOutcome> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
-        const current = await this.readBusinessResearch(input.projectId);
+      const outcome = await whileContended<StateFactOutcome>(STATE_FACT_ATTEMPTS, async () => {
+        const current = await readResearch(input.projectId);
         if (current === null) return "not_found";
 
         const target =
@@ -317,10 +363,14 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           // the page it came from proposes it again and the removal silently undoes itself.
           const tombstoned = input.was === null ? removed : [...new Set([...removed, input.was])];
 
-          if (await writeFactsIfUnchanged(input.projectId, others, tombstoned, current.updatedAt)) {
-            return "stated";
-          }
-          continue;
+          const written = await writeFactsIfUnchanged(
+            input.projectId,
+            others,
+            tombstoned,
+            current.updatedAt,
+          );
+
+          return written ? "stated" : null;
         }
 
         const ofKind = others.filter((fact) => fact.kind === input.kind).length;
@@ -345,28 +395,26 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         // removal, so the tombstone goes with it.
         const revived = removed.filter((gone) => gone !== input.statement);
 
-        if (
-          await writeFactsIfUnchanged(
-            input.projectId,
-            [...others, stated],
-            revived,
-            current.updatedAt,
-          )
-        ) {
-          return "stated";
-        }
-      }
+        const written = await writeFactsIfUnchanged(
+          input.projectId,
+          [...others, stated],
+          revived,
+          current.updatedAt,
+        );
+
+        return written ? "stated" : null;
+      });
 
       // Answering not_found sends the browser back for a re-read, which is the honest end
       // to a row that kept moving underneath this write.
-      return "not_found";
+      return outcome ?? "not_found";
     },
 
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      for (let attempt = 0; attempt < STATE_PAGE_ROLE_ATTEMPTS; attempt += 1) {
-        const snapshot = await this.snapshotForProject(input.projectId);
+      const row = await whileContended(STATE_PAGE_ROLE_ATTEMPTS, async () => {
+        const snapshot = await readSnapshot(input.projectId);
         const existing = snapshot?.context ?? null;
 
         const stated: RoledSurface = {
@@ -388,7 +436,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         if (input.changeable === true) changeable.add(input.surface);
         if (input.changeable === false) changeable.delete(input.surface);
 
-        const written = await this.saveIfUnchanged(
+        return saveRowIfUnchanged(
           {
             projectId: input.projectId,
             surfaces,
@@ -396,49 +444,23 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           },
           snapshot?.updatedAt ?? null,
         );
+      });
 
-        if (written) {
-          const row = s.maybe(
-            await db
-              .select()
-              .from(growthContext)
-              .where(s.owned(growthContext, eq(growthContext.projectId, input.projectId)))
-              .limit(1),
-          );
-
-          if (row !== null) return row;
-        }
+      if (row === null) {
+        throw new Error("growth context: this page kept being answered by someone else mid-write");
       }
 
-      throw new Error("growth context: this page kept being answered by someone else mid-write");
+      return row;
     },
 
-    async readBusinessResearch(projectId: string): Promise<BusinessResearchRow | null> {
-      const rows = await db
-        .select()
-        .from(growthContext)
-        .where(s.owned(growthContext, eq(growthContext.projectId, projectId)))
-        .limit(1);
-
-      const row = s.maybe(rows);
-      if (row === null) return null;
-
-      return {
-        siteDomain: row.siteDomain,
-        // One unreadable fact costs that fact, never the table: the rest of the settings
-        // page is what someone mid-setup actually came for.
-        businessContext: readBusinessContext(row.businessContext),
-        researchStatus: row.researchStatus,
-        researchedAt: row.researchedAt,
-        researchFailure: row.researchFailure,
-        updatedAt: row.updatedAt,
-      };
+    readBusinessResearch(projectId: string): Promise<BusinessResearchRow | null> {
+      return readResearch(projectId);
     },
 
     async stateSiteDomain(input: { projectId: string; siteDomain: string | null }): Promise<void> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const current = await this.readBusinessResearch(input.projectId);
+      const current = await readResearch(input.projectId);
 
       // Only what the old domain's pages said goes. Wiping a conversion someone typed
       // because they fixed a typo in their address would be ours to lose, not theirs.
@@ -494,9 +516,9 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         researchFailure: null,
       };
 
-      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
-        const current = await this.readBusinessResearch(input.projectId);
-        if (current === null) return;
+      const outcome = await whileContended(STATE_FACT_ATTEMPTS, async () => {
+        const current = await readResearch(input.projectId);
+        if (current === null) return "absent";
 
         // A whole-column overwrite would erase every correction on every re-read, which is
         // the one row in this table that cost a person their time.
@@ -531,11 +553,13 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           )
           .returning();
 
-        if (written.length > 0) {
-          await announce();
-          return;
-        }
-      }
+        if (written.length === 0) return null;
+
+        await announce();
+        return "recorded";
+      });
+
+      if (outcome !== null) return;
 
       // Contended past the retries. The status still has to settle or a person watches
       // "running" forever (D8), and what this read found is re-derivable by pressing the
