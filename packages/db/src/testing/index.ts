@@ -7,26 +7,9 @@ export {
   type TestDbHandle,
 } from "./db";
 
-export {
-  makeTenantContext,
-  seedAnalysisRun,
-  seedConnection,
-  seedMember,
-  seedOrganization,
-  seedOrgWithOwner,
-  seedProject,
-  seedUser,
-  PLACEHOLDER_CREDENTIAL_CIPHERTEXT,
-  PLACEHOLDER_CREDENTIAL_KEY_ID,
-  type SeedConnectionParams,
-  type SeededAnalysisRun,
-  type SeededConnection,
-  type SeededMember,
-  type SeededOrganization,
-  type SeededOrgWithOwner,
-  type SeededProject,
-  type SeededUser,
-} from "./fixtures";
+// Wildcard, not a named list: `__tests__/finding-text-reach.test.ts` requires the
+// unscanned-row seeder to be named in exactly one non-test source file, its own home.
+export * from "./fixtures";
 
 export {
   laneNames,

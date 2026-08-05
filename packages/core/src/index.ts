@@ -140,7 +140,7 @@ export {
   type CountRole,
   type ResolvedCounts,
 } from "./summary/count-roles";
-export { renderFloorSummary } from "./summary/floor";
+export { renderFloorSummary, renderWithheldFloorSummary } from "./summary/floor";
 export {
   floorSummarySourceSchema,
   type FloorSummary,
@@ -165,6 +165,15 @@ export {
   type ResidualPiiFinding,
   type ResidualPiiScan,
 } from "./delivery/residual-pii";
+export {
+  findingContextSchema,
+  joinScanned,
+  reviewFindingText,
+  trimScanned,
+  type FindingText,
+  type FindingTextInput,
+  type ScannedText,
+} from "./delivery/finding-text";
 export {
   DELIVERY_BUDGET_PER_WEEK,
   DELIVERY_CLAIM_TTL_MS,

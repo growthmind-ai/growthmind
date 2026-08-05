@@ -6,6 +6,7 @@ import {
   FLOOR_OBSERVATION_TEMPLATES,
   FLOOR_TIMEFRAME_TEMPLATE,
   SUMMARY_SOURCE_MESSAGES,
+  isNormalisedUrlPath,
 } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
@@ -21,6 +22,7 @@ import type {
   SessionTimeline,
   TimelineEvent,
 } from "../../src/detect/types";
+import { reviewFindingText } from "../../src/delivery/finding-text";
 import { traceEntry } from "../../src/evidence/trace";
 import type { CandidateFinding, ConfidenceBasis } from "../../src/findings/candidate";
 import { candidateFindingSchema, confidenceBasisSchema } from "../../src/findings/candidate";
@@ -30,7 +32,7 @@ import type { FindingClass, ThresholdRuleSet } from "../../src/rules/types";
 import { findingClassSchema } from "../../src/rules/types";
 import type { CountRole } from "../../src/summary/count-roles";
 import { COUNT_ROLES } from "../../src/summary/count-roles";
-import { renderFloorSummary } from "../../src/summary/floor";
+import { renderFloorSummary, renderWithheldFloorSummary } from "../../src/summary/floor";
 import type { FloorSummary, FloorSummarySource } from "../../src/summary/types";
 
 const FIXTURE_WINDOW: AnalysisWindow = {
@@ -649,5 +651,140 @@ describe("renderFloorSummary", () => {
     }
 
     expect(renderedText(summary)).not.toContain("%");
+  });
+});
+
+const FIVE_DIGIT_DENOMINATOR = 24_680;
+const FIVE_DIGIT_NUMERATOR = 13_579;
+
+const FLOOR_SOURCES: readonly FloorSummarySource[] = [
+  "floor_no_key_configured",
+  "floor_cap_exhausted",
+  "floor_model_call_failed",
+  "floor_model_output_invalid",
+  "floor_model_text_rejected",
+];
+
+function fiveDigitCount(numerator: number): MeasuredCount {
+  return measuredCount({
+    numerator,
+    denominator: FIVE_DIGIT_DENOMINATOR,
+    unit: "sessions",
+    timeframe: FIXTURE_WINDOW,
+    basis: { totalInWindow: FIVE_DIGIT_DENOMINATOR, kept: FIVE_DIGIT_DENOMINATOR, setAside: [] },
+  });
+}
+
+// Every floor template embeds `{surface}`, so the surface is the axis that decides whether
+// a floor row can be shown at all. Holding it fixed sweeps the classes and misses that.
+const REALISTIC_SURFACES: readonly string[] = [
+  FUNNEL_ORIGIN,
+  "/checkout",
+  "/api-reference-getting-started",
+  "/key-metrics-dashboard-page",
+  "/token-refresh-flow-diagnostics",
+  "/rk-8-week-onboarding-programme",
+  "/settings/api-keys-and-access-tokens",
+  "/pricing-plans-and-billing-options",
+];
+
+describe("renderFloorSummary — every row it produces is read through the residual-PII gate", () => {
+  test("a floor-rendered summary over a representative candidate scans clean, so the read gate does not withhold every floor row", () => {
+    const ruleSet = ruleSetV1();
+    const detected = funnelDetectorCandidate(ruleSet);
+
+    const profiles: readonly { label: string; counts: readonly MeasuredCount[] }[] = [
+      { label: "detected-counts", counts: detected.counts },
+      {
+        label: "five-digit-denominator",
+        counts: [fiveDigitCount(FIVE_DIGIT_DENOMINATOR), fiveDigitCount(FIVE_DIGIT_NUMERATOR)],
+      },
+    ];
+
+    const withheld: string[] = [];
+
+    for (const surface of REALISTIC_SURFACES) {
+      expect({ surface, normalised: isNormalisedUrlPath(surface) }).toEqual({
+        surface,
+        normalised: true,
+      });
+
+      for (const finalClass of findingClassSchema.options) {
+        for (const profile of profiles) {
+          const base = candidateFindingFrom({
+            source: detected,
+            ruleSet,
+            counts: profile.counts,
+            surface,
+          });
+          const candidate: CandidateFinding = candidateFindingSchema.parse({
+            ...base,
+            claimedClass: finalClass,
+            finalClass,
+            trace: [
+              traceEntry({
+                class: finalClass,
+                predicate: "t1fl-fixture-predicate",
+                predicateVersion: 1,
+                satisfied: true,
+              }),
+            ],
+          });
+
+          for (const source of FLOOR_SOURCES) {
+            const verdict = reviewFindingText(renderFloorSummary({ candidate, source }));
+            if (verdict.held) {
+              withheld.push(`${surface}/${finalClass}/${profile.label}/${source}: ${verdict.why}`);
+            }
+          }
+        }
+      }
+    }
+
+    expect(withheld).toEqual([]);
+  });
+});
+
+describe("renderWithheldFloorSummary — the row that survives a hold", () => {
+  test("every floor source produces text that scans clean, so a hold never costs the finding", () => {
+    const withheld: string[] = [];
+
+    for (const source of FLOOR_SOURCES) {
+      const summary = renderWithheldFloorSummary(source);
+      const verdict = reviewFindingText(summary);
+      if (verdict.held) withheld.push(`${source}: ${verdict.why}`);
+
+      expect(summary.source).toBe(source);
+    }
+
+    expect(withheld).toEqual([]);
+  });
+
+  test("it substitutes nothing — no surface, no count, no date reaches the withheld row", () => {
+    const ruleSet = ruleSetV1();
+    const candidate = funnelCandidate(ruleSet);
+
+    for (const source of FLOOR_SOURCES) {
+      const summary = renderWithheldFloorSummary(source);
+      const text = renderedText(summary);
+
+      expect(text).not.toContain(candidate.surface);
+      expect(pathsIn(text)).toEqual([]);
+      expect(digitsIn(text)).toEqual([]);
+    }
+  });
+
+  test("it emits exactly one sentence per element, all of them registered constants", () => {
+    for (const source of FLOOR_SOURCES) {
+      const elements = elementsOf(renderWithheldFloorSummary(source));
+      expect(elements.length).toBeGreaterThan(0);
+
+      for (const element of elements) {
+        expect(element.endsWith(".")).toBe(true);
+        expect(element).not.toContain(". ");
+        expect(element.trim()).toBe(element);
+        expect(ALL_FLOOR_TEMPLATES).toContain(element);
+      }
+    }
   });
 });

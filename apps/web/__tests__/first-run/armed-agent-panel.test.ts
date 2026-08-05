@@ -98,6 +98,7 @@ interface Arrival {
 const payloadOf = (arrival: Arrival): FirstRunStatusPayload => ({
   finding: null,
   findingUnavailable: false,
+  findingWithheld: false,
   deliveryState: "none",
   deliveryFailureReason: null,
   armedAt: arrival.armed ? ARMED_AT : null,

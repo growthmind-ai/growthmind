@@ -6,7 +6,13 @@ import { createFindingPayloadsRepo } from "../../src/repositories/finding-payloa
 import { createFindingsRepo } from "../../src/repositories/findings.repo";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedAnalysisRun, seedOrgWithOwner, seedProject } from "../../src/testing";
+import {
+  laneNames,
+  scannedTextFor,
+  seedAnalysisRun,
+  seedOrgWithOwner,
+  seedProject,
+} from "../../src/testing";
 
 const NAMES = laneNames("finding-payloads");
 
@@ -14,6 +20,10 @@ const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 
 const SIGNATURE = sha256Hex("finding-payloads.repo.test:payload-write-fails");
+
+const CLEAN_TEXT = scannedTextFor("Two of every three people stop at the payment step", [
+  "Of 28 people who reached the payment step, 19 did not finish.",
+]);
 
 describe("finding payloads repository", () => {
   let db: TestDb;
@@ -46,8 +56,8 @@ describe("finding payloads repository", () => {
       signature: SIGNATURE,
       signatureVersion: 1,
       summarySource: summarySourceSchema.enum.model_rendered,
-      headline: "Two of every three people stop at the payment step",
-      context: ["Of 28 people who reached the payment step, 19 did not finish."],
+      headline: CLEAN_TEXT.headline,
+      context: CLEAN_TEXT.context,
       finalClass: "confusing",
       surface: RENDERABLE_SURFACE,
       surfaceNormalisationVersion: 1,

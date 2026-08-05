@@ -184,8 +184,20 @@ export {
 } from "./services/fixes.service";
 
 export {
-  createFindingsRepo,
+  describeHold,
   findingContextSchema,
+  joinScanned,
+  readFindingText,
+  trimScanned,
+  type FindingText,
+  type FindingTextRow,
+  type HeldFindingText,
+  type HoldDescription,
+  type ScannedText,
+} from "./repositories/finding-text";
+
+export {
+  createFindingsRepo,
   measuredCountRowSchema,
   FINDING_CONFLICT_TARGET,
   type FindingsRepo,

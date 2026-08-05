@@ -14,7 +14,7 @@ import { analysisModelCalls } from "../../src/schema/analysis-model-calls";
 import { analysisRuns } from "../../src/schema/analysis-runs";
 import { sha256Hex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { seedOrgWithOwner, seedProject } from "../../src/testing";
+import { scannedTextFor, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const TICK_AT = new Date("2026-07-31T09:00:00.000Z");
 const FINISHED_AT = new Date("2026-07-31T09:04:00.000Z");
@@ -69,6 +69,10 @@ function makeCloseInput(runId: string, projectId: string): CloseRunInput {
   };
 }
 
+const CLEAN_TEXT = scannedTextFor("Fewer people finished checkout than started it.", [
+  "We looked at one week of activity.",
+]);
+
 function makeFindingInput(
   projectId: string,
   runId: string,
@@ -80,8 +84,8 @@ function makeFindingInput(
     signatureVersion: 1,
     runId,
     summarySource: "floor_no_key_configured",
-    headline: "Fewer people finished checkout than started it.",
-    context: ["We looked at one week of activity."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "funnel_dropoff",
     surface: "checkout",
     surfaceNormalisationVersion: 1,

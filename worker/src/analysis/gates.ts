@@ -1,6 +1,16 @@
-import type { CandidateFinding, FloorSummary, FloorSummarySource } from "@growthmind/core";
-import { SIGNATURE_TUPLE_VERSION, renderFloorSummary } from "@growthmind/core";
-import { computeFindingSignature } from "@growthmind/db";
+import type {
+  CandidateFinding,
+  FindingText,
+  FloorSummary,
+  FloorSummarySource,
+} from "@growthmind/core";
+import {
+  SIGNATURE_TUPLE_VERSION,
+  renderFloorSummary,
+  renderWithheldFloorSummary,
+  reviewFindingText,
+} from "@growthmind/core";
+import { computeFindingSignature, describeHold } from "@growthmind/db";
 import { describeError, isNormalisedUrlPath } from "@growthmind/shared";
 
 import type { AnalysisLogger, CallAttribution, CandidateAction, CandidateIdentity } from "./types";
@@ -59,8 +69,9 @@ export function identityFor(
   }
 }
 
-export function floorAction(
-  floor: FloorSummary,
+function persistAction(
+  source: FloorSummarySource,
+  text: Extract<FindingText, { held: false }>,
   attribution: CallAttribution,
   identity: CandidateIdentity,
 ): CandidateAction {
@@ -68,10 +79,45 @@ export function floorAction(
     kind: "persist",
     identity,
     summary: {
-      summarySource: floor.source,
-      headline: floor.headline,
-      context: floor.context,
+      summarySource: source,
+      headline: text.headline,
+      context: text.context,
       attribution,
     },
   };
+}
+
+// Withholding the words is not withholding the finding: the counts, the surface, the
+// evidence shape and the signature ledger entry all survive a hold, and a row recorded
+// with fixed-constant text can be written up again later.
+function withheldAction(
+  source: FloorSummarySource,
+  attribution: CallAttribution,
+  identity: CandidateIdentity,
+): CandidateAction {
+  const withheld = renderWithheldFloorSummary(source);
+  const text = reviewFindingText({ headline: withheld.headline, context: withheld.context });
+
+  return text.held ? { kind: "unrenderable" } : persistAction(source, text, attribution, identity);
+}
+
+export function floorAction(
+  floor: FloorSummary,
+  attribution: CallAttribution,
+  identity: CandidateIdentity,
+  logger: AnalysisLogger,
+): CandidateAction {
+  const text = reviewFindingText({ headline: floor.headline, context: floor.context });
+
+  // Error, not info: below the floor there is nothing left to degrade to, and a
+  // deterministic template that emits this is a defect in the template.
+  if (text.held) {
+    const hold = describeHold(text);
+    logger.error(
+      `analysis tick: candidate ${identity.signature} was written up without a model and the result still could not be shown (${hold.reason}/${String(hold.kind)}), so the numbers were recorded without any words beside them`,
+    );
+    return withheldAction(floor.source, attribution, identity);
+  }
+
+  return persistAction(floor.source, text, attribution, identity);
 }

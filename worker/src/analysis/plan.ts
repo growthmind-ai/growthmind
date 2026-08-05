@@ -3,9 +3,11 @@ import {
   guardModelText,
   joinSentences,
   modelSummaryOutputSchema,
+  reviewFindingText,
   splitSentences,
 } from "@growthmind/core";
 import type { AnalysisRunRecord, AnalysisRunsRepo, FindingsRepo } from "@growthmind/db";
+import { describeHold } from "@growthmind/db";
 import type { SummaryRenderResult } from "@growthmind/shared";
 import { describeError } from "@growthmind/shared";
 
@@ -41,7 +43,10 @@ export async function planCandidate(
     const floor = floorTextFor(identity.signature, candidate, source, deps.logger);
     return {
       capExhausted,
-      action: floor === null ? { kind: "unrenderable" } : floorAction(floor, attribution, identity),
+      action:
+        floor === null
+          ? { kind: "unrenderable" }
+          : floorAction(floor, attribution, identity, deps.logger),
     };
   };
 
@@ -144,6 +149,18 @@ export async function planCandidate(
     return floorPlanFor("floor_model_text_rejected", attribution);
   }
 
+  const text = reviewFindingText({ headline: parsed.data.headline, context: sentences });
+
+  // `.held` alone, never the arm: a scan that throws has to leave by the same door as a
+  // scan that hits, or the throw finds an unguarded path to the persist call.
+  if (text.held) {
+    const hold = describeHold(text);
+    deps.logger.info(
+      `analysis tick: candidate ${identity.signature} had a written explanation still carrying something that must not be shown (${hold.reason}/${String(hold.kind)}), so it was left out`,
+    );
+    return floorPlanFor("floor_model_text_rejected", attribution);
+  }
+
   return {
     capExhausted: false,
     action: {
@@ -151,8 +168,8 @@ export async function planCandidate(
       identity,
       summary: {
         summarySource: "model_rendered",
-        headline: parsed.data.headline,
-        context: sentences,
+        headline: text.headline,
+        context: text.context,
         attribution,
       },
     },

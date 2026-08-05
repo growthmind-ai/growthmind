@@ -12,9 +12,11 @@ import {
   createFindingsRepo,
   createFixesService,
   type FindingRecord,
+  type ScopedDb,
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -26,10 +28,16 @@ import {
   fixSpecEnvelopeSchema,
   getFindingOutputSchema,
   listOpenFixesOutputSchema,
+  setLogSink,
+  type LogRecord,
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
 import { POST } from "../../app/api/mcp/route";
 import { NOT_FOUND, UNAVAILABLE } from "../../lib/mcp/refusals";
 import {
@@ -46,6 +54,48 @@ const KEPT = 25;
 const EVENT_NAME = "checkout_payment_failed";
 
 const CONTEXT_MARKER = "a sentence only this finding's narrative carries";
+
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  [CONTEXT_MARKER],
+);
+
+// An address the residual scanner classifies as `email_address`, distinctive enough that
+// finding it anywhere downstream can only be this row's persisted text.
+const PII_OFFENDER = "dana.okonkwo@northwind.example";
+
+const SEED_OWNER =
+  "ADD O-021 Wave 1.4 (packages/db/src/testing/fixtures.ts — `seedUnscannedFinding`, the only " +
+  "helper that writes a finding row whose persisted text never passed the residual scan)";
+
+const SEED_MODULE = "packages/db/src/testing/index.ts";
+
+interface SeedUnscannedFindingParams {
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+  readonly runId: string;
+  readonly headline: string;
+  readonly context: readonly string[];
+  readonly signature?: string;
+  readonly surface?: string;
+  readonly windowStart?: Date;
+  readonly windowEnd?: Date;
+  readonly createdAt?: Date;
+  readonly evidenceShape?: string;
+}
+
+type SeedUnscannedFinding = (
+  db: ScopedDb,
+  params: SeedUnscannedFindingParams,
+) => Promise<{ readonly id: string }>;
+
+function loadSeedUnscannedFinding(): Promise<SeedUnscannedFinding> {
+  return loadUnderConstruction<SeedUnscannedFinding>({
+    modulePath: underConstructionSpecifier(SEED_MODULE),
+    exportName: "seedUnscannedFinding",
+    ownedBy: SEED_OWNER,
+  });
+}
 
 const globalForDb = globalThis as unknown as { __growthmindDb?: unknown };
 
@@ -125,8 +175,8 @@ async function seedFinding(org: SeededOrg, surface: string): Promise<FindingReco
     signature: digestFor(`${org.label}${surface}`),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the reports page without going any further.",
-    context: [CONTEXT_MARKER],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface,
     surfaceNormalisationVersion: 1,
@@ -154,6 +204,36 @@ async function seedFindingWithPayload(org: SeededOrg, surface: string): Promise<
   });
 
   return { finding, payload };
+}
+
+// A row that reaches the table without passing the persist-time scan — the pre-sprint
+// population. It carries a payload, so every read below would answer a record if the
+// read-time gate were absent.
+async function seedHeldFindingWithPayload(org: SeededOrg, surface: string): Promise<string> {
+  const seed = await loadSeedUnscannedFinding();
+
+  const row = await seed(handle.db, {
+    ctx: org.ctx,
+    projectId: org.projectId,
+    runId: org.runId,
+    signature: digestFor(`${org.label}${surface}held`),
+    headline: `Someone typed ${PII_OFFENDER} into the box before leaving.`,
+    context: [CONTEXT_MARKER],
+    surface,
+    windowStart: WINDOW_START,
+    windowEnd: WINDOW_END,
+    evidenceShape: `evidence-${org.label}-${surface}`,
+  });
+
+  await createFindingPayloadsRepo(handle.db, org.ctx).upsertFor({
+    findingId: row.id,
+    payload: serialiseFixSpecInput({
+      candidate: candidateFor(surface),
+      signals: signalsFor(surface),
+    }),
+  });
+
+  return row.id;
 }
 
 async function mintFix(org: SeededOrg, findingId: string): Promise<string> {
@@ -329,9 +409,83 @@ describe("the MCP route reading real rows", () => {
     expect(answer.text).toBe(NOT_FOUND.message);
     expect(answer.body).not.toContain(UNAVAILABLE.message);
 
-    for (const sentence of finding.context) {
+    const text = finding.text;
+    if (text.held) throw new Error("the seeded finding is the clean control and must not hold");
+
+    for (const sentence of text.context) {
       expect(answer.body).not.toContain(sentence);
     }
     expect(answer.body).not.toContain(CONTEXT_MARKER);
+  });
+});
+
+describe("the MCP route withholding a row whose persisted text is held (O-021)", () => {
+  test("get_finding returns null for a persisted finding with a planted PII offender, driven through POST /api/mcp", async () => {
+    const org = await freshOrg();
+
+    // The control: a clean sibling in the same organization answers a real record, so the
+    // refusal below cannot pass by nothing ever being read.
+    const clean = await seedFindingWithPayload(org, "/live/held-control");
+    const control = await callTool(org.key, MCP_TOOL.GET_FINDING, {
+      findingId: clean.finding.id,
+    });
+    expect(getFindingOutputSchema.parse(control.structured).findingId).toBe(clean.finding.id);
+
+    const heldId = await seedHeldFindingWithPayload(org, "/live/held-finding");
+
+    const answer = await callTool(org.key, MCP_TOOL.GET_FINDING, { findingId: heldId });
+
+    expect(answer.status).toBe(200);
+    expect(answer.text).toBe(NOT_FOUND.message);
+    expect(answer.body).not.toContain(UNAVAILABLE.message);
+    expect(answer.body).not.toContain(PII_OFFENDER);
+  });
+
+  test("list_open_fixes omits a row with a planted PII offender and totalOpen reflects the omission, driven through POST /api/mcp", async () => {
+    const org = await freshOrg();
+
+    const clean = await seedFindingWithPayload(org, "/live/open-clean");
+    const cleanFixId = await mintFix(org, clean.finding.id);
+
+    const heldId = await seedHeldFindingWithPayload(org, "/live/open-held");
+    await mintFix(org, heldId);
+
+    const answer = await callTool(org.key, MCP_TOOL.LIST_OPEN_FIXES);
+
+    expect(answer.status).toBe(200);
+
+    const output = listOpenFixesOutputSchema.parse(answer.structured);
+
+    expect(output.fixes.map((fix) => fix.fixId)).toEqual([cleanFixId]);
+    expect(output.window).toEqual({ returned: 1, totalOpen: 1, truncated: false });
+    expect(answer.body).not.toContain(PII_OFFENDER);
+  });
+
+  test("no MCP response body or log argument for a held finding contains the planted offender", async () => {
+    const org = await freshOrg();
+    const heldId = await seedHeldFindingWithPayload(org, "/live/held-logs");
+    await mintFix(org, heldId);
+
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
+
+    let bodies: string;
+    try {
+      const read = await callTool(org.key, MCP_TOOL.GET_FINDING, { findingId: heldId });
+      const listed = await callTool(org.key, MCP_TOOL.LIST_OPEN_FIXES);
+      bodies = `${read.body}\n${listed.body}`;
+    } finally {
+      restore();
+    }
+
+    // The withhold has to have been logged at all, or the search below is of an empty
+    // haystack and reports green over nothing. `warn`, because every row written before
+    // the scan existed reaches this seam on every read.
+    expect(logged.filter((record) => record.level === "warn").length).toBeGreaterThan(0);
+
+    expect(bodies).not.toContain(PII_OFFENDER);
+    expect(JSON.stringify(logged)).not.toContain(PII_OFFENDER);
   });
 });

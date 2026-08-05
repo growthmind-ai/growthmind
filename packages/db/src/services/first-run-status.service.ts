@@ -3,6 +3,7 @@ import { logger, onboardingFindingSchema } from "@growthmind/shared";
 import { asc, eq, gt, gte } from "drizzle-orm";
 
 import { describeDriverError } from "../repositories/driver-error";
+import { describeHold } from "../repositories/finding-text";
 import { createFindingsRepo } from "../repositories/findings.repo";
 import { scoped } from "../repositories/scope";
 import type { ScopedDb } from "../repositories/types";
@@ -18,6 +19,10 @@ export interface FirstRunStatusFacts extends StagePersistedFacts {
 
   // A row is there and will not render — not simply `finding === null`.
   readonly findingUnavailable: boolean;
+
+  // The text was refused at the read seam, and the delivery lane refuses it on the same
+  // terms — so no channel holds a copy, and no screen may send a reader to one.
+  readonly findingWithheld: boolean;
 }
 
 export interface FirstRunStatusService {
@@ -37,14 +42,23 @@ interface NewestFinding {
   readonly id: string | null;
   readonly finding: OnboardingFinding | null;
   readonly unavailable: boolean;
+  readonly withheld: boolean;
 }
 
 // Absent, and could-not-read-it-just-now. `findingUnavailable` stops the poll, so a pool
 // timeout that reported one ended the watch for good (B-042).
-const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false };
+const NO_FINDING: NewestFinding = { id: null, finding: null, unavailable: false, withheld: false };
 
 // A row IS there and will not render; re-reading changes nothing.
-const UNRENDERABLE: NewestFinding = { id: null, finding: null, unavailable: true };
+const UNRENDERABLE: NewestFinding = {
+  id: null,
+  finding: null,
+  unavailable: true,
+  withheld: false,
+};
+
+// Unrenderable here AND undelivered anywhere, which the shape refusal above is not.
+const WITHHELD: NewestFinding = { id: null, finding: null, unavailable: true, withheld: true };
 
 // A malformed row arrives as a `ZodError` from the repository DTO boundary; a pool
 // timeout arrives as a driver error. Same catch, opposite meanings.
@@ -52,6 +66,38 @@ function isShapeFailure(error: unknown): boolean {
   return (
     typeof error === "object" && error !== null && (error as { name?: unknown }).name === "ZodError"
   );
+}
+
+interface ShapeIssue {
+  readonly path: string;
+  readonly code: string;
+}
+
+function shapeIssuesOf(error: unknown): readonly ShapeIssue[] {
+  const raw = (error as { readonly issues?: unknown }).issues;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.map((issue: unknown) => {
+    const { path, code } = issue as { readonly path?: unknown; readonly code?: unknown };
+    return {
+      path: Array.isArray(path) ? path.map((segment: unknown) => String(segment)).join(".") : "",
+      code: typeof code === "string" ? code : "unrecognised",
+    };
+  });
+}
+
+// Path and code only. `describeDriverError` falls through to `error.message`, and a
+// `ZodError`'s message is its whole serialised issue array — `unrecognized_keys` carries
+// the offending keys in it verbatim, and a refinement's message can carry anything.
+function describeReadFailure(error: unknown): {
+  readonly reason: string;
+  readonly issues?: readonly ShapeIssue[];
+} {
+  return isShapeFailure(error)
+    ? { reason: "shape", issues: shapeIssuesOf(error) }
+    : { reason: describeDriverError(error) };
 }
 
 async function readNewestFinding(
@@ -64,12 +110,12 @@ async function readNewestFinding(
   try {
     [record] = await createFindingsRepo(db, ctx).listForProject(projectId, { limit: 1 });
   } catch (error) {
-    // `describeDriverError`, never the caught value: a failed query message IS the
-    // statement and its bound parameters.
+    // Never the caught value: a failed query message IS the statement and its bound
+    // parameters, and a DTO refusal arrives here as a `ZodError` rather than a driver one.
     logger.error("first-run status: could not read the newest finding for the project", {
       organizationId: ctx.organizationId,
       projectId,
-      reason: describeDriverError(error),
+      ...describeReadFailure(error),
     });
 
     // A driver failure is not a fault the screen may claim, and going terminal on one
@@ -81,10 +127,29 @@ async function readNewestFinding(
     return NO_FINDING;
   }
 
+  // Only a row from THIS watch is a fault this watch may report: a project already holding
+  // a row nothing can render made a fresh "Start watching" terminal on arrival (B-042).
+  const fromThisWatch = armedAt !== null && record.createdAt > armedAt;
+
+  const text = record.text;
+  if (text.held) {
+    // Both branches log, so a hold is never silent to an operator. The screen is told only
+    // that nothing renders: naming which hold describes what was withheld. `warn`, not
+    // `error`: every row written before the scan existed reaches this line on every poll.
+    logger.warn("first-run status: the newest finding's text is held, so no card is shown", {
+      organizationId: ctx.organizationId,
+      projectId,
+      findingId: record.id,
+      ...describeHold(text),
+    });
+
+    return fromThisWatch ? WITHHELD : NO_FINDING;
+  }
+
   const parsed = onboardingFindingSchema.safeParse({
     finalClass: record.finalClass,
-    headline: record.headline,
-    context: record.context,
+    headline: text.headline,
+    context: text.context,
 
     counts: record.counts.map((count) => ({
       numerator: count.numerator,
@@ -103,18 +168,14 @@ async function readNewestFinding(
       organizationId: ctx.organizationId,
       projectId,
       findingId: record.id,
-      issues: parsed.error.issues,
+      ...describeReadFailure(parsed.error),
     });
 
-    // No id, so `finding === null` implies `findingId === null` (B-038). And only a row
-    // from THIS watch is a fault this watch may report: a project already holding an
-    // unrenderable row made a fresh "Start watching" terminal on arrival (B-042).
-    const fromThisWatch = armedAt !== null && record.createdAt > armedAt;
-
+    // No id, so `finding === null` implies `findingId === null` (B-038).
     return fromThisWatch ? UNRENDERABLE : NO_FINDING;
   }
 
-  return { id: record.id, finding: parsed.data, unavailable: false };
+  return { id: record.id, finding: parsed.data, unavailable: false, withheld: false };
 }
 
 export function createFirstRunStatusService(
@@ -137,6 +198,7 @@ export function createFirstRunStatusService(
         finding: newest.finding,
         findingId: newest.id,
         findingUnavailable: newest.unavailable,
+        findingWithheld: newest.withheld,
       };
 
       if (armedAt === null) {

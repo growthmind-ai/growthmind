@@ -56,6 +56,15 @@ function magnitudeSentence(role: CountRole, count: MeasuredCount, surface: strin
   });
 }
 
+// The floor with every substituted value dropped. Only fixed constants remain, so the
+// row survives with its counts, surface and identity when the words cannot be shown.
+export function renderWithheldFloorSummary(source: FloorSummarySource): FloorSummary {
+  const provenance = SUMMARY_SOURCE_MESSAGES[source];
+  const [headline, ...context] = sentencesOf(provenance).map((element) => element.trim());
+
+  return { source, headline: headline ?? provenance, context };
+}
+
 export function renderFloorSummary(input: {
   readonly candidate: CandidateFinding;
   readonly source: FloorSummarySource;

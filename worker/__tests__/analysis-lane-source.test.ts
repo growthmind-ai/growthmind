@@ -38,6 +38,7 @@ function recordingLogger(): AnalysisLogger & { readonly lines: string[] } {
   return {
     lines,
     info: (message: string) => void lines.push(message),
+    warn: (message: string) => void lines.push(message),
     error: (message: string) => void lines.push(message),
   };
 }

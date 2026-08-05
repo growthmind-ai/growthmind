@@ -374,17 +374,23 @@ export function createFakeClock(start: Date): FakeClock {
 
 export interface RecordingLogger extends PollLogger {
   readonly infos: string[];
+  readonly warns: string[];
   readonly errors: string[];
 }
 
 export function createRecordingLogger(): RecordingLogger {
   const infos: string[] = [];
+  const warns: string[] = [];
   const errors: string[] = [];
   return {
     infos,
+    warns,
     errors,
     info: (message: string) => {
       infos.push(message);
+    },
+    warn: (message: string) => {
+      warns.push(message);
     },
     error: (message: string) => {
       errors.push(message);

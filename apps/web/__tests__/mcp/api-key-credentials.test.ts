@@ -9,6 +9,7 @@ import {
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedOrgWithOwner,
   seedProject,
@@ -40,6 +41,11 @@ import {
 } from "./helpers/mcp-fixture";
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
+
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const UNKNOWN_BUT_WELL_FORMED = `${API_KEY_PREFIX}${"a".repeat(43)}`;
 
@@ -120,8 +126,8 @@ async function stockedSiblingOrganization(label: string): Promise<StockedOrganiz
     signature: createHmac("sha256", "mcpak").update(surface).digest("hex"),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the reports page without going any further.",
-    context: ["We saw sessions reach the reports page and stop there."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface,
     surfaceNormalisationVersion: 1,

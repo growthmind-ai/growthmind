@@ -115,6 +115,7 @@ async function seedOrgWithFinding(input: {
   label: string;
   channelId: string | null;
   context?: readonly string[];
+  surface?: string;
 }): Promise<SeededOrg> {
   const workspace = await seedPollableWorkspace(db, {
     prefix: `${PREFIX}${input.label}-`,
@@ -130,7 +131,7 @@ async function seedOrgWithFinding(input: {
 
   const finding = await seedFinding(db, ctx, {
     projectId: workspace.projectId,
-    surface: `/checkout/${input.label}`,
+    surface: input.surface ?? `/checkout/${input.label}`,
     headline: `The ${input.label} step is losing sessions`,
     ...(input.context === undefined ? {} : { context: input.context }),
     at: NOW,
@@ -392,11 +393,16 @@ test("two orgs each receive their own finding in their own channel through one t
   );
 });
 
+// The offender lives in the surface path, not in the persisted text: a dirty-text row no
+// longer reaches this lane at all (ADD Decision 6), so the subject here is the residue only
+// the composed artifact carries — surface path, labels, block formatting.
+const COMPOSED_ONLY_OFFENDER = "/orders-123456789012";
+
 test("a residual-PII block holds the post back and marks the delivery, not the finding", async () => {
   const org = await seedOrgWithFinding({
     label: "payment",
     channelId: CHANNEL_A,
-    context: [`Sessions from buyer@${PREFIX}northwind-shop.example left without finishing.`],
+    surface: COMPOSED_ONLY_OFFENDER,
   });
 
   const poster = createRecordingPoster();
@@ -415,7 +421,7 @@ test("a residual-PII block holds the post back and marks the delivery, not the f
   expect(findings).toHaveLength(1);
   expect(findings[0]?.id).toBe(org.findingId);
 
-  expect(deliveries[0]?.failureReason ?? "").not.toContain("buyer@");
+  expect(deliveries[0]?.failureReason ?? "").not.toContain(COMPOSED_ONLY_OFFENDER);
   expect((deliveries[0]?.failureReason ?? "").length).toBeGreaterThan(0);
 });
 

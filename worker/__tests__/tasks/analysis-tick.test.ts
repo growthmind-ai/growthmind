@@ -1,3 +1,7 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   EVIDENCE_SHAPE_VERSION,
   FIX_SPEC_PAYLOAD_VERSION,
@@ -7,6 +11,10 @@ import {
   THRESHOLD_RULE_SET_VERSION,
   candidateFindingSchema,
   measuredCount,
+  renderFloorSummary,
+  renderWithheldFloorSummary,
+  reviewFindingText,
+  scanResidualPii,
 } from "@growthmind/core";
 import type { CandidateFinding, MeasuredCount, TraceEntry } from "@growthmind/core";
 import { computeFindingSignature, signatureHex } from "@growthmind/db";
@@ -22,6 +30,7 @@ import type {
   OpenRunResult,
   PersistFindingInput,
   RecordSignatureResult,
+  ScannedText,
   SignatureLedgerService,
   UpsertFindingPayloadInput,
 } from "@growthmind/db";
@@ -30,6 +39,11 @@ import type { SummaryRenderResult, TenantContext } from "@growthmind/shared";
 import { tenantContextSchema } from "@growthmind/shared";
 import { expect, test } from "bun:test";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../packages/shared/__tests__/onboarding/module-under-construction";
+import { planCandidate } from "../../src/analysis/plan";
 import type {
   AnalysisLane,
   AnalysisLaneDeps,
@@ -55,6 +69,21 @@ const ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE = 10_000;
 
 const CLEAN_HEADLINE = "The payment step is losing sessions";
 const CLEAN_CONTEXT = "Sessions reached the payment step and left without finishing.";
+
+// Every expectation about persisted text stays inside the brand: comparing a `ScannedText`
+// against a bare string would need a widening the sprint exists to prevent.
+function scannedFixture(
+  headline: string,
+  context: readonly string[],
+): { readonly headline: ScannedText; readonly context: readonly ScannedText[] } {
+  const verdict = reviewFindingText({ headline, context });
+  if (verdict.held) {
+    throw new Error(`scannedFixture: the text given is held as ${verdict.why}`);
+  }
+  return { headline: verdict.headline, context: verdict.context };
+}
+
+const CLEAN_TEXT = scannedFixture(CLEAN_HEADLINE, [CLEAN_CONTEXT]);
 
 const OFFENDING_CONTEXT = "47 people gave up because the payment form is broken.";
 
@@ -193,8 +222,10 @@ interface FakeFindings {
   repoFor: (ctx: TenantContext) => FindingsRepo;
   rows: () => FindingRecord[];
   rowFor: (signature: string) => FindingRecord | undefined;
-   
+
   breakOn: (signature: string) => void;
+
+  persistCalls: () => readonly PersistFindingInput[];
 }
 
 function findingKey(organizationId: string, projectId: string, signature: string): string {
@@ -204,15 +235,18 @@ function findingKey(organizationId: string, projectId: string, signature: string
 function createFakeFindings(): FakeFindings {
   const stored = new Map<string, FindingRecord>();
   const broken = new Set<string>();
+  const persistCalls: PersistFindingInput[] = [];
   let nextId = 1;
 
   return {
     rows: () => [...stored.values()],
     rowFor: (signature) => stored.get(findingKey(ORG, PROJECT, signature)),
     breakOn: (signature) => broken.add(signature),
+    persistCalls: () => [...persistCalls],
     repoFor: (ctx) => ({
-       
+
       persist(input: PersistFindingInput): Promise<FindingRecord> {
+        persistCalls.push(input);
         if (broken.has(input.signature)) {
           return Promise.reject(new Error("o11-findings-store-unavailable"));
         }
@@ -222,6 +256,7 @@ function createFakeFindings(): FakeFindings {
 
         const row = {
           ...input,
+          text: reviewFindingText({ headline: input.headline, context: input.context }),
           id: `o11-finding-${String(nextId)}`,
           organizationId: ctx.organizationId,
           createdAt: TICK_AT,
@@ -414,12 +449,17 @@ interface Harness {
   ledger: FakeLedger;
   summariser: CountingSummariser | null;
   logs: () => readonly string[];
+  errors: () => readonly string[];
 }
 
-function recordingLogger(sink: string[]): AnalysisLogger {
+function recordingLogger(sink: string[], errorSink: string[]): AnalysisLogger {
   return {
     info: (message: string) => sink.push(message),
-    error: (message: string) => sink.push(message),
+    warn: (message: string) => sink.push(message),
+    error: (message: string) => {
+      sink.push(message);
+      errorSink.push(message);
+    },
   };
 }
 
@@ -435,6 +475,7 @@ function harness(options: {
   const ledger = createFakeLedger();
   const summariser = options.summariser === undefined ? cleanSummariser() : options.summariser;
   const sink: string[] = [];
+  const errorSink: string[] = [];
 
   return {
     findings,
@@ -442,6 +483,7 @@ function harness(options: {
     ledger,
     summariser,
     logs: () => [...sink],
+    errors: () => [...errorSink],
     deps: {
       lanes: laneSource(options.lanes ?? [lane()]),
        
@@ -462,9 +504,9 @@ function harness(options: {
       projectCap: options.cap === undefined ? 12 : options.cap,
        
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
-       
+
       now: () => TICK_AT,
-      logger: recordingLogger(sink),
+      logger: recordingLogger(sink, errorSink),
     },
   };
 }
@@ -750,7 +792,7 @@ test("a mid-run persistence failure leaves the run row terminal and corrupts no 
 
   const first = h.findings.rowFor(signatureOf(CANDIDATE_A));
   expect(first?.summarySource).toBe("model_rendered");
-  expect(first?.headline).toBe(CLEAN_HEADLINE);
+  expect(first?.text).toEqual({ held: false, ...CLEAN_TEXT });
   expect(h.findings.rowFor(signatureOf(CANDIDATE_B))).toBeUndefined();
 });
 
@@ -1324,7 +1366,274 @@ test("runAnalysisLane returns its tally rather than mutating a shared summary", 
     refused: 0,
     modelCallsAttempted: 0,
   });
-   
+
   expect(held.runs.rows()).toHaveLength(1);
   expect(held.runs.rows()[0]?.status).toBe("running");
+});
+
+const PLANTED_CREDENTIAL = "sk-plantedbyatestneverarealkey";
+const PLANTED_CREDENTIAL_KIND = "credential";
+
+// A dotted offender (an email, an IP) cannot reach this seam: `splitSentences` refuses a
+// full stop followed by anything but a capital, so the candidate never gets past
+// `guardModelText` and the degrade would be attributed to segmentation instead.
+const DIRTY_MODEL_CONTEXT =
+  `Sessions reached the payment step and left without finishing. ` +
+  `One session carried the value ${PLANTED_CREDENTIAL} through the form.`;
+
+const DIRTY_FLOOR_SURFACE = "/orders-123456789012";
+const DIRTY_FLOOR_KIND = "payment_card";
+const CANDIDATE_FLOOR_DIRTY = candidate(DIRTY_FLOOR_SURFACE);
+
+const FLOOR_AFTER_REJECTION = renderFloorSummary({
+  candidate: CANDIDATE_A,
+  source: "floor_model_text_rejected",
+});
+
+const FLOOR_AFTER_REJECTION_TEXT = scannedFixture(
+  FLOOR_AFTER_REJECTION.headline,
+  FLOOR_AFTER_REJECTION.context,
+);
+
+const dirtySummariser = (): CountingSummariser =>
+  countingSummariser(() => Promise.resolve(ok(CLEAN_HEADLINE, DIRTY_MODEL_CONTEXT)));
+
+test("a candidate whose model text contains a planted PII offender persists the floor summary with summary_source floor_model_text_rejected, never the dirty text", async () => {
+  expect(scanResidualPii(DIRTY_MODEL_CONTEXT).clean).toBe(false);
+
+  const h = harness({ summariser: dirtySummariser() });
+
+  await runAnalysisTick(h.deps);
+
+  const calls = h.findings.persistCalls();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.summarySource).toBe("floor_model_text_rejected");
+  expect(calls[0]?.headline).toBe(FLOOR_AFTER_REJECTION_TEXT.headline);
+  expect(calls[0]?.context).toEqual(FLOOR_AFTER_REJECTION_TEXT.context);
+
+  for (const call of calls) {
+    expect(JSON.stringify(call)).not.toContain(PLANTED_CREDENTIAL);
+  }
+});
+
+test("a candidate whose model text is clean persists model_rendered unchanged", async () => {
+  expect(scanResidualPii(`${CLEAN_HEADLINE}\n${CLEAN_CONTEXT}`).clean).toBe(true);
+
+  const h = harness({ summariser: cleanSummariser() });
+
+  await runAnalysisTick(h.deps);
+
+  const calls = h.findings.persistCalls();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.summarySource).toBe("model_rendered");
+  expect(calls[0]?.headline).toBe(CLEAN_TEXT.headline);
+  expect(calls[0]?.context).toEqual(CLEAN_TEXT.context);
+});
+
+const WITHHELD_FLOOR = renderWithheldFloorSummary("floor_no_key_configured");
+
+const WITHHELD_FLOOR_TEXT = scannedFixture(WITHHELD_FLOOR.headline, WITHHELD_FLOOR.context);
+
+test("a candidate whose floor text itself is dirty records the finding with the words withheld and logs at error level", async () => {
+  const floor = renderFloorSummary({
+    candidate: CANDIDATE_FLOOR_DIRTY,
+    source: "floor_no_key_configured",
+  });
+  const floorScan = scanResidualPii([floor.headline, ...floor.context].join("\n"));
+  expect(floorScan.clean).toBe(false);
+  expect(floorScan.findings[0]?.kind).toBe(DIRTY_FLOOR_KIND);
+
+  const planned = harness({
+    lanes: [lane({ candidates: [CANDIDATE_FLOOR_DIRTY] })],
+    summariser: null,
+  });
+  const opened = await planned.runs.repoFor(OTHER_WORKER).open({
+    projectId: PROJECT,
+    tickAt: TICK_AT,
+  });
+
+  const plan = await planCandidate(
+    planned.deps,
+    lane({ candidates: [CANDIDATE_FLOOR_DIRTY] }),
+    planned.runs.repoFor(OTHER_WORKER),
+    planned.findings.repoFor(OTHER_WORKER),
+    opened.run,
+    CANDIDATE_FLOOR_DIRTY,
+    1,
+    TICK_AT,
+  );
+
+  expect(plan.action.kind).toBe("persist");
+
+  const h = harness({
+    lanes: [lane({ candidates: [CANDIDATE_FLOOR_DIRTY] })],
+    summariser: null,
+  });
+  const summary = await runAnalysisTick(h.deps);
+
+  const calls = h.findings.persistCalls();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.summarySource).toBe("floor_no_key_configured");
+  expect(calls[0]?.headline).toBe(WITHHELD_FLOOR_TEXT.headline);
+  expect(calls[0]?.context).toEqual(WITHHELD_FLOOR_TEXT.context);
+
+  // The counts, the surface and the evidence shape are what a later re-render and every
+  // reader are built from, so the hold must cost the words and nothing else.
+  expect(calls[0]?.counts.map((row) => [row.numerator, row.denominator])).toEqual(
+    CANDIDATE_FLOOR_DIRTY.counts.map((row) => [row.numerator, row.denominator]),
+  );
+  expect(calls[0]?.surface).toBe(DIRTY_FLOOR_SURFACE);
+  expect(calls[0]?.evidenceShape).toBe(CANDIDATE_FLOOR_DIRTY.evidenceShape);
+  expect(calls[0]?.signature).toBe(signatureOf(CANDIDATE_FLOOR_DIRTY));
+
+  // Nothing was recorded meant it was re-planned every tick; the ledger entry is what
+  // stops that.
+  expect(h.ledger.recorded()).toEqual([DIRTY_FLOOR_SURFACE]);
+
+  expect(summary.findingsPersisted).toBe(1);
+  expect(summary.candidatesUnrenderable).toBe(0);
+  expect(h.errors().filter((line) => line.includes(DIRTY_FLOOR_KIND))).toHaveLength(1);
+});
+
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+const DB_SRC = path.join(REPO_ROOT, "packages", "db", "src");
+
+const FINDINGS_REPO = path.join(DB_SRC, "repositories", "findings.repo.ts");
+
+const PLAN_SOURCE = path.join(REPO_ROOT, "worker", "src", "analysis", "plan.ts");
+
+// `src/testing/` is the sanctioned home of the one helper that writes an unscanned row
+// (ADD trade-off 6); `__tests__/finding-text-reach.test.ts` proves it is used only from tests.
+const WRITE_SCAN_EXEMPT = `${path.sep}testing${path.sep}`;
+
+const WRITE_VERB = /(?:\binsertOrFetch|\.insert|\.update|\.values)\s*\(/g;
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+
+function parenGroupAt(source: string, openIndex: number): string {
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    if (source[index] === "(") depth += 1;
+    if (source[index] === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(openIndex + 1, index);
+    }
+  }
+  return source.slice(openIndex + 1);
+}
+
+function writesFindingText(source: string): boolean {
+  const stripped = stripComments(source);
+  const verb = new RegExp(WRITE_VERB.source, "g");
+
+  for (let match = verb.exec(stripped); match !== null; match = verb.exec(stripped)) {
+    const open = stripped.indexOf("(", match.index);
+    if (open === -1) continue;
+    const group = parenGroupAt(stripped, open);
+    if (/\bheadline\b/.test(group) || /\bcontext\b/.test(group)) return true;
+  }
+
+  return false;
+}
+
+function dbSourceFiles(): readonly string[] {
+  return readdirSync(DB_SRC, { recursive: true, encoding: "utf8" })
+    .filter((entry) => entry.endsWith(".ts"))
+    .map((entry) => path.join(DB_SRC, entry))
+    .filter((file) => !file.includes(WRITE_SCAN_EXEMPT));
+}
+
+const PLANTED_WRITER = "await db.insert(findings).values({ headline: row.headline });";
+
+const CLEAN_NEIGHBOUR_WRITER = "await db.insert(fixes).values({ specMarkdown: row.spec });";
+
+test("a second write path to the findings table cannot bypass FindingsRepo.persist as the only route to headline and context", () => {
+  const files = dbSourceFiles();
+  expect(files.length).toBeGreaterThan(10);
+
+  expect(writesFindingText(PLANTED_WRITER)).toBe(true);
+  expect(writesFindingText(CLEAN_NEIGHBOUR_WRITER)).toBe(false);
+
+  const writers = files
+    .filter((file) => writesFindingText(readFileSync(file, "utf8")))
+    .map((file) => path.relative(REPO_ROOT, file).split(path.sep).join("/"));
+
+  expect(writers).toEqual(["packages/db/src/repositories/findings.repo.ts"]);
+
+  const repo = stripComments(readFileSync(FINDINGS_REPO, "utf8"));
+  expect(repo).toMatch(/headline:\s*ScannedText/);
+  expect(repo).toMatch(/context:\s*readonly ScannedText\[\]/);
+});
+
+const OWNER_GATE = "ADD Wave 1.1 (packages/core/src/delivery/finding-text.ts)";
+
+type MirrorFindingText =
+  | { readonly held: false; readonly headline: string; readonly context: readonly string[] }
+  | { readonly held: true; readonly why: "residual_pii"; readonly kind: string }
+  | { readonly held: true; readonly why: "unreadable" };
+
+type MirrorReviewFindingText = (input: {
+  readonly headline: string;
+  readonly context: readonly string[];
+}) => MirrorFindingText;
+
+// The composition is the only injectable throw: everything reaching the persist seam has
+// already been through `modelSummaryOutputSchema`, so it is a plain string by then.
+const REFUSES_COMPOSITION = {
+  toString(): string {
+    throw new Error("o21-scan-input-refused-composition");
+  },
+} as unknown as string;
+
+test("a scan that throws at the persist seam degrades to the floor, never persists the model text", async () => {
+  const mirrorReviewFindingText = await loadUnderConstruction<MirrorReviewFindingText>({
+    modulePath: underConstructionSpecifier("packages/core/src/delivery/finding-text.ts"),
+    exportName: "reviewFindingText",
+    ownedBy: OWNER_GATE,
+  });
+
+  expect(
+    mirrorReviewFindingText({ headline: CLEAN_HEADLINE, context: [REFUSES_COMPOSITION] }),
+  ).toEqual({
+    held: true,
+    why: "unreadable",
+  });
+
+  const plan = stripComments(readFileSync(PLAN_SOURCE, "utf8"));
+  expect(plan).toContain("reviewFindingText(");
+  expect(plan).toContain(".held");
+  expect(plan).toContain("floor_model_text_rejected");
+
+  // Both held arms leave by the same door, so the throw lands where a hit lands.
+  expect(plan).not.toMatch(/\bwhy\s*[=!]==/);
+  expect(plan).not.toContain(`"unreadable"`);
+  expect(plan).not.toContain(`"residual_pii"`);
+
+  const h = harness({ summariser: dirtySummariser() });
+  await runAnalysisTick(h.deps);
+
+  expect(h.findings.persistCalls().map((call) => call.summarySource)).toEqual([
+    "floor_model_text_rejected",
+  ]);
+});
+
+test("no log argument from any degrade or withhold path contains the planted offender", async () => {
+  const h = harness({ summariser: dirtySummariser() });
+
+  await runAnalysisTick(h.deps);
+
+  const lines = h.logs();
+  expect(lines.length).toBeGreaterThan(0);
+
+  for (const line of lines) {
+    expect(JSON.stringify(line)).not.toContain(PLANTED_CREDENTIAL);
+  }
+
+  const signature = signatureOf(CANDIDATE_A);
+  expect(
+    lines.filter((line) => line.includes(signature) && line.includes(PLANTED_CREDENTIAL_KIND)),
+  ).toHaveLength(1);
 });

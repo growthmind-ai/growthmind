@@ -56,6 +56,14 @@ const GET_STARTED_NO_KEY_SCREEN = /no key-management\s+screen/i;
 
 const GET_STARTED_NO_FINDINGS_TABLE = /no table\s+of\s+findings/i;
 
+// Pinned from docs/architecture.md §9 before O-021 rewrote it, so the needles cannot be
+// tuned to whatever replaced the two sentences they retire.
+const ARCHITECTURE_SCAN_NOT_RUN =
+  /Generated finding text does NOT\s+yet pass that residual scanner/i;
+
+const ARCHITECTURE_SCAN_UNCLAIMABLE =
+  /Until that lands, nothing here or\s+anywhere else may be read as that scan having happened/i;
+
 /**
  * Claims the repository can check about itself. Each is a sentence a reader would
  * act on, paired with the condition that makes it true. Entries under `.ai/` are
@@ -103,6 +111,13 @@ const CLAIMS: readonly {
     claim: GET_STARTED_NO_FINDINGS_TABLE,
     holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/schema/fixes.ts`),
     because: "packages/db/src/schema/fixes.ts exists — the tools have read real rows since O-020",
+  },
+  {
+    file: "docs/architecture.md",
+    claim: ARCHITECTURE_SCAN_NOT_RUN,
+    holdsWhen: () => !existsSync(`${ROOT}/packages/db/src/repositories/finding-text.ts`),
+    because:
+      "packages/db/src/repositories/finding-text.ts exists — every read of a persisted finding mints its text through the residual scan",
   },
   {
     file: ".ai/decisions/0007-mcp-route-surface.md",
@@ -175,5 +190,30 @@ describe("documentation claims", () => {
     expect(GET_STARTED_NO_FINDINGS_TABLE.test("a table of findings exists")).toBe(false);
 
     expect(CLAIMS.filter((entry) => entry.file === "docs/get-started.md")).toHaveLength(2);
+  });
+
+  test("the architecture PII needle matches the sentence it retired, and that sentence is gone", () => {
+    const retired = [
+      "**Generated finding text does NOT yet pass that residual scanner.** shipped the",
+      "first model-written text and guards it with `guardModelText`, which checks the",
+      "assertion contract, that a sentence adds no claim the candidate's own fields do not",
+      "carry, and is not a personal-data scan. Running `scanResidualPii` over model text is",
+      "what promotes SAC-9 out of `SAC_NOT_YET_ENFORCED`; its heir is named in",
+      "`packages/shared/src/summary/assertion-contract.ts`. Until that lands, nothing here or",
+      "anywhere else may be read as that scan having happened.",
+    ].join("\n");
+
+    expect(ARCHITECTURE_SCAN_NOT_RUN.test(retired)).toBe(true);
+    expect(ARCHITECTURE_SCAN_UNCLAIMABLE.test(retired)).toBe(true);
+
+    const replacement = "**Generated finding text passes that residual scanner at two seams.**";
+    expect(ARCHITECTURE_SCAN_NOT_RUN.test(replacement)).toBe(false);
+    expect(ARCHITECTURE_SCAN_UNCLAIMABLE.test(replacement)).toBe(false);
+
+    const page = read("docs/architecture.md");
+    expect(ARCHITECTURE_SCAN_NOT_RUN.test(page)).toBe(false);
+    expect(ARCHITECTURE_SCAN_UNCLAIMABLE.test(page)).toBe(false);
+
+    expect(CLAIMS.filter((entry) => entry.file === "docs/architecture.md")).toHaveLength(1);
   });
 });

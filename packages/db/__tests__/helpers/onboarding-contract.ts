@@ -96,6 +96,7 @@ export type CreateFirstRunRepo = (db: ScopedDb, ctx: TenantContext) => FirstRunR
 export interface FirstRunStatusFacts extends StagePersistedFacts {
   readonly findingId: string | null;
   readonly findingUnavailable: boolean;
+  readonly findingWithheld: boolean;
 }
 
 export interface FirstRunStatusService {

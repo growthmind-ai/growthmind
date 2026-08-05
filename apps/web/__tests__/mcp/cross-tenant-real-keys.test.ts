@@ -12,6 +12,7 @@ import {
 } from "@growthmind/db";
 import {
   createTestDb,
+  scannedTextFor,
   seedAnalysisRun,
   seedMember,
   seedProject,
@@ -43,6 +44,11 @@ import {
 } from "./helpers/mcp-fixture";
 
 const TEST_PASSWORD = "correct-horse-battery-staple";
+
+const CLEAN_TEXT = scannedTextFor(
+  "People are leaving the reports page without going any further.",
+  ["We saw sessions reach the reports page and stop there."],
+);
 
 const SDK_RENDERED_CONTENT_TYPE = "text/event-stream";
 
@@ -354,8 +360,8 @@ async function seedLiveFixInOrgB(): Promise<LiveFixture> {
     signature: createHmac("sha256", "mcpxk").update(LIVE_SURFACE).digest("hex"),
     signatureVersion: 1,
     summarySource: "model_rendered",
-    headline: "People are leaving the reports page without going any further.",
-    context: ["We saw sessions reach the reports page and stop there."],
+    headline: CLEAN_TEXT.headline,
+    context: CLEAN_TEXT.context,
     finalClass: "confusing",
     surface: LIVE_SURFACE,
     surfaceNormalisationVersion: 1,

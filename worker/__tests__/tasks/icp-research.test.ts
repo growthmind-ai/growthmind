@@ -80,7 +80,7 @@ function depsFor(input: {
                 ),
             },
       now: () => NOW,
-      logger: { info: () => undefined, error: () => undefined },
+      logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
     },
     recorded,
   };

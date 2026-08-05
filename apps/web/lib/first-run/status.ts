@@ -40,6 +40,10 @@ import { slackOAuthConfigured } from "@/lib/slack/oauth";
 export type FirstRunStatusPayload = FirstRunStatus & {
   readonly findingUnavailable: boolean;
 
+  // Not derivable from `findingUnavailable`: an unrenderable row may still have reached
+  // Slack, and a withheld one provably did not.
+  readonly findingWithheld: boolean;
+
   readonly connectionMessage: string;
 
   readonly slackSkippedAt: Date | null;
@@ -47,24 +51,20 @@ export type FirstRunStatusPayload = FirstRunStatus & {
   // FR-O14, derived from the absence of a deliverable address (AD-4).
   readonly slackNotice: string | null;
 
-  // `slack !== null`, never `channelId !== null`, and never an input to
-  // `deliveryResolved`: a workspace with no channel has nowhere to deliver.
+  // `slack !== null`, never `channelId !== null` — a workspace with no channel attached.
   readonly slackWorkspaceAttached: boolean;
 
   readonly slackWorkspaceName: string | null;
 
-  // AD-6, server-computed: `SLACK_CLIENT_ID` reads `undefined` in the browser,
-  // so a client-side check would hide the button from deployments that have one.
+  // AD-6: `SLACK_CLIENT_ID` reads `undefined` in the browser, so a client-side check
+  // would hide the button from deployments that have one.
   readonly slackOAuthAvailable: boolean;
 
   readonly deliveryState: FirstRunDeliveryState;
 
-  // The delivery lane's own next action, already written when the post failed. Non-null
-  // only in the failed state, so no screen can pair it with a claim that contradicts it.
+  // Non-null only in the failed state, so no screen can pair it with a contradicting claim.
   readonly deliveryFailureReason: string | null;
 
-  // AD-5, both REQUIRED: an optional field here is the always-absent D11 shape,
-  // and every consumer that fails to compile is a consumer found.
   readonly providerInterest: readonly InterestProviderId[];
 
   readonly interestPingAvailable: boolean;
@@ -80,8 +80,8 @@ export interface BuildFirstRunStatusInput {
   readonly ctx: TenantContext;
   readonly projectId: string;
 
-  // Carries the rendered finding AND its id, from one read. A second query here is
-  // how the card and the delivery line came to describe different rows (B-038).
+  // One read carries the finding and its id — a second query is how the card and the
+  // delivery line came to describe different rows (B-038).
   readonly facts: FirstRunStatusFacts;
 }
 
@@ -104,9 +104,7 @@ export function toFirstRunDeliveryState(input: {
   }
 }
 
-// The reason is a sentence @growthmind/shared composed from a closed union of failure
-// codes, never a driver or Slack response body. Blank text is treated as absent, because
-// a row written by an older shape can carry an empty column.
+// Blank text is treated as absent: a row written by an older shape can carry an empty column.
 export function toDeliveryFailureReason(input: {
   state: FirstRunDeliveryState;
   delivery: { failureReason: string | null } | null;
@@ -158,8 +156,8 @@ async function resolveDelivery(input: {
 
 const NO_KEY_USE: ApiKeyUseSummary = { liveCount: 0, anyUsed: false };
 
-// The delivery lane's shape, for its reason: this read names every column of a table
-// a pending migration may not have widened, and one unreadable step may not cost the page.
+// Names every column of a table a pending migration may not have widened, and one
+// unreadable step may not cost the page.
 async function resolveKeyUse(input: {
   readonly db: ScopedDb;
   readonly ctx: TenantContext;
@@ -197,17 +195,17 @@ export async function buildFirstRunStatus(
     channelId: slack?.channelId ?? null,
   });
 
-  // Read here so no caller threads it, and parsed per call so an env captured
-  // at import time cannot outlive a redeploy. One parse feeds both flags.
+  // Parsed per call, so an env captured at import time cannot outlive a redeploy.
   const env = parseWebEnv(process.env);
 
-  // One address feeds both fields, so a sentinel row cannot read as deliverable
-  // in the label while reading as undeliverable in the id.
+  // One address feeds both fields, so a sentinel row cannot read deliverable in the label
+  // and undeliverable in the id.
   const address = isDeliveryAddress(slack?.channelId) ? slack.channelId : null;
 
   return {
     finding: facts.finding,
     findingUnavailable: facts.findingUnavailable,
+    findingWithheld: facts.findingWithheld,
     armedAt: facts.armedAt,
 
     retrievedAt: facts.retrievedAt,
@@ -235,13 +233,12 @@ export async function buildFirstRunStatus(
   };
 }
 
-// Three states, three next actions — a workspace with no channel delivers
-// nothing, so it must not collapse back into `slack === null`.
+// A workspace with no channel delivers nothing, so it must not collapse back into
+// `slack === null`.
 function notice(slack: { readonly channelId: string | null } | null): string | null {
   if (slack === null) return SLACK_SKIPPED_NOTICE;
 
-  // The predicate, not `=== null`: a sentinel row must read as "pick a channel"
-  // rather than suppressing the prompt that tells the founder to.
+  // The predicate, not `=== null` — a sentinel row must still prompt for a channel.
   if (!isDeliveryAddress(slack.channelId)) return SLACK_CHANNEL_PICK_PROMPT;
 
   return null;

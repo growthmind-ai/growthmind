@@ -3,13 +3,24 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-import type { EnforcingTest } from "../../src/summary/assertion-contract";
+import type { EnforcingTest, UnenforcedSacRow } from "../../src/summary/assertion-contract";
 import {
   SAC_11_DISJOINTNESS_PROOF,
   SAC_CONTRACT,
   SAC_IDS,
   SAC_NOT_YET_ENFORCED,
 } from "../../src/summary/assertion-contract";
+
+type UnenforcedRowShape = Pick<UnenforcedSacRow, "notEnforcedBecause" | "inheritedBy">;
+
+function statesWhyAndWhoInherits(row: UnenforcedRowShape): boolean {
+  return (
+    row.notEnforcedBecause.trim().length > 0 &&
+    row.inheritedBy.trim().length > 0 &&
+    /O-\d+/.test(row.inheritedBy) &&
+    !row.notEnforcedBecause.toUpperCase().includes("TODO")
+  );
+}
 
 function workspacePath(relativePath: string): string {
   return fileURLToPath(new URL(`../../../../${relativePath}`, import.meta.url));
@@ -67,16 +78,18 @@ describe("the String Assertion Contract", () => {
     expect(sac11.enforcedBy).toContainEqual(SAC_11_DISJOINTNESS_PROOF);
   });
 
-  test("every not-yet-enforced row states why no test can exist and who inherits it", () => {
-    const rows = Object.values(SAC_NOT_YET_ENFORCED);
-    expect(rows.length).toBeGreaterThan(0);
+  // SAC-9 is the last row here; O-021 moves it into SAC_CONTRACT and empties this table,
+  // so the shape guard is proven against a planted row rather than by iterating nothing.
+  test("the not-yet-enforced table is empty, and its shape guard still rejects a blank row", () => {
+    const wellFormed: UnenforcedRowShape = {
+      notEnforcedBecause: "no test can exist until the seam this row names is built",
+      inheritedBy: "O-021 — the seam ships there",
+    };
 
-    for (const row of rows) {
-      expect(row.notEnforcedBecause.trim().length).toBeGreaterThan(0);
-      expect(row.inheritedBy.trim().length).toBeGreaterThan(0);
+    expect(statesWhyAndWhoInherits(wellFormed)).toBe(true);
+    expect(statesWhyAndWhoInherits({ ...wellFormed, notEnforcedBecause: "   " })).toBe(false);
 
-      expect(row.inheritedBy).toMatch(/O-\d+/);
-      expect(row.notEnforcedBecause.toUpperCase()).not.toContain("TODO");
-    }
+    expect(Object.keys(SAC_NOT_YET_ENFORCED)).toEqual([]);
+    expect(SAC_IDS.length).toBe(Object.keys(SAC_CONTRACT).length);
   });
 });
