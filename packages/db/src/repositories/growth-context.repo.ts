@@ -428,11 +428,11 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
     async decideAudience(input: DecideAudienceInput): Promise<DecideAudienceOutcome> {
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
-        const current = await this.readBusinessResearch(input.projectId);
+      const outcome = await whileContended(STATE_FACT_ATTEMPTS, async () => {
+        const current = await readResearch(input.projectId);
         if (current === null) return "not_found";
 
-        const context = readBusinessContext(current.businessContext);
+        const context = current.businessContext;
 
         const target = context.facts.find(
           (fact) =>
@@ -453,19 +453,19 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
 
         const others = context.facts.filter((fact) => fact !== target);
 
-        if (
-          await writeFactsIfUnchanged(
-            input.projectId,
-            [...others, decided],
-            context.removed,
-            current.updatedAt,
-          )
-        ) {
-          return "decided";
-        }
-      }
+        const written = await writeFactsIfUnchanged(
+          input.projectId,
+          [...others, decided],
+          context.removed,
+          current.updatedAt,
+        );
 
-      return "not_found";
+        return written ? "decided" : null;
+      });
+
+      // Contended past the retries reads the same as a row that moved: the browser goes back
+      // for a re-read rather than being told a decision stuck when it did not.
+      return outcome ?? "not_found";
     },
 
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {
