@@ -42,6 +42,14 @@ export const audienceRuleSchema = z.object({
 
 export type AudienceRule = z.infer<typeof audienceRuleSchema>;
 
+// No clauses means the sentence named nothing a session carries. That is the common answer
+// and it is a correct one — it leaves the denominator alone rather than guessing at it.
+export const audienceReductionOutputSchema = z.object({
+  clauses: z.array(audienceClauseSchema).max(AUDIENCE_CLAUSE_MAX),
+});
+
+export type AudienceReductionOutput = z.infer<typeof audienceReductionOutputSchema>;
+
 export const AUDIENCE_RULE_STATUSES = ["proposed", "confirmed", "rejected"] as const;
 
 export type AudienceRuleStatus = (typeof AUDIENCE_RULE_STATUSES)[number];

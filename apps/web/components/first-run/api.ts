@@ -39,6 +39,7 @@ export const SETTINGS_API = {
   pageRole: "/api/settings/pages/role",
   site: "/api/settings/site",
   businessFact: "/api/settings/business/fact",
+  businessAudience: "/api/settings/business/audience",
 } as const;
 
 export interface PostAnswer {

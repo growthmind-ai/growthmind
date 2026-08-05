@@ -140,6 +140,23 @@ export const FACT_OBSERVED_NONE_YET =
 export const FACT_OBSERVED_NO_SOURCE =
   "This fills in from what people do in your product, so there is nothing here until your analytics is connected. That is the first thing on this page.";
 
+export const AUDIENCE_PROPOSAL_LEAD = "We can count this as";
+
+export const AUDIENCE_CONFIRM_ACTION = "Use this";
+
+export const AUDIENCE_REJECT_ACTION = "Not right";
+
+// The unconfirmed state has to say what is true right now, not what could be true later. A
+// proposal sitting unanswered narrows nothing, and a screen that implies otherwise would
+// have someone reading a finding against a denominator they think they set.
+export const AUDIENCE_UNCONFIRMED_NOTE =
+  "Until you say, findings are counted over everyone who visits.";
+
+export const AUDIENCE_CONFIRMED_NOTE = "Findings are counted over these sessions only.";
+
+export const AUDIENCE_REJECTED_NOTE =
+  "Set aside. Findings are counted over everyone who visits.";
+
 export const FACT_SEEN_TEMPLATE = "Seen in {sessions} of {of} sessions, {from} to {to}";
 
 // Fixed locale: this is rendered on a server and sent as text to both a browser and an

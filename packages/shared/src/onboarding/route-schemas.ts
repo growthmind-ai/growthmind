@@ -98,3 +98,10 @@ export const settingsBusinessFactInputSchema = z
     }
   });
 export type SettingsBusinessFactInput = z.infer<typeof settingsBusinessFactInputSchema>;
+
+export const settingsAudienceInputSchema = z.strictObject({
+  // The `who_counts` sentence whose proposed rule is being answered.
+  statement: z.string().min(1).max(STATEMENT_MAX),
+  decision: z.enum(["confirm", "reject"]),
+});
+export type SettingsAudienceInput = z.infer<typeof settingsAudienceInputSchema>;

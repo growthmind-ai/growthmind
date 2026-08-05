@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import {
+  AUDIENCE_CONFIRM_ACTION,
+  AUDIENCE_CONFIRMED_NOTE,
+  AUDIENCE_PROPOSAL_LEAD,
+  AUDIENCE_REJECT_ACTION,
+  AUDIENCE_REJECTED_NOTE,
+  AUDIENCE_UNCONFIRMED_NOTE,
   FACT_ADD_ACTION,
   FACT_ADD_LABEL,
   FACT_CANCEL_ACTION,
@@ -128,6 +134,85 @@ function FactEditor({ kind, was, label, removable, onDone }: EditorProps) {
   );
 }
 
+// The proposed rule, and what it is doing right now. An unanswered proposal narrows nothing,
+// and the note says so — a screen that implied otherwise would have someone reading a
+// finding against a denominator they believe they set.
+function AudienceProposal({ fact }: { fact: StatedFactView }) {
+  const router = useRouter();
+  const [pending, setPending] = useState<"confirm" | "reject" | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const audience = fact.audience;
+  if (audience === null) return null;
+
+  async function decide(decision: "confirm" | "reject"): Promise<void> {
+    setPending(decision);
+    setFailed(null);
+
+    const answer = await postJson(SETTINGS_API.businessAudience, {
+      statement: fact.statement,
+      decision,
+    });
+
+    setPending(null);
+
+    if (answer === null || !answer.ok) {
+      setFailed(readRefusal(answer?.body)?.message ?? PAGES_SAVE_FAILED);
+      return;
+    }
+
+    router.refresh();
+  }
+
+  const note =
+    audience.status === "confirmed"
+      ? AUDIENCE_CONFIRMED_NOTE
+      : audience.status === "rejected"
+        ? AUDIENCE_REJECTED_NOTE
+        : AUDIENCE_UNCONFIRMED_NOTE;
+
+  return (
+    <Stack gap={2} mt={4}>
+      <Text size="xs" c="dimmed">
+        {AUDIENCE_PROPOSAL_LEAD}
+      </Text>
+      <Text size="sm">{audience.sentence}</Text>
+      <Text size="xs" c="dimmed">
+        {note}
+      </Text>
+
+      {/* Both answers stay offered after a decision: changing your mind about who counts is
+          the same act as deciding it the first time. */}
+      <Group gap={4}>
+        <Button
+          size="compact-xs"
+          variant={audience.status === "confirmed" ? "filled" : "subtle"}
+          loading={pending === "confirm"}
+          onClick={() => void decide("confirm")}
+          style={tapTargetStyle}
+        >
+          {AUDIENCE_CONFIRM_ACTION}
+        </Button>
+        <Button
+          size="compact-xs"
+          variant={audience.status === "rejected" ? "filled" : "subtle"}
+          loading={pending === "reject"}
+          onClick={() => void decide("reject")}
+          style={tapTargetStyle}
+        >
+          {AUDIENCE_REJECT_ACTION}
+        </Button>
+      </Group>
+
+      {failed === null ? null : (
+        <Text size="xs" c="red" component="output">
+          {failed}
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
 export function FactRow({ fact }: { fact: StatedFactView }) {
   const [editing, setEditing] = useState(false);
 
@@ -158,6 +243,8 @@ export function FactRow({ fact }: { fact: StatedFactView }) {
           {FACT_CORRECTED_NOTE}
         </Text>
       )}
+
+      <AudienceProposal fact={fact} />
     </Stack>
   );
 }

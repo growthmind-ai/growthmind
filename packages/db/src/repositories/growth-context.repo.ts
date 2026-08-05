@@ -73,6 +73,17 @@ export interface StateFactInput {
 
 export type StateFactOutcome = "stated" | "not_found" | "full";
 
+export interface DecideAudienceInput {
+  readonly projectId: string;
+
+  // The `who_counts` sentence whose proposal is being answered.
+  readonly statement: string;
+  readonly decision: "confirm" | "reject";
+  readonly decidedAt: Date;
+}
+
+export type DecideAudienceOutcome = "decided" | "not_found";
+
 export interface GrowthContextSnapshot {
   readonly context: GrowthContext;
 
@@ -123,6 +134,7 @@ export interface GrowthContextRepo {
   // A person adding, correcting or removing a fact. The row is re-read and re-merged here,
   // because the browser's copy predates whatever the last read wrote.
   stateFact(input: StateFactInput): Promise<StateFactOutcome>;
+  decideAudience(input: DecideAudienceInput): Promise<DecideAudienceOutcome>;
 
   // One page, stated by a person. A whole-list write from a page loaded before last night's
   // run would revert everything that run added, so the merge happens here against the row as
@@ -409,6 +421,51 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
       // Answering not_found sends the browser back for a re-read, which is the honest end
       // to a row that kept moving underneath this write.
       return outcome ?? "not_found";
+    },
+
+    // Same re-read-and-merge loop as stateFact, and for the same reason: the whole fact list
+    // is rewritten to change one entry's proposal.
+    async decideAudience(input: DecideAudienceInput): Promise<DecideAudienceOutcome> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      for (let attempt = 0; attempt < STATE_FACT_ATTEMPTS; attempt += 1) {
+        const current = await this.readBusinessResearch(input.projectId);
+        if (current === null) return "not_found";
+
+        const context = readBusinessContext(current.businessContext);
+
+        const target = context.facts.find(
+          (fact) =>
+            fact.kind === "who_counts" &&
+            fact.statement === input.statement &&
+            fact.audience !== null,
+        );
+        if (target === undefined || target.audience === null) return "not_found";
+
+        const decided: BusinessFact = {
+          ...target,
+          audience: {
+            rule: target.audience.rule,
+            status: input.decision === "confirm" ? "confirmed" : "rejected",
+            decidedAt: input.decidedAt,
+          },
+        };
+
+        const others = context.facts.filter((fact) => fact !== target);
+
+        if (
+          await writeFactsIfUnchanged(
+            input.projectId,
+            [...others, decided],
+            context.removed,
+            current.updatedAt,
+          )
+        ) {
+          return "decided";
+        }
+      }
+
+      return "not_found";
     },
 
     async statePageRole(input: StatePageRoleInput): Promise<GrowthContextRow> {

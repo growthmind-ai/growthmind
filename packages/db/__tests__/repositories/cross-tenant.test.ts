@@ -10,11 +10,13 @@ import {
   EXCLUSION_REASON_LABELS,
   URL_PATH_NORMALISATION_VERSION,
   type CredentialKeyResolution,
+  type IdentityResolution,
   type StampedExclusionReason,
   type TenantContext,
 } from "@growthmind/shared";
 
 import { createEventsRepo } from "../../src/repositories/events.repo";
+import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createProjectConnectionsRepo } from "../../src/repositories/project-connections.repo";
 import { createProjectsRepo } from "../../src/repositories/projects.repo";
@@ -431,6 +433,8 @@ interface CorpusSessionSpec {
   readonly sessionKey: string;
   readonly startedAt: Date;
   readonly exclusionReason?: StampedExclusionReason;
+  readonly identityEmailDomain?: string | null;
+  readonly identityResolution?: IdentityResolution;
   readonly events: readonly CorpusEventSpec[];
 }
 
@@ -455,8 +459,8 @@ async function seedCorpusSessions(
       connectionId: org.connectionId,
       sessionKey: spec.sessionKey,
       identityKey: null,
-      identityEmailDomain: null,
-      identityResolution: "unresolved",
+      identityEmailDomain: spec.identityEmailDomain ?? null,
+      identityResolution: spec.identityResolution ?? "unresolved",
       userAgent: null,
 
       entryUrlPath: firstUrlPath === undefined ? CORPUS_DEFAULT_URL_PATH : firstUrlPath,
@@ -747,6 +751,101 @@ describe("detector-corpus.service — the T1 corpus read", () => {
       expect(unbound.coverage.truncated).toBe(false);
       expect(unbound.sessions.length).toBe(UNDER_CAP);
     });
+  });
+
+  it("narrows the denominator to a confirmed who_counts rule, and only once it is confirmed", async () => {
+    const org = await seedCorpusOrg(db, "audience");
+    const BASE = new Date("2026-07-24T09:00:00.000Z");
+
+    const specs: readonly CorpusSessionSpec[] = [
+      { key: "work-1", domain: "acme.example", resolution: "resolved" as const },
+      { key: "work-2", domain: "acme.example", resolution: "resolved" as const },
+      { key: "personal-1", domain: "gmail.com", resolution: "resolved" as const },
+      { key: "anon-1", domain: null, resolution: "absent" as const },
+    ].map((row, index) => {
+      const startedAt = new Date(BASE.getTime() + index * HOUR_MS);
+      return {
+        sessionKey: `ph:db-dc-audience-${row.key}`,
+        startedAt,
+        identityEmailDomain: row.domain,
+        identityResolution: row.resolution,
+        events: [{ sourceEventId: `db-dc-audience-${row.key}-0`, occurredAt: startedAt }],
+      };
+    });
+    await seedCorpusSessions(db, org, specs);
+
+    const growth = createGrowthContextRepo(db, org.ctx);
+    const WHO = "Real businesses, not people on personal email.";
+
+    await growth.stateSiteDomain({ projectId: org.projectId, siteDomain: "example.com" });
+
+    await growth.recordResearch({
+      projectId: org.projectId,
+      facts: [
+        {
+          kind: "who_counts",
+          statement: WHO,
+          provenance: {
+            source: "site",
+            at: BASE,
+            citation: "https://example.com/",
+            seen: null,
+          },
+          correctedFrom: null,
+          audience: {
+            rule: { clauses: [{ attribute: "email_domain", is: "work" }] },
+            status: "proposed",
+            decidedAt: null,
+          },
+        },
+      ],
+      researchedAt: BASE,
+    });
+
+    const corpusService = createDetectorCorpusService(db, org.ctx);
+
+    // A proposal nobody has answered narrows nothing — the whole point of the confirm step.
+    const beforeConfirm = await corpusService.read(org.projectId, WINDOW);
+    expect(beforeConfirm.basis.kept).toBe(4);
+    expect(beforeConfirm.basis.keptUnchecked).toBe(0);
+    expect(beforeConfirm.basis.setAside).toEqual([]);
+
+    expect(
+      await growth.decideAudience({
+        projectId: org.projectId,
+        statement: WHO,
+        decision: "confirm",
+        decidedAt: BASE,
+      }),
+    ).toBe("decided");
+
+    const afterConfirm = await corpusService.read(org.projectId, WINDOW);
+
+    // The personal-email session is out. The anonymous one is kept and declared, never
+    // silently dropped — that is the D10 fail-open this rule is built around.
+    expect(afterConfirm.basis.totalInWindow).toBe(4);
+    expect(afterConfirm.basis.kept).toBe(3);
+    expect(afterConfirm.basis.keptUnchecked).toBe(1);
+    expect(afterConfirm.basis.setAside).toEqual([
+      {
+        reason: "outside_who_counts",
+        count: 1,
+        label: EXCLUSION_REASON_LABELS.outside_who_counts,
+      },
+    ]);
+
+    expect(
+      await growth.decideAudience({
+        projectId: org.projectId,
+        statement: WHO,
+        decision: "reject",
+        decidedAt: BASE,
+      }),
+    ).toBe("decided");
+
+    const afterReject = await corpusService.read(org.projectId, WINDOW);
+    expect(afterReject.basis.kept).toBe(4);
+    expect(afterReject.basis.setAside).toEqual([]);
   });
 
   it("detector-corpus.service excludes exclusion_reason != 'none' sessions from the denominator and reports them in basis", async () => {

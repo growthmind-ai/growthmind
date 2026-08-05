@@ -80,6 +80,7 @@ function depsFor(input: {
                 Promise.resolve((input.binding ?? { ok: true, facts: [A_REGIME] }) as never),
               readShaping: () =>
                 Promise.resolve((input.shaping ?? { ok: true, facts: [A_CADENCE] }) as never),
+              reduceAudience: () => Promise.resolve({ ok: true, rule: null } as never),
             },
       now: () => NOW,
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },

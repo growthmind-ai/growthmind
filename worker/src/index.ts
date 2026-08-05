@@ -34,6 +34,7 @@ import {
   logger,
   parseWorkerEnv,
   resolveCredentialKey,
+  audienceReductionOutputSchema,
   shapingReadOutputSchema,
 } from "@growthmind/shared";
 
@@ -158,6 +159,7 @@ function resolveBusinessResearcher(env: WorkerEnv): BusinessResearcherPort | nul
     resolvedModelId,
     bindingSchema: bindingReadOutputSchema,
     shapingSchema: shapingReadOutputSchema,
+    audienceSchema: audienceReductionOutputSchema,
   });
 }
 
