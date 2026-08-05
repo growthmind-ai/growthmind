@@ -99,9 +99,9 @@ export {
 } from "./site/fetch";
 
 export {
-  createIcpResearcher,
-  type ReadBelief,
-  type IcpReadOutput,
-  type IcpReadResult,
-  type IcpResearcherDeps,
+  createBusinessResearcher,
+  type ReadFact,
+  type BusinessReadOutput,
+  type BusinessReadResult,
+  type BusinessResearcherDeps,
 } from "./site/researcher";

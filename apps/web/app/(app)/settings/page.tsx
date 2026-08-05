@@ -8,23 +8,25 @@ import {
   isAnalyticsAttached,
   ONBOARDING_MESSAGES,
   PAGES_SECTION_TITLE,
-  SITE_SECTION_TITLE,
+  BUSINESS_SECTION_TITLE,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
   type StepView,
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
+import { LiveRefresh } from "@/components/live/LiveRefresh";
+import { BusinessContext } from "@/components/settings/BusinessContext";
 import { PageRoles } from "@/components/settings/PageRoles";
-import { SiteResearch } from "@/components/settings/SiteResearch";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { SlackConnection } from "@/components/slack/SlackConnection";
 import { SlackDeliveryControls } from "@/components/slack/SlackDeliveryControls";
 import { AnchorLink } from "@/components/ui/Links";
 import { getDb } from "@/lib/db";
 import { ROUTES } from "@/lib/routes";
+import type { BusinessResearchView } from "@/lib/settings/business";
 import { readPageRoles, type PageRoleView } from "@/lib/settings/pages";
-import { readSiteResearch, type SiteResearchView } from "@/lib/settings/site";
+import { readBusinessResearch } from "@/lib/settings/site";
 import { readSettingsView, type SettingsView } from "@/lib/settings/view";
 import { getTenantContext } from "@/lib/tenant";
 
@@ -138,10 +140,10 @@ function Pages({ view, pages }: { view: SettingsView; pages: readonly PageRoleVi
   );
 }
 
-function Site({ site }: { site: SiteResearchView }) {
+function Business({ view, site }: { view: SettingsView; site: BusinessResearchView }) {
   return (
-    <Section title={SITE_SECTION_TITLE}>
-      <SiteResearch view={site} />
+    <Section title={BUSINESS_SECTION_TITLE}>
+      <BusinessContext view={site} sourceAttached={isAnalyticsAttached(view.source.status)} />
     </Section>
   );
 }
@@ -156,10 +158,14 @@ export default async function SettingsPage() {
   const { projectId } = await ensureProject(db, ctx);
   const view = await readSettingsView(db, ctx, projectId);
   const pages = await readPageRoles(db, ctx, projectId);
-  const site = await readSiteResearch(db, ctx, projectId);
+  const site = await readBusinessResearch(db, ctx, projectId);
 
   return (
     <Stack gap="lg" maw={640}>
+      {/* The site read finishes in a worker, minutes after the press that started it. This
+          is how the page hears about it. */}
+      <LiveRefresh topics={["business_context"]} />
+
       <Title order={1} size="h3">
         {SETTINGS_TITLE}
       </Title>
@@ -174,11 +180,11 @@ export default async function SettingsPage() {
       <Divider />
 
       {/* Last: what the pages are for only means something once something is reading them,
-          and who they are for is what makes a page worth anything at all. */}
+          and what the business will not allow is what makes any of it safe to act on. */}
       <Pages view={view} pages={pages} />
       <Divider />
 
-      <Site site={site} />
+      <Business view={view} site={site} />
 
       <AnchorLink href={ROUTES.home} size="sm">
         {ONBOARDING_MESSAGES.settingsBack}

@@ -15,6 +15,8 @@ import {
   type TestDbHandle,
 } from "@growthmind/db/testing";
 import {
+  BUSINESS_FACT_HEADINGS,
+  BUSINESS_FACT_NOTES,
   FIX_SURFACE_FORBIDDEN_REFUSALS,
   MCP_TOOL,
   SURFACE_ROLE_NOTES,
@@ -73,11 +75,13 @@ function answerFor(overrides: {
     lastSeenAt: Date;
   }[];
   declined?: readonly { headline: string; declinedAt: Date }[];
-  audience?: readonly {
-    kind: "who_it_is_for";
+  business?: readonly {
+    kind: "regime" | "who_counts" | "catalogue_scale";
     statement: string;
     statedByAPerson: boolean;
     readFrom: string | null;
+    observed: boolean;
+    seen: { sessions: number; of: number; from: Date; to: Date } | null;
   }[];
 }): GrowthContextAnswer {
   return {
@@ -89,7 +93,7 @@ function answerFor(overrides: {
       whatMatters: overrides.whatMatters ?? [],
       knownProblems: overrides.knownProblems ?? [],
       declined: overrides.declined ?? [],
-      audience: overrides.audience ?? [],
+      business: overrides.business ?? [],
     }),
   };
 }
@@ -241,6 +245,80 @@ describe("get_growth_context", () => {
     expect(parsed.knownProblems[0]?.affected.numerator).toBe(19);
     expect(parsed.knownProblems[0]?.affected.denominator).toBe(28);
     expect(parsed.knownProblems[0]?.fixId).toBe("fix-1");
+  });
+
+  // An agent handed "regime: licensed by the Gambling Commission" and nothing else has no
+  // way to know it must not ship the change it was about to.
+  test("says what a fact means and whether it can stop a change shipping", async () => {
+    const outcome = await ask(
+      answerFor({
+        surface: null,
+        business: [
+          {
+            kind: "regime",
+            statement: "Licensed by the UK Gambling Commission",
+            statedByAPerson: true,
+            readFrom: null,
+            observed: false,
+            seen: null,
+          },
+          {
+            kind: "catalogue_scale",
+            statement: "Tens of thousands of products",
+            statedByAPerson: false,
+            readFrom: "https://example.com/",
+            observed: false,
+            seen: null,
+          },
+        ],
+      }),
+      {},
+    );
+
+    if (!outcome.ok) throw new Error("expected an answer");
+    const parsed = getGrowthContextOutputSchema.parse(outcome.result);
+
+    expect(parsed.business[0]?.about).toBe("regime");
+    expect(parsed.business[0]?.heading).toBe(BUSINESS_FACT_HEADINGS.regime);
+    expect(parsed.business[0]?.means).toBe(BUSINESS_FACT_NOTES.regime);
+    expect(parsed.business[0]?.binding).toBe(true);
+    expect(parsed.business[0]?.toldToUs).toBe(true);
+
+    // A shaping fact decides how a change is built, never whether it ships.
+    expect(parsed.business[1]?.binding).toBe(false);
+    expect(parsed.business[1]?.readFrom).toBe("https://example.com/");
+
+    expect(parsed.nothingKnownYet).toBe(false);
+  });
+
+  test("cites an observed fact by its count and denominator, never by a page", async () => {
+    const outcome = await ask(
+      answerFor({
+        surface: null,
+        business: [
+          {
+            kind: "who_counts",
+            statement: "Most people who finish setup are working alone",
+            statedByAPerson: false,
+            readFrom: null,
+            observed: true,
+            seen: {
+              sessions: 41,
+              of: 60,
+              from: new Date("2026-07-12T00:00:00.000Z"),
+              to: new Date("2026-07-19T00:00:00.000Z"),
+            },
+          },
+        ],
+      }),
+      {},
+    );
+
+    if (!outcome.ok) throw new Error("expected an answer");
+    const parsed = getGrowthContextOutputSchema.parse(outcome.result);
+
+    expect(parsed.business[0]?.observed).toBe(true);
+    expect(parsed.business[0]?.seenIn).toBe("Seen in 41 of 60 sessions, 12 Jul to 19 Jul");
   });
 });
 

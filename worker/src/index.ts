@@ -2,8 +2,8 @@ import type { TaskList } from "graphile-worker";
 
 import {
   DEFAULT_COLDSTART_MODEL,
+  createBusinessResearcher,
   createColdstartModel,
-  createIcpResearcher,
   createSessionSummariser,
   createSlackDeliveryPoster,
   fetchSite,
@@ -29,11 +29,12 @@ import {
 } from "@growthmind/db/system";
 import type { WorkerEnv } from "@growthmind/shared";
 import {
-  icpReadOutputSchema,
-  icpResearchPayloadSchema,
+  bindingReadOutputSchema,
+  businessResearchPayloadSchema,
   logger,
   parseWorkerEnv,
   resolveCredentialKey,
+  shapingReadOutputSchema,
 } from "@growthmind/shared";
 
 import { COLDSTART_MODEL_CALL_CAP, ORG_MODEL_CALL_CAP } from "./analysis-cap";
@@ -52,7 +53,7 @@ import type {
 import { runAnalysisTick } from "./tasks/analysis-tick";
 import type { DeliveryLaneSource, DeliveryPosterFor } from "./tasks/delivery-tick";
 import { runGrowthContextTick } from "./tasks/growth-context-tick";
-import { runIcpResearch, type IcpResearcherPort } from "./tasks/icp-research";
+import { runBusinessResearch, type BusinessResearcherPort } from "./tasks/business-research";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
@@ -144,7 +145,7 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
 
 // Absent key, absent researcher: the task records "no model configured" rather than
 // leaving a person watching a spinner that will never resolve.
-function resolveIcpResearcher(env: WorkerEnv): IcpResearcherPort | null {
+function resolveBusinessResearcher(env: WorkerEnv): BusinessResearcherPort | null {
   const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (apiKey === undefined) {
     return null;
@@ -152,10 +153,11 @@ function resolveIcpResearcher(env: WorkerEnv): IcpResearcherPort | null {
 
   const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
 
-  return createIcpResearcher({
+  return createBusinessResearcher({
     model: createColdstartModel({ apiKey, resolvedModelId }),
     resolvedModelId,
-    outputSchema: icpReadOutputSchema,
+    bindingSchema: bindingReadOutputSchema,
+    shapingSchema: shapingReadOutputSchema,
   });
 }
 
@@ -197,6 +199,39 @@ function analysisDepsFor(
     logger: analysisLogger,
   };
 }
+
+const businessResearchHandler: NonNullable<TaskList[string]> = async (payload, helpers) => {
+  const { db, env } = resolveResources();
+  const taskLogger = taskLoggerFor(logger);
+
+  const parsed = businessResearchPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    helpers.logger.error("business research: a job arrived with a payload this task cannot read");
+    return;
+  }
+
+  const project = await findAnalysableProject(db, parsed.data.projectId);
+  if (project === null) {
+    taskLogger.error(
+      `business research: project ${parsed.data.projectId} has no readable organization, so nothing was read`,
+    );
+    return;
+  }
+
+  await runBusinessResearch(
+    {
+      growthFor: (ctx) => createGrowthContextRepo(db, ctx),
+      fetchSite: (domain) => fetchSite({ fetch: globalThis.fetch }, domain),
+      researcher: resolveBusinessResearcher(env),
+      now: () => new Date(),
+      logger: taskLogger,
+    },
+    {
+      ctx: systemContextFor(SYSTEM_ACTOR.BUSINESS_RESEARCH, project),
+      projectId: parsed.data.projectId,
+    },
+  );
+};
 
 export const taskList: TaskList = {
   [TASK.HEARTBEAT]: (_payload, helpers) => {
@@ -293,38 +328,9 @@ export const taskList: TaskList = {
     });
   },
 
-  [TASK.ICP_RESEARCH]: async (payload, helpers) => {
-    const { db, env } = resolveResources();
-    const taskLogger = taskLoggerFor(logger);
+  [TASK.BUSINESS_RESEARCH]: businessResearchHandler,
 
-    const parsed = icpResearchPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      helpers.logger.error("icp research: a job arrived with a payload this task cannot read");
-      return;
-    }
-
-    const project = await findAnalysableProject(db, parsed.data.projectId);
-    if (project === null) {
-      taskLogger.error(
-        `icp research: project ${parsed.data.projectId} has no readable organization, so nothing was read`,
-      );
-      return;
-    }
-
-    await runIcpResearch(
-      {
-        growthFor: (ctx) => createGrowthContextRepo(db, ctx),
-        fetchSite: (domain) => fetchSite({ fetch: globalThis.fetch }, domain),
-        researcher: resolveIcpResearcher(env),
-        now: () => new Date(),
-        logger: taskLogger,
-      },
-      {
-        ctx: systemContextFor(SYSTEM_ACTOR.ICP_RESEARCH, project),
-        projectId: parsed.data.projectId,
-      },
-    );
-  },
+  [TASK.BUSINESS_RESEARCH_BEFORE_RENAME]: businessResearchHandler,
 
   [TASK.PROVIDER_INTEREST_TICK]: async (_payload, helpers) => {
     const { db, env } = resolveResources();

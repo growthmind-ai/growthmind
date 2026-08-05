@@ -26,10 +26,16 @@ export const growthContext = pgTable(
 
     confirmedChangeable: jsonb("confirmed_changeable").notNull().default([]),
 
-    // The site the ICP is researched from. Proposed from the org creator's email domain and
-    // corrected by a person, never crawled without one of the two having said so.
+    // The site the business context is read from. Proposed from the org creator's email
+    // domain and corrected by a person, never crawled without one of the two having said so.
     siteDomain: text("site_domain"),
 
+    // What binds this business and how its product is used — what a coding agent is handed
+    // before it changes anything.
+    businessContext: jsonb("business_context").notNull().default({ facts: [] }),
+
+    // Session analysis's answer to who turned up. No longer written by the site read, and
+    // kept because the rows already written are the findings lane's, not settings'.
     icp: jsonb("icp").notNull().default({ beliefs: [] }),
 
     // A person waits on this, so every exit path records where it got to.

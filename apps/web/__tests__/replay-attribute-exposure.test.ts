@@ -37,7 +37,10 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "app/(app)/(preview)/fixes/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/agent/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/settings/page.tsx": { bindings: 5, kind: "our-copy" },
-  "components/settings/SiteResearch.tsx": { bindings: 1, kind: "our-copy" },
+  "components/settings/BusinessContext.tsx": { bindings: 1, kind: "our-copy" },
+  // The inline fact editor has no visible label, so it names itself with a constant of
+  // ours. B-049's rule holds: what reaches the attribute is our copy, never the fact.
+  "components/settings/FactRow.tsx": { bindings: 1, kind: "our-copy" },
   "app/(auth)/sign-in/sign-in-form.tsx": { bindings: 3, kind: "our-copy" },
   "app/(auth)/sign-up/sign-up-form.tsx": { bindings: 3, kind: "our-copy" },
   "app/(auth)/social-buttons.tsx": { bindings: 1, kind: "our-copy" },

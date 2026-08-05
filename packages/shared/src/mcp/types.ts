@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { exclusionReasonSchema } from "../exclusions/types";
+import { BUSINESS_FACT_LIMIT, businessFactKindSchema } from "../growth/business";
 
 export const mcpIdSchema = z.string().min(1).max(128);
 
@@ -270,19 +271,36 @@ export const declinedIdeaSchema = z.object({
 });
 export type DeclinedIdea = z.infer<typeof declinedIdeaSchema>;
 
-export const audienceBeliefSchema = z.object({
-  // Plain English for the agent, matching the three questions the model is asked.
-  about: z.enum(["who it is for", "what they believe", "what they are trying to do"]),
+export const businessFactSchema = z.object({
+  about: businessFactKindSchema,
+
+  // The same sentence the person who owns this business reads on their settings page, per
+  // §10's one-output-two-audiences rule.
+  heading: z.string().min(1),
+
+  // What to do with it. An agent handed "regime: UK Gambling Commission" and nothing else
+  // has no way to know it must not ship the change it was about to.
+  means: z.string().min(1),
 
   statement: z.string().min(1),
 
-  // Where the claim came from, so an agent can weigh it. "the people who run this product"
+  // A fact that can stop a change shipping, as against one that only shapes how it is
+  // built. An agent that cannot tell them apart treats a licence like a preference.
+  binding: z.boolean(),
+
+  // Where it came from, so an agent can weigh it. "the people who run this product"
   // outranks a page we read.
   toldToUs: z.boolean(),
 
   readFrom: z.string().nullable(),
+
+  // A website says what a business claims; only sessions say what people did. An agent that
+  // cannot tell the two apart builds for the marketing copy.
+  observed: z.boolean(),
+
+  seenIn: z.string().nullable(),
 });
-export type AudienceBelief = z.infer<typeof audienceBeliefSchema>;
+export type McpBusinessFact = z.infer<typeof businessFactSchema>;
 
 export const getGrowthContextOutputSchema = z
   .object({
@@ -298,8 +316,10 @@ export const getGrowthContextOutputSchema = z
 
     declined: z.array(declinedIdeaSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
 
-    // Who the product is for. Empty until someone names their site and it is read.
-    audience: z.array(audienceBeliefSchema).max(GROWTH_CONTEXT_MAX_ITEMS).readonly(),
+    // What binds this business and how its product is used. Not capped at the same ten as
+    // the lists above: a constraint that fell off the end of a list is a constraint nothing
+    // enforces.
+    business: z.array(businessFactSchema).max(BUSINESS_FACT_LIMIT).readonly(),
 
     nothingKnownYet: z.boolean(),
   })
@@ -324,7 +344,7 @@ export const getGrowthContextOutputSchema = z
       value.whatMatters.length > 0 ||
       value.knownProblems.length > 0 ||
       value.declined.length > 0 ||
-      value.audience.length > 0;
+      value.business.length > 0;
     if (value.nothingKnownYet && known) {
       ctx.addIssue({
         code: "custom",

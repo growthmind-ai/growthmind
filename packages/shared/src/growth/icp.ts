@@ -1,8 +1,12 @@
 import { z } from "zod";
 
+import { STATEMENT_MAX, factProvenanceSchema } from "./provenance";
+
+// What session analysis says about one person's visit. A website cannot answer any of these,
+// which is why they no longer appear in settings — see docs/product-decisions.md §6.
 export const ICP_BELIEF_KINDS = [
   "who_it_is_for",
-  "what_they_believe",
+  "what_they_expected",
   "what_they_are_trying_to_do",
 ] as const;
 
@@ -10,39 +14,27 @@ export type IcpBeliefKind = (typeof ICP_BELIEF_KINDS)[number];
 
 export const icpBeliefKindSchema = z.enum(ICP_BELIEF_KINDS);
 
-export const ICP_SOURCES = ["site", "sessions", "stated_by_customer"] as const;
+const RENAMED_BELIEF_KINDS: Readonly<Record<string, IcpBeliefKind>> = {
+  what_they_believe: "what_they_expected",
+};
 
-export type IcpSource = (typeof ICP_SOURCES)[number];
-
-export const icpSourceSchema = z.enum(ICP_SOURCES);
+// The whole model is read with one safeParse that falls back to an empty one, so a row
+// carrying a pre-rename key would silently empty a customer's table rather than fail loudly.
+export const persistedIcpBeliefKindSchema = z.preprocess(
+  (value) => (typeof value === "string" ? (RENAMED_BELIEF_KINDS[value] ?? value) : value),
+  icpBeliefKindSchema,
+);
 
 export const ICP_BELIEF_LIMIT = 24;
 
-export const ICP_STATEMENT_MAX = 400;
-
-// Where the claim came from and when. O-036: a claim without this is a guess wearing a
-// schema, and §6 applies to us before it applies to a customer.
-export const icpProvenanceSchema = z.object({
-  source: icpSourceSchema,
-
-  at: z.coerce.date(),
-
-  // The page this was read from. Null for anything not read off the site.
-  citation: z.string().max(2048).nullable(),
-});
-
-export type IcpProvenance = z.infer<typeof icpProvenanceSchema>;
-
 export const icpBeliefSchema = z.object({
-  kind: icpBeliefKindSchema,
+  kind: persistedIcpBeliefKindSchema,
 
-  statement: z.string().min(1).max(ICP_STATEMENT_MAX),
+  statement: z.string().min(1).max(STATEMENT_MAX),
 
-  provenance: icpProvenanceSchema,
+  provenance: factProvenanceSchema,
 
-  // What we had said before a person corrected it. A correction is the highest-signal row
-  // in the table, so it keeps what it replaced rather than overwriting it into silence.
-  correctedFrom: z.string().max(ICP_STATEMENT_MAX).nullable(),
+  correctedFrom: z.string().max(STATEMENT_MAX).nullable(),
 });
 
 export type IcpBelief = z.infer<typeof icpBeliefSchema>;
@@ -54,37 +46,3 @@ export const icpModelSchema = z.object({
 export type IcpModel = z.infer<typeof icpModelSchema>;
 
 export const EMPTY_ICP: IcpModel = { beliefs: [] };
-
-export function isCorrection(belief: IcpBelief): boolean {
-  return belief.provenance.source === "stated_by_customer";
-}
-
-export const RESEARCH_STATUSES = ["never_run", "running", "done", "failed"] as const;
-
-export type ResearchStatus = (typeof RESEARCH_STATUSES)[number];
-
-export const researchStatusSchema = z.enum(RESEARCH_STATUSES);
-
-// What the model is asked to return. Kept beside the persisted shape so the two cannot
-// drift: the persisted row adds provenance the model never supplies.
-export const icpReadOutputSchema = z.object({
-  beliefs: z
-    .array(
-      z.object({
-        kind: icpBeliefKindSchema,
-        statement: z.string().min(1).max(ICP_STATEMENT_MAX),
-        citationIndex: z.number().int().nonnegative(),
-      }),
-    )
-    .max(ICP_BELIEF_LIMIT),
-});
-
-export const icpResearchPayloadSchema = z.object({
-  projectId: z.string().min(1),
-});
-
-export type IcpResearchPayload = z.infer<typeof icpResearchPayloadSchema>;
-
-// The worker names the task; the web app queues it. One constant so a typo is a compile
-// error rather than a job nothing is registered to run (D9).
-export const ICP_RESEARCH_TASK = "icp:research";

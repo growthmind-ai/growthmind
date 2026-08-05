@@ -1,4 +1,5 @@
-import type { IcpBeliefKind } from "./icp";
+import type { BusinessFactKind } from "./business";
+import type { FactSeen } from "./provenance";
 import type { SurfaceRole } from "./types";
 
 // One sentence per role, written to be read by a founder and parsed by an agent — §10's
@@ -51,10 +52,10 @@ export const PAGES_SAVED = "Saved.";
 
 export const PAGES_SAVE_FAILED = "That did not save. Try again.";
 
-export const SITE_SECTION_TITLE = "Who your product is for";
+export const BUSINESS_SECTION_TITLE = "Your business";
 
-export const SITE_SECTION_LEAD =
-  "Tell us your website and we will read it to work out who you are building for. You can correct anything we get wrong.";
+export const BUSINESS_SECTION_LEAD =
+  "This is what a coding agent is told before it touches anything of yours. Two kinds of thing live here: what it must never break, and how your product is actually used. We read what we can off your site — the rest only you can answer.";
 
 export const SITE_DOMAIN_LABEL = "Your website";
 
@@ -70,29 +71,103 @@ export const SITE_RUNNING =
 export const SITE_NEVER_RUN = "Nothing read yet.";
 
 export const SITE_NOTHING_FOUND =
-  "We read your site and could not tell who it is for from what is on it. Saying so here is more use than guessing.";
+  "We read your site and it did not tell us much. Everything below is still worth answering yourself — the parts that stop us breaking something are the parts a website never says.";
 
-export const SITE_READ_FROM = "Read from";
+export const BINDING_SECTION_TITLE = "What we must not break";
 
-export const SITE_TOLD_TO_US = "You told us";
+export const BINDING_SECTION_LEAD =
+  "Any one of these can stop a change shipping, whatever it would do to your numbers. This is the part that keeps a growth tool from doing you harm.";
 
-export const ICP_BELIEF_HEADINGS: Record<IcpBeliefKind, string> = {
-  who_it_is_for: "Who it is for",
-  what_they_believe: "What they believe",
-  what_they_are_trying_to_do: "What they are trying to do",
+export const SHAPING_SECTION_TITLE = "How your product gets used";
+
+export const SHAPING_SECTION_LEAD =
+  "None of these block anything. They decide how a change gets built once it is worth building.";
+
+export const BUSINESS_FACT_HEADINGS: Record<BusinessFactKind, string> = {
+  regime: "What rules bind you",
+  forbidden_move: "What we must never do",
+  load_bearing_friction: "What we must never take away",
+  conversion: "What counts as this working",
+  conversion_disqualifier: "What stops it counting",
+  invalidating_period: "When a result cannot be trusted",
+  who_counts: "Whose visits count",
+  decision_cadence: "How often people decide",
+  stake_and_reversibility: "What is at stake each time",
+  arrives_expecting: "What people turn up expecting",
+  catalogue_scale: "How much there is to get through",
+  staleness_tolerance: "How fresh things have to be",
 };
 
-export const BELIEF_CORRECT_ACTION = "Change";
+// One sentence for the person and the agent both — §10's one-output-two-audiences rule.
+export const BUSINESS_FACT_NOTES: Record<BusinessFactKind, string> = {
+  regime:
+    "Rules this product is held to. A change that breaks one of these does not ship, whatever it does to the numbers.",
+  forbidden_move: "Never build this, even somewhere it would work.",
+  load_bearing_friction:
+    "Never take this away to make a number go up. It is in the way on purpose.",
+  conversion: "What a change is trying to move. Anything else moving is not the point.",
+  conversion_disqualifier: "What takes a win back. Count this before calling anything a win.",
+  invalidating_period: "Do not trust a result measured across one of these.",
+  who_counts: "Whose sessions a finding should be counted over.",
+  decision_cadence:
+    "How often the same person comes back to decide, which sets whether speed or care matters more.",
+  stake_and_reversibility:
+    "What one action costs and whether it can be undone, which sets how much confirming to build.",
+  arrives_expecting:
+    "What people already expect on arrival, usually from whatever they used before this.",
+  catalogue_scale: "How much there is to get through, which decides whether browsing works at all.",
+  staleness_tolerance: "How old this product's data may be before showing it is wrong.",
+};
 
-export const BELIEF_REMOVE_ACTION = "Not true of us";
+export const FACT_CLAIM_LABEL = "You say";
 
-export const BELIEF_SAVE_ACTION = "Save";
+export const FACT_OBSERVED_LABEL = "We see";
 
-export const BELIEF_CANCEL_ACTION = "Cancel";
+export const FACT_EDIT_HINT = "Anything we got wrong, click it and type over it.";
 
-export const BELIEF_CORRECTED_NOTE = "You corrected this";
+export const FACT_NONE_READ_YET = "Your site has not been read yet.";
 
-export const BELIEF_EDIT_LABEL = "What is true instead";
+export const FACT_NOTHING_ON_YOUR_SITE = "Your site did not say. Add it if it matters.";
+
+// The five nothing crawls. Saying "not read yet" under one would be waiting for a day that
+// cannot come — no read will ever fill it.
+export const FACT_ONLY_YOU_KNOW = "Only you can answer this one.";
+
+export const FACT_OBSERVED_NONE_YET =
+  "Not answered from what people do yet. This fills in on its own, once enough people have used your product for an answer to mean anything.";
+
+// The same empty lane means something different with nothing attached: it will never fill.
+export const FACT_OBSERVED_NO_SOURCE =
+  "This fills in from what people do in your product, so there is nothing here until your analytics is connected. That is the first thing on this page.";
+
+export const FACT_SEEN_TEMPLATE = "Seen in {sessions} of {of} sessions, {from} to {to}";
+
+// Fixed locale: this is rendered on a server and sent as text to both a browser and an
+// agent, so anything locale-dependent would differ from what was sent.
+const DAY_MONTH = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+
+export function renderSeenSentence(seen: FactSeen): string {
+  return FACT_SEEN_TEMPLATE.replaceAll("{sessions}", String(seen.sessions))
+    .replaceAll("{of}", String(seen.of))
+    .replaceAll("{from}", DAY_MONTH.format(seen.from))
+    .replaceAll("{to}", DAY_MONTH.format(seen.to));
+}
+
+export const FACT_ADD_ACTION = "Add";
+
+export const FACT_ADD_LABEL = "What is true here";
+
+export const FACT_SAVE_ACTION = "Save";
+
+export const FACT_CANCEL_ACTION = "Cancel";
+
+export const FACT_CORRECTED_NOTE = "You corrected this";
+
+export const FACT_EDIT_LABEL = "What is true instead";
+
+export const FACT_REMOVE_ACTION = "Remove";
+
+export const FACT_FULL_FOR_KIND = "That is as many as we will hold for this one.";
 
 export const ALL_GROWTH_MESSAGES: readonly string[] = [
   ...Object.values(SURFACE_ROLE_NOTES),
@@ -108,21 +183,34 @@ export const ALL_GROWTH_MESSAGES: readonly string[] = [
   PAGES_SAVED,
   PAGES_SAVE_FAILED,
   ...PAGES_ROLE_CHOICES.map((choice) => choice.label),
-  SITE_SECTION_TITLE,
-  SITE_SECTION_LEAD,
+  BUSINESS_SECTION_TITLE,
+  BUSINESS_SECTION_LEAD,
   SITE_DOMAIN_LABEL,
   SITE_READ_ACTION,
   SITE_READ_AGAIN_ACTION,
   SITE_RUNNING,
   SITE_NEVER_RUN,
   SITE_NOTHING_FOUND,
-  SITE_READ_FROM,
-  SITE_TOLD_TO_US,
-  ...Object.values(ICP_BELIEF_HEADINGS),
-  BELIEF_CORRECT_ACTION,
-  BELIEF_REMOVE_ACTION,
-  BELIEF_SAVE_ACTION,
-  BELIEF_CANCEL_ACTION,
-  BELIEF_CORRECTED_NOTE,
-  BELIEF_EDIT_LABEL,
+  BINDING_SECTION_TITLE,
+  BINDING_SECTION_LEAD,
+  SHAPING_SECTION_TITLE,
+  SHAPING_SECTION_LEAD,
+  ...Object.values(BUSINESS_FACT_HEADINGS),
+  ...Object.values(BUSINESS_FACT_NOTES),
+  FACT_CLAIM_LABEL,
+  FACT_OBSERVED_LABEL,
+  FACT_EDIT_HINT,
+  FACT_NONE_READ_YET,
+  FACT_NOTHING_ON_YOUR_SITE,
+  FACT_ONLY_YOU_KNOW,
+  FACT_OBSERVED_NONE_YET,
+  FACT_OBSERVED_NO_SOURCE,
+  FACT_ADD_ACTION,
+  FACT_ADD_LABEL,
+  FACT_SAVE_ACTION,
+  FACT_CANCEL_ACTION,
+  FACT_CORRECTED_NOTE,
+  FACT_EDIT_LABEL,
+  FACT_REMOVE_ACTION,
+  FACT_FULL_FOR_KIND,
 ];

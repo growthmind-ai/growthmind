@@ -1,8 +1,9 @@
-// Names the site the ICP is read from, and asks for it to be read. Two effects, one press:
+// Names the site the business context is read from, and asks for it to be read. Two
+// effects, one press:
 // the domain is the thing worth keeping, so it is saved before anything is queued and a
 // queue that cannot be reached costs the read, never the answer.
 import { createGrowthContextRepo, ensureProject, enqueueJob } from "@growthmind/db";
-import { ICP_RESEARCH_TASK, settingsSiteInputSchema } from "@growthmind/shared";
+import { BUSINESS_RESEARCH_TASK, settingsSiteInputSchema } from "@growthmind/shared";
 
 import { resolveFirstRunDeps, type FirstRunRouteDeps } from "@/lib/first-run/deps";
 import { readRequestBody, refuseBody, requireTenant } from "@/lib/first-run/gate";
@@ -46,9 +47,9 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
   });
 
   const queued = await enqueueJob(deps.db, {
-    task: ICP_RESEARCH_TASK,
+    task: BUSINESS_RESEARCH_TASK,
     payload: { projectId },
-    jobKey: `${ICP_RESEARCH_TASK}:${projectId}`,
+    jobKey: `${BUSINESS_RESEARCH_TASK}:${projectId}`,
   });
 
   return Response.json({ saved: true, domain, queued });

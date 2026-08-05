@@ -1,4 +1,4 @@
-import { ICP_RESEARCH_TASK } from "@growthmind/shared";
+import { BUSINESS_RESEARCH_TASK, BUSINESS_RESEARCH_TASK_BEFORE_RENAME } from "@growthmind/shared";
 
 export const TASK = {
   HEARTBEAT: "heartbeat",
@@ -15,7 +15,11 @@ export const TASK = {
 
   GROWTH_CONTEXT_TICK: "growth-context:tick",
 
-  ICP_RESEARCH: ICP_RESEARCH_TASK,
+  BUSINESS_RESEARCH: BUSINESS_RESEARCH_TASK,
+
+  // A job queued under the old name before this deploy has to find a handler, or it retries
+  // against nothing until it exhausts its attempts (D9). Removable once none are left.
+  BUSINESS_RESEARCH_BEFORE_RENAME: BUSINESS_RESEARCH_TASK_BEFORE_RENAME,
 } as const;
 
 export type TaskName = (typeof TASK)[keyof typeof TASK];

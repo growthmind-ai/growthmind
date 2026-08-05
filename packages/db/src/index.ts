@@ -242,6 +242,16 @@ export {
 // reaches the driver through here, so nothing else has to know what the message holds.
 export { describeDriverError } from "./repositories/driver-error";
 
+export { publishLive } from "./live/publish";
+export {
+  subscribeLive,
+  nextBackoffMs,
+  LIVE_RECONNECT_MIN_MS,
+  LIVE_RECONNECT_MAX_MS,
+  type LiveSubscription,
+  type LiveSubscribeDeps,
+} from "./live/subscribe";
+
 export { slackCredentialAad } from "./schema/slack-connections";
 export {
   createFirstRunRepo,
@@ -267,8 +277,9 @@ export {
   type GrowthContextRow,
   type GrowthContextSnapshot,
   type StatePageRoleInput,
-  type SiteResearchRow,
-  type CorrectBeliefInput,
+  type BusinessResearchRow,
+  type StateFactInput,
+  type StateFactOutcome,
   type SaveGrowthContextInput,
 } from "./repositories/growth-context.repo";
 export {

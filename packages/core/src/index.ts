@@ -294,9 +294,9 @@ export {
 } from "./growth/derive";
 
 export {
-  ICP_REFUSALS,
-  admitIcpStatement,
-  admitIcpBeliefs,
-  type IcpRefusal,
-  type IcpAdmission,
-} from "./growth/icp-admission";
+  FACT_REFUSALS,
+  admitStatement,
+  admitBusinessFacts,
+  type FactRefusal,
+  type FactAdmission,
+} from "./growth/fact-admission";
