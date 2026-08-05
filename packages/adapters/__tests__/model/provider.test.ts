@@ -2,34 +2,34 @@ import { describe, expect, test } from "bun:test";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 
-import { createAnthropicModel } from "../../src/anthropic/model";
-import { DEFAULT_COLDSTART_MODEL } from "../../src/anthropic/constants";
-import { createAnthropicSessionSummariser } from "../../src/anthropic/summariser";
+import { createColdstartModel } from "../../src/model/provider";
+import { DEFAULT_COLDSTART_MODEL } from "../../src/model/constants";
+import { createSessionSummariser } from "../../src/model/summariser";
 
-const FAKE_API_KEY = "sk-ant-api03-not-a-real-key-0000000000000000";
+const FAKE_API_KEY = "AIzaSyNotARealKey00000000000000000000000";
 
-const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-anthropic-id";
+const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-gemini-id";
 
 type ModelShape = { readonly modelId: string; readonly provider: string };
 
 function withoutAmbientKey(body: () => void): void {
-  const previousKey = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
+  const previousKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   try {
     body();
   } finally {
     if (previousKey === undefined) {
-      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     } else {
-      process.env.ANTHROPIC_API_KEY = previousKey;
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousKey;
     }
   }
 }
 
-describe("createAnthropicModel — it returns a model object, never a model id", () => {
+describe("createColdstartModel — it returns a model object, never a model id", () => {
   test("the returned value is a model object, not the id string", () => {
     withoutAmbientKey(() => {
-      const model = createAnthropicModel({
+      const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
         resolvedModelId: CONFIGURED_MODEL_ID,
       });
@@ -39,22 +39,22 @@ describe("createAnthropicModel — it returns a model object, never a model id",
     });
   });
 
-  test("the model is bound to the Anthropic provider", () => {
+  test("the model is bound to the Google provider", () => {
     withoutAmbientKey(() => {
-      const model = createAnthropicModel({
+      const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
         resolvedModelId: CONFIGURED_MODEL_ID,
       }) as ModelShape;
 
-      expect(model.provider).toContain("anthropic");
+      expect(model.provider).toContain("google");
     });
   });
 });
 
-describe("createAnthropicModel — the id it selects is the id it was handed", () => {
+describe("createColdstartModel — the id it selects is the id it was handed", () => {
   test("a configured model id reaches the model unchanged", () => {
     withoutAmbientKey(() => {
-      const model = createAnthropicModel({
+      const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
         resolvedModelId: CONFIGURED_MODEL_ID,
       }) as ModelShape;
@@ -65,7 +65,7 @@ describe("createAnthropicModel — the id it selects is the id it was handed", (
 
   test("the default model id, when the caller resolved to it, arrives unchanged too", () => {
     withoutAmbientKey(() => {
-      const model = createAnthropicModel({
+      const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
         resolvedModelId: DEFAULT_COLDSTART_MODEL,
       }) as ModelShape;
@@ -75,18 +75,18 @@ describe("createAnthropicModel — the id it selects is the id it was handed", (
   });
 });
 
-describe("createAnthropicModel — construction, and what it does not do", () => {
+describe("createColdstartModel — construction, and what it does not do", () => {
   test("constructing with a syntactically valid key does not throw and makes no call", () => {
     withoutAmbientKey(() => {
       expect(() =>
-        createAnthropicModel({ apiKey: FAKE_API_KEY, resolvedModelId: CONFIGURED_MODEL_ID }),
+        createColdstartModel({ apiKey: FAKE_API_KEY, resolvedModelId: CONFIGURED_MODEL_ID }),
       ).not.toThrow();
     });
   });
 
   test("the returned model does not serialise the api key", () => {
     withoutAmbientKey(() => {
-      const model = createAnthropicModel({
+      const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
         resolvedModelId: CONFIGURED_MODEL_ID,
       });
@@ -96,15 +96,15 @@ describe("createAnthropicModel — construction, and what it does not do", () =>
   });
 });
 
-describe("createAnthropicModel — the model it returns satisfies the summariser port", () => {
+describe("createColdstartModel — the model it returns satisfies the summariser port", () => {
   const OUTPUT_SCHEMA = z
     .object({ headline: z.string().min(1), context: z.string().min(1) })
     .strict();
 
   test("the factory's output is accepted as the summariser's model", () => {
     withoutAmbientKey(() => {
-      const summariser = createAnthropicSessionSummariser({
-        model: createAnthropicModel({
+      const summariser = createSessionSummariser({
+        model: createColdstartModel({
           apiKey: FAKE_API_KEY,
           resolvedModelId: CONFIGURED_MODEL_ID,
         }),
@@ -117,7 +117,7 @@ describe("createAnthropicModel — the model it returns satisfies the summariser
   });
 
   test("the port renders through the model it was given, with no network", async () => {
-    const summariser = createAnthropicSessionSummariser({
+    const summariser = createSessionSummariser({
       model: new MockLanguageModelV3({
         doGenerate: {
           content: [

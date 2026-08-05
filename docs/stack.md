@@ -37,7 +37,7 @@ outright). Details in [Considered and rejected](#considered-and-rejected).
 | Jobs                      | **Graphile Worker**                                           | MIT              |
 | UI                        | **Mantine v9**                                                | MIT              |
 | Validation                | **Zod v4**                                                    | MIT              |
-| AI                        | **Vercel AI SDK**; Anthropic Batch API for session analysis   | Apache-2.0       |
+| AI                        | **Vercel AI SDK**; Google Gemini for session analysis         | Apache-2.0       |
 | Analytics store           | **Postgres now**; ClickHouse only when event volume forces it | —                |
 | Our licence               | **MIT**                                                       | —                |
 

@@ -9,7 +9,7 @@ import {
   MODEL_REQUEST_TIMEOUT_MS,
 } from "./constants";
 import { mapSummaryError, summaryFailure } from "./errors";
-import type { AnthropicSummariserDeps } from "./deps";
+import type { SummariserDeps } from "./deps";
 
 export interface SummariseInput {
   readonly finalClass: string;
@@ -113,7 +113,7 @@ function usageFromError(error: unknown): SummaryUsage {
   });
 }
 
-export function createAnthropicSessionSummariser(deps: AnthropicSummariserDeps): SessionSummariser {
+export function createSessionSummariser(deps: SummariserDeps): SessionSummariser {
   return {
     async render(input: SummariseInput): Promise<SummaryRenderResult> {
       try {

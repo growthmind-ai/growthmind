@@ -77,7 +77,7 @@ services:
       # never renders, and a founder is quietly handed the pasted-token path on
       # an installation that HAS a Slack app. Nothing errors. That is a
       # producer/consumer break one layer below the code, and the worker's
-      # `ANTHROPIC_API_KEY` block already carries the same warning.
+      # `GOOGLE_GENERATIVE_AI_API_KEY` block already carries the same warning.
       #
       # `SLACK_CLIENT_ID:` and NOT `"${SLACK_CLIENT_ID:-}"`. Both are
       # `.min(1).optional()` in `packages/shared/src/env.ts`, so the fallback
@@ -154,7 +154,7 @@ services:
       # would then crash the worker at startup instead of doing what it does
       # today — see no key, select the no-key branch, and ship every finding
       # carrying its numbers with no written explanation attached.
-      ANTHROPIC_API_KEY:
+      GOOGLE_GENERATIVE_AI_API_KEY:
       GROWTHMIND_COLDSTART_MODEL:
     depends_on:
       postgres:

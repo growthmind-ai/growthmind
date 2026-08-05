@@ -5,7 +5,7 @@
   "description": "Graphile Worker process — analysis pipeline, batch polling, scheduled rollups.",
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/main.ts",
+    "dev": "bun --watch --env-file=../.env src/main.ts",
     "start": "bun src/main.ts",
     "typecheck": "tsc --noEmit"
   },

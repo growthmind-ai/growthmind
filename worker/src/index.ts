@@ -2,9 +2,9 @@ import type { TaskList } from "graphile-worker";
 
 import {
   DEFAULT_COLDSTART_MODEL,
-  createAnthropicModel,
-  createAnthropicSessionSummariser,
+  createColdstartModel,
   createIcpResearcher,
+  createSessionSummariser,
   createSlackDeliveryPoster,
   fetchSite,
 } from "@growthmind/adapters";
@@ -125,7 +125,7 @@ type AnalysisComposition = {
 };
 
 function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
-  const apiKey = env.ANTHROPIC_API_KEY;
+  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (apiKey === undefined) {
     return null;
   }
@@ -133,8 +133,8 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
   const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
 
   return {
-    port: createAnthropicSessionSummariser({
-      model: createAnthropicModel({ apiKey, resolvedModelId }),
+    port: createSessionSummariser({
+      model: createColdstartModel({ apiKey, resolvedModelId }),
       resolvedModelId,
       outputSchema: modelSummaryOutputSchema,
     }),
@@ -145,7 +145,7 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
 // Absent key, absent researcher: the task records "no model configured" rather than
 // leaving a person watching a spinner that will never resolve.
 function resolveIcpResearcher(env: WorkerEnv): IcpResearcherPort | null {
-  const apiKey = env.ANTHROPIC_API_KEY;
+  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (apiKey === undefined) {
     return null;
   }
@@ -153,7 +153,7 @@ function resolveIcpResearcher(env: WorkerEnv): IcpResearcherPort | null {
   const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
 
   return createIcpResearcher({
-    model: createAnthropicModel({ apiKey, resolvedModelId }),
+    model: createColdstartModel({ apiKey, resolvedModelId }),
     resolvedModelId,
     outputSchema: icpReadOutputSchema,
   });

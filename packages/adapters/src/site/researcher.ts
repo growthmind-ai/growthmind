@@ -8,7 +8,7 @@ import {
   CANDIDATE_DATA_DELIMITER,
   MODEL_CALL_MAX_RETRIES,
   MODEL_REQUEST_TIMEOUT_MS,
-} from "../anthropic/constants";
+} from "../model/constants";
 import type { FetchedPage } from "./fetch";
 
 export interface ReadBelief {

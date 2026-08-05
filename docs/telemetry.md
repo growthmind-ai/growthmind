@@ -14,14 +14,14 @@ can check.
 Every network destination is one you configured, using your credential, and
 Growthmind has no path to any of them:
 
-| Destination                               | Why                                                          | Optional? |
-| ----------------------------------------- | ------------------------------------------------------------ | --------- |
-| Your Postgres (`DATABASE_URL`)            | The database. Everything lives here                          | Required  |
-| Your model provider (`ANTHROPIC_API_KEY`) | Session analysis. Your key, your budget (§12)                | Optional  |
-| Your Slack workspace                      | Where findings are delivered (§10)                           | Optional  |
-| Your analytics, if you connect one        | Reading events you already collect (§11)                     | Optional  |
-| Your repo host, read-only                 | Context for fix specs. Source is never stored                | Optional  |
-| Your own website, read-only               | Reading who your product is for (§1). Pages are never stored | Optional  |
+| Destination                                          | Why                                                          | Optional? |
+| ---------------------------------------------------- | ------------------------------------------------------------ | --------- |
+| Your Postgres (`DATABASE_URL`)                       | The database. Everything lives here                          | Required  |
+| Your model provider (`GOOGLE_GENERATIVE_AI_API_KEY`) | Session analysis. Your key, your budget (§12)                | Optional  |
+| Your Slack workspace                                 | Where findings are delivered (§10)                           | Optional  |
+| Your analytics, if you connect one                   | Reading events you already collect (§11)                     | Optional  |
+| Your repo host, read-only                            | Context for fix specs. Source is never stored                | Optional  |
+| Your own website, read-only                          | Reading who your product is for (§1). Pages are never stored | Optional  |
 
 Leave the optional ones unset and the stack still boots and runs. That is what
 "graceful absence" means in [`AGENTS.md`](../AGENTS.md). None of these routes
