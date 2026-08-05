@@ -367,6 +367,20 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect([...html.matchAll(/role="tabpanel"/g)]).toHaveLength(1);
   });
 
+  // The select this replaced carried the prompt as its `label`. A tablist has no
+  // such slot, so the name has to be pointed at or a reader hears "tab list" alone.
+  test("the tab strip is named by the pick prompt, as the select it replaced was", async () => {
+    const html = await panelMarkup(CHOOSE);
+    const pickPrompt = await message("AGENT_PICK_PROMPT");
+
+    const tablist = /<[^>]*\srole="tablist"[^>]*>/.exec(html)?.[0] ?? "";
+    const labelledBy = /\saria-labelledby="([^"]+)"/.exec(tablist)?.[1] ?? null;
+    expect(labelledBy).not.toBeNull();
+
+    const namer = new RegExp(`<[^>]*\\sid="${labelledBy}"[^>]*>([^<]*)`).exec(html);
+    expect(namer?.[1]).toBe(pickPrompt);
+  });
+
   // The key is minted per workspace, not per assistant (the route names the
   // provider only to label the row), so nothing above the tabs may claim one.
   test("the mint label names no assistant, and leads the tab strip that picks one", async () => {
