@@ -20,6 +20,7 @@ import { detectorProposedClassSchema, findingClassSchema } from "../../src/rules
 
 const SRC_DIR = `${import.meta.dir}/../../src`;
 const DETECT_DIR = `${SRC_DIR}/detect`;
+const SPINE_DIR = `${SRC_DIR}/spine`;
 
 type CodeToken = {
   readonly module: string;
@@ -65,16 +66,19 @@ function scanSource(module: string, raw: string): ScannedModule {
   return { module, raw, code, tokens: codeTokens(module, code) };
 }
 
-async function scanDirectory(dir: string): Promise<readonly ScannedModule[]> {
+async function scanDirectory(dir: string, prefix = ""): Promise<readonly ScannedModule[]> {
   const names = [...new Bun.Glob("*.ts").scanSync({ cwd: dir })].toSorted();
   const scanned: ScannedModule[] = [];
   for (const name of names) {
-    scanned.push(scanSource(name, await Bun.file(`${dir}/${name}`).text()));
+    scanned.push(scanSource(`${prefix}${name}`, await Bun.file(`${dir}/${name}`).text()));
   }
   return scanned;
 }
 
-const DETECT_MODULES: readonly ScannedModule[] = await scanDirectory(DETECT_DIR);
+const DETECT_MODULES: readonly ScannedModule[] = [
+  ...(await scanDirectory(DETECT_DIR)),
+  ...(await scanDirectory(SPINE_DIR, "spine/")),
+];
 const DETECT_TOKENS: readonly CodeToken[] = DETECT_MODULES.flatMap((mod) => mod.tokens);
 
 const NOT_BUILT_NAMES: ReadonlySet<string> = new Set(
@@ -384,12 +388,12 @@ function candidatesOver(
   );
 }
 
-describe("src/detect contains no barred click proxy", () => {
-  test("should contain no $autocapture literal anywhere under src/detect", () => {
+describe("the analysis modules contain no barred click proxy", () => {
+  test("should contain no $autocapture literal anywhere under src/detect or src/spine", () => {
     expect(offenders(DETECT_TOKENS, AUTOCAPTURE, { exemptDocumentedAbsence: false })).toEqual([]);
   });
 
-  test("should contain no $rageclick, $dead_click, or $dead_swipe literal anywhere under src/detect", () => {
+  test("should contain no $rageclick, $dead_click, or $dead_swipe literal anywhere under src/detect or src/spine", () => {
     expect(
       offenders(DETECT_TOKENS, VENDOR_CLICK_EVENT, { exemptDocumentedAbsence: false }),
     ).toEqual([]);
@@ -405,7 +409,7 @@ describe("src/detect contains no barred click proxy", () => {
     }
   });
 
-  test("should contain no time-clustered click-burst predicate anywhere under src/detect", () => {
+  test("should contain no time-clustered click-burst predicate anywhere under src/detect or src/spine", () => {
     expect(offenders(DETECT_TOKENS, CLUSTERING_CONCEPT, { exemptDocumentedAbsence: true })).toEqual(
       [],
     );
@@ -444,6 +448,9 @@ describe("src/detect contains no barred click proxy", () => {
       "not-built.ts",
       "order.ts",
       "types.ts",
+      "spine/spine.ts",
+      "spine/types.ts",
+      "spine/walk.ts",
     ]);
 
     const identifiers = new Set(
@@ -521,7 +528,7 @@ describe("src/detect contains no barred click proxy", () => {
 });
 
 describe("no T1 detector may propose changed_mind", () => {
-  test("should contain no changed_mind literal in any module under src/detect", async () => {
+  test("should contain no changed_mind literal in any module under src/detect or src/spine", async () => {
     expect(offenders(DETECT_TOKENS, CHANGED_MIND, { exemptDocumentedAbsence: false })).toEqual([]);
 
     const gate = scanSource("gate.ts", await Bun.file(`${SRC_DIR}/evidence/gate.ts`).text());
