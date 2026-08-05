@@ -388,11 +388,12 @@ function buildNotesMarkdown(state: RunState): string {
     "",
     "## Result",
     "",
-    "| Row | Status | Finding |",
-    "| --- | --- | --- |",
-    ...pins.map(
-      (entry) => `| ${entry.row} | ${entry.status} | ${entry.note.replaceAll("|", "\\|")} |`,
-    ),
+    // A list, not a table: prettier realigns table pipes, so a generated table fails
+    // `format:check` the moment this file is written.
+    ...pins.flatMap((entry) => [`- **${entry.row} — ${entry.status}.** ${entry.note}`, ""]),
+    "A row can only pin what the account holds. Rows 2 to 4 read a recording's own shape,",
+    "so they stay unpinned until capture has sent at least one recording; re-run the probe",
+    "once it has.",
     "",
   ];
   return lines.join("\n");

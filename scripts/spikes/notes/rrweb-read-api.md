@@ -1,39 +1,21 @@
-# Spike — rrweb.com read API shape probe (NOT YET RUN)
+# Spike — rrweb.com read API shape probe
 
-**Status: placeholder.** No read-scoped key has existed yet to run
-`scripts/spikes/rrweb-shape-probe.ts` for real. Nothing below is observed — it
-is the set of questions the probe will answer once Tom mints a key with the
-`read:recordingMetadata` scope at app.rrweb.com/api-keys and sets
-`RRWEB_READ_API_KEY`. Absent notes here are not a verified API; they are an
-unrun probe. Running the script overwrites this file with real findings —
-until it has, do not treat `packages/adapters/src/rrweb/parse.ts` or
-`constants.ts` as pinned against the live API.
+**Run:** 2026-08-05, against `https://api.rrweb.com` with a live read-scoped key. Read-only; no writes were made.
 
-## What the live probe on 2026-08-04 established
+**Question it settles:** the recordings envelope, id key, cursor shape, and events envelope in `packages/adapters/src/rrweb/parse.ts` were written tolerant because a live probe on 2026-08-04 (before a read-scoped key existed) returned 401 `missing scope read:recordingMetadata` on every read endpoint. This file is that probe's real output.
 
-A live probe using the capture-side public key returned 401
-`missing scope read:recordingMetadata` on every read endpoint tried. That
-attempt pinned nothing about the read API's shape — it only confirmed that
-reading recordings needs a separate, read-scoped key, distinct from the
-capture-side `NEXT_PUBLIC_RRWEB_PUBLIC_KEY`.
+## Result
 
-## Questions this probe will settle, once it runs
+- **ROW 1 Base path — PINNED.** `/recordings` answers 200 with this key (untried: /rr/recordings)
 
-| Row   | Question                                                     | Current adapter assumption                                                                                                                                                                                                                                                                                                                                                                                    |
-| ----- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ROW 1 | Base path: `/recordings` or `/rr/recordings`?                | `/recordings` (`RECORDINGS_PATH` in `packages/adapters/src/rrweb/constants.ts`)                                                                                                                                                                                                                                                                                                                               |
-| ROW 2 | Recordings list envelope, id key, timestamp keys             | tolerant of `recordings\|results\|data\|items` and `id\|recordingId\|recording_id` (`parse.ts`)                                                                                                                                                                                                                                                                                                               |
-| ROW 3 | Pagination cursor key, absolute URL vs opaque token          | tolerant of `next\|nextCursor\|next_cursor`, but treated as a same-origin absolute URL (`cursorOf` in `parse.ts`) — an opaque token would currently be dropped as malformed, ending pagination after one page                                                                                                                                                                                                 |
-| ROW 4 | Events endpoint envelope, bare `{type,timestamp,data}` items | tolerant of `events\|results\|data`; items parsed against `rrwebEventSchema`                                                                                                                                                                                                                                                                                                                                  |
-| ROW 5 | 401/403/404/429 body shapes                                  | mapped in `errors.ts` by status code alone, plus a `missing scope` string match on 401                                                                                                                                                                                                                                                                                                                        |
-| ROW 6 | Recordings list order: newest-first or oldest-first?         | unverified either way — `listRecordings` in `replay-source.ts` filters every recording at-or-before `sinceAt` out of the returned array regardless of order, and only stops early on `watermark` when a page's first item is after `sinceAt` and its last is at-or-before it; a reversed order that never produces that shape falls through to the `MAX_PAGES_PER_RUN` page cap instead of a false early stop |
+- **ROW 2 Recordings envelope — FAILED-TO-PIN.** envelope is { recordings: [...] } but no item carried id|recordingId|recording_id, or the list was empty (0 item(s))
 
-## How to run it
+- **ROW 3 Cursor — FAILED-TO-PIN.** no key among next|nextCursor|next_cursor carried a non-empty string on the recordings response
 
-```bash
-RRWEB_READ_API_KEY=<read-scoped key> bun scripts/spikes/rrweb-shape-probe.ts
-```
+- **ROW 4 Events envelope — FAILED-TO-PIN.** no confirmed base path and recording id from ROW 1/ROW 2 to probe events against
 
-`RRWEB_HOST` defaults to `https://api.rrweb.com`; override it only if the
-account's read API is served elsewhere. The script never prints the key, and
-every request is bounded — no burst, no unbounded retry.
+- **ROW 5 Error shapes — PINNED.** wrong-key request -> 401 (body logged above); bogus-recording-id request -> not attempted (no recording id). 403 and 429 are not deliberately triggered — this probe never bursts — so they are pinned only if one appeared incidentally above
+
+A row can only pin what the account holds. Rows 2 to 4 read a recording's own shape,
+so they stay unpinned until capture has sent at least one recording; re-run the probe
+once it has.
