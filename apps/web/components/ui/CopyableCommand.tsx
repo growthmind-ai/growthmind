@@ -24,21 +24,21 @@ interface CopyableCommandProps {
 export function CopyableCommand(props: CopyableCommandProps) {
   const labelId = useId();
 
+  // `flex-start`, not `stretch`: the command wraps to two or three lines, and a
+  // Copy button stretched down all of them is the tallest thing on the page.
   return (
-    <Group gap="xs" wrap="nowrap" align="stretch">
+    <Group gap="xs" wrap="nowrap" align="flex-start">
       <VisuallyHidden id={labelId}>{props.copyLabel}</VisuallyHidden>
 
       <Code
-        fz="sm"
+        fz="xs"
         px="sm"
         py={8}
         style={{
           flex: 1,
           minWidth: 0,
-          overflowX: "auto",
-          whiteSpace: "nowrap",
-          display: "flex",
-          alignItems: "center",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
         }}
       >
         {props.command}

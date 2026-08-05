@@ -322,7 +322,7 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
 
     const preMint = await message("AGENT_PRE_MINT_LINE");
     const pickPrompt = await message("AGENT_PICK_PROMPT");
-    const mintTemplate = await message("AGENT_MINT_TEMPLATE");
+    const mintLabel = await message("AGENT_MINT_LABEL");
     const pasteTemplate = await message("AGENT_PASTE_INTO_TEMPLATE");
     const cursor = await configFor("cursor");
 
@@ -334,11 +334,8 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect(text).toContain(cursor.path);
     expect(text.toLowerCase()).toContain(cursor.format);
 
-    const primary = buttons(html).filter((button) =>
-      button.text.includes(before(mintTemplate, "assistant")),
-    );
+    const primary = buttons(html).filter((button) => button.text === mintLabel);
     expect(primary).toHaveLength(1);
-    expect(primary[0]?.text).toContain(fill(mintTemplate, "assistant", displayNameOf("cursor")));
 
     expect(codeBlocks(html)).toEqual([]);
     expect(html).not.toContain(MCP_URL);
@@ -346,7 +343,9 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect(html).not.toContain(await message("AGENT_COPY_KEY_LABEL"));
   });
 
-  test("choose puts all five assistants in the server markup, so the options exist without JS", async () => {
+  // The picker is a tab strip over the block, so the five are five `role="tab"`
+  // buttons rather than five `<option>`s — still all in the server markup.
+  test("choose puts all five assistants in the server markup, one of them selected", async () => {
     const html = await panelMarkup(CHOOSE);
     const text = textOf(html);
 
@@ -356,7 +355,33 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
       expect({ id, offered: text.includes(displayNameOf(id)) }).toEqual({ id, offered: true });
     }
 
-    expect([...html.matchAll(/<option\b/g)]).toHaveLength(ORDER.length);
+    const tabs = buttons(html).filter((button) => /\srole="tab"/.test(button.attrs));
+    expect(tabs).toHaveLength(ORDER.length);
+    expect(tabs.map((tab) => tab.text)).toEqual(ORDER.map(displayNameOf));
+
+    const selected = tabs.filter((tab) => /\saria-selected="true"/.test(tab.attrs));
+    expect(selected).toHaveLength(1);
+    expect(selected[0]?.text).toBe(displayNameOf("cursor"));
+
+    expect([...html.matchAll(/role="tablist"/g)]).toHaveLength(1);
+    expect([...html.matchAll(/role="tabpanel"/g)]).toHaveLength(1);
+  });
+
+  // The key is minted per workspace, not per assistant (the route names the
+  // provider only to label the row), so nothing above the tabs may claim one.
+  test("the mint label names no assistant, and leads the tab strip that picks one", async () => {
+    const html = await panelMarkup(CHOOSE);
+    const mintLabel = await message("AGENT_MINT_LABEL");
+    const pickPrompt = await message("AGENT_PICK_PROMPT");
+
+    for (const id of ORDER) {
+      expect({ id, claimed: mintLabel.includes(displayNameOf(id)) }).toEqual({
+        id,
+        claimed: false,
+      });
+    }
+
+    expect(html.indexOf(mintLabel)).toBeLessThan(html.indexOf(pickPrompt));
   });
 
   test("every file-based provider names its own config path in choose", async () => {
@@ -597,10 +622,8 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     expect(text).toContain(await message("AGENT_CONNECTED_ORG_LINE"));
     expect(text).toContain(await message("AGENT_EMPTY_IS_FINE_LINE"));
 
-    const mintTemplate = await message("AGENT_MINT_TEMPLATE");
-    expect(
-      buttons(html).filter((button) => button.text.includes(before(mintTemplate, "assistant"))),
-    ).toEqual([]);
+    const mintLabel = await message("AGENT_MINT_LABEL");
+    expect(buttons(html).filter((button) => button.text === mintLabel)).toEqual([]);
 
     expect(codeBlocks(html)).toEqual([]);
     expect(html).not.toContain("gmak_");
@@ -713,13 +736,12 @@ describe("the agent panel body, one row per First-Run Checklist row (O-026)", ()
     const text = textOf(html);
 
     const failure = await message("AGENT_MINT_FAILED_LINE");
-    const mintTemplate = await message("AGENT_MINT_TEMPLATE");
-    const mintLabel = fill(mintTemplate, "assistant", displayNameOf("cursor"));
+    const mintLabel = await message("AGENT_MINT_LABEL");
 
     expect(text).toContain(failure);
     expect(text.indexOf(failure)).toBeLessThan(text.indexOf(mintLabel));
 
-    const primary = buttons(html).filter((button) => button.text.includes(mintLabel));
+    const primary = buttons(html).filter((button) => button.text === mintLabel);
     expect(primary).toHaveLength(1);
     expect(primary[0]?.disabled).toBe(false);
   });

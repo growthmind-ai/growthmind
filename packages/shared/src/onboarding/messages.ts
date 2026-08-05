@@ -349,8 +349,10 @@ export const AGENT_PAGE_LEDE =
 
 export const AGENT_PICK_PROMPT = "Which assistant writes your code?";
 
+// One key, then the block for whichever assistant you use: the mint is not per
+// assistant, so the line says so before the tabs below it invite a second one.
 export const AGENT_PRE_MINT_LINE =
-  "The key goes in one config file on your machine. Nothing is installed, and nothing here changes your code.";
+  "One key works with every assistant. It goes in one config file on your machine, nothing is installed, and nothing here changes your code.";
 
 export const AGENT_PASTE_INTO_TEMPLATE = "Paste this into {path}";
 
@@ -359,7 +361,7 @@ export const AGENT_PASTE_INTO_TEMPLATE = "Paste this into {path}";
 export const AGENT_RUN_ANYWHERE_LINE =
   "Run this once, anywhere on your machine. It goes in your own config rather than this project's, so your assistant finds it in every project.";
 
-export const AGENT_MINT_TEMPLATE = "Create a key for {assistant}";
+export const AGENT_MINT_LABEL = "Create a key";
 
 export const AGENT_MINT_PENDING = "Creating a key…";
 
@@ -643,7 +645,7 @@ export const ONBOARDING_MESSAGES = {
   agentPreMintLine: AGENT_PRE_MINT_LINE,
   agentPasteIntoTemplate: AGENT_PASTE_INTO_TEMPLATE,
   agentRunAnywhereLine: AGENT_RUN_ANYWHERE_LINE,
-  agentMintTemplate: AGENT_MINT_TEMPLATE,
+  agentMintLabel: AGENT_MINT_LABEL,
   agentMintPending: AGENT_MINT_PENDING,
   agentMintAgainLabel: AGENT_MINT_AGAIN_LABEL,
   agentMintFailedLine: AGENT_MINT_FAILED_LINE,
@@ -819,7 +821,7 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   AGENT_PRE_MINT_LINE,
   AGENT_PASTE_INTO_TEMPLATE,
   AGENT_RUN_ANYWHERE_LINE,
-  AGENT_MINT_TEMPLATE,
+  AGENT_MINT_LABEL,
   AGENT_MINT_PENDING,
   AGENT_MINT_AGAIN_LABEL,
   AGENT_MINT_FAILED_LINE,

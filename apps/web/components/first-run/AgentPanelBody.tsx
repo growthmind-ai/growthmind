@@ -5,8 +5,8 @@ import {
   Collapse,
   CopyButton,
   Group,
-  NativeSelect,
   Stack,
+  Tabs,
   Text,
   VisuallyHidden,
 } from "@mantine/core";
@@ -34,8 +34,8 @@ import {
   AGENT_KEY_PLACEHOLDER,
   AGENT_MINT_AGAIN_LABEL,
   AGENT_MINT_FAILED_LINE,
+  AGENT_MINT_LABEL,
   AGENT_MINT_PENDING,
-  AGENT_MINT_TEMPLATE,
   AGENT_PASTE_INTO_TEMPLATE,
   AGENT_PICK_PROMPT,
   AGENT_PRE_MINT_LINE,
@@ -100,10 +100,8 @@ const STATUS_LINES: Readonly<Record<AgentPanelState, string | null>> = {
 const KEY_BOX_STYLE: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  overflowX: "auto",
-  whiteSpace: "nowrap",
-  display: "flex",
-  alignItems: "center",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
   border: "1px solid var(--mantine-color-default-border)",
   borderRadius: "var(--mantine-radius-sm)",
   background: "var(--mantine-color-default)",
@@ -125,19 +123,38 @@ function withCommand(template: string, command: string): string {
   return template.split("{command}").join(command);
 }
 
-function AssistantPicker(props: {
+// The key is the workspace's and works with any of the five, so the assistant only
+// picks which block to paste — a tab strip over that block, not a gate before it.
+function AssistantTabs(props: {
   readonly provider: AgentProviderId;
   readonly providerOrder: readonly AgentProviderId[];
   readonly onPick: (id: AgentProviderId) => void;
+  readonly children: ReactNode;
 }) {
   return (
-    <NativeSelect
-      label={AGENT_PICK_PROMPT}
+    <Tabs
       value={props.provider}
-      onChange={(event) => props.onPick(event.currentTarget.value as AgentProviderId)}
-      data={props.providerOrder.map((id) => ({ value: id, label: providerDisplayName(id) }))}
-      styles={{ input: tapTargetStyle }}
-    />
+      onChange={(value) => props.onPick((value ?? props.provider) as AgentProviderId)}
+      variant="outline"
+    >
+      <Text size="sm" fw={600} mb="xs">
+        {AGENT_PICK_PROMPT}
+      </Text>
+
+      <Tabs.List>
+        {props.providerOrder.map((id) => (
+          <Tabs.Tab key={id} value={id} style={tapTargetStyle}>
+            {providerDisplayName(id)}
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
+
+      {/* One panel, and always the active one: five would put four other assistants'
+          config blocks in the markup with a copy control beside each. */}
+      <Tabs.Panel value={props.provider} pt="md">
+        {props.children}
+      </Tabs.Panel>
+    </Tabs>
   );
 }
 
@@ -284,7 +301,7 @@ function KeyRow(props: { readonly rawKey: string; readonly onCopied: () => void 
         {AGENT_KEY_LABEL}
       </Text>
 
-      <Group gap="xs" wrap="nowrap" align="stretch">
+      <Group gap="xs" wrap="nowrap" align="flex-start">
         <Text component="span" ff="monospace" fz="sm" px="sm" py={8} style={KEY_BOX_STYLE}>
           {props.rawKey}
         </Text>
@@ -320,16 +337,18 @@ function RevokeControl(props: { readonly onRevoke: () => void }) {
   );
 }
 
+// The mint leads, because it is the same key whichever tab is open: choosing an
+// assistant first would ask for a decision the key does not depend on.
 function ChooseBody(props: {
   readonly provider: AgentProviderId;
+  readonly providerOrder: readonly AgentProviderId[];
   readonly pending: boolean;
   readonly onMint: () => void;
+  readonly onPickProvider: (id: AgentProviderId) => void;
 }) {
   return (
-    <Stack gap="sm">
+    <Stack gap="md">
       <Text size="sm">{AGENT_PRE_MINT_LINE}</Text>
-
-      <PathLine config={agentProviderConfig(props.provider)} />
 
       <Group justify="flex-start">
         <Button
@@ -339,34 +358,50 @@ function ChooseBody(props: {
           style={tapTargetStyle}
           w={{ base: "100%", xs: "auto" }}
         >
-          {props.pending ? AGENT_MINT_PENDING : withAssistant(AGENT_MINT_TEMPLATE, props.provider)}
+          {props.pending ? AGENT_MINT_PENDING : AGENT_MINT_LABEL}
         </Button>
       </Group>
+
+      <AssistantTabs
+        provider={props.provider}
+        providerOrder={props.providerOrder}
+        onPick={props.onPickProvider}
+      >
+        <PathLine config={agentProviderConfig(props.provider)} />
+      </AssistantTabs>
     </Stack>
   );
 }
 
 function RevealBody(props: {
   readonly provider: AgentProviderId;
+  readonly providerOrder: readonly AgentProviderId[];
   readonly mcpUrl: string;
   readonly rawKey: string | null;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly onPickProvider: (id: AgentProviderId) => void;
   readonly onCopyKey: () => void;
   readonly onCopyBlock: () => void;
 }) {
   return (
-    <Stack gap="sm">
+    <Stack gap="md">
       {props.rawKey === null ? null : <KeyRow rawKey={props.rawKey} onCopied={props.onCopyKey} />}
 
-      <BlockSection
+      <AssistantTabs
         provider={props.provider}
-        mcpUrl={props.mcpUrl}
-        rawKey={props.rawKey}
-        fileFormOpen={props.fileFormOpen}
-        onToggleFileForm={props.onToggleFileForm}
-        onCopied={props.onCopyBlock}
-      />
+        providerOrder={props.providerOrder}
+        onPick={props.onPickProvider}
+      >
+        <BlockSection
+          provider={props.provider}
+          mcpUrl={props.mcpUrl}
+          rawKey={props.rawKey}
+          fileFormOpen={props.fileFormOpen}
+          onToggleFileForm={props.onToggleFileForm}
+          onCopied={props.onCopyBlock}
+        />
+      </AssistantTabs>
 
       <Text size="sm" c="dimmed">
         {AGENT_WAITING_NEXT}
@@ -377,11 +412,13 @@ function RevealBody(props: {
 
 function WaitingBody(props: {
   readonly provider: AgentProviderId;
+  readonly providerOrder: readonly AgentProviderId[];
   readonly mcpUrl: string;
   readonly onMint: () => void;
   readonly onRevoke: () => void;
   readonly fileFormOpen: boolean;
   readonly onToggleFileForm: () => void;
+  readonly onPickProvider: (id: AgentProviderId) => void;
   readonly onCopyBlock: () => void;
 }) {
   // Only a block that carries the key has a hole where it goes. Copilot's editor
@@ -389,7 +426,7 @@ function WaitingBody(props: {
   const holed = agentProviderConfig(props.provider).keyDelivery === "in-block";
 
   return (
-    <Stack gap="sm">
+    <Stack gap="md">
       <Text size="sm" c="dimmed">
         {AGENT_KEY_GONE_NOTICE}
       </Text>
@@ -399,14 +436,20 @@ function WaitingBody(props: {
         </Text>
       ) : null}
 
-      <BlockSection
+      <AssistantTabs
         provider={props.provider}
-        mcpUrl={props.mcpUrl}
-        rawKey={null}
-        fileFormOpen={props.fileFormOpen}
-        onToggleFileForm={props.onToggleFileForm}
-        onCopied={props.onCopyBlock}
-      />
+        providerOrder={props.providerOrder}
+        onPick={props.onPickProvider}
+      >
+        <BlockSection
+          provider={props.provider}
+          mcpUrl={props.mcpUrl}
+          rawKey={null}
+          fileFormOpen={props.fileFormOpen}
+          onToggleFileForm={props.onToggleFileForm}
+          onCopied={props.onCopyBlock}
+        />
+      </AssistantTabs>
 
       <Group justify="flex-start">
         <Button variant="default" size="compact-sm" onClick={props.onMint} style={tapTargetStyle}>
@@ -461,10 +504,12 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
       return (
         <RevealBody
           provider={props.provider}
+          providerOrder={props.providerOrder}
           mcpUrl={props.mcpUrl}
           rawKey={props.rawKey}
           fileFormOpen={props.fileFormOpen}
           onToggleFileForm={props.onToggleFileForm}
+          onPickProvider={props.onPickProvider}
           onCopyKey={props.onCopyKey}
           onCopyBlock={props.onCopyBlock}
         />
@@ -474,11 +519,13 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
       return (
         <WaitingBody
           provider={props.provider}
+          providerOrder={props.providerOrder}
           mcpUrl={props.mcpUrl}
           onMint={props.onMint}
           onRevoke={props.onRevoke}
           fileFormOpen={props.fileFormOpen}
           onToggleFileForm={props.onToggleFileForm}
+          onPickProvider={props.onPickProvider}
           onCopyBlock={props.onCopyBlock}
         />
       );
@@ -493,8 +540,10 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
       return (
         <ChooseBody
           provider={props.provider}
+          providerOrder={props.providerOrder}
           pending={props.state === "minting"}
           onMint={props.onMint}
+          onPickProvider={props.onPickProvider}
         />
       );
   }
@@ -506,12 +555,6 @@ function stateBody(props: AgentPanelBodyProps): ReactNode {
 export function AgentPanelBody(props: AgentPanelBodyProps) {
   return (
     <Stack gap="md">
-      <AssistantPicker
-        provider={props.provider}
-        providerOrder={props.providerOrder}
-        onPick={props.onPickProvider}
-      />
-
       <Text size="sm" aria-live="polite">
         {STATUS_LINES[props.state]}
       </Text>
