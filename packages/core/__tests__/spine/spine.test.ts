@@ -41,7 +41,7 @@ describe("buildStepSpine — the canonical order", () => {
     expect(pathsOf(spine)).toEqual([ORIGIN, "/z", "/a", "/b"]);
   });
 
-  test("an offset tie breaks toward the step more sessions reached, never toward insertion order", () => {
+  test("steps at one offset are listed more-reached first, but share a rank rather than being ordered", () => {
     const spine = buildStepSpine(
       [
         sessionOf("s1", [ORIGIN, "/rare"]),
@@ -53,15 +53,17 @@ describe("buildStepSpine — the canonical order", () => {
     );
 
     expect(pathsOf(spine)).toEqual([ORIGIN, "/common", "/rare"]);
+    expect(spine.steps.map((step) => step.index)).toEqual([0, 1, 1]);
   });
 
-  test("a tie on offset and reach breaks by path, so the order is stable across runs", () => {
+  test("a tie on offset and reach lists by path for stability, and still shares one rank", () => {
     const spine = buildStepSpine(
       [sessionOf("s1", [ORIGIN, "/b"]), sessionOf("s2", [ORIGIN, "/a"])],
       ORIGIN,
     );
 
     expect(pathsOf(spine)).toEqual([ORIGIN, "/a", "/b"]);
+    expect(spine.steps.map((step) => step.index)).toEqual([0, 1, 1]);
   });
 
   test("sessionsReaching counts sessions, not visits, so one session revisiting counts once", () => {
@@ -132,6 +134,46 @@ describe("buildStepSpine — the spine is the dominant path, not every branch", 
     expect(buildStepSpine([sessionOf("s1", [ORIGIN])], ORIGIN, NO_FLOOR).minReachRatioPercent).toBe(
       0,
     );
+  });
+});
+
+describe("buildStepSpine — mutually exclusive branches are siblings, not a sequence (B-051)", () => {
+  function evenSplit() {
+    return [
+      sessionOf("a1", [ORIGIN, "/annual", CHECKOUT]),
+      sessionOf("a2", [ORIGIN, "/annual", CHECKOUT]),
+      sessionOf("m1", [ORIGIN, "/monthly", CHECKOUT]),
+      sessionOf("m2", [ORIGIN, "/monthly", CHECKOUT]),
+    ];
+  }
+
+  test("two sessions one step down alternative branches rank equally, never by alphabet", () => {
+    const spine = buildStepSpine(evenSplit(), ORIGIN);
+
+    const [annual] = placeOnSpine(spine, [sessionOf("d1", [ORIGIN, "/annual"])]);
+    const [monthly] = placeOnSpine(spine, [sessionOf("d2", [ORIGIN, "/monthly"])]);
+
+    expect(annual.deepestVisitedIndex).toBe(monthly.deepestVisitedIndex);
+  });
+
+  test("the step after two alternatives ranks once, not once per branch", () => {
+    const spine = buildStepSpine(evenSplit(), ORIGIN);
+
+    expect(spine.steps.map((step) => step.index)).toEqual([0, 1, 1, 2]);
+  });
+
+  test("a spine holding siblings says so, so a consumer can decline to call it a divergence", () => {
+    expect(buildStepSpine(evenSplit(), ORIGIN).branching).toBe(true);
+  });
+
+  test("a spine with one step per rank reports no branching, so the signal is not always on", () => {
+    const linear = buildStepSpine(
+      [sessionOf("s1", [ORIGIN, CHECKOUT, DONE]), sessionOf("s2", [ORIGIN, CHECKOUT, DONE])],
+      ORIGIN,
+    );
+
+    expect(linear.branching).toBe(false);
+    expect(linear.steps.map((step) => step.index)).toEqual([0, 1, 2]);
   });
 });
 
@@ -292,6 +334,7 @@ describe("placeOnSpine", () => {
         spineVersion: STEP_SPINE_VERSION,
       },
       minReachRatioPercent: SPINE_MIN_REACH_RATIO_PERCENT,
+      branching: false,
       steps: [{ path: CHECKOUT, index: 0, sessionsReaching: 1 }],
     };
 

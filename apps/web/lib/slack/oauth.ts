@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import {
   parseSlackOAuthAccess,
@@ -7,6 +7,8 @@ import {
   SLACK_REQUEST_TIMEOUT_MS,
 } from "@growthmind/adapters";
 import type { WebEnv } from "@growthmind/shared";
+
+import { constantTimeEquals } from "./constant-time";
 
 export interface SlackOAuthCredentials {
   readonly clientId: string;
@@ -145,18 +147,6 @@ function signPart(encodedPayload: string, secret: string): string {
     .update(STATE_MAC_DOMAIN)
     .update(encodedPayload)
     .digest("base64url");
-}
-
-// Used for the cookie/parameter pair as well as the signature, because the cookie value IS
-// the secret here — an attacker who learns it wins outright, so `===` on that comparison
-// leaks its prefix through timing. It reads as a harmless simplification and is not one.
-function constantTimeEquals(left: string, right: string): boolean {
-  const leftBytes = Buffer.from(left, "utf8");
-  const rightBytes = Buffer.from(right, "utf8");
-
-  if (leftBytes.length !== rightBytes.length) return false;
-
-  return timingSafeEqual(leftBytes, rightBytes);
 }
 
 function oauthStatePayloadOf(encodedPayload: string): OAuthStatePayload | null {

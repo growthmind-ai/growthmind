@@ -1,11 +1,9 @@
 import { Stack, Title } from "@mantine/core";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 
 import { LAST_LOGIN_METHOD_COOKIE, resolveLastLoginBadge } from "@/lib/last-login-method";
-import { ROUTES } from "@/lib/routes";
 import { configuredSocialProviders } from "@/lib/social-auth";
-import { getTenantContext } from "@/lib/tenant";
+import { redirectIfSignedIn } from "@/lib/tenant";
 
 import { SocialButtons } from "../social-buttons";
 import { SignUpForm } from "./sign-up-form";
@@ -14,10 +12,7 @@ import { SignUpForm } from "./sign-up-form";
 export const dynamic = "force-dynamic";
 
 export default async function SignUpPage() {
-  const tenantContext = await getTenantContext();
-  if (tenantContext) {
-    redirect(ROUTES.home);
-  }
+  await redirectIfSignedIn();
 
   // Better Auth's social path signs up and signs in through one call, so the same control
   // serves both screens; a separate "sign up with" button would be the same request.

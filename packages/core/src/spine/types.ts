@@ -20,6 +20,8 @@ export type StepSpine = {
   readonly identity: SpineIdentity;
 
   readonly minReachRatioPercent: number;
+
+  readonly branching: boolean;
   readonly steps: readonly SpineStep[];
 };
 

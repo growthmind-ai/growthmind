@@ -1,7 +1,9 @@
 import { isProposableSurface, proposalScopeOf } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
-import { createGrowthContextRepo, describeDriverError } from "@growthmind/db";
-import { logger, type SurfaceRole, type TenantContext } from "@growthmind/shared";
+import { createGrowthContextRepo } from "@growthmind/db";
+import type { SurfaceRole, TenantContext } from "@growthmind/shared";
+
+import { readOrFallback } from "@/lib/read-or-fallback";
 
 export interface PageRoleView {
   readonly surface: string;
@@ -21,18 +23,14 @@ export async function readPageRoles(
   ctx: TenantContext,
   projectId: string,
 ): Promise<readonly PageRoleView[]> {
-  let context;
-  try {
-    context = await createGrowthContextRepo(db, ctx).findForProject(projectId);
-  } catch (error) {
-    // This section failing must not take the rest of settings with it — the connection and
-    // delivery controls above it are what someone mid-setup actually came for.
-    logger.error("settings: the pages section could not be read", {
-      projectId,
-      reason: describeDriverError(error),
-    });
-    return [];
-  }
+  // This section failing must not take the rest of settings with it — the connection and
+  // delivery controls above it are what someone mid-setup actually came for.
+  const context = await readOrFallback(
+    () => createGrowthContextRepo(db, ctx).findForProject(projectId),
+    null,
+    "settings: the pages section could not be read",
+    { projectId },
+  );
 
   if (context === null) {
     return [];

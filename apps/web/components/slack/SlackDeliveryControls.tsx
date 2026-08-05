@@ -5,7 +5,7 @@
 // moved and tested, and this component is the entry point that was missing.
 import { Button, Group, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { ONBOARDING_MESSAGES } from "@growthmind/shared";
 
@@ -14,14 +14,12 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 import {
   FIRST_RUN_API,
   SETTINGS_API,
-  getJson,
   postJson,
-  readChannelList,
   readChannelMoveAnswer,
   readRefusal,
   readTestPostAnswer,
-  type SlackChannelChoice,
 } from "../first-run/api";
+import { useSlackChannelListing } from "../first-run/use-slack-channel-listing";
 import { ChannelPicker } from "./SlackConnection";
 
 interface SlackDeliveryControlsProps {
@@ -34,41 +32,12 @@ export function SlackDeliveryControls(props: SlackDeliveryControlsProps) {
 
   const [picking, setPicking] = useState(false);
   const [pending, setPending] = useState(false);
-  const [channels, setChannels] = useState<readonly SlackChannelChoice[] | null>(null);
   const [choice, setChoice] = useState<string | null>(null);
-  const [listingAttempt, setListingAttempt] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
   // Fetched only once the founder asks to move, so opening this page costs Slack nothing.
-  useEffect(() => {
-    if (!picking) {
-      return undefined;
-    }
-
-    let current = true;
-
-    void getJson(FIRST_RUN_API.slackChannels).then((answer) => {
-      if (!current) {
-        return;
-      }
-      if (answer === null) {
-        setFailure(ONBOARDING_MESSAGES.networkFailure);
-        return;
-      }
-
-      const list = readChannelList(answer.body);
-      if (list === null) {
-        setFailure(readRefusal(answer.body)?.message ?? ONBOARDING_MESSAGES.networkFailure);
-        return;
-      }
-      setChannels(list);
-    });
-
-    return () => {
-      current = false;
-    };
-  }, [picking, listingAttempt]);
+  const { channels, relist: relistChannels } = useSlackChannelListing(picking, setFailure);
 
   function open(): void {
     setNotice(null);
@@ -85,8 +54,7 @@ export function SlackDeliveryControls(props: SlackDeliveryControlsProps) {
 
   function relist(): void {
     setFailure(null);
-    setChannels(null);
-    setListingAttempt((attempt) => attempt + 1);
+    relistChannels();
   }
 
   async function move(): Promise<void> {

@@ -1,9 +1,8 @@
-import { Box, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Stack, Text } from "@mantine/core";
 
 import { StartInChannel } from "@/components/preview/StartInChannel";
-import classes from "@/components/preview/preview.module.css";
 import { ClosingNote, PageHeader } from "@/components/ui/Page";
+import { ListRow } from "@/components/ui/ListRow";
 import { experimentPath } from "@/lib/paths";
 import { readVerdicts } from "@/lib/preview/readers";
 import { outcomeWordOf } from "@/lib/preview/summaries";
@@ -13,22 +12,17 @@ export const dynamic = "force-dynamic";
 
 function Row({ verdict }: { readonly verdict: VerdictView }) {
   return (
-    <Link href={experimentPath(verdict.findingId)} className={classes.rowLink}>
-      <Text ff="monospace" size="xs" fw={700} ta="right" style={{ lineHeight: 1.6 }}>
-        {outcomeWordOf(verdict.verdict)}
-      </Text>
-      <Box style={{ minWidth: 0 }}>
-        <Text fw={600} style={{ lineHeight: 1.4 }}>
-          {verdict.title}
+    <ListRow
+      href={experimentPath(verdict.findingId)}
+      leading={
+        <Text ff="monospace" size="xs" fw={700} ta="right" style={{ lineHeight: 1.6 }}>
+          {outcomeWordOf(verdict.verdict)}
         </Text>
-        <Text size="sm" c="dimmed" style={{ lineHeight: 1.45 }}>
-          {verdict.measurement}
-        </Text>
-      </Box>
-      <Text ff="monospace" size="xs" c="dimmed">
-        {verdict.measuredOn.replace(/^On\s+/u, "").replace(/\s+we measured$/u, "")}
-      </Text>
-    </Link>
+      }
+      heading={verdict.title}
+      detail={verdict.measurement}
+      trailing={verdict.measuredOn.replace(/^On\s+/u, "").replace(/\s+we measured$/u, "")}
+    />
   );
 }
 
