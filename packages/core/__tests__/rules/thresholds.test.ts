@@ -21,6 +21,48 @@ const IMMUTABILITY_MESSAGE =
 
 const V1_CONTENT_HASH: string = "de73a91a398a32b3c5ff0696bd86b9d8fbb12df3a5ca51c94dc7d201414e92ab";
 
+// Deliberately NOT typed as ThresholdRuleSet: growing that type must never force an edit here.
+const V1_PRE_O041_VALUES: Readonly<Record<string, unknown>> = Object.freeze({
+  version: 1,
+  exceptionEventName: "$exception",
+  passiveEventNames: ["$pageview", "$pageleave", "$identify", "$web_vitals"],
+  vendorEventPrefix: "$",
+  userInitiatedVendorEvents: ["$autocapture", "$rageclick", "$dead_click", "$copy_autocapture"],
+  errorCorrelationWindowMs: 30_000,
+  errorMinAffectedSessions: 3,
+  funnelMinSessionsAtOrigin: 20,
+  funnelMinDropoffSessions: 5,
+  funnelDropoffRateThresholdPercent: 40,
+  struggleRepeatedAttemptMin: 3,
+  struggleMinStrugglingSessions: 3,
+  instrumentationDropRatioPercent: 20,
+  instrumentationMinExpected: 50,
+  brokenProofSignals: ["failure_correlated"],
+  confusingProofSignals: ["struggle"],
+  changedMindProofSignals: ["clean_exit"],
+  instrumentationProofSignals: ["instrumentation_rate_drop"],
+});
+
+// TODO(O-041 T3.2): drop ObservedThresholdRuleSet once the six members land on ThresholdRuleSet.
+// See .ai/adds/o-041-observed-struggle.md D-9.
+type ObservedThresholdRuleSet = ThresholdRuleSet & {
+  readonly struggleRageClickMin: number;
+  readonly struggleDeadClickMin: number;
+  readonly struggleFieldAbandonedMin: number;
+  readonly struggleFieldRefocusMin: number;
+  readonly struggleScrollBackMin: number;
+  readonly struggleObservedMinSessions: number;
+};
+
+const OBSERVED_THRESHOLD_KEYS = [
+  "struggleRageClickMin",
+  "struggleDeadClickMin",
+  "struggleFieldAbandonedMin",
+  "struggleFieldRefocusMin",
+  "struggleScrollBackMin",
+  "struggleObservedMinSessions",
+] as const;
+
 type FailDirection = "under_detect" | "not_a_magnitude";
 
 type FailDirectionNote = {
@@ -29,7 +71,7 @@ type FailDirectionNote = {
   readonly because: string;
 };
 
-const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote> = {
+const DECLARED_FAIL_DIRECTIONS: Record<keyof ObservedThresholdRuleSet, FailDirectionNote> = {
   vendorEventPrefix: {
     direction: "not_a_magnitude",
     because:
@@ -108,6 +150,36 @@ const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote
     direction: "under_detect",
     because: "a measured rate drop is required; a missing event alone is not a break",
   },
+  struggleRageClickMin: {
+    direction: "under_detect",
+    because:
+      "the transcript builder's own rage floor is 3 clicks, so a gate equal to that floor would rubber-stamp every beat the builder emits and do no work — 4 is one clear of it",
+  },
+  struggleDeadClickMin: {
+    direction: "under_detect",
+    because:
+      "one dead click is routine — a mis-click, a stray press; two on the same control is a person insisting",
+  },
+  struggleFieldAbandonedMin: {
+    direction: "under_detect",
+    because:
+      "abandoning one field is ordinary; two distinct fields on one surface is a hand-signature of not being able to finish, and a threshold of 1 would grant the class for free, which the outcome forbids",
+  },
+  struggleFieldRefocusMin: {
+    direction: "under_detect",
+    because:
+      "returning to a field once is normal editing; a third visit to the same field is hunting for what it wants",
+  },
+  struggleScrollBackMin: {
+    direction: "under_detect",
+    because:
+      "one or two scroll-backs is reading; three is searching for something the page did not put where it was looked for",
+  },
+  struggleObservedMinSessions: {
+    direction: "under_detect",
+    because:
+      "the shared cohort floor for ALL observed subkinds, deliberately above the inferred struggleMinStrugglingSessions = 3 — one recording supports description only (evidence standard §2), and this corpus is one person's, so the number is set high and re-read when strangers' sessions exist",
+  },
 };
 
 const rateImpliedFloor = (rules: ThresholdRuleSet): number =>
@@ -154,6 +226,22 @@ describe("THRESHOLD_RULE_SETS", () => {
     expect(actual).toBe(V1_CONTENT_HASH);
   });
 
+  test("should not change any pre-O-041 RULE_SET_V1 value when the type grows", () => {
+    const live = new Map<string, unknown>(Object.entries(ruleSetV1()));
+    const frozen = Object.entries(V1_PRE_O041_VALUES);
+
+    expect(frozen.length).toBe(18);
+
+    for (const [key, value] of frozen) {
+      if (!live.has(key)) {
+        throw new Error(
+          `\`${key}\` was a member of RULE_SET_V1 before O-041 and has been REMOVED. ${IMMUTABILITY_MESSAGE}`,
+        );
+      }
+      expect({ [key]: live.get(key) }).toEqual({ [key]: value });
+    }
+  });
+
   test("should carry its own version inside the rule set value", () => {
     expect(THRESHOLD_RULE_SETS.size).toBeGreaterThan(0);
 
@@ -197,6 +285,29 @@ describe("THRESHOLD_RULE_SETS", () => {
 
     for (const documentedKey of documented.keys()) {
       expect(keys).toContain(documentedKey);
+    }
+  });
+
+  test("should declare an under_detect fail direction for every new observed threshold", () => {
+    const live: Partial<ObservedThresholdRuleSet> = ruleSetV1();
+
+    expect(OBSERVED_THRESHOLD_KEYS.length).toBe(6);
+
+    for (const key of OBSERVED_THRESHOLD_KEYS) {
+      const note = DECLARED_FAIL_DIRECTIONS[key];
+
+      expect({ [key]: note.direction }).toEqual({ [key]: "under_detect" });
+      expect(note.because.length).toBeGreaterThan(0);
+
+      const value = live[key];
+      if (typeof value !== "number") {
+        throw new Error(
+          `\`${key}\` declares an under-detect fail direction and has no magnitude to apply it to — ` +
+            `RULE_SET_V1 carries no such member (D-9). A fail direction declared against an absent ` +
+            `threshold documents a gate that never runs.`,
+        );
+      }
+      expect({ [key]: value > 0 }).toEqual({ [key]: true });
     }
   });
 
