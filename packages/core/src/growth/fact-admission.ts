@@ -12,15 +12,18 @@ export const FACT_REFUSALS = [
 export type FactRefusal = (typeof FACT_REFUSALS)[number];
 
 export type FactAdmission =
-  | { readonly admitted: true }
-  | { readonly admitted: false; readonly refusal: FactRefusal };
+  { readonly admitted: true } | { readonly admitted: false; readonly refusal: FactRefusal };
 
 // §5 binds this table to segments and rules, never to people. A model handed a customer's
 // marketing site will find names on it — a founder's, a testimonial's — and the difference
 // between "founders of small agencies" and a named person is a segment versus a dossier.
+// Two capitalised words is not a person. Anchoring on `^` with the title optional refused
+// "Black Friday", "Gambling Commission" and "United Kingdom residents only" — the binding
+// kinds a fix spec is gated on — so an attribution marker or a title is required (D10).
+// `by` is not one of them: "Licensed by <regulator>" is how a regime states itself.
 const NAMES_AN_INDIVIDUAL: readonly RegExp[] = [
-  // A quoted or attributed person: `— Jane Smith`, `says Jane Smith`, `Jane Smith, CEO`.
-  /(?:^|[—–-]\s*|\bsays\s+|\bby\s+)[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s*,\s*(?:CEO|CTO|COO|founder|co-founder|head of|director|VP)\b)?/,
+  // Attributed to a person: `— Jane Smith`, `says Jane Smith`.
+  /(?:[—–]\s*|\bsays\s+)[A-Z][a-z]+\s+[A-Z][a-z]+/,
   /\b[A-Z][a-z]+\s+[A-Z][a-z]+\s*,\s*(?:CEO|CTO|COO|founder|co-founder|head of|director|VP)\b/i,
   // No leading `\b`: `@` is not a word character, so a boundary before it can never match
   // after a space — which is exactly where a handle appears.

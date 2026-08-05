@@ -53,6 +53,22 @@ describe("admitStatement", () => {
   test("does not mistake a company name for a person's", () => {
     expect(admitStatement("Agencies that resell to companies like Acme").admitted).toBe(true);
   });
+
+  // The near-miss neighbours of the name rule. Every one of these is the sentence its kind
+  // exists to hold, and every one was refused as `names_an_individual` while two capitalised
+  // words at the start of a statement were enough on their own.
+  test("admits a regulator, a season or a place, which are not people", () => {
+    for (const statement of [
+      "Black Friday is when our numbers do not mean what they usually mean.",
+      "Gambling Commission rules forbid advertising to under-25s.",
+      "Financial Conduct Authority rules apply to every quote we show.",
+      "United Kingdom residents only.",
+      "Acme Corp buyers must have a purchase order on file.",
+      "Approved by Trading Standards.",
+    ]) {
+      expect(admitStatement(statement)).toEqual({ admitted: true });
+    }
+  });
 });
 
 describe("admitBusinessFacts", () => {

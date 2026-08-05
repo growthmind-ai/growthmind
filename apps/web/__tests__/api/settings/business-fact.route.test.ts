@@ -76,10 +76,7 @@ async function projectFor(scope: SeededMemberScope): Promise<string> {
   return projectId;
 }
 
-async function seedFacts(
-  scope: SeededMemberScope,
-  facts: readonly BusinessFact[],
-): Promise<void> {
+async function seedFacts(scope: SeededMemberScope, facts: readonly BusinessFact[]): Promise<void> {
   const repo = createGrowthContextRepo(bed.db, scope.ctx);
   const projectId = await projectFor(scope);
 

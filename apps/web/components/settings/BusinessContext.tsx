@@ -11,6 +11,7 @@ import {
   BUSINESS_FACT_NOTES,
   BUSINESS_SECTION_LEAD,
   FACT_CLAIM_LABEL,
+  FACT_EDIT_HINT,
   FACT_NONE_READ_YET,
   FACT_NOTHING_ON_YOUR_SITE,
   FACT_OBSERVED_LABEL,
@@ -143,12 +144,7 @@ function FactSection({
         {lead}
       </Text>
       {lanes.map((lane) => (
-        <Question
-          key={lane.kind}
-          lane={lane}
-          everRead={everRead}
-          sourceAttached={sourceAttached}
-        />
+        <Question key={lane.kind} lane={lane} everRead={everRead} sourceAttached={sourceAttached} />
       ))}
     </Stack>
   );
@@ -225,6 +221,14 @@ export function BusinessContext({ view, sourceAttached }: BusinessContextProps) 
       {view.status === "done" && !anything ? (
         <Text size="sm" c="dimmed">
           {SITE_NOTHING_FOUND}
+        </Text>
+      ) : null}
+
+      {/* Said once for the page, and only once there is something to correct. The row's own
+          affordance is a hover background, which no touch device ever shows. */}
+      {anything ? (
+        <Text size="xs" c="dimmed">
+          {FACT_EDIT_HINT}
         </Text>
       ) : null}
 

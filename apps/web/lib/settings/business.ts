@@ -102,8 +102,7 @@ function toLanes(
         .map((fact) => ({
           kind,
           statement: fact.statement,
-          evidence:
-            fact.provenance.seen === null ? null : renderSeenSentence(fact.provenance.seen),
+          evidence: fact.provenance.seen === null ? null : renderSeenSentence(fact.provenance.seen),
         })),
     };
   });

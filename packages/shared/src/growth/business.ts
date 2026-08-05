@@ -156,15 +156,11 @@ const readFactSchema = z.object({
 // Two reads, two schemas: a single call asked for all twelve returned the easy five and
 // skipped the constraints, which are the ones a fix spec is gated on.
 export const bindingReadOutputSchema = z.object({
-  facts: z
-    .array(readFactSchema.extend({ kind: bindingFactKindSchema }))
-    .max(BUSINESS_FACT_LIMIT),
+  facts: z.array(readFactSchema.extend({ kind: bindingFactKindSchema })).max(BUSINESS_FACT_LIMIT),
 });
 
 export const shapingReadOutputSchema = z.object({
-  facts: z
-    .array(readFactSchema.extend({ kind: shapingFactKindSchema }))
-    .max(BUSINESS_FACT_LIMIT),
+  facts: z.array(readFactSchema.extend({ kind: shapingFactKindSchema })).max(BUSINESS_FACT_LIMIT),
 });
 
 export const businessResearchPayloadSchema = z.object({

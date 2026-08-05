@@ -1,7 +1,4 @@
-import {
-  BUSINESS_RESEARCH_TASK,
-  BUSINESS_RESEARCH_TASK_BEFORE_RENAME,
-} from "@growthmind/shared";
+import { BUSINESS_RESEARCH_TASK, BUSINESS_RESEARCH_TASK_BEFORE_RENAME } from "@growthmind/shared";
 
 export const TASK = {
   HEARTBEAT: "heartbeat",
