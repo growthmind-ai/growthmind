@@ -167,9 +167,10 @@ function thresholdOf(ruleSet: ThresholdRuleSet, subkind: ObservedStruggleSubkind
 
 // Each action belongs to the surface named by the most recent preceding page action; one
 // that no page action precedes, or whose href does not normalise, is dropped (D-11).
-// normaliseUrlPath is not a fixed point on every href, so its output is re-checked rather
-// than assumed: an unnormalised surface throws in assembleCandidates, taking every other
-// detector's candidates in the tick with it.
+// The output is re-checked rather than assumed even though normaliseUrlPath is a fixed point
+// since B-013: an unnormalised surface throws in assembleCandidates, taking every other
+// detector's candidates in the tick with it, so the cost of the check is worth its
+// redundancy.
 function tallySession(
   transcript: SessionTranscript,
   surfaces: Map<string, SurfaceAccumulator>,

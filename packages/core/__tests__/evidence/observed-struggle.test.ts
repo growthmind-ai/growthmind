@@ -125,7 +125,7 @@ const FIXTURE_STARTED_AT = new Date("2026-05-02T09:00:00.000Z");
 const SURFACE = "/t041/checkout";
 const SURFACE_HREF = `https://t041.example.invalid${SURFACE}`;
 const UNNORMALISABLE_HREF = "t041 not a url";
-const NON_FIXED_POINT_HREF = `https://t041.example.invalid${SURFACE}//`;
+const DOUBLED_SLASH_HREF = `https://t041.example.invalid${SURFACE}//`;
 
 const ACTION_STEP_MS = 1_000;
 const RAGE_SPAN_MS = 900;
@@ -807,7 +807,10 @@ describe("observedStruggleCandidates", () => {
     expect(await candidatesOf(corpus)).toEqual([]);
   });
 
-  test("should not attribute an action whose page href normalises to a non-fixed-point path", async () => {
+  test("should attribute an action whose page href carries a doubled slash to the surface it names", async () => {
+    // Until B-013 this href normalised to `/t041/checkout/`, which was not a fixed point, so the
+    // guard below withheld the whole session — a customer's doubled-slash link cost them the
+    // finding. The guard stays as defence in depth; what changed is that nothing reaches it.
     const rules = ruleSetV1();
 
     const corpus = corpusOf(
@@ -815,7 +818,7 @@ describe("observedStruggleCandidates", () => {
         replayOf(
           session,
           sequence([
-            page(NON_FIXED_POINT_HREF),
+            page(DOUBLED_SLASH_HREF),
             rageBurst(
               interactiveControl(nodeIdOf(session, 1), PAY_CONTROL_TEST_ID),
               rules.struggleRageClickMin,
@@ -825,10 +828,12 @@ describe("observedStruggleCandidates", () => {
       ),
     );
 
-    const normalised = normaliseUrlPath(null, NON_FIXED_POINT_HREF);
-    expect(normalised).not.toBeNull();
-    expect(isNormalisedUrlPath(normalised!)).toBe(false);
-    expect(await candidatesOf(corpus)).toEqual([]);
+    const normalised = normaliseUrlPath(null, DOUBLED_SLASH_HREF);
+    expect(normalised).toBe(SURFACE);
+    expect(isNormalisedUrlPath(normalised!)).toBe(true);
+
+    const candidate = await oneCandidate(corpus);
+    expect(candidate.surface).toBe(SURFACE);
   });
 
   test("should emit a candidate whose surface is already normalised", async () => {

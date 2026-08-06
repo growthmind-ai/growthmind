@@ -138,7 +138,7 @@ function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
 
 const GOLDEN_EVIDENCE_SHAPE_V1 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
-  '"surface":"/checkout","surfaceNormalisationVersion":2,"symptomClass":"broken","v":1}';
+  '"surface":"/checkout","surfaceNormalisationVersion":3,"symptomClass":"broken","v":1}';
 
 const GOLDEN_EVIDENCE_SHAPE_V2 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
@@ -159,7 +159,7 @@ const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
 };
 
 const GOLDEN_V1_TUPLE_BASELINE =
-  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":2,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
+  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":3,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
 
 const GOLDEN_TUPLE_BASELINE =
   '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"symptomClass\\":\\"broken\\",\\"v\\":2}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
@@ -174,7 +174,7 @@ function struggleSubkindsOf(input: EvidenceShapeInput): readonly string[] {
 
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
-    expect(URL_PATH_NORMALISATION_VERSION).toBe(2);
+    expect(URL_PATH_NORMALISATION_VERSION).toBe(3);
     expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V2);
 
     // The retired serialiser keeps reproducing its own bytes, so a stored v1 row stays attached.
