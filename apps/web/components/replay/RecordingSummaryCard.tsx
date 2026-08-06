@@ -99,12 +99,13 @@ export function RecordingSummaryCard({ story }: { readonly story: RecordingSumma
       );
 
     // A seventh kind would otherwise widen the return to `undefined` and the card would
-    // vanish with nothing failing.
+    // vanish with nothing failing. Read_failed, not pending: this arm is what ships the day
+    // someone adds a case, so it claims the least.
     default:
       story satisfies never;
       return (
         <Quiet>
-          <Sentence>{RECORDING_SUMMARY_PENDING}</Sentence>
+          <Sentence>{RECORDING_SUMMARY_READ_FAILED}</Sentence>
         </Quiet>
       );
   }

@@ -43,8 +43,10 @@ export const RECORDING_SUMMARY_SOURCE_MESSAGES = {
     "This shows what they did on its own. A written explanation was generated but did not pass our checks, so we left it out.",
 } as const;
 
+// Rendered on a card with a player under it and on a list row with only a link, so it names
+// the mechanism and never a position on screen.
 export const RECORDING_SUMMARY_PENDING =
-  "We have not read this recording yet. The description appears here on its own when it is ready — you can watch the recording below in the meantime.";
+  "We have not read this recording yet. The description appears here on its own when it is ready.";
 
 export const RECORDING_SUMMARY_HELD =
   "We read this recording, but what we wrote about it could not be shown.";
