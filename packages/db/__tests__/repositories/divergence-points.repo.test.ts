@@ -247,7 +247,7 @@ describe("divergence points repository", () => {
     const rows = await divergenceRowsFor(db, org.organizationId, project.id);
 
     expect(rows).toHaveLength(2);
-    const surfaces = rows.map((row) => row.surface).sort();
+    const surfaces = rows.map((row) => row.surface).toSorted();
     expect(surfaces).toEqual(["/checkout", "/checkout-v2"]);
 
     // No ancestry table/column links these rows — the accepted B-031 gap, demonstrated
