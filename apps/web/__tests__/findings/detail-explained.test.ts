@@ -8,7 +8,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { createRecordingSummariesRepo } from "@growthmind/db";
+import { createTestDb, scannedTextFor, seedConnection, seedSession, type TestDb } from "@growthmind/db/testing";
 import type { BeatView } from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscript";
@@ -20,6 +21,10 @@ import {
   seedModelRenderedFinding,
   type ClaimViewWithHref,
 } from "./helpers/wave0-types";
+
+const CITED_RECORDING_ID = "o44-explained-recording";
+const CITED_SESSION_KEY = `ph:${CITED_RECORDING_ID}`;
+const CITED_ACTION_AT_MS = 64_000;
 
 describe("UX row 1 — a finding that cleared the citation gate", () => {
   let db: TestDb;
@@ -36,11 +41,63 @@ describe("UX row 1 — a finding that cleared the citation gate", () => {
   test("readLiveFinding grades a finding whose cause stage cleared the citation gate as explained, with a real citation link", async () => {
     const { ctx, projectId, findingId } = await seedModelRenderedFinding(db, "explained");
 
+    // citesHref is only ever non-null when the anchor session's own citation resolves (D5) —
+    // that requires a real session + recording summary row, joined by sessionKey, exactly as
+    // packages/db/__tests__/repositories/recording-summaries.repo.test.ts's own citationsFor
+    // fixtures do. A bare cause_claims row with a made-up anchorSessionId string can only ever
+    // prove the null-fallback path, never this one.
+    const connection = await seedConnection(db, { organizationId: ctx.organizationId, projectId });
+    const session = await seedSession(db, {
+      organizationId: ctx.organizationId,
+      projectId,
+      connectionId: connection.id,
+      sessionKey: CITED_SESSION_KEY,
+    });
+    const summaryText = scannedTextFor("Someone left the email field blank", [
+      "They left the field blank and the request never went out.",
+    ]);
+
+    await createRecordingSummariesRepo(db, ctx).persist({
+      projectId,
+      recordingId: CITED_RECORDING_ID,
+      summarySource: "model_rendered",
+      headline: summaryText.headline,
+      context: summaryText.context,
+      transcript: "1:04  left the email field blank",
+      pages: ["/checkout"],
+      durationMs: 90_000,
+      actionCount: 1,
+      notableCount: 1,
+      droppedEvents: 0,
+      startedAt: new Date("2026-08-01T00:01:04.000Z"),
+      provider: "posthog",
+      sessionKey: CITED_SESSION_KEY,
+      sessionGroupingVersion: 1,
+      actions: {
+        v: 1,
+        actions: [
+          {
+            kind: "input",
+            atMs: CITED_ACTION_AT_MS,
+            element: { nodeId: 1, tag: "input", classes: ["email"] },
+          },
+        ],
+      },
+      actionsVersion: 1,
+      actionsOmitted: 0,
+      pullStop: "exhausted",
+      pullReason: null,
+      pullWatermarkAt: null,
+      resolvedModelId: "claude-sonnet-5",
+      tokensIn: 40,
+      tokensOut: 17,
+    });
+
     const createCauseClaimsRepo = await loadCreateCauseClaimsRepo();
     await createCauseClaimsRepo(db, ctx).persist({
       projectId,
       findingId,
-      anchorSessionId: "o44-explained-anchor-session",
+      anchorSessionId: session.id,
       claims: [
         {
           statement: "The field was left blank, so the request never went out.",
@@ -95,6 +152,10 @@ describe("UX row 1 — a finding that cleared the citation gate", () => {
     );
 
     const card = readMarkup(html);
-    expect(card.controls).toContain("from 1:04");
+    // The control's full accessible name also carries the WCAG 3.2.5 new-tab warning (§3 of the
+    // UX spec, verified verbatim by detail-citation.test.ts) — so this checks the control starts
+    // with the citation label rather than being exactly it. The point of this test is "a real,
+    // focusable control exists and it is the citation", not "the control's name has no suffix".
+    expect(card.controls.some((control) => control.startsWith("from 1:04"))).toBe(true);
   });
 });

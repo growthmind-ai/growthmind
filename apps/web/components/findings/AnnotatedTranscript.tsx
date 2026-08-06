@@ -1,4 +1,5 @@
-import { Badge, Box, Group, Paper, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Box, Group, Paper, Stack, Text, VisuallyHidden } from "@mantine/core";
+import Link from "next/link";
 
 import { beatsAreCited, claimRows, FINDINGS_MESSAGES } from "@growthmind/shared";
 import type { BeatView, ClaimView } from "@growthmind/shared";
@@ -75,9 +76,24 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
         >
           <Paper withBorder radius="sm" p="xs" bg="var(--mantine-color-default)">
             <Text size="sm">{claim.statement}</Text>
-            <Text size="xs" c="dimmed" mt={4}>
-              {claim.citesLabel}
-            </Text>
+            {claim.citesHref === null ? (
+              <Text size="xs" c="dimmed" mt={4}>
+                {claim.citesLabel}
+              </Text>
+            ) : (
+              <Anchor
+                component={Link}
+                href={claim.citesHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="xs"
+                mt={4}
+                className={classes.citation}
+              >
+                {claim.citesLabel}
+                <VisuallyHidden> (opens the recording in a new tab)</VisuallyHidden>
+              </Anchor>
+            )}
           </Paper>
         </Box>
       ))}

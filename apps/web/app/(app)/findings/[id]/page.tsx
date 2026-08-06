@@ -1,9 +1,11 @@
-import { Stack, Text } from "@mantine/core";
+import { Badge, Group, Stack, Text } from "@mantine/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ensureProject } from "@growthmind/db";
+import { GROUP_TITLES } from "@growthmind/shared";
 
+import { AnnotatedTranscript } from "@/components/findings/AnnotatedTranscript";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { PageHeader } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
@@ -44,11 +46,25 @@ export default async function FindingPage({ params }: PageProps) {
       ) : (
         <SurfaceCard>
           <Stack gap="xs">
-            <Eyebrow>What happened</Eyebrow>
+            <Group justify="space-between" wrap="wrap" gap="xs">
+              <Eyebrow>{GROUP_TITLES[finding.grade]}</Eyebrow>
+              <Badge
+                variant="light"
+                size="sm"
+                style={{ flexShrink: 0 }}
+                {...(finding.grade === "explained" ? {} : { color: "gray" as const })}
+              >
+                {finding.grade === "explained" ? "Explained" : "Described"}
+              </Badge>
+            </Group>
             <Text>{finding.context}</Text>
-            <Text size="sm" c="dimmed">
-              We can&apos;t yet say why — that stage isn&apos;t built.
-            </Text>
+            {finding.evidence === null ? null : (
+              <AnnotatedTranscript
+                beats={finding.evidence.beats}
+                claims={finding.evidence.claims}
+                droppedClaims={finding.evidence.droppedClaims}
+              />
+            )}
           </Stack>
         </SurfaceCard>
       )}

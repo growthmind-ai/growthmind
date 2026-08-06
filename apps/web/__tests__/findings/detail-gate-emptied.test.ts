@@ -109,10 +109,22 @@ describe("UX rows 4-5 — the citation gate emptied every claim (D11 consumer ha
   // The producer half's own "wholly-uncited" fixture: one claim proposed, zero survive. Called
   // from each test individually (not a shared beforeAll) so that once the repo exists, a
   // partial implementation still shows each row's assertion failing or passing on its own line
-  // rather than one throw collapsing all three — and `persist` is expected to be an
-  // insertOrFetch (mirroring divergence-points.repo.ts), so calling it more than once for the
-  // same finding is safe.
+  // rather than one throw collapsing all three. The ADD (Decision 3) and ownership comment on
+  // this repo both call for `persist` to be an insertOrFetch (mirroring
+  // divergence-points.repo.ts) so a repeat call for the same finding is a no-op — today's
+  // packages/db/src/repositories/cause-claims.repo.ts does a plain insert instead, which throws
+  // a unique-constraint violation on the second call. That is a real backend defect (it also
+  // means a retried Graphile Worker tick would crash rather than no-op, which is exactly what
+  // 0.7's "two ticks" dedup test is supposed to guard, but that test runs against a fake
+  // in-memory repo and never exercises this path) — out of this frontend wave's write scope
+  // (packages/db/src/repositories/**). The guard below keeps this test file provably red-only
+  // for the reasons stated in its own header rather than for this unrelated repo bug.
+  let seeded = false;
+
   async function seedGateEmptiedClaims(): Promise<void> {
+    if (seeded) return;
+    seeded = true;
+
     const createCauseClaimsRepo = await loadCreateCauseClaimsRepo();
     await createCauseClaimsRepo(db, sharedCtx).persist({
       projectId: SHARED_D11_FIXTURE.projectId,
