@@ -20,6 +20,7 @@ read them yourself — a human following one of these gets the same answer.
 | [adding-an-api-route](skills/adding-an-api-route/SKILL.md)   | Adding a route under `apps/web/app/api/`. Tenant scope and schema ownership are decided here or not at all.        |
 | [writing-a-unit-test](skills/writing-a-unit-test/SKILL.md)   | Writing tests. This repo's tests are named after invariants and its fakes throw on purpose.                        |
 | [edge-sweep](skills/edge-sweep/SKILL.md)                     | Declaring a change done. Walks the D1–D12 taxonomy against the surfaces you touched.                               |
+| [opening-a-pr](skills/opening-a-pr/SKILL.md)                 | Pushing a branch. Three gates run in CI that `bun run check` does not, and each one has caught a green local tree. |
 
 If a skill is wrong or out of date, that is a bug — open an issue. A stale
 procedure that reads as authoritative is worse than no procedure, because it
