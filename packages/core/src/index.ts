@@ -45,12 +45,14 @@ export {
   type DetectorCorpus,
   type DetectorCandidate,
   type DetectorResult,
+  type SessionReplay,
 } from "./detect/types";
 export { orderTimeline } from "./detect/order";
 
 export { analysedSessions, type AnalysedSessions } from "./detect/analysed";
 export { detectFunnelDropoff } from "./detect/funnel-dropoff";
 export { detectErrorEvent } from "./detect/error-event";
+export { detectObservedStruggle } from "./detect/observed";
 export { NOT_BUILT_DETECTORS, type NotBuiltDetector } from "./detect/not-built";
 
 export {
@@ -68,6 +70,12 @@ export { buildStepSpine, placeOnSpine } from "./spine/spine";
 export {
   evidenceSignalSchema,
   evidenceSignalKindSchema,
+  inferredStruggleSubkindSchema,
+  observedStruggleSubkindSchema,
+  struggleSubkindSchema,
+  type InferredStruggleSubkind,
+  type ObservedStruggleSubkind,
+  type StruggleSubkind,
   BROKEN_PROOF_SIGNALS_V1,
   CONFUSING_PROOF_SIGNALS_V1,
   CHANGED_MIND_PROOF_SIGNALS_V1,
@@ -110,6 +118,10 @@ export {
   type ElementKey,
   type ElementKeyTier,
 } from "./evidence/element-key";
+export {
+  OBSERVED_STRUGGLE_PRECEDENCE,
+  observedStruggleCandidates,
+} from "./evidence/observed-struggle";
 
 export {
   candidateFindingSchema,
