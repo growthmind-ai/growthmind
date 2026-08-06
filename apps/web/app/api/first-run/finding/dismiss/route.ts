@@ -26,8 +26,11 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
 
   const { projectId } = await ensureProject(deps.db, gate.ctx);
 
-  const finding = await createFindingsRepo(deps.db, gate.ctx).findById(parsed.data.findingId);
-  if (finding === null || finding.projectId !== projectId) {
+  const finding = await createFindingsRepo(deps.db, gate.ctx).findById(
+    projectId,
+    parsed.data.findingId,
+  );
+  if (finding === null) {
     return refusalResponse(FINDING_NOT_FOUND);
   }
 

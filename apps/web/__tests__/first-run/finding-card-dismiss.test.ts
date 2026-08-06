@@ -181,6 +181,7 @@ test("a teammate who never touched Slack loads the first-run screen after a dism
       summarySource: "model_rendered",
       headline: text.headline,
       context: text.context,
+      detector: "observed_struggle",
       finalClass: "confusing",
       surface: "/checkout",
       surfaceNormalisationVersion: 1,

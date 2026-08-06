@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { COUNT_ROLES, scanResidualPii, type CandidateFinding, type CountRole } from "@growthmind/core";
+import { scanResidualPii, type CandidateFinding } from "@growthmind/core";
 import type { SignatureHex, SignatureLedgerService } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb } from "@growthmind/db/testing";

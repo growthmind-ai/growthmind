@@ -89,6 +89,7 @@ async function freshFindingOrg(label: string): Promise<FreshFindingOrg> {
     summarySource: "model_rendered",
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,
+    detector: "funnel_dropoff",
     finalClass: "funnel_dropoff",
     surface: `/checkout/${token}`,
     surfaceNormalisationVersion: 1,

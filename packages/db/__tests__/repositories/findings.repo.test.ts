@@ -12,8 +12,6 @@ import {
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import {
   createFindingsRepo,
-  type FindingRecord,
-  type FindingsRepo,
   type MeasuredCountRow,
   type PersistFindingInput,
 } from "../../src/repositories/findings.repo";
@@ -108,14 +106,6 @@ function makePersistInput(
     tokensOut: 180,
     ...overrides,
   };
-}
-
-// TODO(ADD o-019-dismissal-wired Decision 2 part A): findById is a new method on
-// FindingsRepo, implemented via orgCrud's existing c.maybe(eq(findings.id, id)) — the same
-// org-scoping every other method on this repo already gets for free from orgCrud's
-// s.owned() filter (packages/db/src/repositories/findings.repo.ts).
-interface FindingsRepoWithFindById extends FindingsRepo {
-  findById(id: string): Promise<FindingRecord | null>;
 }
 
 describe("findings repository", () => {
@@ -285,17 +275,17 @@ describe("findings repository", () => {
     });
     const run = await seedAnalysisRun(db, { ctx: orgA.ctx, projectId: project.id });
 
-    const repoA = createFindingsRepo(db, orgA.ctx) as FindingsRepoWithFindById;
-    const repoB = createFindingsRepo(db, orgB.ctx) as FindingsRepoWithFindById;
+    const repoA = createFindingsRepo(db, orgA.ctx);
+    const repoB = createFindingsRepo(db, orgB.ctx);
 
     const written = await repoA.persist(
       makePersistInput(project.id, run.id, { signature: signatureFor("findbyid") }),
     );
 
-    const found = await repoA.findById(written.id);
+    const found = await repoA.findById(project.id, written.id);
     expect(found?.id).toBe(written.id);
 
-    const crossOrg = await repoB.findById(written.id);
+    const crossOrg = await repoB.findById(project.id, written.id);
     expect(crossOrg).toBeNull();
   });
 
