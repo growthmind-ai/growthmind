@@ -6,8 +6,11 @@ import {
   THRESHOLD_RULE_SETS,
 } from "@growthmind/core";
 import {
+  and,
   createDivergencePointsRepo,
   createRecordingSummariesRepo,
+  eq,
+  schema,
   type DivergenceService,
 } from "@growthmind/db";
 import {
@@ -413,6 +416,21 @@ function throwingDivergenceService(message: string): {
   };
 }
 
+// Mirrors divergenceRowsFor in packages/db/__tests__/repositories/divergence-points.repo.test.ts —
+// findBySurface only returns the most recent row (limit 1), so it can't tell "exactly one row"
+// apart from "N rows, most recent shown". This queries the table directly.
+async function divergenceRowsFor(projectId: string, surface: string) {
+  return db
+    .select()
+    .from(schema.divergencePoints)
+    .where(
+      and(
+        eq(schema.divergencePoints.projectId, projectId),
+        eq(schema.divergencePoints.surface, surface),
+      ),
+    );
+}
+
 // ADD Decision 5 (tasks/o-043-divergence-beat/add.md) wires divergence computation inside
 // buildLane, after assembleCandidates, behind its own inner try/catch distinct from the
 // outer per-project one. These tests drive the real entry points (laneForProject/
@@ -500,6 +518,14 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
 
     expect(foundOrigin?.surface).toBe(ORIGIN);
     expect(foundSecondOrigin?.surface).toBe(SECOND_ORIGIN);
+
+    // findBySurface returns "most recent, limit 1" — it would mask a duplicate. Count the
+    // rows directly to prove the tick wrote exactly one, not just that at least one exists.
+    const originRows = await divergenceRowsFor(workspace.projectId, ORIGIN);
+    const secondOriginRows = await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN);
+
+    expect(originRows).toHaveLength(1);
+    expect(secondOriginRows).toHaveLength(1);
   });
 
   test("a divergence computation failure for one surface does not prevent that project's candidates from being returned", async () => {
