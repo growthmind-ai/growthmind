@@ -299,9 +299,8 @@ type MessageParts = {
   readonly window: string | null;
 };
 
-// A real Slack mrkdwn link when a citation resolved to a recording moment (D5: mask/withheld
-// citations degrade citesHref to null upstream, never a dead link here) — the bare label
-// otherwise, exactly the same fallback apps/web's own citation control renders to.
+// citesHref is null only when D5 degraded it upstream (mask/withheld) — the same fallback
+// apps/web's own citation control renders, never a dead link.
 function claimLine(claim: DeliveredCauseClaim): string {
   const cite =
     claim.citesHref === null ? claim.citesLabel : `<${claim.citesHref}|${claim.citesLabel}>`;
