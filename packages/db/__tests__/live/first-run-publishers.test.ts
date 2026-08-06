@@ -19,15 +19,15 @@ function src(...parts: string[]): string {
 // exist; only an enumeration can prove none is missing — which is how `analysis_runs` shipped
 // unpublished and was caught by a grader rather than by a test.
 const BEHIND_THE_STATUS_ROUTE = [
-  { table: "first_run_state", repo: "first-run.repo.ts" },
-  { table: "first_run_dismissals", repo: "first-run.repo.ts" },
-  { table: "session_source_poll_runs", repo: "poll-runs.repo.ts" },
-  { table: "analysis_runs", repo: "analysis-runs.repo.ts" },
-  { table: "findings", repo: "findings.repo.ts" },
-  { table: "dismissals", repo: "dismissals.repo.ts" },
-  { table: "deliveries", repo: "deliveries.repo.ts" },
-  { table: "slack_connections", repo: "slack-connections.repo.ts" },
-  { table: "provider_interest", repo: "provider-interest.repo.ts" },
+  { table: "first_run_state", repo: "first-run.repo.ts", topic: "first_run" },
+  { table: "first_run_dismissals", repo: "first-run.repo.ts", topic: "first_run" },
+  { table: "session_source_poll_runs", repo: "poll-runs.repo.ts", topic: "first_run" },
+  { table: "analysis_runs", repo: "analysis-runs.repo.ts", topic: "first_run" },
+  { table: "findings", repo: "findings.repo.ts", topic: "findings" },
+  { table: "dismissals", repo: "dismissals.repo.ts", topic: "findings" },
+  { table: "deliveries", repo: "deliveries.repo.ts", topic: "first_run" },
+  { table: "slack_connections", repo: "slack-connections.repo.ts", topic: "first_run" },
+  { table: "provider_interest", repo: "provider-interest.repo.ts", topic: "first_run" },
 ] as const;
 
 describe("every writer behind the first-run status route announces", () => {
@@ -36,25 +36,38 @@ describe("every writer behind the first-run status route announces", () => {
     expect(LIVE_TOPICS).toContain("findings");
   });
 
-  for (const { table, repo } of BEHIND_THE_STATUS_ROUTE) {
-    test(`${table} is published from ${repo}`, () => {
+  for (const { table, repo, topic } of BEHIND_THE_STATUS_ROUTE) {
+    // The topic this row names, not either of them: a repository publishing only `findings`
+    // leaves the setup screen exactly as stuck as one publishing nothing.
+    test(`${table} is published as ${topic} from ${repo}`, () => {
       const source = src("repositories", repo);
 
-      expect(source).toContain("publishLive");
-      expect(source).toMatch(/topic: "(first_run|findings)"/);
+      expect(source).toContain(`topic: "${topic}"`);
+    });
+
+    // Presence of the import is what the first version of this gate checked, and deleting
+    // every call while keeping the helper kept it green — which is the bug that shipped.
+    test(`${repo} calls its publisher rather than only importing one`, () => {
+      const source = src("repositories", repo);
+      const calls = source.match(/await (announce|announced)\(|await publishLive\(/g) ?? [];
+
+      expect(calls.length).toBeGreaterThan(0);
     });
   }
 
-  // The service is what actually decides the payload, so it is the list's own check: a table
-  // it learns to read that nobody added above leaves the same hole again.
-  test("the enumeration above still covers what the status service reads", () => {
+  // Inverted on purpose: every table the service reads must appear above, so a table it
+  // learns to read later fails here instead of silently becoming the next unpublished step.
+  test("the enumeration covers every table the status service selects from", () => {
     const service = src("services", "first-run-status.service.ts");
 
-    const unlisted = ["analysisRuns", "sessionSourcePollRuns", "findings", "firstRunState"].filter(
-      (symbol) => service.includes(symbol) === false,
-    );
+    const listed = new Set<string>(BEHIND_THE_STATUS_ROUTE.map((row) => row.table));
 
-    expect(unlisted).toEqual([]);
+    const read = [...service.matchAll(/\.(?:from|innerJoin|leftJoin)\((\w+)/g)]
+      .map((match) => match[1] ?? "")
+      .map((symbol) => symbol.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`));
+
+    expect(read.length).toBeGreaterThan(0);
+    expect(read.filter((table) => !listed.has(table))).toEqual([]);
   });
 
   test("no publisher fires from a task or a route — only from the repository write", () => {
