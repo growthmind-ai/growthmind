@@ -268,18 +268,7 @@ type NumericMembers<T> = {
   [K in keyof T]-?: T[K] extends number ? K : never;
 }[keyof T];
 
-// TODO(O-041 D-9): delete ObservedThresholds once ThresholdRuleSet carries these six — the
-// intersection then collapses and ThresholdKey enforces totality off the real type alone.
-type ObservedThresholds = {
-  readonly struggleRageClickMin: number;
-  readonly struggleDeadClickMin: number;
-  readonly struggleFieldAbandonedMin: number;
-  readonly struggleFieldRefocusMin: number;
-  readonly struggleScrollBackMin: number;
-  readonly struggleObservedMinSessions: number;
-};
-
-type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet & ObservedThresholds>, "version">;
+type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet>, "version">;
 
 type NameListMembers<T> = {
   [K in keyof T]-?: T[K] extends readonly string[] ? K : never;

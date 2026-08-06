@@ -43,17 +43,6 @@ const V1_PRE_O041_VALUES: Readonly<Record<string, unknown>> = Object.freeze({
   instrumentationProofSignals: ["instrumentation_rate_drop"],
 });
 
-// TODO(O-041 T3.2): drop ObservedThresholdRuleSet once the six members land on ThresholdRuleSet.
-// See .ai/adds/o-041-observed-struggle.md D-9.
-type ObservedThresholdRuleSet = ThresholdRuleSet & {
-  readonly struggleRageClickMin: number;
-  readonly struggleDeadClickMin: number;
-  readonly struggleFieldAbandonedMin: number;
-  readonly struggleFieldRefocusMin: number;
-  readonly struggleScrollBackMin: number;
-  readonly struggleObservedMinSessions: number;
-};
-
 const OBSERVED_THRESHOLD_KEYS = [
   "struggleRageClickMin",
   "struggleDeadClickMin",
@@ -71,7 +60,7 @@ type FailDirectionNote = {
   readonly because: string;
 };
 
-const DECLARED_FAIL_DIRECTIONS: Record<keyof ObservedThresholdRuleSet, FailDirectionNote> = {
+const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote> = {
   vendorEventPrefix: {
     direction: "not_a_magnitude",
     because:
@@ -295,7 +284,7 @@ describe("THRESHOLD_RULE_SETS", () => {
   });
 
   test("should declare an under_detect fail direction for every new observed threshold", () => {
-    const live: Partial<ObservedThresholdRuleSet> = ruleSetV1();
+    const live: Partial<ThresholdRuleSet> = ruleSetV1();
 
     expect(OBSERVED_THRESHOLD_KEYS.length).toBe(6);
 
