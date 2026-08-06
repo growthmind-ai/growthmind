@@ -23,11 +23,12 @@ export type DivergenceOptions = {
 };
 
 // Existing floor for a funnel_dropoff candidate's dropped cohort — rules/thresholds.ts
-// (funnelMinDropoffSessions).
+// (funnelMinDropoffSessions). Ratified by Tom, see tasks/o-043-divergence-beat/add.md Decision 6.
 export const DIVERGENCE_COHORT_FLOOR = 5;
 
 // Half of the existing dropout-rate detection threshold — rules/thresholds.ts
-// (funnelDropoffRateThresholdPercent = 40).
+// (funnelDropoffRateThresholdPercent = 40). Ratified by Tom, see
+// tasks/o-043-divergence-beat/add.md Decision 6.
 export const DIVERGENCE_MARGIN_PERCENT = 20;
 
 // Identity-version for the cohort match strategy: 1 means "matched on entry surface only".
