@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import { DETECTOR_CORPUS_MAX_SESSIONS } from "@growthmind/core";
-import type { TenantContext } from "@growthmind/shared";
+import { LIVE_CHANNEL } from "@growthmind/shared";
+import type { LivePayload, LiveTopic, TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { SQL, StringChunk, and, eq } from "drizzle-orm";
 
 import { createRecordingSummariesRepo } from "../../src/repositories/recording-summaries.repo";
 import type { PersistRecordingSummaryInput } from "../../src/repositories/recording-summaries.repo";
 import { recordingSummaries } from "../../src/schema/recording-summaries";
-import { createTestDb, type TestDb } from "../../src/testing";
+import * as dbTesting from "../../src/testing";
+import { createTestDb, driverQueryError, type TestDb } from "../../src/testing";
 import { laneNames, scannedTextFor, seedOrgWithOwner, seedProject } from "../../src/testing";
 import {
   makeTenantContext,
@@ -54,6 +56,8 @@ const BYTE_CAP_REASON = "This recording is larger than we read in one visit.";
 
 const RATE_LIMIT_REASON = "Your recording source asked us to slow down, so we stopped early.";
 
+const SEEDED_ACTION_COUNT = 12;
+
 const REFRESHED_ACTION_COUNT = 24;
 
 const CLEAN = scannedTextFor("Someone pressed the buy button and nothing happened", [
@@ -70,7 +74,7 @@ function inputFor(projectId: string, recordingId: string): PersistRecordingSumma
     transcript: "0:00  opened /pricing",
     pages: ["/pricing"],
     durationMs: 92_000,
-    actionCount: 12,
+    actionCount: SEEDED_ACTION_COUNT,
     notableCount: 1,
     droppedEvents: 0,
     startedAt: STARTED_AT,
@@ -124,6 +128,90 @@ function refreshInputFor(
     ...overrides,
   };
 }
+
+// The one place the topic string is written. `satisfies` is what turns a topic absent from
+// LIVE_TOPICS into a compile error instead of a publish nothing is listening for (D9/D11).
+const RECORDINGS_TOPIC = "recordings" satisfies LiveTopic;
+
+type LiveRecorder = {
+  readonly db: TestDb;
+  readonly published: readonly LivePayload[];
+  readonly malformed: readonly unknown[];
+};
+
+const RECORDER_CONTRACT =
+  "packages/db/src/testing exports no recordPublishedTopics(db) returning " +
+  "{ db, published: readonly LivePayload[], malformed: readonly unknown[] }. ADD AD-1 and the " +
+  "STATE.md amendment require `malformed` to collect every statement on LIVE_CHANNEL whose " +
+  "payload failed livePayloadSchema: publishLive swallows the parse throw, so without that " +
+  "surface a recorder that never intercepts is indistinguishable from a correct zero-publish.";
+
+function recordPublishedTopics(realDb: TestDb): LiveRecorder {
+  const factory = (dbTesting as unknown as Record<string, unknown>).recordPublishedTopics;
+
+  if (typeof factory !== "function") {
+    throw new Error(RECORDER_CONTRACT);
+  }
+
+  const recorder = (factory as (executor: TestDb) => LiveRecorder)(realDb);
+
+  if (!Array.isArray(recorder.published) || !Array.isArray(recorder.malformed)) {
+    throw new Error(RECORDER_CONTRACT);
+  }
+
+  return recorder;
+}
+
+function namesPgNotify(statement: unknown): boolean {
+  return (
+    statement instanceof SQL &&
+    statement.queryChunks.some(
+      (chunk) => chunk instanceof StringChunk && chunk.value.join("").includes("pg_notify"),
+    )
+  );
+}
+
+type BlindPublisher = {
+  readonly db: TestDb;
+  readonly attempts: () => number;
+};
+
+// Counting the attempt is the whole test: a repository that never publishes at all survives a
+// failing publish exactly as well as one that publishes and swallows, so `attempts` is what
+// separates D8 from a vacuous pass.
+function failLivePublishes(realDb: TestDb, thrown: Error): BlindPublisher {
+  let attempts = 0;
+
+  const proxied = new Proxy(realDb, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+
+      if (prop !== "execute") {
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      }
+
+      return (...args: unknown[]) => {
+        if (namesPgNotify(args[0])) {
+          attempts += 1;
+          throw thrown;
+        }
+
+        return (value as (...args: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+
+  return { db: proxied, attempts: () => attempts };
+}
+
+const publishFailure = (): Error =>
+  driverQueryError({
+    sql: "select pg_notify($1, $2::text)",
+    params: [LIVE_CHANNEL],
+    driverMessage: "sorry, too many clients already",
+  });
 
 describe("recording summaries repository", () => {
   let db: TestDb;
@@ -783,5 +871,225 @@ describe("recording summaries repository", () => {
     const found = await transcriptRepo(db, mine.org.ctx).findFor(mine.project.id, "rec-not-theirs");
     expect(found?.pullStop).toBe("failed");
     expect(found?.actionCount).toBe(12);
+  });
+
+  describe("a recordings publish means a row changed", () => {
+    it("should publish the recordings topic once when persist inserted a row", async () => {
+      const { org, project } = await seedOrg("publish-on-insert");
+      const recorder = recordPublishedTopics(db);
+
+      await createRecordingSummariesRepo(recorder.db, org.ctx).persist(
+        inputFor(project.id, "rec-published"),
+      );
+
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+    });
+
+    it("should publish nothing when persist found the row already there", async () => {
+      const { org, project } = await seedOrg("publish-on-fetch");
+      await createRecordingSummariesRepo(db, org.ctx).persist(inputFor(project.id, "rec-again"));
+
+      const recorder = recordPublishedTopics(db);
+      const settled = await createRecordingSummariesRepo(recorder.db, org.ctx).persist(
+        inputFor(project.id, "rec-again"),
+      );
+
+      expect(recorder.published).toEqual([]);
+      expect(recorder.malformed).toEqual([]);
+      expect(settled.recordingId).toBe("rec-again");
+    });
+
+    it("should return its record on both the insert and the fetch path", async () => {
+      const { org, project } = await seedOrg("record-on-both-paths");
+      const repo = createRecordingSummariesRepo(db, org.ctx);
+
+      const inserted = await repo.persist(inputFor(project.id, "rec-both-paths"));
+      const fetched = await repo.persist(inputFor(project.id, "rec-both-paths"));
+
+      expect(inserted.recordingId).toBe("rec-both-paths");
+      expect(fetched.recordingId).toBe("rec-both-paths");
+      expect(fetched.id).toBe(inserted.id);
+    });
+
+    it("should publish once when refreshFailedPull updated a row", async () => {
+      const { org, project } = await seedOrg("publish-on-refresh");
+      await transcriptRepo(db, org.ctx).persist(
+        transcriptInputFor(project.id, "rec-refresh-published", {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-refresh-published"),
+      );
+
+      expect(refreshed).not.toBeNull();
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+    });
+
+    it("should publish nothing when refreshFailedPull matched no row", async () => {
+      const { org, project } = await seedOrg("publish-on-no-match");
+      await transcriptRepo(db, org.ctx).persist(
+        transcriptInputFor(project.id, "rec-settled-pull", {
+          pullStop: "byte_cap",
+          pullReason: BYTE_CAP_REASON,
+        }),
+      );
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-settled-pull"),
+      );
+
+      expect(refreshed).toBeNull();
+      expect(recorder.published).toEqual([]);
+      expect(recorder.malformed).toEqual([]);
+    });
+
+    async function seedFailedPull(label: string, recordingId: string) {
+      const { org, project } = await seedOrg(label);
+      await transcriptRepo(db, org.ctx).persist(
+        transcriptInputFor(project.id, recordingId, {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      return { org, project };
+    }
+
+    it("should publish nothing when a failing retry read nothing new", async () => {
+      const { org, project } = await seedFailedPull("publish-on-stuck-retry", "rec-stuck-retry");
+
+      const stuck: Partial<TranscriptRefreshInput> = {
+        actionCount: SEEDED_ACTION_COUNT,
+        notableCount: 1,
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+      };
+
+      const recorder = recordPublishedTopics(db);
+      const repo = transcriptRepo(recorder.db, org.ctx);
+
+      const first = await repo.refreshFailedPull(
+        refreshInputFor(project.id, "rec-stuck-retry", stuck),
+      );
+      const second = await repo.refreshFailedPull(
+        refreshInputFor(project.id, "rec-stuck-retry", stuck),
+      );
+
+      expect(recorder.published).toEqual([]);
+      expect(recorder.malformed).toEqual([]);
+
+      // The cursor and watermark still move on a retry that read nothing new — only the publish
+      // is withheld, so a resumable pull is not traded away for a quiet page.
+      expect(first?.bytesReceived).toBe(2_048);
+      expect(second?.pullWatermarkAt?.toISOString()).toBe(WATERMARK_AT.toISOString());
+    });
+
+    it("should publish when a failing retry read further", async () => {
+      const { org, project } = await seedFailedPull("publish-on-longer-retry", "rec-longer-retry");
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-longer-retry", {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      expect(refreshed?.actionCount).toBe(REFRESHED_ACTION_COUNT);
+      expect(refreshed?.pullStop).toBe("failed");
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+    });
+
+    it("should publish when a retry settles a pull that read nothing further", async () => {
+      const { org, project } = await seedFailedPull(
+        "publish-on-settling-retry",
+        "rec-settled-late",
+      );
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-settled-late", {
+          actionCount: SEEDED_ACTION_COUNT,
+          notableCount: 1,
+        }),
+      );
+
+      expect(refreshed?.actionCount).toBe(SEEDED_ACTION_COUNT);
+      expect(refreshed?.pullStop).toBe("exhausted");
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+    });
+
+    it("should publish the repository's own tenant and refuse another organization's project", async () => {
+      const mine = await seedOrg("publish-tenant-mine");
+      const theirs = await seedOrg("publish-tenant-theirs");
+
+      const recorder = recordPublishedTopics(db);
+      const theirRepo = createRecordingSummariesRepo(recorder.db, theirs.org.ctx);
+
+      await theirRepo.persist(inputFor(theirs.project.id, "rec-own-tenant"));
+
+      await expect(
+        theirRepo.persist(inputFor(mine.project.id, "rec-other-tenant")),
+      ).rejects.toThrow(/not this organization's/);
+
+      expect(recorder.published).toEqual([
+        { organizationId: theirs.org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+      expect(recorder.malformed).toEqual([]);
+    });
+
+    it("should return its record from persist when the publish itself throws", async () => {
+      const { org, project } = await seedOrg("publish-throws-on-persist");
+      const blind = failLivePublishes(db, publishFailure());
+
+      const record = await createRecordingSummariesRepo(blind.db, org.ctx).persist(
+        inputFor(project.id, "rec-publish-throws"),
+      );
+
+      expect(record.recordingId).toBe("rec-publish-throws");
+      expect(blind.attempts()).toBe(1);
+    });
+
+    it("should return its record from refreshFailedPull when the publish itself throws", async () => {
+      const { org, project } = await seedOrg("publish-throws-on-refresh");
+      await transcriptRepo(db, org.ctx).persist(
+        transcriptInputFor(project.id, "rec-refresh-publish-throws", {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      const blind = failLivePublishes(db, publishFailure());
+      const refreshed = await transcriptRepo(blind.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-refresh-publish-throws"),
+      );
+
+      expect(refreshed?.recordingId).toBe("rec-refresh-publish-throws");
+      expect(blind.attempts()).toBe(1);
+    });
+
+    it("should publish the topic the recording detail page mounts", async () => {
+      const { org, project } = await seedOrg("publish-topic-constant");
+      const recorder = recordPublishedTopics(db);
+
+      await createRecordingSummariesRepo(recorder.db, org.ctx).persist(
+        inputFor(project.id, "rec-topic-wire"),
+      );
+
+      expect(recorder.published[0]?.topic).toBe(RECORDINGS_TOPIC);
+    });
   });
 });

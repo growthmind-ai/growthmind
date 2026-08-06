@@ -8,6 +8,7 @@ import type { ReplaySourceKind } from "@growthmind/shared";
 import { and, desc, eq, inArray, isNotNull, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { publishLive } from "../live/publish";
 import { recordingSummaries, type TranscriptPullStop } from "../schema/recording-summaries";
 import { sessions } from "../schema/sessions";
 import { orgCrud } from "./crud";
@@ -178,6 +179,17 @@ function toRecord(row: SummaryRow): RecordingSummaryRecord {
   };
 }
 
+// A retry rewrites the cursor and watermark of a row it read nothing new on, which is wanted and
+// invisible: nothing a reader of the replay page can see moved. Only a pull that stopped failing,
+// or a transcript that grew, is worth waking every open page in the org for (D3).
+function readsDifferently(before: SummaryRow | null, after: SummaryRow): boolean {
+  return (
+    after.pullStop !== RETRYABLE_PULL_STOP ||
+    before === null ||
+    after.actionCount > before.actionCount
+  );
+}
+
 function byRecording(projectId: string, recordingId: string) {
   return and(
     eq(recordingSummaries.projectId, projectId),
@@ -191,6 +203,12 @@ export function createRecordingSummariesRepo(
 ): RecordingSummariesRepo {
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, recordingSummaries);
+
+  // Beside the writes rather than in the callers: a task that forgot to announce would leave
+  // every open replay page silently stale, and there is no timer behind it (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "recordings" });
+  }
 
   async function heldIds(
     projectId: string,
@@ -222,7 +240,10 @@ export function createRecordingSummariesRepo(
       const pages = pagesSchema.parse(input.pages);
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const row = await c.insertOrFetch(
+      // `claim` rather than `insertOrFetch` for the one bit `insertOrFetch` discards: whether
+      // this call inserted. A publish on a fetch would wake every open page for a row that did
+      // not change (D3).
+      const { claimed, row } = await c.claim(
         {
           projectId: input.projectId,
           recordingId: input.recordingId,
@@ -264,7 +285,13 @@ export function createRecordingSummariesRepo(
         },
       );
 
-      return toRecord(row);
+      const settled = s.one(row === null ? [] : [row], "recording_summaries.persist");
+
+      if (claimed) {
+        await announce();
+      }
+
+      return toRecord(settled);
     },
 
     async findFor(projectId: string, recordingId: string): Promise<RecordingSummaryRecord | null> {
@@ -285,6 +312,11 @@ export function createRecordingSummariesRepo(
 
     async refreshFailedPull(input: RefreshFailedPullInput): Promise<RecordingSummaryRecord | null> {
       const pages = pagesSchema.parse(input.pages);
+
+      // Read for the publish decision only, never for the write predicate. `actionCount` never
+      // decreases, so a value read before a concurrent tick's write is at most the value the
+      // update replaced — which cannot turn a real advance into a withheld publish.
+      const before = await c.maybe(byRecording(input.projectId, input.recordingId));
 
       // One statement, so two overlapping ticks cannot both read "failed" and both write. The
       // action-count predicate keeps the row monotonic: a retry throttled earlier than the first
@@ -317,7 +349,15 @@ export function createRecordingSummariesRepo(
         lte(recordingSummaries.actionCount, input.actionCount),
       );
 
-      return row === null ? null : toRecord(row);
+      if (row === null) {
+        return null;
+      }
+
+      if (readsDifferently(before, row)) {
+        await announce();
+      }
+
+      return toRecord(row);
     },
 
     async latestStartedAt(projectId: string): Promise<Date | null> {

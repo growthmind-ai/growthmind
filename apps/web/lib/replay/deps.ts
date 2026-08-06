@@ -2,7 +2,7 @@ import type { ReplaySource } from "@growthmind/adapters";
 import { createPostHogReplaySource } from "@growthmind/adapters";
 import type { ScopedDb } from "@growthmind/db";
 import { createProjectConnectionsRepo, findFirstProjectForOrg } from "@growthmind/db";
-import type { CredentialKeyResolution, TenantContext } from "@growthmind/shared";
+import type { CredentialKeyResolution, DecryptResult, TenantContext } from "@growthmind/shared";
 import { logger, parseWebEnv, resolveCredentialKey } from "@growthmind/shared";
 
 import { createPostHogAdapterDeps } from "@/lib/adapter-deps";
@@ -88,4 +88,59 @@ export function resolveReplayDeps(db: ScopedDb = getDb()): ReplayRouteDeps {
     tenant: getTenantContext,
     sourceFor: makeSourceFor(db, resolveCredentialKey(env), globalThis.fetch),
   };
+}
+
+export type RecordingSourceState =
+  "ready" | "no_connection" | "unreadable_credential" | "not_configured";
+
+export interface RecordingSourceQuery {
+  readonly ctx: TenantContext;
+  readonly projectId: string;
+}
+
+export type RecordingSourceStateFor = (
+  query: RecordingSourceQuery,
+) => Promise<RecordingSourceState>;
+
+export function recordingSourceStateOf(opened: DecryptResult | null): RecordingSourceState {
+  if (opened === null) {
+    return "no_connection";
+  }
+
+  return opened.ok ? "ready" : "unreadable_credential";
+}
+
+// AD-6: `sourceFor` answers a bigger question at three round trips and a source object. This
+// answers only what a recording card asks, at one query and one local decrypt, and is called
+// only when there is no summary row yet.
+export function makeRecordingSourceState(
+  db: ScopedDb,
+  resolution: CredentialKeyResolution,
+): RecordingSourceStateFor {
+  return whenCredentialResolved<RecordingSourceQuery, RecordingSourceState>(
+    resolution,
+    "recording source state",
+    "no organization's recording state can be read",
+    "not_configured",
+    (key) =>
+      async ({ ctx, projectId }) => {
+        const opened = await createProjectConnectionsRepo(db, ctx).openCredentialForProject(
+          projectId,
+          key,
+        );
+
+        if (opened !== null && !opened.ok) {
+          logger.error(
+            `recording source state: org ${ctx.organizationId} has a stored analytics credential ` +
+              `this installation cannot open (${opened.reason}) — it must be reconnected`,
+          );
+        }
+
+        return recordingSourceStateOf(opened);
+      },
+  );
+}
+
+export function resolveRecordingSourceState(db: ScopedDb = getDb()): RecordingSourceStateFor {
+  return makeRecordingSourceState(db, resolveCredentialKey(parseWebEnv(process.env)));
 }

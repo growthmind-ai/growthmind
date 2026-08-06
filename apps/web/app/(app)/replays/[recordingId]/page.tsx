@@ -1,5 +1,6 @@
 import { Stack } from "@mantine/core";
 
+import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { RecordingSummary } from "@/components/replay/RecordingSummary";
 import { ReplayPlayer } from "@/components/replay/ReplayPlayer";
 import { AnchorLink } from "@/components/ui/Links";
@@ -17,6 +18,8 @@ export default async function ReplayDetailPage({
 
   return (
     <Stack gap="lg">
+      <LiveRefresh topics={["recordings"]} />
+
       <PageHeader title="Recording">
         <AnchorLink href={ROUTES.replays}>Back to all recordings</AnchorLink>
       </PageHeader>
