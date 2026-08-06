@@ -61,13 +61,18 @@ const OBSERVATION_LABELS: Record<CountRole, string> = {
   affected_sessions: "hit the error",
 };
 
-const ROLES_BY_ARITY: ReadonlyMap<number, readonly CountRole[] | null> = buildRolesByArity();
+// Resolved by count arity (findings has no persisted detector column). An arity
+// collision keeps the FIRST-declared detector, never null — a later addition must
+// never blank an earlier one out of delivery. See .ai/decisions/0016.
+const ROLES_BY_ARITY: ReadonlyMap<number, readonly CountRole[]> = buildRolesByArity();
 
-function buildRolesByArity(): ReadonlyMap<number, readonly CountRole[] | null> {
-  const byArity = new Map<number, readonly CountRole[] | null>();
+function buildRolesByArity(): ReadonlyMap<number, readonly CountRole[]> {
+  const byArity = new Map<number, readonly CountRole[]>();
 
   for (const roles of Object.values(COUNT_ROLES) as readonly (readonly CountRole[])[]) {
-    byArity.set(roles.length, byArity.has(roles.length) ? null : roles);
+    if (!byArity.has(roles.length)) {
+      byArity.set(roles.length, roles);
+    }
   }
 
   return byArity;

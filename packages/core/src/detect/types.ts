@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { CountBasis, MeasuredCount } from "../counts/measured-count";
 import type { EvidenceSignal } from "../evidence/signals";
+import type { SessionTranscript } from "../replay/types";
 import type { DetectorName, DetectorProposedClass } from "../rules/types";
 
 export const DETECTOR_CORPUS_MAX_SESSIONS = 500;
@@ -48,12 +49,19 @@ export const detectorCoverageSchema = z.object({
   eventsWithoutUrlPath: z.number().int().nonnegative(),
 });
 
+export type SessionReplay = {
+  readonly sessionId: string;
+  readonly transcript: SessionTranscript;
+};
+
 export type DetectorCorpus = {
   readonly projectId: string;
   readonly window: AnalysisWindow;
   readonly connectionState: ConnectionState;
 
   readonly sessions: readonly SessionTimeline[];
+
+  readonly replays?: readonly SessionReplay[];
 
   readonly basis: CountBasis;
   readonly coverage: DetectorCoverage;

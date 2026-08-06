@@ -19,7 +19,38 @@ function ruleSetV1(): ThresholdRuleSet {
 const IMMUTABILITY_MESSAGE =
   "v1 is a shipped decision and is immutable. Add version 2 — do not edit version 1.";
 
-const V1_CONTENT_HASH: string = "de73a91a398a32b3c5ff0696bd86b9d8fbb12df3a5ca51c94dc7d201414e92ab";
+const V1_CONTENT_HASH: string = "1bc8500b799c6d292520ffb6d74849a5e534ced50c45c879d21d7b2b72f61cfc";
+
+// Deliberately NOT typed as ThresholdRuleSet: growing that type must never force an edit here.
+const V1_PRE_O041_VALUES: Readonly<Record<string, unknown>> = Object.freeze({
+  version: 1,
+  exceptionEventName: "$exception",
+  passiveEventNames: ["$pageview", "$pageleave", "$identify", "$web_vitals"],
+  vendorEventPrefix: "$",
+  userInitiatedVendorEvents: ["$autocapture", "$rageclick", "$dead_click", "$copy_autocapture"],
+  errorCorrelationWindowMs: 30_000,
+  errorMinAffectedSessions: 3,
+  funnelMinSessionsAtOrigin: 20,
+  funnelMinDropoffSessions: 5,
+  funnelDropoffRateThresholdPercent: 40,
+  struggleRepeatedAttemptMin: 3,
+  struggleMinStrugglingSessions: 3,
+  instrumentationDropRatioPercent: 20,
+  instrumentationMinExpected: 50,
+  brokenProofSignals: ["failure_correlated"],
+  confusingProofSignals: ["struggle"],
+  changedMindProofSignals: ["clean_exit"],
+  instrumentationProofSignals: ["instrumentation_rate_drop"],
+});
+
+const OBSERVED_THRESHOLD_KEYS = [
+  "struggleRageClickMin",
+  "struggleDeadClickMin",
+  "struggleFieldAbandonedMin",
+  "struggleFieldRefocusMin",
+  "struggleScrollBackMin",
+  "struggleObservedMinSessions",
+] as const;
 
 type FailDirection = "under_detect" | "not_a_magnitude";
 
@@ -108,6 +139,36 @@ const DECLARED_FAIL_DIRECTIONS: Record<keyof ThresholdRuleSet, FailDirectionNote
     direction: "under_detect",
     because: "a measured rate drop is required; a missing event alone is not a break",
   },
+  struggleRageClickMin: {
+    direction: "under_detect",
+    because:
+      "the transcript builder's own rage floor is 3 clicks, so a gate equal to that floor would rubber-stamp every beat the builder emits and do no work — 4 is one clear of it",
+  },
+  struggleDeadClickMin: {
+    direction: "under_detect",
+    because:
+      "one dead click is routine — a mis-click, a stray press; two on the same control is a person insisting",
+  },
+  struggleFieldAbandonedMin: {
+    direction: "under_detect",
+    because:
+      "abandoning one field is ordinary; two distinct fields on one surface is a hand-signature of not being able to finish, and a threshold of 1 would grant the class for free, which the outcome forbids",
+  },
+  struggleFieldRefocusMin: {
+    direction: "under_detect",
+    because:
+      "returning to a field once is normal editing; a third visit to the same field is hunting for what it wants",
+  },
+  struggleScrollBackMin: {
+    direction: "under_detect",
+    because:
+      "one or two scroll-backs is reading; three is searching for something the page did not put where it was looked for",
+  },
+  struggleObservedMinSessions: {
+    direction: "under_detect",
+    because:
+      "the shared cohort floor for ALL observed subkinds, deliberately above the inferred struggleMinStrugglingSessions = 3 — one recording supports description only (evidence standard §2), and this corpus is one person's, so the number is set high and re-read when strangers' sessions exist",
+  },
 };
 
 const rateImpliedFloor = (rules: ThresholdRuleSet): number =>
@@ -128,6 +189,12 @@ describe("THRESHOLD_RULE_SETS", () => {
       funnelDropoffRateThresholdPercent: 40,
       struggleRepeatedAttemptMin: 3,
       struggleMinStrugglingSessions: 3,
+      struggleRageClickMin: 4,
+      struggleDeadClickMin: 2,
+      struggleFieldAbandonedMin: 2,
+      struggleFieldRefocusMin: 3,
+      struggleScrollBackMin: 3,
+      struggleObservedMinSessions: 5,
       instrumentationDropRatioPercent: 20,
       instrumentationMinExpected: 50,
       brokenProofSignals: ["failure_correlated"],
@@ -152,6 +219,22 @@ describe("THRESHOLD_RULE_SETS", () => {
     }
 
     expect(actual).toBe(V1_CONTENT_HASH);
+  });
+
+  test("should not change any pre-O-041 RULE_SET_V1 value when the type grows", () => {
+    const live = new Map<string, unknown>(Object.entries(ruleSetV1()));
+    const frozen = Object.entries(V1_PRE_O041_VALUES);
+
+    expect(frozen.length).toBe(18);
+
+    for (const [key, value] of frozen) {
+      if (!live.has(key)) {
+        throw new Error(
+          `\`${key}\` was a member of RULE_SET_V1 before O-041 and has been REMOVED. ${IMMUTABILITY_MESSAGE}`,
+        );
+      }
+      expect({ [key]: live.get(key) }).toEqual({ [key]: value });
+    }
   });
 
   test("should carry its own version inside the rule set value", () => {
@@ -200,6 +283,29 @@ describe("THRESHOLD_RULE_SETS", () => {
     }
   });
 
+  test("should declare an under_detect fail direction for every new observed threshold", () => {
+    const live: Partial<ThresholdRuleSet> = ruleSetV1();
+
+    expect(OBSERVED_THRESHOLD_KEYS.length).toBe(6);
+
+    for (const key of OBSERVED_THRESHOLD_KEYS) {
+      const note = DECLARED_FAIL_DIRECTIONS[key];
+
+      expect({ [key]: note.direction }).toEqual({ [key]: "under_detect" });
+      expect(note.because.length).toBeGreaterThan(0);
+
+      const value = live[key];
+      if (typeof value !== "number") {
+        throw new Error(
+          `\`${key}\` declares an under-detect fail direction and has no magnitude to apply it to — ` +
+            `RULE_SET_V1 carries no such member (D-9). A fail direction declared against an absent ` +
+            `threshold documents a gate that never runs.`,
+        );
+      }
+      expect({ [key]: value > 0 }).toEqual({ [key]: true });
+    }
+  });
+
   test("THRESHOLD_RULE_SET_VERSION is 2 and rule set 1 remains registered and byte-identical", () => {
     expect(THRESHOLD_RULE_SET_VERSION).toBe(2);
 
@@ -217,6 +323,12 @@ describe("THRESHOLD_RULE_SETS", () => {
       funnelDropoffRateThresholdPercent: 40,
       struggleRepeatedAttemptMin: 3,
       struggleMinStrugglingSessions: 3,
+      struggleRageClickMin: 4,
+      struggleDeadClickMin: 2,
+      struggleFieldAbandonedMin: 2,
+      struggleFieldRefocusMin: 3,
+      struggleScrollBackMin: 3,
+      struggleObservedMinSessions: 5,
       instrumentationDropRatioPercent: 20,
       instrumentationMinExpected: 50,
       brokenProofSignals: ["failure_correlated"],

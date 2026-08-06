@@ -32,6 +32,18 @@ const RULE_SET_V1: ThresholdRuleSet = {
 
   struggleMinStrugglingSessions: 3,
 
+  struggleRageClickMin: 4,
+
+  struggleDeadClickMin: 2,
+
+  struggleFieldAbandonedMin: 2,
+
+  struggleFieldRefocusMin: 3,
+
+  struggleScrollBackMin: 3,
+
+  struggleObservedMinSessions: 5,
+
   instrumentationDropRatioPercent: 20,
 
   instrumentationMinExpected: 50,

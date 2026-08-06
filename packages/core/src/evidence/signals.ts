@@ -3,6 +3,27 @@ import { z } from "zod";
 import type { MeasuredCount } from "../counts/measured-count";
 import { measuredCountSchema } from "../counts/measured-count";
 
+export const inferredStruggleSubkindSchema = z.enum(["repeated_attempt", "backtrack"]);
+
+export const observedStruggleSubkindSchema = z.enum([
+  "rage_click",
+  "dead_click",
+  "field_abandoned",
+  "field_refocus",
+  "scroll_back",
+]);
+
+export const struggleSubkindSchema = z.enum([
+  ...inferredStruggleSubkindSchema.options,
+  ...observedStruggleSubkindSchema.options,
+]);
+
+export type InferredStruggleSubkind = z.infer<typeof inferredStruggleSubkindSchema>;
+
+export type ObservedStruggleSubkind = z.infer<typeof observedStruggleSubkindSchema>;
+
+export type StruggleSubkind = z.infer<typeof struggleSubkindSchema>;
+
 export type EvidenceSignal =
   | {
       readonly kind: "failure_correlated";
@@ -20,7 +41,7 @@ export type EvidenceSignal =
     }
   | {
       readonly kind: "struggle";
-      readonly subkind: "repeated_attempt" | "backtrack";
+      readonly subkind: StruggleSubkind;
       readonly surface: string;
 
       readonly attempts: number;
@@ -64,7 +85,7 @@ export const evidenceSignalSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("struggle"),
-    subkind: z.enum(["repeated_attempt", "backtrack"]),
+    subkind: struggleSubkindSchema,
     surface: z.string().min(1),
     attempts: z.number().int().nonnegative(),
     strugglingSessions: measuredCountSchema,

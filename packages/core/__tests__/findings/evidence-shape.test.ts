@@ -39,8 +39,11 @@ function correlatedFailure(overrides: { readonly occurredAt?: Date } = {}): Evid
   };
 }
 
+// Derived from the one declaration in src/evidence/signals.ts — never re-listed here (D-7).
+type StruggleSubkind = Extract<EvidenceSignal, { readonly kind: "struggle" }>["subkind"];
+
 function struggleSignal(input: {
-  readonly subkind: "repeated_attempt" | "backtrack";
+  readonly subkind: StruggleSubkind;
   readonly surface: string;
   readonly attempts: number;
   readonly strugglingSessions: number;
@@ -332,5 +335,86 @@ describe("evidenceShape — surfaceNormalisationVersion is provenance, not ident
     expect(evidenceShape(atVersion(URL_PATH_NORMALISATION_VERSION), 1)).toBe(GOLDEN_V1);
     expect(evidenceShape(atVersion(1), 1)).toContain('"surfaceNormalisationVersion":1');
     expect(evidenceShape(atVersion(null), 1)).toContain('"surfaceNormalisationVersion":null');
+  });
+});
+
+const SIGNALS_SOURCE = `${import.meta.dir}/../../src/evidence/signals.ts`.replaceAll("\\", "/");
+
+// TODO(O-041 T3.1): replace the deferred load with a static import of struggleSubkindSchema.
+type SignalsModule = {
+  readonly struggleSubkindSchema: { readonly options: readonly StruggleSubkind[] };
+};
+
+async function declaredStruggleSubkinds(): Promise<readonly StruggleSubkind[]> {
+  const loaded = (await import(SIGNALS_SOURCE)) as Partial<SignalsModule>;
+  const schema = loaded.struggleSubkindSchema;
+
+  if (schema === undefined || !Array.isArray(schema.options)) {
+    throw new Error(
+      "src/evidence/signals.ts must export struggleSubkindSchema — the one declaration of the " +
+        "struggle subkind union every other reference derives from (D-7).",
+    );
+  }
+
+  return schema.options;
+}
+
+// The six the contract names, not the union: `backtrack` is deliberately absent, so this is a
+// fixture list rather than a fifth copy of the members.
+const SUBKINDS_NAMED_BY_THE_CONTRACT: readonly string[] = [
+  "repeated_attempt",
+  "rage_click",
+  "dead_click",
+  "field_abandoned",
+  "field_refocus",
+  "scroll_back",
+];
+
+const GOLDEN_STRUGGLE_ONLY_V2 =
+  '{"detector":"funnel_dropoff","signalKinds":["struggle"],' +
+  '"surface":"/checkout","symptomClass":"confusing","v":2}';
+
+describe("evidenceShape — the struggle subkind is invisible to the identity (D-4, D-7)", () => {
+  test("should produce the same evidence shape for a struggle signal regardless of its subkind", async () => {
+    const declared = await declaredStruggleSubkinds();
+    const declaredNames: readonly string[] = declared;
+
+    for (const named of SUBKINDS_NAMED_BY_THE_CONTRACT) {
+      expect(declaredNames).toContain(named);
+    }
+
+    const shapes = declared.map((subkind) =>
+      evidenceShape(
+        {
+          detector: "funnel_dropoff",
+          surface: normalisedSurface("/checkout"),
+          surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
+          signals: [
+            struggleSignal({
+              subkind,
+              surface: "/checkout",
+              attempts: 3,
+              strugglingSessions: 3,
+              kept: 10,
+            }),
+          ],
+          symptomClass: "confusing",
+        },
+        EVIDENCE_SHAPE_VERSION,
+      ),
+    );
+
+    for (const [index, shape] of shapes.entries()) {
+      expect(shape).toBe(GOLDEN_STRUGGLE_ONLY_V2);
+      expect(shape).toBe(shapes[0]);
+      expect(shape).not.toContain(declared[index]);
+    }
+  });
+});
+
+describe("evidenceShape — the version is pinned across this sprint (D-4)", () => {
+  test("should keep EVIDENCE_SHAPE_VERSION at 2", () => {
+    expect(EVIDENCE_SHAPE_VERSION).toBe(2);
+    expect(EVIDENCE_SHAPE_SERIALISERS.size).toBe(2);
   });
 });

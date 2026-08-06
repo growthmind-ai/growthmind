@@ -13,7 +13,7 @@ export type FindingClass = z.infer<typeof findingClassSchema>;
 export const detectorProposedClassSchema = z.enum(["broken", "confusing", "instrumentation"]);
 export type DetectorProposedClass = z.infer<typeof detectorProposedClassSchema>;
 
-export const detectorNameSchema = z.enum(["funnel_dropoff", "error_event"]);
+export const detectorNameSchema = z.enum(["funnel_dropoff", "error_event", "observed_struggle"]);
 export type DetectorName = z.infer<typeof detectorNameSchema>;
 
 export type ThresholdRuleSet = {
@@ -31,6 +31,12 @@ export type ThresholdRuleSet = {
   readonly funnelDropoffRateThresholdPercent: number;
   readonly struggleRepeatedAttemptMin: number;
   readonly struggleMinStrugglingSessions: number;
+  readonly struggleRageClickMin: number;
+  readonly struggleDeadClickMin: number;
+  readonly struggleFieldAbandonedMin: number;
+  readonly struggleFieldRefocusMin: number;
+  readonly struggleScrollBackMin: number;
+  readonly struggleObservedMinSessions: number;
   readonly instrumentationDropRatioPercent: number;
   readonly instrumentationMinExpected: number;
   readonly brokenProofSignals: readonly EvidenceSignalKind[];

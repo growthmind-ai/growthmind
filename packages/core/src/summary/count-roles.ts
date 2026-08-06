@@ -8,6 +8,11 @@ export const COUNT_ROLES = {
   funnel_dropoff: ["reached_surface", "left_without_continuing"],
 
   error_event: ["affected_sessions"],
+
+  // O-041 §3: exactly two counts, sessions-on-surface then qualifying sessions —
+  // error_event's one-exposure/one-harm shape, not funnel_dropoff's directional
+  // funnel framing (an observed struggle is not "leaving without continuing").
+  observed_struggle: ["reached_surface", "affected_sessions"],
 } as const satisfies Record<DetectorName, readonly CountRole[]>;
 
 // The role whose count names the harm, not the exposure. `satisfies` makes a new
@@ -16,6 +21,8 @@ export const IMPACT_ROLE = {
   funnel_dropoff: "left_without_continuing",
 
   error_event: "affected_sessions",
+
+  observed_struggle: "affected_sessions",
 } as const satisfies Record<DetectorName, CountRole>;
 
 export type ResolvedCounts = {

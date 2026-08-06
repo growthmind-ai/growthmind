@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import type { CountBasis, MeasuredCount } from "../../src/counts/measured-count";
 import { measuredCount } from "../../src/counts/measured-count";
 import type { EvidenceSignal } from "../../src/evidence/signals";
-import { evidenceSignalKindSchema } from "../../src/evidence/signals";
+import { evidenceSignalKindSchema, evidenceSignalSchema } from "../../src/evidence/signals";
 import { toFindingEvidence } from "../../src/fixes/finding-evidence";
 
 const WINDOW = {
@@ -70,6 +70,21 @@ const EVERY_ARM_MAPPED: readonly FindingEvidence[] = [
   { kind: "event", label: RATE_DROP_EVENT, url: null },
 ];
 
+const OBSERVED_STRUGGLE_SURFACE = "/t1fe/signup";
+const OBSERVED_SUBKIND = "rage_click";
+
+// TODO(O-041 D-7): drop the `unknown` shape once struggleSubkindSchema covers the observed
+// subkinds; evidenceSignalSchema is the boundary that has to accept one.
+function observedStruggleSignal(): unknown {
+  return {
+    kind: "struggle",
+    subkind: OBSERVED_SUBKIND,
+    surface: OBSERVED_STRUGGLE_SURFACE,
+    attempts: 4,
+    strugglingSessions: countOf(6),
+  };
+}
+
 function distinctCleanExits(howMany: number): readonly EvidenceSignal[] {
   return Array.from({ length: howMany }, (_unused, index): EvidenceSignal => {
     return { kind: "clean_exit", surface: `/t1fe/step-${String(index).padStart(3, "0")}` };
@@ -94,5 +109,13 @@ describe("toFindingEvidence", () => {
 
   test("derives no evidence from a finding with no signals", () => {
     expect(toFindingEvidence([])).toEqual([]);
+  });
+
+  test("should build fix-spec evidence for an observed struggle signal without throwing", () => {
+    const signal: EvidenceSignal = evidenceSignalSchema.parse(observedStruggleSignal());
+
+    expect(toFindingEvidence([signal])).toEqual([
+      { kind: "funnel_step", label: OBSERVED_STRUGGLE_SURFACE, url: null },
+    ]);
   });
 });

@@ -446,6 +446,7 @@ describe("the analysis modules contain no barred click proxy", () => {
       "error-event.ts",
       "funnel-dropoff.ts",
       "not-built.ts",
+      "observed.ts",
       "order.ts",
       "types.ts",
       "spine/spine.ts",

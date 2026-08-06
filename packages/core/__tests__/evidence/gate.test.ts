@@ -1,12 +1,20 @@
+import type { ConnectionState } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
 import { measuredCount } from "../../src/counts/measured-count";
-import type { MeasuredCount } from "../../src/counts/measured-count";
-import type { AnalysisWindow } from "../../src/detect/types";
+import type { CountBasis, MeasuredCount } from "../../src/counts/measured-count";
+import type {
+  AnalysisWindow,
+  DetectorCandidate,
+  DetectorCorpus,
+  SessionTimeline,
+} from "../../src/detect/types";
 import { DOWNGRADE_PATH, evaluate } from "../../src/evidence/gate";
 import type { DowngradeDestination, GateOutcome, ProposedClaim } from "../../src/evidence/gate";
+import { changedMindProofSatisfied } from "../../src/evidence/predicates";
 import type { EvidenceSignal } from "../../src/evidence/signals";
+import type { ElementIdentity, SessionAction, SessionTranscript } from "../../src/replay/types";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import { findingClassSchema } from "../../src/rules/types";
 import type { FindingClass, ThresholdRuleSet } from "../../src/rules/types";
@@ -487,5 +495,307 @@ describe("evidence gate — invariants", () => {
   test("confusing is the floor — it downgrades to drop, never to another class", () => {
     expect(DOWNGRADE_PATH.confusing).toBe("drop");
     expect(Object.values(DOWNGRADE_PATH)).not.toContain("changed_mind");
+  });
+});
+
+// TODO(O-041 T3.1/T3.3/T5.1): replace the local declarations, the ratified-value
+// fallbacks and both deferred loads with static imports of SessionReplay,
+// StruggleSubkind, struggleSubkindSchema and src/evidence/observed-struggle once they
+// land. See .ai/adds/o-041-observed-struggle.md §9 and D-1.
+const SRC_DIR = `${import.meta.dir}/../../src`.replaceAll("\\", "/");
+const OBSERVED_STRUGGLE_SOURCE = `${SRC_DIR}/evidence/observed-struggle.ts`;
+const SIGNALS_SOURCE = `${SRC_DIR}/evidence/signals.ts`;
+
+type SessionReplay = {
+  readonly sessionId: string;
+  readonly transcript: SessionTranscript;
+};
+
+type ReplayCorpus = DetectorCorpus & {
+  readonly replays?: readonly SessionReplay[];
+};
+
+type ObservedStruggleModule = {
+  readonly observedStruggleCandidates: (
+    corpus: ReplayCorpus,
+    ruleSet: ThresholdRuleSet,
+  ) => readonly DetectorCandidate[];
+};
+
+type StruggleSubkind =
+  | "repeated_attempt"
+  | "backtrack"
+  | "rage_click"
+  | "dead_click"
+  | "field_abandoned"
+  | "field_refocus"
+  | "scroll_back";
+
+const EVERY_DECLARED_STRUGGLE_SUBKIND: readonly StruggleSubkind[] = [
+  "repeated_attempt",
+  "backtrack",
+  "rage_click",
+  "dead_click",
+  "field_abandoned",
+  "field_refocus",
+  "scroll_back",
+];
+
+type SignalsModule = {
+  readonly struggleSubkindSchema: { readonly options: readonly StruggleSubkind[] };
+};
+
+async function declaredStruggleSubkinds(): Promise<readonly StruggleSubkind[]> {
+  const loaded = (await import(SIGNALS_SOURCE)) as Partial<SignalsModule>;
+  const options = loaded.struggleSubkindSchema?.options;
+
+  if (options === undefined) {
+    throw new Error(
+      "src/evidence/signals.ts must export struggleSubkindSchema — the one declaration of the struggle subkind union (D-7)",
+    );
+  }
+
+  return options;
+}
+
+async function observedStruggleCandidates(
+  corpus: ReplayCorpus,
+  ruleSet: ThresholdRuleSet,
+): Promise<readonly DetectorCandidate[]> {
+  const loaded = (await import(OBSERVED_STRUGGLE_SOURCE)) as Partial<ObservedStruggleModule>;
+
+  if (typeof loaded.observedStruggleCandidates !== "function") {
+    throw new Error(
+      "src/evidence/observed-struggle.ts must export observedStruggleCandidates(corpus, ruleSet)",
+    );
+  }
+
+  return loaded.observedStruggleCandidates(corpus, ruleSet);
+}
+
+async function signalsFrom(
+  corpus: ReplayCorpus,
+  ruleSet: ThresholdRuleSet,
+): Promise<readonly EvidenceSignal[]> {
+  const candidates = await observedStruggleCandidates(corpus, ruleSet);
+  return candidates.flatMap((candidate) => [...candidate.signals]);
+}
+
+const O041_PROJECT_ID = "t041-gate-project";
+const O041_SURFACE = "/t041-gate/checkout";
+const O041_HREF = `https://t041-gate.example.invalid${O041_SURFACE}`;
+
+const O041_ACTION_STRIDE_MS = 1_000;
+const O041_RAGE_SPAN_MS = 900;
+const O041_SESSION_STRIDE_MS = 60_000;
+const O041_FIRST_SESSION_AT = new Date("2026-05-02T09:00:00.000Z");
+
+const O041_PAY_CONTROL: ElementIdentity = {
+  nodeId: 4_101,
+  tagName: "button",
+  classes: [],
+  attributes: {},
+  testId: "t041-gate-pay",
+};
+
+const O041_CONNECTION_STATE: ConnectionState = {
+  status: "connected_receiving",
+  connection: {
+    id: "t041-gate-connection",
+    organizationId: "t041-gate-org",
+    projectId: O041_PROJECT_ID,
+    sourceKind: "posthog",
+    host: "https://t041-gate.example.invalid",
+    sourceProjectId: "t041-gate-source-project",
+    isActive: true,
+    health: "healthy",
+    healthReasonCode: null,
+    healthReasonMessage: null,
+    healthCheckedAt: WINDOW.end,
+    watermarkAt: WINDOW.end,
+    backfillBefore: null,
+    pollIntervalSeconds: 60,
+    connectedAt: WINDOW.start,
+    inferredInternalDomain: null,
+    internalDomainProvenance: null,
+  },
+};
+
+function o041Transcript(clicks: number): SessionTranscript {
+  const actions: readonly SessionAction[] = [
+    { kind: "page", atMs: 0, href: O041_HREF },
+    {
+      kind: "rage_click",
+      atMs: O041_ACTION_STRIDE_MS,
+      element: O041_PAY_CONTROL,
+      clicks,
+      spanMs: O041_RAGE_SPAN_MS,
+    },
+  ];
+
+  return {
+    actions,
+    startedAt: O041_FIRST_SESSION_AT,
+    durationMs: actions.length * O041_ACTION_STRIDE_MS,
+    pages: [O041_HREF],
+    counts: {
+      clicks: 0,
+      deadClicks: 0,
+      rageClicks: 1,
+      refocuses: 0,
+      abandonedFields: 0,
+      scrollBacks: 0,
+    },
+    droppedEvents: 0,
+    clockOriginAtMs: null,
+  };
+}
+
+function o041SessionId(slot: number): string {
+  return `t041-gate-session-${String(slot).padStart(2, "0")}`;
+}
+
+function o041Timeline(slot: number): SessionTimeline {
+  return {
+    sessionId: o041SessionId(slot),
+    startedAt: new Date(O041_FIRST_SESSION_AT.getTime() + slot * O041_SESSION_STRIDE_MS),
+    exclusionReason: "none",
+    entryUrlPath: O041_SURFACE,
+    events: [],
+  };
+}
+
+function o041Basis(kept: number): CountBasis {
+  return { totalInWindow: kept, kept, setAside: [], keptUnchecked: 0 };
+}
+
+function o041Corpus(clicksPerSession: number, ruleSet: ThresholdRuleSet): ReplayCorpus {
+  const minSessions = ruleSet.struggleObservedMinSessions;
+  const slots: readonly number[] = Array.from({ length: minSessions }, (_unused, slot) => slot);
+
+  return {
+    projectId: O041_PROJECT_ID,
+    window: WINDOW,
+    connectionState: O041_CONNECTION_STATE,
+    sessions: slots.map(o041Timeline),
+    basis: o041Basis(minSessions),
+    coverage: { truncated: false, eventsWithoutUrlPath: 0 },
+    replays: slots.map((slot) => ({
+      sessionId: o041SessionId(slot),
+      transcript: o041Transcript(clicksPerSession),
+    })),
+  };
+}
+
+function belowThresholdCorpus(ruleSet: ThresholdRuleSet): ReplayCorpus {
+  return o041Corpus(ruleSet.struggleRageClickMin - 1, ruleSet);
+}
+
+function clearingCorpus(ruleSet: ThresholdRuleSet): ReplayCorpus {
+  return o041Corpus(ruleSet.struggleRageClickMin, ruleSet);
+}
+
+async function rageClickClear(ruleSet: ThresholdRuleSet): Promise<EvidenceSignal> {
+  const signals = await signalsFrom(clearingCorpus(ruleSet), ruleSet);
+
+  if (signals.length !== 1) {
+    throw new Error(
+      `a corpus clearing struggleRageClickMin over struggleObservedMinSessions emits one struggle signal, not ${String(signals.length)}`,
+    );
+  }
+
+  return signals[0];
+}
+
+// Widened: EvidenceSignal's struggle arm carries only the two inferred subkinds until
+// D-7 makes StruggleSubkind its one declaration.
+function struggleOfSubkind(
+  subkind: StruggleSubkind,
+  attempts: number,
+  strugglingSessions: number,
+): EvidenceSignal {
+  return {
+    kind: "struggle",
+    subkind,
+    surface: SURFACE,
+    attempts,
+    strugglingSessions: sessions(strugglingSessions, STRUGGLE_COHORT_KEPT),
+  } as EvidenceSignal;
+}
+
+const FAR_ABOVE_ANY_MAGNITUDE = 1_000;
+
+function everyMagnitude(
+  ruleSet: ThresholdRuleSet,
+): readonly { readonly attempts: number; readonly strugglingSessions: number }[] {
+  return [
+    { attempts: 1, strugglingSessions: 1 },
+    {
+      attempts: ruleSet.struggleRepeatedAttemptMin,
+      strugglingSessions: ruleSet.struggleMinStrugglingSessions,
+    },
+    { attempts: FAR_ABOVE_ANY_MAGNITUDE, strugglingSessions: STRUGGLE_COHORT_KEPT },
+  ];
+}
+
+const PRE_SPRINT_CONFUSING_DROP_TRACE_LENGTH = 1;
+
+describe("evidence gate — O-041 grade-unchanged regressions", () => {
+  test("should not drop changed_mind when an observed beat falls below its threshold", async () => {
+    const ruleSet = ruleSetV1();
+
+    const candidates = await observedStruggleCandidates(belowThresholdCorpus(ruleSet), ruleSet);
+    const signalsFromThoseCandidates = candidates.flatMap((candidate) => [...candidate.signals]);
+
+    expect(candidates).toEqual([]);
+    expect(changedMindProofSatisfied([cleanExit(), ...signalsFromThoseCandidates], ruleSet)).toBe(
+      changedMindProofSatisfied([cleanExit()], ruleSet),
+    );
+    expect(changedMindProofSatisfied([cleanExit(), ...signalsFromThoseCandidates], ruleSet)).toBe(
+      true,
+    );
+  });
+
+  test("should not change the confusing verdict when an observed beat falls below its threshold", async () => {
+    const ruleSet = ruleSetV1();
+    const subThreshold = repeatedAttempt(ruleSet.struggleRepeatedAttemptMin - 1);
+
+    const preSprint = evaluate(claim("confusing", [subThreshold]), ruleSet);
+    const withObservedBeat = evaluate(
+      claim("confusing", [
+        subThreshold,
+        ...(await signalsFrom(belowThresholdCorpus(ruleSet), ruleSet)),
+      ]),
+      ruleSet,
+    );
+
+    expect(preSprint.kind).toBe("drop");
+    expect(preSprint.trace.length).toBe(PRE_SPRINT_CONFUSING_DROP_TRACE_LENGTH);
+    expect(withObservedBeat.kind).toBe("drop");
+    expect(withObservedBeat.trace.length).toBe(PRE_SPRINT_CONFUSING_DROP_TRACE_LENGTH);
+    expect(visitedClasses(withObservedBeat)).toEqual(visitedClasses(preSprint));
+  });
+
+  test("should drop changed_mind when an observed struggle signal clears its threshold", async () => {
+    const ruleSet = ruleSetV1();
+
+    expect(changedMindProofSatisfied([cleanExit(), await rageClickClear(ruleSet)], ruleSet)).toBe(
+      false,
+    );
+  });
+
+  test("should not edit CHANGED_MIND_DISQUALIFYING_KINDS", async () => {
+    const ruleSet = ruleSetV1();
+    const subkinds = await declaredStruggleSubkinds();
+
+    expect(new Set(subkinds)).toEqual(new Set(EVERY_DECLARED_STRUGGLE_SUBKIND));
+
+    for (const subkind of subkinds) {
+      for (const magnitude of everyMagnitude(ruleSet)) {
+        const signal = struggleOfSubkind(subkind, magnitude.attempts, magnitude.strugglingSessions);
+
+        expect(changedMindProofSatisfied([cleanExit(), signal], ruleSet)).toBe(false);
+      }
+    }
   });
 });

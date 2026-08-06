@@ -267,6 +267,7 @@ type FailDirectionEvidence = {
 type NumericMembers<T> = {
   [K in keyof T]-?: T[K] extends number ? K : never;
 }[keyof T];
+
 type ThresholdKey = Exclude<NumericMembers<ThresholdRuleSet>, "version">;
 
 type NameListMembers<T> = {
@@ -306,6 +307,30 @@ const THRESHOLD_FAIL_DIRECTION_TESTS: Record<ThresholdKey, FailDirectionEvidence
   },
   struggleMinStrugglingSessions: {
     test: "should not satisfy confusing proof below struggleMinStrugglingSessions",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleRageClickMin: {
+    test: "should not satisfy confusing proof below struggleRageClickMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleDeadClickMin: {
+    test: "should not satisfy confusing proof below struggleDeadClickMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleFieldAbandonedMin: {
+    test: "should not satisfy confusing proof below struggleFieldAbandonedMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleFieldRefocusMin: {
+    test: "should not satisfy confusing proof below struggleFieldRefocusMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleScrollBackMin: {
+    test: "should not satisfy confusing proof below struggleScrollBackMin",
+    file: "evidence/predicates.test.ts",
+  },
+  struggleObservedMinSessions: {
+    test: "should not satisfy confusing proof below struggleObservedMinSessions",
     file: "evidence/predicates.test.ts",
   },
   instrumentationDropRatioPercent: {

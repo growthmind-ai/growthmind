@@ -4,11 +4,13 @@ import { describe, expect, test } from "bun:test";
 import type { MeasuredCount } from "../../src/counts/measured-count";
 import { detectErrorEvent } from "../../src/detect/error-event";
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
+import { detectObservedStruggle } from "../../src/detect/observed";
 import type {
   AnalysisWindow,
   DetectorCandidate,
   DetectorCorpus,
   DetectorResult,
+  SessionReplay,
   SessionTimeline,
   TimelineEvent,
 } from "../../src/detect/types";
@@ -16,6 +18,7 @@ import { traceEntry } from "../../src/evidence/trace";
 import type { CandidateFinding } from "../../src/findings/candidate";
 import { candidateFindingSchema } from "../../src/findings/candidate";
 import { EVIDENCE_SHAPE_VERSION } from "../../src/findings/evidence-shape";
+import type { ElementIdentity, SessionAction, SessionTranscript } from "../../src/replay/types";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 import { detectorNameSchema } from "../../src/rules/types";
@@ -46,6 +49,19 @@ const FUNNEL_EVENT_NAME = "t1cr_step_viewed";
 
 const ERROR_SURFACE = "/t1cr/settings";
 const ERROR_ACTION = "t1cr_save_clicked";
+
+const STRUGGLE_HEADROOM_SESSIONS = 2;
+
+const STRUGGLE_CLICK_HEADROOM = 1;
+
+const STRUGGLE_SURFACE = "/t1cr/checkout";
+const STRUGGLE_SURFACE_HREF = `https://t1cr.example.invalid${STRUGGLE_SURFACE}`;
+const STRUGGLE_CONTROL_TEST_ID = "t1cr-pay";
+
+const STRUGGLE_NODE_ID_BASE = 1_000;
+const RAGE_SPAN_MS = 900;
+const ONE_RAGE_BURST = 1;
+const NO_ACTIONS_OF_KIND = 0;
 
 function ruleSetV1(): ThresholdRuleSet {
   const rules = THRESHOLD_RULE_SETS.get(1);
@@ -179,6 +195,70 @@ function firingErrorCorpus(ruleSet: ThresholdRuleSet): DetectorCorpus {
   return corpusOf(sessions);
 }
 
+function struggleControl(index: number): ElementIdentity {
+  return {
+    nodeId: STRUGGLE_NODE_ID_BASE + index,
+    tagName: "button",
+    classes: [],
+    attributes: {},
+    testId: STRUGGLE_CONTROL_TEST_ID,
+  };
+}
+
+function struggleTranscript(index: number, ruleSet: ThresholdRuleSet): SessionTranscript {
+  const actions: readonly SessionAction[] = [
+    { kind: "page", atMs: EVENT_STRIDE_MS, href: STRUGGLE_SURFACE_HREF },
+    {
+      kind: "rage_click",
+      atMs: EVENT_STRIDE_MS * 2,
+      element: struggleControl(index),
+      clicks: ruleSet.struggleRageClickMin + STRUGGLE_CLICK_HEADROOM,
+      spanMs: RAGE_SPAN_MS,
+    },
+  ];
+
+  return {
+    actions,
+    startedAt: sessionStartedAt(index),
+    durationMs: actions.length * EVENT_STRIDE_MS,
+    pages: [STRUGGLE_SURFACE_HREF],
+    counts: {
+      clicks: NO_ACTIONS_OF_KIND,
+      deadClicks: NO_ACTIONS_OF_KIND,
+      rageClicks: ONE_RAGE_BURST,
+      refocuses: NO_ACTIONS_OF_KIND,
+      abandonedFields: NO_ACTIONS_OF_KIND,
+      scrollBacks: NO_ACTIONS_OF_KIND,
+    },
+    droppedEvents: NO_ACTIONS_OF_KIND,
+    clockOriginAtMs: null,
+  };
+}
+
+function struggleSession(index: number): SessionTimeline {
+  return {
+    sessionId: `t1cr-struggle-${String(index).padStart(3, "0")}`,
+    startedAt: sessionStartedAt(index),
+    exclusionReason: "none",
+    entryUrlPath: STRUGGLE_SURFACE,
+    events: [],
+  };
+}
+
+function firingStruggleCorpus(ruleSet: ThresholdRuleSet): DetectorCorpus {
+  const struggling = ruleSet.struggleObservedMinSessions + STRUGGLE_HEADROOM_SESSIONS;
+
+  const sessions: SessionTimeline[] = [];
+  const replays: SessionReplay[] = [];
+  for (let index = 0; index < struggling; index += 1) {
+    const session = struggleSession(index);
+    sessions.push(session);
+    replays.push({ sessionId: session.sessionId, transcript: struggleTranscript(index, ruleSet) });
+  }
+
+  return { ...corpusOf(sessions), replays };
+}
+
 function firstCandidateOf(result: DetectorResult): DetectorCandidate {
   const candidate = result.candidates[0];
   if (!candidate) {
@@ -251,6 +331,7 @@ describe("count roles", () => {
     const results: readonly DetectorResult[] = [
       detectFunnelDropoff(firingFunnelCorpus(ruleSet), ruleSet),
       detectErrorEvent(firingErrorCorpus(ruleSet), ruleSet),
+      detectObservedStruggle(firingStruggleCorpus(ruleSet), ruleSet),
     ];
 
     for (const result of results) {
