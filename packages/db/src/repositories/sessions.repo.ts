@@ -4,7 +4,7 @@ import type {
   Origin,
   TenantContext,
 } from "@growthmind/shared";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { sessions } from "../schema/sessions";
 import { orgCrud } from "./crud";
@@ -32,12 +32,25 @@ export interface SessionUpsertRow {
   groupingVersion: number;
 }
 
+export interface BoundedSessions {
+  readonly sessions: SessionRecord[];
+  readonly truncated: boolean;
+}
+
 export interface SessionsRepo {
   upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]>;
 
   listForProject(projectId: string, options: { limit: number }): Promise<SessionRecord[]>;
 
   findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null>;
+
+  listGroupableSessions(projectId: string, options: { limit: number }): Promise<BoundedSessions>;
+
+  listSessionsForDomain(
+    projectId: string,
+    domain: string,
+    options: { limit: number },
+  ): Promise<BoundedSessions>;
 }
 
 const RESOLUTION_RANK: Record<IdentityResolution, number> = {
@@ -156,6 +169,33 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
 
     async findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null> {
       return c.maybe(eq(sessions.projectId, projectId), eq(sessions.sessionKey, sessionKey));
+    },
+
+    async listGroupableSessions(
+      projectId: string,
+      options: { limit: number },
+    ): Promise<BoundedSessions> {
+      const rows = await c.list({
+        where: and(eq(sessions.projectId, projectId), isNotNull(sessions.identityEmailDomain)),
+        orderBy: [desc(sessions.startedAt)],
+        limit: options.limit + 1,
+      });
+
+      return { sessions: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+    },
+
+    async listSessionsForDomain(
+      projectId: string,
+      domain: string,
+      options: { limit: number },
+    ): Promise<BoundedSessions> {
+      const rows = await c.list({
+        where: and(eq(sessions.projectId, projectId), eq(sessions.identityEmailDomain, domain)),
+        orderBy: [desc(sessions.startedAt)],
+        limit: options.limit + 1,
+      });
+
+      return { sessions: rows.slice(0, options.limit), truncated: rows.length > options.limit };
     },
   };
 }
