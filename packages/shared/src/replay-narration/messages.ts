@@ -49,9 +49,30 @@ export const RECORDING_SUMMARY_PENDING =
 export const RECORDING_SUMMARY_HELD =
   "We read this recording, but what we wrote about it could not be shown.";
 
+// The five sentences below are DRAFT and require Tom's ratification before merge: they are the
+// OQ1/OQ2/OQ3 Human call clauses on O-047 (see .ai/adds/o-047-recording-states-live.md AD-8).
+export const RECORDING_SUMMARY_NO_SOURCE =
+  "We cannot read a recording source for this project, so no description is coming for this recording.";
+
+export const RECORDING_SUMMARY_NO_SOURCE_LINK = "Check your recording connection";
+
+export const RECORDING_SUMMARY_NOT_CONFIGURED =
+  "This installation is not set up to read recordings, so nothing will be written here. Whoever runs it has to finish that setup.";
+
+export const RECORDING_SUMMARY_READ_FAILED =
+  "Something went wrong looking up the description for this recording. The recording itself is fine — reload the page to try again.";
+
+export const RECORDING_SUMMARY_PARTIAL =
+  "We could only read part of this recording, so this description may be missing some of what happened. We will pick up the rest when we can.";
+
 export const ALL_RECORDING_NARRATION_MESSAGES: readonly string[] = [
   RECORDING_SUMMARY_PENDING,
   RECORDING_SUMMARY_HELD,
+  RECORDING_SUMMARY_NO_SOURCE,
+  RECORDING_SUMMARY_NO_SOURCE_LINK,
+  RECORDING_SUMMARY_NOT_CONFIGURED,
+  RECORDING_SUMMARY_READ_FAILED,
+  RECORDING_SUMMARY_PARTIAL,
   RECORDING_FLOOR_HEADLINE_TEMPLATE,
   RECORDING_FLOOR_ONE_PAGE_TEMPLATE,
   RECORDING_FLOOR_PAGES_TEMPLATE,
