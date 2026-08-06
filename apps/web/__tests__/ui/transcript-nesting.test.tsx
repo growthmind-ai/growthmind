@@ -43,7 +43,12 @@ const BEATS: readonly BeatView[] = [
 ];
 
 const CLAIMS: readonly ClaimView[] = [
-  { statement: "The request behind the button fails.", citesBeats: [1], citesLabel: "from 00:11" },
+  {
+    statement: "The request behind the button fails.",
+    citesBeats: [1],
+    citesLabel: "from 00:11",
+    citesHref: null,
+  },
 ];
 
 function markup(beats: readonly BeatView[] = BEATS): string {
