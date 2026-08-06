@@ -1,5 +1,5 @@
 import type { ConnectionState, ExclusionReason } from "@growthmind/shared";
-import { normaliseUrlPath } from "@growthmind/shared";
+import { isNormalisedUrlPath, normaliseUrlPath } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import type { CountBasis, SetAsideBasis } from "../../src/counts/measured-count";
@@ -125,6 +125,7 @@ const FIXTURE_STARTED_AT = new Date("2026-05-02T09:00:00.000Z");
 const SURFACE = "/t041/checkout";
 const SURFACE_HREF = `https://t041.example.invalid${SURFACE}`;
 const UNNORMALISABLE_HREF = "t041 not a url";
+const NON_FIXED_POINT_HREF = `https://t041.example.invalid${SURFACE}//`;
 
 const ACTION_STEP_MS = 1_000;
 const RAGE_SPAN_MS = 900;
@@ -802,6 +803,30 @@ describe("observedStruggleCandidates", () => {
     );
 
     expect(normaliseUrlPath(null, UNNORMALISABLE_HREF)).toBeNull();
+    expect(await candidatesOf(corpus)).toEqual([]);
+  });
+
+  test("should not attribute an action whose page href normalises to a non-fixed-point path", async () => {
+    const rules = ruleSetV1();
+
+    const corpus = corpusOf(
+      repeat(rules.struggleObservedMinSessions, (session) =>
+        replayOf(
+          session,
+          sequence([
+            page(NON_FIXED_POINT_HREF),
+            rageBurst(
+              interactiveControl(nodeIdOf(session, 1), PAY_CONTROL_TEST_ID),
+              rules.struggleRageClickMin,
+            ),
+          ]),
+        ),
+      ),
+    );
+
+    const normalised = normaliseUrlPath(null, NON_FIXED_POINT_HREF);
+    expect(normalised).not.toBeNull();
+    expect(isNormalisedUrlPath(normalised!)).toBe(false);
     expect(await candidatesOf(corpus)).toEqual([]);
   });
 
