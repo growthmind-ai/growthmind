@@ -1,4 +1,4 @@
-import { RETRYABLE_PULL_STOP, type FindingText, type TranscriptPullStop } from "@growthmind/db";
+import type { FindingText, TranscriptPullStop } from "@growthmind/db";
 import type { SummarySource } from "@growthmind/shared";
 
 import type { RecordingSourceState } from "@/lib/replay/deps";
@@ -27,6 +27,22 @@ export type RecordingSummaryStory =
   | { readonly kind: "no_source" }
   | { readonly kind: "not_configured" }
   | { readonly kind: "read_failed" };
+
+// A cap stopped the pull short of the whole recording just as a failure did, and only a failure
+// is ever pulled again (recording-summaries.repo selects RETRYABLE_PULL_STOP alone), so a capped
+// row is permanently the entire account the reader gets. Switched rather than listed: a new stop
+// has to be classified here or this stops compiling.
+function isPartialPull(pullStop: TranscriptPullStop | null): boolean {
+  switch (pullStop) {
+    case "page_cap":
+    case "byte_cap":
+    case "failed":
+      return true;
+    case "exhausted":
+    case null:
+      return false;
+  }
+}
 
 export function resolveRecordingSummaryStory(read: RecordingSummaryRead): RecordingSummaryStory {
   if (read.kind === "read_failed") {
@@ -59,6 +75,6 @@ export function resolveRecordingSummaryStory(read: RecordingSummaryRead): Record
     headline: text.headline,
     context: text.context,
     summarySource,
-    partial: pullStop === RETRYABLE_PULL_STOP,
+    partial: isPartialPull(pullStop),
   };
 }

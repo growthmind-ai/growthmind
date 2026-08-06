@@ -22,11 +22,12 @@ const HELD_TEXT = readFindingText({ headline: HEADLINE, context: 42 });
 const VENDOR_REASON = "PostHog 429: rate limited (req_ab12)";
 const VENDOR_ID = "req_ab12";
 
-const CAPPED_STOPS = [
+const CAPPED_STOPS = ["page_cap", "byte_cap"] as const satisfies readonly TranscriptPullStop[];
+
+const COMPLETE_STOPS = [
   "exhausted",
-  "page_cap",
-  "byte_cap",
-] as const satisfies readonly TranscriptPullStop[];
+  null,
+] as const satisfies readonly (TranscriptPullStop | null)[];
 
 const RESOLVED_FIELDS = ["kind", "headline", "context", "summarySource", "partial"];
 
@@ -99,18 +100,25 @@ describe("resolveRecordingSummaryStory", () => {
     });
   });
 
-  test("should not mark a clean pull as partial", () => {
-    expect(resolvedFor(rowRead(factsFor({ pullStop: null }))).partial).toBe(false);
-  });
-
-  // A cap is a bound reached, not a failure: the pull read every byte it was allowed to.
-  test("should not mark a capped pull as partial", () => {
+  // A cap left the rest of the recording unread exactly as a failure did, and no later tick ever
+  // pulls it again — so without the caveat a capped row reads as a complete account forever.
+  test("should mark a capped pull as partial", () => {
     const verdicts = CAPPED_STOPS.map((pullStop) => ({
       pullStop,
       partial: resolvedFor(rowRead(factsFor({ pullStop }))).partial,
     }));
 
-    expect(verdicts).toEqual(CAPPED_STOPS.map((pullStop) => ({ pullStop, partial: false })));
+    expect(verdicts).toEqual(CAPPED_STOPS.map((pullStop) => ({ pullStop, partial: true })));
+  });
+
+  // `exhausted` read the recording to its end, and a null stop is a row that recorded none.
+  test("should not mark a completed pull as partial", () => {
+    const verdicts = COMPLETE_STOPS.map((pullStop) => ({
+      pullStop,
+      partial: resolvedFor(rowRead(factsFor({ pullStop }))).partial,
+    }));
+
+    expect(verdicts).toEqual(COMPLETE_STOPS.map((pullStop) => ({ pullStop, partial: false })));
   });
 
   test("should resolve a row with no context lines", () => {
