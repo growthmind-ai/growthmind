@@ -32,14 +32,15 @@ Growthmind is an open-source growth engine that closes that gap. It challenges t
 > (funnel drop-off and error events) through an evidence gate, persists findings
 > behind a signature ledger that never repeats one and remembers a dismissal,
 > renders a summary — with a model when a key is configured, and a deterministic
-> floor when not — and posts to Slack on a schedule.
+> floor when not — and posts to Slack on a schedule. The MCP surface
+> authenticates a key you mint yourself, and its read tools serve your own
+> organisation's rows.
 >
 > **Does not run.** `packages/sdk-js` is a stub, so there is no first-party
 > capture, no auto-derived events, and no masking — everything above depends on
 > your PostHog. There is no ingest endpoint. Experiments, verification and
-> verdicts are specified and unbuilt. The MCP surface authenticates and serves
-> its three read tools, but is wired to a placeholder read port and answers empty
-> on every installation, including ones with findings.
+> verdicts are specified and unbuilt, and so is `report_shipped`, the one write
+> in the machine surface, so an agent cannot yet tell us it shipped something.
 >
 > This README describes what Growthmind is for. The two lists above are what you
 > can run this afternoon.
@@ -93,18 +94,21 @@ your coding agent (MCP) ─┼─▶  Growthmind  ─▶  one Slack message at a
 your analytics          ─┘
 ```
 
-An MCP server exists and speaks the wire protocol
-([`apps/web/app/api/mcp/route.ts`](apps/web/app/api/mcp/route.ts)): a real client
-handshakes, an API key is checked, and three read tools are advertised —
-`list_open_fixes`, `get_fix`, `get_finding`. It is not useful yet. Those tools
-are wired to a placeholder read port and return empty on every installation,
-so an agent that connects sees nothing even where findings exist.
+The MCP server is live ([`apps/web/app/api/mcp/route.ts`](apps/web/app/api/mcp/route.ts)):
+a real client handshakes, an API key is checked, and the tools read your own
+organisation's fixes, findings and page context. Until a finding exists the
+answers are honestly empty rather than absent — an empty list with a truthful
+window, never an error. What it advertises is whatever
+[`packages/shared/src/mcp/tools.ts`](packages/shared/src/mcp/tools.ts) exports,
+which is the one place that count lives;
+[get-started §6](docs/get-started.md) is how you wire it up and what each tool
+is for.
 
-The rest is designed, not shipped ([architecture.md §7](docs/architecture.md#7-machine-surfaces)):
-five tools in total, four reads and one write, where the write
-(`report_shipped`) records a claim that only independent verification can turn
-into a fact. A set of open skills (`growth-context`, `growth-events`,
-`growth-experiments`, `growth-simulations`) teaches your agent to write
+Every tool shipped so far reads. The write in the design
+([architecture.md §7](docs/architecture.md#7-machine-surfaces)) is `report_shipped`,
+recording a claim that only independent verification can turn into a fact, and
+it is not built. Nor are the open skills (`growth-context`, `growth-events`,
+`growth-experiments`, `growth-simulations`) that teach your agent to write
 instrumentation and simulations as code, in your repo, reviewed like anything
 else you ship. No skills directory exists here today.
 

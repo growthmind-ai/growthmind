@@ -63,6 +63,19 @@ const ARCHITECTURE_SCAN_NOT_RUN =
 const ARCHITECTURE_SCAN_UNCLAIMABLE =
   /Until that lands, nothing here or\s+anywhere else may be read as that scan having happened/i;
 
+// Pinned from README.md before O-020 bound the route to the live read port, so the
+// needle cannot be tuned to whatever replaced the sentence it retires.
+const README_PLACEHOLDER_READ_PORT = /placeholder read port/i;
+
+/** The tool names `packages/shared/src/mcp/tools.ts` exports, which is where the count lives. */
+function shippedToolNames(): string[] {
+  const registry = read("packages/shared/src/mcp/tools.ts");
+  const block = registry.slice(registry.indexOf("export const MCP_TOOL = {"));
+  return [...block.slice(0, block.indexOf("} as const;")).matchAll(/"([a-z][a-z0-9_]*)"/g)].map(
+    ([, name]) => name as string,
+  );
+}
+
 /**
  * Claims the repository can check about itself. Each is a sentence a reader would
  * act on, paired with the condition that makes it true. Entries under `.ai/` are
@@ -97,6 +110,13 @@ const CLAIMS: readonly {
     claim: /No skills directory exists here today/i,
     holdsWhen: () => !existsSync(`${ROOT}/skills`),
     because: "a skills/ directory now exists",
+  },
+  {
+    file: "README.md",
+    claim: README_PLACEHOLDER_READ_PORT,
+    holdsWhen: () => !read("apps/web/app/api/mcp/route.ts").includes("createLiveReadPort"),
+    because:
+      "apps/web/app/api/mcp/route.ts binds createLiveReadPort — the tools read the caller's own rows",
   },
   {
     file: "docs/get-started.md",
@@ -154,6 +174,14 @@ describe("documentation links", () => {
 });
 
 describe("documentation claims", () => {
+  test("get-started names every tool the MCP registry exports", () => {
+    const documented = read("docs/get-started.md");
+    const names = shippedToolNames();
+
+    expect(names).toContain("list_open_fixes");
+    expect(names.filter((name) => !documented.includes(name))).toEqual([]);
+  });
+
   test("no document makes a claim the repository contradicts", () => {
     const contradicted = CLAIMS.filter(
       (entry) =>

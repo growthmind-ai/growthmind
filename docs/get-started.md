@@ -171,9 +171,9 @@ Every save posts to /api/settings, and every attempt since 04:55 came back
 ```
 
 The spec is plain sentences an agent can act on and a founder can read over
-its shoulder — structured state rendered as sentences, no code. The
-MCP surface behind it is the read-only subset: `list_open_fixes`, `get_fix`,
-`get_finding`. §6 is how you wire it up today.
+its shoulder — structured state rendered as sentences, no code. The tools
+behind this beat are `list_open_fixes` and `get_fix`, with `get_finding` for the
+evidence underneath. §6 is the full set and how you wire it up today.
 
 ## 6. Connect your coding agent
 
@@ -249,15 +249,24 @@ the key read from the environment rather than committed:
 > A server declared in `.mcp.json` also needs approving once. Run `claude` in
 > the project and accept it, or it sits at "Pending approval".
 
-### The three tools, in plain English
+### The tools, in plain English
 
-All three read. Nothing here changes anything, in your product or in ours.
+Every one of them reads. Nothing here changes anything, in your product or in
+ours.
 
-| Tool              | What it is for                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_open_fixes` | The problems waiting to be fixed, most urgent first. Start here when you have been asked to improve something and hold no id. Each entry carries an id, one line on what is wrong, how many sessions hit it out of how many were measured, and when its result is due. At most 25 entries, plus the total, so a bigger total means you are looking at the most urgent slice. |
-| `get_fix`         | The full instructions for one fix, by id: what is wrong and where, why it matters, the checks it will be judged on, when to stop early. It names files and states what should be true when you are done — it contains no code, and how to get there is yours.                                                                                                                |
-| `get_finding`     | The evidence behind one problem, by id: what happened, how many sessions hit it out of how many were measured, over what dates, and links to the recordings and requests that show it. Everything in it was observed, never inferred.                                                                                                                                        |
+| Tool                 | What it is for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_open_fixes`    | The problems waiting to be fixed, most urgent first. Start here when you have been asked to improve something and hold no id. Each entry carries an id, one line on what is wrong, how many sessions hit it out of how many were measured, and when its result is due. At most 25 entries, plus the total, so a bigger total means you are looking at the most urgent slice.                                                                                                                                              |
+| `get_fix`            | The full instructions for one fix, by id: what is wrong and where, why it matters, the checks it will be judged on, when to stop early. It names files and states what should be true when you are done — it contains no code, and how to get there is yours.                                                                                                                                                                                                                                                             |
+| `get_finding`        | The evidence behind one problem, by id: what happened, how many sessions hit it out of how many were measured, over what dates, and links to the recordings and requests that show it. Everything in it was observed, never inferred.                                                                                                                                                                                                                                                                                     |
+| `get_growth_context` | What a page is for in this business, and whether the people who own it have ruled it out of bounds for a coding agent. This is the one to call when nobody has handed you a fix and you are still deciding what to build. Name a page address for one page, or leave it out for the pages that matter here. You get back what the page is for, whether work on it is allowed and why not when it is not, the problems already known on it, and the ideas a person has already turned down so you do not raise them again. |
+
+Both id lookups take an id you were handed rather than one you guess, and there
+are two places to be handed one. Every entry `list_open_fixes` returns carries
+its `findingId` alongside its `fixId`, so the queue hands you both. A problem
+nobody has specced a fix for yet is not in that queue at all — it is in
+`get_growth_context`, under `knownProblems`, where each entry carries a
+`findingId` and a `fixId` that is null until one exists.
 
 Ask for an id that does not exist and you get the same sentence as an id
 belonging to someone else. That is deliberate, and there is no way to tell the
@@ -270,7 +279,7 @@ protocol revision `2025-11-25` through the usual `initialize` handshake, and
 needs nothing set. Claude Code is one of those: measured against this endpoint,
 it sends `"protocolVersion":"2025-11-25"`. A client pinned to the modern
 `2026-07-28` revision is served by the same endpoint, on the same URL, with the
-same three tools. You do not pick one; the endpoint answers both.
+same tools. You do not pick one; the endpoint answers both.
 
 ### What comes back before you have findings
 
@@ -285,10 +294,22 @@ a truthful window:
 }
 ```
 
-and both id lookups answer exactly as they would for an id that never existed:
+both id lookups answer exactly as they would for an id that never existed:
 
 > There is nothing here with that id. Call list_open_fixes to see the ids you
 > can ask about.
+
+and `get_growth_context` says so in a field rather than by returning nothing,
+so an agent can tell "nothing known here" apart from "the call failed":
+
+```json
+{
+  "whatMatters": [],
+  "knownProblems": [],
+  "declined": [],
+  "nothingKnownYet": true
+}
+```
 
 **That is the correct answer, not a placeholder that will fill itself in.** An
 empty list rather than an error, a count of `0 of 0` rather than a blank, and a
