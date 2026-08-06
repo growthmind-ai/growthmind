@@ -575,6 +575,7 @@ function harness(
         persist: () =>
           Promise.reject(new Error("o44-cause-claims-repo not exercised by render-only fixtures")),
         findForFinding: () => Promise.resolve(null),
+        findForFindings: () => Promise.resolve(new Map()),
       }),
       divergencePointsFor: () => ({
         recordDivergence: () =>

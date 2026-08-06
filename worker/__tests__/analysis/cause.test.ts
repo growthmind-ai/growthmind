@@ -17,6 +17,7 @@ import type {
   RecordingSummariesRepo,
   SessionRecordingCitation,
 } from "@growthmind/db";
+import { CAUSE_STAGE_D11_FIXTURE } from "@growthmind/db/testing";
 import type { TenantContext } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
@@ -77,6 +78,11 @@ interface CauseClaimsRepo {
   persist(input: PersistCauseClaimsInput): Promise<CauseClaimRecord>;
 
   findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null>;
+
+  findForFindings(
+    projectId: string,
+    findingIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CauseClaimRecord>>;
 }
 
 interface CauseExplainInput {
@@ -350,6 +356,17 @@ function createFakeCauseClaims(): FakeCauseClaims {
           stored.get(causeClaimsRowKey(ctx.organizationId, projectId, findingId)) ?? null,
         );
       },
+      findForFindings(
+        projectId: string,
+        findingIds: readonly string[],
+      ): Promise<ReadonlyMap<string, CauseClaimRecord>> {
+        const found = new Map<string, CauseClaimRecord>();
+        for (const findingId of findingIds) {
+          const row = stored.get(causeClaimsRowKey(ctx.organizationId, projectId, findingId));
+          if (row) found.set(findingId, row);
+        }
+        return Promise.resolve(found);
+      },
     }),
   };
 }
@@ -495,21 +512,10 @@ function harness(options: {
 
 const FINDING_ID = "o44-cause-finding";
 
-// ---------------------------------------------------------------------------------------------
-// SHARED_D11_FIXTURE — mirrored by apps/web/__tests__/findings/detail-gate-emptied.test.ts
-// (task 0.11's consumer half of the D11 wiring proof). Keep the org/project/finding/
-// divergence-row/session ids identical there so both halves are provably the same evidence.
-const SHARED_D11_FIXTURE = {
-  organizationId: "o44-shared-org",
-  organizationName: "Acme Shared D11",
-  projectId: "o44-shared-project",
-  findingId: "o44-shared-finding",
-  surface: SURFACE,
-  anchorSessionId: "o44-shared-session",
-  windowStart: WINDOW_START,
-  windowEnd: WINDOW_END,
-} as const;
-// ---------------------------------------------------------------------------------------------
+// SHARED_D11_FIXTURE is now CAUSE_STAGE_D11_FIXTURE, exported from @growthmind/db/testing —
+// see that module for why (the same constant drives detail-gate-emptied.test.ts's consumer
+// half of this D11 wiring proof; two hand-copied literals could silently drift apart).
+const SHARED_D11_FIXTURE = CAUSE_STAGE_D11_FIXTURE;
 
 describe("planCause", () => {
   test("does not attempt the cause stage when the divergence row's kind is no_divergence or refused", async () => {

@@ -2,16 +2,23 @@
 // of the D11 shared-fixture end-to-end pair — the producer half is
 // worker/__tests__/analysis/cause.test.ts's "two ticks over the same seeded finding + divergence
 // row produce exactly one cause_claims row" test. Both halves are driven from the SAME
-// org/project/finding/session ids (SHARED_D11_FIXTURE below, copied verbatim from the worker
-// test) so this is provably one fixture proving one wire, not a producer test and a consumer
-// test that never touch each other (D11, ADD Decision 7/8).
+// org/project/finding/session ids (CAUSE_STAGE_D11_FIXTURE, @growthmind/db/testing) so this is
+// provably one fixture proving one wire, not a producer test and a consumer test that never
+// touch each other (D11, ADD Decision 7/8).
 import { MantineProvider } from "@mantine/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { schema, type ScopedDb } from "@growthmind/db";
-import { createTestDb, makeTenantContext, scannedTextFor, seedAnalysisRun, type TestDb } from "@growthmind/db/testing";
+import {
+  CAUSE_STAGE_D11_FIXTURE,
+  createTestDb,
+  makeTenantContext,
+  scannedTextFor,
+  seedAnalysisRun,
+  type TestDb,
+} from "@growthmind/db/testing";
 import { EVIDENCE_CLAIM_DROPPED, summarySourceSchema, type TenantContext } from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscript";
@@ -23,18 +30,7 @@ import {
   readLiveFindingWave0,
 } from "./helpers/wave0-types";
 
-// Mirrored verbatim from worker/__tests__/analysis/cause.test.ts's own SHARED_D11_FIXTURE —
-// keep every id identical there so both halves are provably the same evidence (task 0.11).
-const SHARED_D11_FIXTURE = {
-  organizationId: "o44-shared-org",
-  organizationName: "Acme Shared D11",
-  projectId: "o44-shared-project",
-  findingId: "o44-shared-finding",
-  surface: "/checkout",
-  anchorSessionId: "o44-shared-session",
-  windowStart: new Date("2026-07-30T00:00:00.000Z"),
-  windowEnd: new Date("2026-08-06T00:00:00.000Z"),
-} as const;
+const SHARED_D11_FIXTURE = CAUSE_STAGE_D11_FIXTURE;
 
 // The finding, org and project this fixture needs don't exist through any seeder that accepts a
 // caller-chosen id (seedOrgWithOwner/seedProject/createFindingsRepo.persist all mint their own
