@@ -79,8 +79,11 @@ export function RecordingSummaryCard({ story }: { readonly story: RecordingSumma
         <Quiet>
           <Text fw={700}>{story.headline}</Text>
 
-          {story.context.map((line) => (
-            <Text key={line}>{line}</Text>
+          {/* By position: the model can write the same sentence twice, and keying by text
+              collapses the pair into one line. Nothing reorders or filters this list. */}
+          {story.context.map((line, position) => (
+            // oxlint-disable-next-line react/no-array-index-key
+            <Text key={position}>{line}</Text>
           ))}
 
           <Text size="xs" c="dimmed">
@@ -92,6 +95,16 @@ export function RecordingSummaryCard({ story }: { readonly story: RecordingSumma
               {RECORDING_SUMMARY_PARTIAL}
             </Text>
           ) : null}
+        </Quiet>
+      );
+
+    // A seventh kind would otherwise widen the return to `undefined` and the card would
+    // vanish with nothing failing.
+    default:
+      story satisfies never;
+      return (
+        <Quiet>
+          <Sentence>{RECORDING_SUMMARY_PENDING}</Sentence>
         </Quiet>
       );
   }
