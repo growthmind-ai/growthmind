@@ -2,13 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, schema } from "@growthmind/db";
 import { createTestDb, seedEvents, seedSession, type TestDb } from "@growthmind/db/testing";
+import {
+  browserCut,
+  COHORT_CUTS,
+  deviceCut,
+  SURFACE_COHORT_CUT,
+  type CohortCut,
+} from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import {
-  assertUnderConstruction,
-  loadModuleUnderConstruction,
-  underConstructionSpecifier,
-} from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { ANALYSIS_WINDOW_MS, createAnalysisLaneSource } from "../src/analysis-lane-source";
 import type { AnalysisLane, AnalysisLogger } from "../src/analysis/types";
 import { seedPollableWorkspace, type SeededWorkspace } from "./helpers/wire-fixtures";
@@ -53,12 +55,6 @@ const SUCCEEDED_ON_DESKTOP = DETOUR_SESSIONS + REACHED_ON_DESKTOP_SESSIONS;
 const SUCCEEDED_ON_MOBILE = REACHED_ON_MOBILE_SESSIONS;
 const SUCCEEDED_WITH_NO_READABLE_AGENT = 0;
 
-const CUT_TAXONOMY_OWNER =
-  "backend-execution-agent, Wave 4 (packages/shared/src/cohort-cuts/cuts.ts, ADD Decision 1)";
-
-const COHORT_CUT_COLUMN_OWNER =
-  "backend-execution-agent, Wave 6 (packages/db/src/schema/divergence-points.ts + migration 0026)";
-
 let db: TestDb;
 let close: () => Promise<void>;
 
@@ -70,54 +66,7 @@ afterAll(async () => {
   await close();
 });
 
-// The 11-member closed enum and its two producers are the single source of the labels this
-// suite asserts on — hand-copying them here would let the worker and the taxonomy drift.
-interface CohortCutTaxonomy {
-  readonly surfaceCut: string;
-  readonly allCuts: readonly string[];
-  readonly browserCut: (family: string) => string;
-  readonly deviceCut: (device: string) => string;
-}
-
-async function cohortCutTaxonomy(): Promise<CohortCutTaxonomy> {
-  const namespace = await loadModuleUnderConstruction({
-    modulePath: underConstructionSpecifier("packages/shared/src/cohort-cuts/cuts.ts"),
-    ownedBy: CUT_TAXONOMY_OWNER,
-  });
-
-  const surfaceCut = namespace["SURFACE_COHORT_CUT"];
-  const allCuts = namespace["COHORT_CUTS"];
-  const browserCut = namespace["browserCut"];
-  const deviceCut = namespace["deviceCut"];
-
-  assertUnderConstruction(
-    typeof surfaceCut === "string" &&
-      Array.isArray(allCuts) &&
-      typeof browserCut === "function" &&
-      typeof deviceCut === "function",
-    {
-      contract:
-        "packages/shared/src/cohort-cuts/cuts.ts exports SURFACE_COHORT_CUT, COHORT_CUTS, browserCut and deviceCut",
-      ownedBy: CUT_TAXONOMY_OWNER,
-    },
-  );
-
-  return {
-    surfaceCut: surfaceCut as string,
-    allCuts: allCuts as readonly string[],
-    browserCut: browserCut as (family: string) => string,
-    deviceCut: deviceCut as (device: string) => string,
-  };
-}
-
-function requireCohortCutColumn(): void {
-  assertUnderConstruction("cohortCut" in schema.divergencePoints, {
-    contract: "divergence_points carries a cohort_cut column that every write supplies",
-    ownedBy: COHORT_CUT_COLUMN_OWNER,
-  });
-}
-
-type CutRow = typeof schema.divergencePoints.$inferSelect & { readonly cohortCut: string };
+type CutRow = typeof schema.divergencePoints.$inferSelect;
 
 function recordingLogger(): AnalysisLogger & { readonly lines: string[] } {
   const lines: string[] = [];
@@ -215,7 +164,7 @@ async function seedDeviceCutCorpus(workspace: SeededWorkspace, agents: SeedAgent
 }
 
 async function cutRowsFor(workspace: SeededWorkspace): Promise<readonly CutRow[]> {
-  const rows = await db
+  return db
     .select()
     .from(schema.divergencePoints)
     .where(
@@ -224,8 +173,6 @@ async function cutRowsFor(workspace: SeededWorkspace): Promise<readonly CutRow[]
         eq(schema.divergencePoints.projectId, workspace.projectId),
       ),
     );
-
-  return rows.map((row) => row as CutRow);
 }
 
 interface LaneRun {
@@ -263,7 +210,7 @@ function twins(): Promise<Twins> {
   return twinRuns;
 }
 
-function cutOf(rows: readonly CutRow[], cut: string): CutRow {
+function cutOf(rows: readonly CutRow[], cut: CohortCut): CutRow {
   const found = rows.find((row) => row.cohortCut === cut);
   if (found === undefined) {
     throw new Error(
@@ -275,21 +222,18 @@ function cutOf(rows: readonly CutRow[], cut: string): CutRow {
 
 describe("createAnalysisLaneSource — the device cut reaches divergence through the real entry point (O-045, D11)", () => {
   test("laneForProject persists a surface row plus browser rows plus device rows on one window", async () => {
-    const taxonomy = await cohortCutTaxonomy();
-    requireCohortCutColumn();
-
     const { withAgents } = await twins();
 
     expect(withAgents.lane.sessionsConsidered).toBe(SESSIONS_SEEDED);
 
-    const surfaceRows = withAgents.rows.filter((row) => row.cohortCut === taxonomy.surfaceCut);
+    const surfaceRows = withAgents.rows.filter((row) => row.cohortCut === SURFACE_COHORT_CUT);
     expect(surfaceRows).toHaveLength(1);
 
-    const browserCuts = new Set(
-      ["chrome", "safari", "unknown"].map((family) => taxonomy.browserCut(family)),
+    const browserCuts: ReadonlySet<CohortCut> = new Set(
+      (["chrome", "safari", "unknown"] as const).map(browserCut),
     );
-    const deviceCuts = new Set(
-      ["desktop", "mobile", "unknown"].map((device) => taxonomy.deviceCut(device)),
+    const deviceCuts: ReadonlySet<CohortCut> = new Set(
+      (["desktop", "mobile", "unknown"] as const).map(deviceCut),
     );
 
     const written = withAgents.rows.map((row) => row.cohortCut);
@@ -308,43 +252,35 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
   });
 
   test("laneForProject writes exactly one row per present cut and never a cut outside the enum", async () => {
-    const taxonomy = await cohortCutTaxonomy();
-    requireCohortCutColumn();
-
     const { withAgents } = await twins();
 
-    const expected = [
-      taxonomy.surfaceCut,
-      taxonomy.browserCut("chrome"),
-      taxonomy.browserCut("safari"),
-      taxonomy.browserCut("unknown"),
-      taxonomy.deviceCut("desktop"),
-      taxonomy.deviceCut("mobile"),
-      taxonomy.deviceCut("unknown"),
+    const expected: readonly CohortCut[] = [
+      SURFACE_COHORT_CUT,
+      browserCut("chrome"),
+      browserCut("safari"),
+      browserCut("unknown"),
+      deviceCut("desktop"),
+      deviceCut("mobile"),
+      deviceCut("unknown"),
     ];
 
-    expect<readonly string[]>(withAgents.rows.map((row) => row.cohortCut).toSorted()).toEqual(
-      expected.toSorted(),
-    );
-    expect(withAgents.rows.length).toBeLessThanOrEqual(taxonomy.allCuts.length);
+    expect(withAgents.rows.map((row) => row.cohortCut).toSorted()).toEqual(expected.toSorted());
+    expect(withAgents.rows.length).toBeLessThanOrEqual(COHORT_CUTS.length);
 
     for (const row of withAgents.rows) {
-      expect(taxonomy.allCuts).toContain(row.cohortCut);
+      expect(COHORT_CUTS).toContain(row.cohortCut);
     }
   });
 
   test("an absent and an unreadable user agent land in the browser:unknown row and in no other browser row", async () => {
-    const taxonomy = await cohortCutTaxonomy();
-    requireCohortCutColumn();
-
     const { withAgents } = await twins();
 
-    const unknown = cutOf(withAgents.rows, taxonomy.browserCut("unknown"));
+    const unknown = cutOf(withAgents.rows, browserCut("unknown"));
     expect(unknown.failedCohortSize).toBe(DROPPED_WITH_NO_READABLE_AGENT_SESSIONS);
     expect(unknown.succeededCohortSize).toBe(SUCCEEDED_WITH_NO_READABLE_AGENT);
 
-    const chrome = cutOf(withAgents.rows, taxonomy.browserCut("chrome"));
-    const safari = cutOf(withAgents.rows, taxonomy.browserCut("safari"));
+    const chrome = cutOf(withAgents.rows, browserCut("chrome"));
+    const safari = cutOf(withAgents.rows, browserCut("safari"));
     expect([chrome.failedCohortSize, chrome.succeededCohortSize]).toEqual([
       DROPPED_ON_DESKTOP_SESSIONS,
       SUCCEEDED_ON_DESKTOP,
@@ -354,7 +290,7 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
       SUCCEEDED_ON_MOBILE,
     ]);
 
-    const surface = cutOf(withAgents.rows, taxonomy.surfaceCut);
+    const surface = cutOf(withAgents.rows, SURFACE_COHORT_CUT);
     const browserRows = [chrome, safari, unknown];
     expect(browserRows.reduce((total, row) => total + row.failedCohortSize, 0)).toBe(
       surface.failedCohortSize,
@@ -365,13 +301,10 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
   });
 
   test("the surface-level row is unchanged by the presence of device cuts", async () => {
-    const taxonomy = await cohortCutTaxonomy();
-    requireCohortCutColumn();
-
     const { withAgents, withoutAgents } = await twins();
 
-    const carried = cutOf(withAgents.rows, taxonomy.surfaceCut);
-    const bare = cutOf(withoutAgents.rows, taxonomy.surfaceCut);
+    const carried = cutOf(withAgents.rows, SURFACE_COHORT_CUT);
+    const bare = cutOf(withoutAgents.rows, SURFACE_COHORT_CUT);
 
     expect([carried.kind, carried.divergedAtRank, carried.reason]).toEqual([
       bare.kind,
@@ -385,9 +318,6 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
   });
 
   test("no new finding appears when the corpus carries user agents", async () => {
-    const taxonomy = await cohortCutTaxonomy();
-    requireCohortCutColumn();
-
     const { withAgents, withoutAgents } = await twins();
 
     // Without this the deep-equality below would also hold for two empty lanes, which is
@@ -395,14 +325,12 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
     expect(withAgents.rows.length).toBeGreaterThan(withoutAgents.rows.length);
     expect(withAgents.lane.candidates).toHaveLength(1);
     expect(withAgents.lane.candidates[0]?.surface).toBe(ORIGIN);
-    expect(withAgents.rows.some((row) => row.cohortCut !== taxonomy.surfaceCut)).toBe(true);
+    expect(withAgents.rows.some((row) => row.cohortCut !== SURFACE_COHORT_CUT)).toBe(true);
 
     expect(withAgents.lane.candidates).toEqual(withoutAgents.lane.candidates);
   });
 
   test("a second lane run over the same pinned instant leaves the per-cut row count identical", async () => {
-    requireCohortCutColumn();
-
     const { withAgents } = await twins();
 
     const before = await cutRowsFor(withAgents.workspace);

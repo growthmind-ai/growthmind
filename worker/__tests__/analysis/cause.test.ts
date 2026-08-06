@@ -132,8 +132,6 @@ const BROWSER_UNKNOWN_CUT_MIRROR = "browser:unknown";
 type CutAwareDivergencePointRecord = DivergencePointRecord & { readonly cohortCut: string };
 
 interface DivergenceLookups extends DivergencePointsRepo {
-  findBySurface(projectId: string, surface: string): Promise<CutAwareDivergencePointRecord | null>;
-
   findSurfaceCut(projectId: string, surface: string): Promise<CutAwareDivergencePointRecord | null>;
 }
 
@@ -401,8 +399,8 @@ interface FakeDivergencePoints {
 
 // Backed by an array, not one hand-built row: a single-row fake cannot tell the surface-level
 // row apart from a bucket row written after it, which is the whole of ADD Decision 5.
-// findBySurface mirrors the repository's real `order by created_at desc limit 1` across every
-// cut; findSurfaceCut narrows to the surface sentinel first.
+// findSurfaceCut narrows to the surface sentinel first, then mirrors the repository's real
+// `order by created_at desc limit 1`.
 function mostRecentRow(
   candidates: readonly CutAwareDivergencePointRecord[],
 ): CutAwareDivergencePointRecord | null {
@@ -431,12 +429,6 @@ function createFakeDivergencePoints(): FakeDivergencePoints {
     repoFor: (ctx) => ({
       recordDivergence(_input: RecordDivergenceInput): Promise<DivergencePointRecord> {
         return notThisLane("recordDivergence")();
-      },
-      findBySurface(
-        projectId: string,
-        surface: string,
-      ): Promise<CutAwareDivergencePointRecord | null> {
-        return Promise.resolve(mostRecentRow(forSurface(ctx.organizationId, projectId, surface)));
       },
       findSurfaceCut(
         projectId: string,

@@ -38,13 +38,16 @@ import type {
   UpsertFindingPayloadInput,
 } from "@growthmind/db";
 import type { SessionSummariser, SummariseInput } from "@growthmind/adapters";
-import type { SummaryRenderResult, SuppressionReasonCode, TenantContext } from "@growthmind/shared";
-import { tenantContextSchema } from "@growthmind/shared";
+import type {
+  CohortCut,
+  SummaryRenderResult,
+  SuppressionReasonCode,
+  TenantContext,
+} from "@growthmind/shared";
+import { browserCut, deviceCut, SURFACE_COHORT_CUT, tenantContextSchema } from "@growthmind/shared";
 import { expect, test } from "bun:test";
 
 import {
-  assertUnderConstruction,
-  loadModuleUnderConstruction,
   loadUnderConstruction,
   underConstructionSpecifier,
 } from "../../../packages/shared/__tests__/onboarding/module-under-construction";
@@ -1802,12 +1805,6 @@ test("no log argument from any degrade or withhold path contains the planted off
 // O-045 gate (d)/AC-4: the cut fans a project's divergence writes out to one row per cut, and
 // the ledger must not follow it. Driven through the real lane source over a real corpus,
 // because a hand-built lane cannot span a browser cut at all.
-const CUT_TAXONOMY_OWNER =
-  "backend-execution-agent, Wave 4 (packages/shared/src/cohort-cuts/cuts.ts, ADD Decision 1)";
-
-const COHORT_CUT_COLUMN_OWNER =
-  "backend-execution-agent, Wave 6 (packages/db/src/schema/divergence-points.ts + migration 0026)";
-
 const CUT_ORIGIN = "/pricing";
 const CUT_DESTINATION = "/checkout";
 const CUT_DETOUR = "/faq";
@@ -1826,40 +1823,6 @@ const CUT_SAFARI_ON_IPHONE =
   "Version/17.0 Mobile/15E148 Safari/604.1";
 
 const CUT_UNREADABLE_USER_AGENT = " not-a-user-agent ";
-
-interface CutLabels {
-  readonly surface: string;
-  readonly browser: (family: string) => string;
-  readonly device: (device: string) => string;
-}
-
-async function cutLabels(): Promise<CutLabels> {
-  const namespace = await loadModuleUnderConstruction({
-    modulePath: underConstructionSpecifier("packages/shared/src/cohort-cuts/cuts.ts"),
-    ownedBy: CUT_TAXONOMY_OWNER,
-  });
-
-  const surface = namespace["SURFACE_COHORT_CUT"];
-  const browser = namespace["browserCut"];
-  const device = namespace["deviceCut"];
-
-  assertUnderConstruction(
-    typeof surface === "string" && typeof browser === "function" && typeof device === "function",
-    {
-      contract:
-        "packages/shared/src/cohort-cuts/cuts.ts exports SURFACE_COHORT_CUT, browserCut and deviceCut",
-      ownedBy: CUT_TAXONOMY_OWNER,
-    },
-  );
-
-  return {
-    surface: surface as string,
-    browser: browser as (family: string) => string,
-    device: device as (device: string) => string,
-  };
-}
-
-type CutRow = typeof schema.divergencePoints.$inferSelect & { readonly cohortCut: string };
 
 interface CutSeedAgents {
   readonly desktop: string | null;
@@ -1946,7 +1909,7 @@ async function seedCutCorpus(
 }
 
 interface TickOverCorpus {
-  readonly cuts: readonly string[];
+  readonly cuts: readonly CohortCut[];
   readonly candidatesInLane: number;
   readonly claimAttempts: number;
   readonly claimsMade: number;
@@ -1982,7 +1945,7 @@ async function tickOverCorpus(
       );
 
     return {
-      cuts: rows.map((row) => (row as CutRow).cohortCut),
+      cuts: rows.map((row) => row.cohortCut),
       candidatesInLane: seeded.candidates.length,
       claimAttempts: h.runs.claimAttempts().length,
       claimsMade: h.runs.claimed().length,
@@ -1994,22 +1957,20 @@ async function tickOverCorpus(
 }
 
 test("a corpus spanning two browser cuts and two device cuts claims exactly the model calls its all-null twin claims", async () => {
-  const labels = await cutLabels();
-  assertUnderConstruction("cohortCut" in schema.divergencePoints, {
-    contract: "divergence_points carries a cohort_cut column that every write supplies",
-    ownedBy: COHORT_CUT_COLUMN_OWNER,
-  });
-
   const carried = await tickOverCorpus("o045f-", CUT_AGENTS_PRESENT);
   const bare = await tickOverCorpus("o045g-", CUT_AGENTS_ALL_NULL);
 
-  const browserCuts = new Set(["chrome", "safari", "unknown"].map(labels.browser));
-  const deviceCuts = new Set(["desktop", "mobile", "unknown"].map(labels.device));
+  const browserCuts: ReadonlySet<CohortCut> = new Set(
+    (["chrome", "safari", "unknown"] as const).map(browserCut),
+  );
+  const deviceCuts: ReadonlySet<CohortCut> = new Set(
+    (["desktop", "mobile", "unknown"] as const).map(deviceCut),
+  );
 
   // Without this the delta below is satisfied by a corpus that spans no cut at all.
   expect(carried.cuts.filter((cut) => browserCuts.has(cut)).length).toBeGreaterThanOrEqual(2);
   expect(carried.cuts.filter((cut) => deviceCuts.has(cut)).length).toBeGreaterThanOrEqual(2);
-  expect(carried.cuts).toContain(labels.surface);
+  expect(carried.cuts).toContain(SURFACE_COHORT_CUT);
   expect(carried.cuts.length).toBeGreaterThan(bare.cuts.length);
 
   expect(carried.claimAttempts).toBe(bare.claimAttempts);
