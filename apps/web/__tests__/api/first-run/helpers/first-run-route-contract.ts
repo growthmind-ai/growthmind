@@ -77,6 +77,9 @@ const INTEREST_ROUTE =
 const AGENT_ROUTES =
   "ADD O-026 D-5 (apps/web/app/api/first-run/agent/key/route.ts and agent/revoke/route.ts, the " +
   "mint and revoke routes)";
+const FINDING_DISMISS_ROUTE =
+  "ADD o-019-dismissal-wired Decision 2 part A " +
+  "(apps/web/app/api/first-run/finding/dismiss/route.ts)";
 
 /** Every route on this surface, ordered top-down. One added under
  *  `app/api/first-run/` without an entry here fails the on-disk row. */
@@ -240,6 +243,20 @@ export const FIRST_RUN_ROUTES: readonly FirstRunRouteDescriptor[] = Object.freez
     declaredKeys: [],
     validBody: {},
     ownedBy: O_008_ROUTES,
+  },
+  {
+    id: "finding-dismiss",
+    path: "/api/first-run/finding/dismiss",
+    method: "POST",
+    modulePath: "apps/web/app/api/first-run/finding/dismiss/route",
+    sourcePath: "apps/web/app/api/first-run/finding/dismiss/route.ts",
+    // `firstRunFindingDismissInputSchema`: a required findingId, breaking the
+    // z.strictObject({}) precedent on purpose — the client captures the id at
+    // render time so a double-press cannot resolve to a different "current
+    // finding" underneath a delayed retry (ADD Decision 2 part A).
+    declaredKeys: ["findingId"],
+    validBody: { findingId: "finding-fixture-id" },
+    ownedBy: FINDING_DISMISS_ROUTE,
   },
   {
     id: "interest",

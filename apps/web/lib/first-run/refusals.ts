@@ -31,6 +31,16 @@ export const SIGNED_OUT: FirstRunGateRefusal = Object.freeze({
   status: 401,
 });
 
+// Covers both "no such finding" and "that finding belongs to another organization" —
+// a client-supplied findingId never distinguishes the two cases from the outside (D7).
+export const FINDING_NOT_FOUND: FirstRunGateRefusal = Object.freeze({
+  code: "finding_not_found",
+  message:
+    "That finding is not one this account can act on, so nothing was changed. Reload the page " +
+    "and try again.",
+  status: 404,
+});
+
 export const SECOND_CHANNEL: FirstRunGateRefusal = Object.freeze({
   code: "second_channel",
   message:
