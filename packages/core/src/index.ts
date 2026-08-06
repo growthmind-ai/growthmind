@@ -455,6 +455,7 @@ export {
   type DivergenceCohortInput,
   type DivergenceOptions,
 } from "./divergence/types";
+export { cohortCutsOf, type DivergenceCohortCut } from "./divergence/cuts";
 export { computeDivergence } from "./divergence/divergence";
 export { gradeOf } from "./divergence/grade";
 export { sampleSessionIds } from "./divergence/sample";
