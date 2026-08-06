@@ -60,6 +60,8 @@ export { createSessionSummariser } from "./model/summariser";
 export type { SessionSummariser, SummariseInput } from "./model/summariser";
 export { createRecordingNarrator, describeDuration } from "./model/narrator";
 export type { RecordingNarrator, NarrateInput } from "./model/narrator";
+export { createCauseExplainer } from "./model/cause";
+export type { CauseExplainer, CauseExplainInput, CauseDeps } from "./model/cause";
 export { DEFAULT_COLDSTART_MODEL } from "./model/constants";
 
 export type { ReplayPullOptions, ReplaySource } from "./replay-source";
