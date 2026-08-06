@@ -17,8 +17,9 @@ function storyLine(story: CompanySessionDTO["story"]): ReactNode {
     return (
       <>
         <Text fw={700}>{story.headline}</Text>
-        {story.context.map((line) => (
-          <Text key={line}>{line}</Text>
+        {story.context.map((line, index) => (
+          // oxlint-disable-next-line react/no-array-index-key -- narration lines are a fixed, static array
+          <Text key={index}>{line}</Text>
         ))}
       </>
     );
