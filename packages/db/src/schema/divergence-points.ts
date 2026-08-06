@@ -45,9 +45,7 @@ export const divergencePoints = pgTable(
     succeededSessionIdsSample: jsonb("succeeded_session_ids_sample")
       .$type<readonly string[]>()
       .notNull(),
-    failedSessionIdsSample: jsonb("failed_session_ids_sample")
-      .$type<readonly string[]>()
-      .notNull(),
+    failedSessionIdsSample: jsonb("failed_session_ids_sample").$type<readonly string[]>().notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

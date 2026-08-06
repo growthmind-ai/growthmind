@@ -611,9 +611,9 @@ describe("detector purity and coverage", () => {
     const cohortsRegions = collectFunctionRegions(
       modules.find((module) => module.path === "detect/funnel-dropoff-cohorts.ts")?.source ?? "",
     );
-    expect(cohortsRegions.find((region) => region.owner === "funnelDropoffCohorts")?.text).toContain(
-      "funnelMinSessionsAtOrigin",
-    );
+    expect(
+      cohortsRegions.find((region) => region.owner === "funnelDropoffCohorts")?.text,
+    ).toContain("funnelMinSessionsAtOrigin");
 
     const offenders = detectorModules.flatMap((module) =>
       numericLiteralsInFunctionBodies(module.source).map(

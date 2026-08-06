@@ -385,12 +385,11 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     // AnalysisLaneSourceDeps has no divergence-service injection point yet — this is the
     // extension worker/src/analysis-lane-source.ts needs (ADD Decision 5's inner try/catch,
     // isolated from the outer per-project catch) before this test can turn green.
-    const deps: AnalysisLaneSourceDeps & { readonly divergenceServiceFor: DivergenceServiceFor } =
-      {
-        db,
-        logger,
-        divergenceServiceFor: () => failure.service,
-      };
+    const deps: AnalysisLaneSourceDeps & { readonly divergenceServiceFor: DivergenceServiceFor } = {
+      db,
+      logger,
+      divergenceServiceFor: () => failure.service,
+    };
 
     const source = createAnalysisLaneSource(deps);
     const lane = await source.laneForProject(workspace.projectId, NOW);
@@ -454,8 +453,6 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     const found = await repo.findBySurface(workspace.projectId, ORIGIN);
 
     expect(found).toBeNull();
-    expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(
-      false,
-    );
+    expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(false);
   });
 });

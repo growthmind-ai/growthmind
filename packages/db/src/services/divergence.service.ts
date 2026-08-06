@@ -71,7 +71,10 @@ export function createDivergenceService(db: ScopedDb, ctx: TenantContext): Diver
         windowEnd: input.window.end,
         succeededCohortSize: input.succeeded.length,
         failedCohortSize: input.failed.length,
-        succeededSessionIdsSample: sampleSessionIds(input.succeeded, DIVERGENCE_ANCHOR_SESSION_LIMIT),
+        succeededSessionIdsSample: sampleSessionIds(
+          input.succeeded,
+          DIVERGENCE_ANCHOR_SESSION_LIMIT,
+        ),
         failedSessionIdsSample: sampleSessionIds(input.failed, DIVERGENCE_ANCHOR_SESSION_LIMIT),
       });
 

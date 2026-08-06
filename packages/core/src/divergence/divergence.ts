@@ -58,9 +58,7 @@ export function computeDivergence(
   // Explicit short-circuit so identical cohorts resolve to their own reason
   // even when marginPercent is configured to 0, where the margin comparison
   // below would otherwise still (correctly, but ambiguously) call it diverged.
-  const allRanksIdentical = rankGaps.every(
-    (gap) => gap.succeededReachRate === gap.failedReachRate,
-  );
+  const allRanksIdentical = rankGaps.every((gap) => gap.succeededReachRate === gap.failedReachRate);
   if (allRanksIdentical) {
     return { kind: "no_divergence", reason: "identical_cohorts" };
   }

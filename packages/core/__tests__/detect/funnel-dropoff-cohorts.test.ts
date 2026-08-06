@@ -4,7 +4,12 @@ import { describe, expect, test } from "bun:test";
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
 // This import is the Wave 0 red: funnel-dropoff-cohorts.ts does not exist yet (ADD Decision 2).
 import { funnelDropoffCohorts } from "../../src/detect/funnel-dropoff-cohorts";
-import type { DetectorCorpus, DetectorCoverage, SessionTimeline, TimelineEvent } from "../../src/detect/types";
+import type {
+  DetectorCorpus,
+  DetectorCoverage,
+  SessionTimeline,
+  TimelineEvent,
+} from "../../src/detect/types";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
 

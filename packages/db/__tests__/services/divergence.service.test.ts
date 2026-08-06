@@ -10,7 +10,13 @@ import {
 } from "@growthmind/core";
 
 import { createDivergenceService } from "../../src/services/divergence.service";
-import { createTestDb, laneNames, seedOrgWithOwner, seedProject, type TestDb } from "../../src/testing";
+import {
+  createTestDb,
+  laneNames,
+  seedOrgWithOwner,
+  seedProject,
+  type TestDb,
+} from "../../src/testing";
 
 const NAMES = laneNames("divsvc");
 

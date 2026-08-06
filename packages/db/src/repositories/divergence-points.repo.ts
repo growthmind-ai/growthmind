@@ -97,10 +97,7 @@ export function createDivergencePointsRepo(
 
     // Multiple rows can exist per (projectId, surface) across different windows over
     // time; the identity key is wider than this lookup, so this returns the most recent.
-    async findBySurface(
-      projectId: string,
-      surface: string,
-    ): Promise<DivergencePointRecord | null> {
+    async findBySurface(projectId: string, surface: string): Promise<DivergencePointRecord | null> {
       const rows = await c.list({
         where: bySurface(projectId, surface),
         orderBy: [desc(divergencePoints.createdAt)],

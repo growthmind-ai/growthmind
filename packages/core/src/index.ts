@@ -454,7 +454,4 @@ export { computeDivergence } from "./divergence/divergence";
 export { gradeOf } from "./divergence/grade";
 export { sampleSessionIds } from "./divergence/sample";
 
-export {
-  funnelDropoffCohorts,
-  type FunnelDropoffCohort,
-} from "./detect/funnel-dropoff-cohorts";
+export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-dropoff-cohorts";
