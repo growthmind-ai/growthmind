@@ -77,7 +77,7 @@ services:
       # never renders, and a founder is quietly handed the pasted-token path on
       # an installation that HAS a Slack app. Nothing errors. That is a
       # producer/consumer break one layer below the code, and the worker's
-      # `GOOGLE_GENERATIVE_AI_API_KEY` block already carries the same warning.
+      # `AWS_BEARER_TOKEN_BEDROCK` block already carries the same warning.
       #
       # `SLACK_CLIENT_ID:` and NOT `"${SLACK_CLIENT_ID:-}"`. Both are
       # `.min(1).optional()` in `packages/shared/src/env.ts`, so the fallback
@@ -154,7 +154,13 @@ services:
       # would then crash the worker at startup instead of doing what it does
       # today — see no key, select the no-key branch, and ship every finding
       # carrying its numbers with no written explanation attached.
-      GOOGLE_GENERATIVE_AI_API_KEY:
+      #
+      # The region rides with the key rather than defaulting: a Bedrock API key is
+      # minted for one region, and the default model id is that region group's
+      # inference profile. Both absent is the supported no-key state; one alone
+      # selects the same branch, because neither half can call anything.
+      AWS_BEARER_TOKEN_BEDROCK:
+      AWS_REGION:
       GROWTHMIND_COLDSTART_MODEL:
     depends_on:
       postgres:

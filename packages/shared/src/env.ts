@@ -44,7 +44,10 @@ const webShape = {
 
 const workerShape = {
   ...baseShape,
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
+  AWS_BEARER_TOKEN_BEDROCK: z.string().min(1).optional(),
+  // Optional like the token, and paired with it at the composition root rather than
+  // here: a region alone configures nothing, and half a pair must not stop a boot.
+  AWS_REGION: z.string().min(1).optional(),
   GROWTHMIND_COLDSTART_MODEL: z.string().min(1).optional(),
 } as const;
 

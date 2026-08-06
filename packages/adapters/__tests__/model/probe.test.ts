@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createGoogle } from "@ai-sdk/google";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { APICallError, generateObject, NoObjectGeneratedError } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
@@ -269,21 +269,21 @@ describe("maxRetries controls how many upstream requests one call issues", () =>
   });
 });
 
-describe("createGoogle constructs a provider without throwing when no api key is present", () => {
-  test("createGoogle constructs a provider without throwing when no api key is present", () => {
-    const previousKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+describe("createAmazonBedrock constructs a provider without throwing when no api key is present", () => {
+  test("createAmazonBedrock constructs a provider without throwing when no api key is present", () => {
+    const previousKey = process.env.AWS_BEARER_TOKEN_BEDROCK;
+    delete process.env.AWS_BEARER_TOKEN_BEDROCK;
     try {
-      expect(() => createGoogle({})).not.toThrow();
+      expect(() => createAmazonBedrock({ region: "eu-west-2" })).not.toThrow();
 
-      const provider = createGoogle({});
+      const provider = createAmazonBedrock({ region: "eu-west-2" });
 
       expect(() => provider(DEFAULT_COLDSTART_MODEL)).not.toThrow();
     } finally {
       if (previousKey === undefined) {
-        delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        delete process.env.AWS_BEARER_TOKEN_BEDROCK;
       } else {
-        process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousKey;
+        process.env.AWS_BEARER_TOKEN_BEDROCK = previousKey;
       }
     }
   });

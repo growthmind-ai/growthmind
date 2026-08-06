@@ -6,22 +6,24 @@ import { createColdstartModel } from "../../src/model/provider";
 import { DEFAULT_COLDSTART_MODEL } from "../../src/model/constants";
 import { createSessionSummariser } from "../../src/model/summariser";
 
-const FAKE_API_KEY = "AIzaSyNotARealKey00000000000000000000000";
+const FAKE_API_KEY = "ABSKQmVkcm9ja0FQSUtleS1ub3QtcmVhbC0wMDAwMDAwMA==";
 
-const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-gemini-id";
+const FAKE_REGION = "eu-west-2";
+
+const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-bedrock-id";
 
 type ModelShape = { readonly modelId: string; readonly provider: string };
 
 function withoutAmbientKey(body: () => void): void {
-  const previousKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const previousKey = process.env.AWS_BEARER_TOKEN_BEDROCK;
+  delete process.env.AWS_BEARER_TOKEN_BEDROCK;
   try {
     body();
   } finally {
     if (previousKey === undefined) {
-      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      delete process.env.AWS_BEARER_TOKEN_BEDROCK;
     } else {
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousKey;
+      process.env.AWS_BEARER_TOKEN_BEDROCK = previousKey;
     }
   }
 }
@@ -31,6 +33,7 @@ describe("createColdstartModel — it returns a model object, never a model id",
     withoutAmbientKey(() => {
       const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
+        region: FAKE_REGION,
         resolvedModelId: CONFIGURED_MODEL_ID,
       });
 
@@ -39,14 +42,15 @@ describe("createColdstartModel — it returns a model object, never a model id",
     });
   });
 
-  test("the model is bound to the Google provider", () => {
+  test("the model is bound to the Bedrock provider", () => {
     withoutAmbientKey(() => {
       const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
+        region: FAKE_REGION,
         resolvedModelId: CONFIGURED_MODEL_ID,
       }) as ModelShape;
 
-      expect(model.provider).toContain("google");
+      expect(model.provider).toContain("bedrock");
     });
   });
 });
@@ -56,6 +60,7 @@ describe("createColdstartModel — the id it selects is the id it was handed", (
     withoutAmbientKey(() => {
       const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
+        region: FAKE_REGION,
         resolvedModelId: CONFIGURED_MODEL_ID,
       }) as ModelShape;
 
@@ -67,6 +72,7 @@ describe("createColdstartModel — the id it selects is the id it was handed", (
     withoutAmbientKey(() => {
       const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
+        region: FAKE_REGION,
         resolvedModelId: DEFAULT_COLDSTART_MODEL,
       }) as ModelShape;
 
@@ -79,7 +85,11 @@ describe("createColdstartModel — construction, and what it does not do", () =>
   test("constructing with a syntactically valid key does not throw and makes no call", () => {
     withoutAmbientKey(() => {
       expect(() =>
-        createColdstartModel({ apiKey: FAKE_API_KEY, resolvedModelId: CONFIGURED_MODEL_ID }),
+        createColdstartModel({
+          apiKey: FAKE_API_KEY,
+          region: FAKE_REGION,
+          resolvedModelId: CONFIGURED_MODEL_ID,
+        }),
       ).not.toThrow();
     });
   });
@@ -88,6 +98,7 @@ describe("createColdstartModel — construction, and what it does not do", () =>
     withoutAmbientKey(() => {
       const model = createColdstartModel({
         apiKey: FAKE_API_KEY,
+        region: FAKE_REGION,
         resolvedModelId: CONFIGURED_MODEL_ID,
       });
 
@@ -106,6 +117,7 @@ describe("createColdstartModel — the model it returns satisfies the summariser
       const summariser = createSessionSummariser({
         model: createColdstartModel({
           apiKey: FAKE_API_KEY,
+          region: FAKE_REGION,
           resolvedModelId: CONFIGURED_MODEL_ID,
         }),
         resolvedModelId: CONFIGURED_MODEL_ID,

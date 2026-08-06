@@ -14,7 +14,7 @@ const OUTPUT_SCHEMA = z
   })
   .strict();
 
-const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-gemini-id";
+const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-bedrock-id";
 
 const INPUT: SummariseInput = {
   finalClass: "form_abandonment",

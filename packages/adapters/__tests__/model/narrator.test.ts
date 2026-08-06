@@ -13,7 +13,7 @@ const OUTPUT_SCHEMA = z
   })
   .strict();
 
-const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-gemini-id";
+const CONFIGURED_MODEL_ID = "test-configured-model-id-not-a-real-bedrock-id";
 
 const INPUT: NarrateInput = {
   digest: "0:00  opened /pricing\n0:12  rage-clicked button.buyButton (4 clicks in 900ms)",
@@ -117,7 +117,7 @@ describe("failure arms — a narration never propagates into the caller", () => 
     const narrator = narratorWith(
       new MockLanguageModelV3({
         doGenerate: () =>
-          Promise.reject(new Error("AIzaSyPLANTEDKEYTAIL0000 quota for project 4242 exhausted")),
+          Promise.reject(new Error("ABSKPLANTEDKEYTAIL0000 quota for account 4242 exhausted")),
       }),
     );
 
@@ -125,7 +125,7 @@ describe("failure arms — a narration never propagates into the caller", () => 
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.message).not.toContain("AIzaSy");
+    expect(result.message).not.toContain("ABSK");
     expect(result.message).not.toContain("4242");
   });
 });

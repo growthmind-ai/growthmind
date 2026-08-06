@@ -301,11 +301,11 @@ const DECLARED_COUNT_ROLES: readonly CountRole[] = [...new Set(Object.values(COU
 
 describe("renderFloorSummary", () => {
   test("renderFloorSummary produces a summary with no model and no API key present", () => {
-    const previousKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    const previousKey = process.env.AWS_BEARER_TOKEN_BEDROCK;
+    delete process.env.AWS_BEARER_TOKEN_BEDROCK;
 
     try {
-      expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBeUndefined();
+      expect(process.env.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined();
 
       const summary = render(funnelCandidate(ruleSetV1()));
 
@@ -315,7 +315,7 @@ describe("renderFloorSummary", () => {
         expect(element.trim().length).toBeGreaterThan(0);
       }
     } finally {
-      if (previousKey !== undefined) process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousKey;
+      if (previousKey !== undefined) process.env.AWS_BEARER_TOKEN_BEDROCK = previousKey;
     }
   });
 

@@ -11,7 +11,7 @@ import {
 
 import { mapSummaryError, summaryFailure, SUMMARY_FAILURE_MESSAGES } from "../../src/model/errors";
 
-const RESOLVED_MODEL_ID = "gemini-fixture-model-3";
+const RESOLVED_MODEL_ID = "bedrock-fixture-model-3";
 
 const FIXTURE_USAGE = { inputTokens: 12, outputTokens: 8 } as const;
 
@@ -19,16 +19,17 @@ const OUTPUT_SHAPE = z.object({ headline: z.string(), context: z.string() });
 
 const PLANTED_FRAGMENTS: readonly string[] = [
   "req_01PLANTEDREQUESTID9999",
-  "projects/01PLANTEDPROJECT4242",
-  "AIzaSyPLANTEDKEYTAIL0000000000000000000",
-  "https://generativelanguage.googleapis.com/v1beta/models",
+  "arn:aws:bedrock:eu-west-2:011122223333:inference-profile",
+  "ABSKPLANTEDKEYTAIL0000000000000000000000",
+  "https://bedrock-runtime.eu-west-2.amazonaws.com/model",
 ];
 
 const PLANTED_VENDOR_MESSAGE =
   `AI_APICallError: request req_01PLANTEDREQUESTID9999 to ` +
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent ` +
-  `failed for projects/01PLANTEDPROJECT4242 ` +
-  `using key AIzaSyPLANTEDKEYTAIL0000000000000000000 (429 RESOURCE_EXHAUSTED)`;
+  `https://bedrock-runtime.eu-west-2.amazonaws.com/model/` +
+  `eu.anthropic.claude-haiku-4-5-20251001-v1:0/converse ` +
+  `failed for arn:aws:bedrock:eu-west-2:011122223333:inference-profile/eu.anthropic.claude-haiku-4-5 ` +
+  `using key ABSKPLANTEDKEYTAIL0000000000000000000000 (429 ThrottlingException)`;
 
 function plantedFragmentsFoundIn(text: string): readonly string[] {
   return PLANTED_FRAGMENTS.filter((fragment) => text.includes(fragment));
@@ -185,19 +186,19 @@ describe("the whole error map", () => {
       {
         label: "auth failure",
         error: plantedVendorErrorWith(
-          "403 PERMISSION_DENIED: API key not valid AIzaSyPLANTEDKEYTAIL0000000000000000000",
+          "403 AccessDeniedException: invalid bearer token ABSKPLANTEDKEYTAIL0000000000000000000000",
         ),
       },
       {
         label: "rate limit",
         error: plantedVendorErrorWith(
-          "429 RESOURCE_EXHAUSTED (request req_01PLANTEDREQUESTID9999)",
+          "429 ThrottlingException (request req_01PLANTEDREQUESTID9999)",
         ),
       },
       {
         label: "timeout",
         error: plantedVendorErrorWith(
-          "Request timed out after 60000ms: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+          "Request timed out after 60000ms: https://bedrock-runtime.eu-west-2.amazonaws.com/model/eu.anthropic.claude-haiku-4-5-20251001-v1:0/converse",
         ),
       },
       { label: "a thrown string, not an Error", error: PLANTED_VENDOR_MESSAGE },
@@ -226,7 +227,7 @@ describe("the whole error map", () => {
         leaked: [],
       });
       expect(failure.message.includes("AI_APICallError")).toBe(false);
-      expect(failure.message.includes("googleapis")).toBe(false);
+      expect(failure.message.includes("amazonaws")).toBe(false);
     }
 
     expect([...seenCodes].toSorted()).toEqual([...allCodes].toSorted());

@@ -284,9 +284,10 @@ describe("parseWorkerEnv", () => {
     }
   });
 
-  test("the analysis lane's two variables are optional everywhere", () => {
+  test("the analysis lane's three variables are optional everywhere", () => {
     const env = parseWorkerEnv(WORKER_PROD_COMPLETE);
-    expect(env.GOOGLE_GENERATIVE_AI_API_KEY).toBeUndefined();
+    expect(env.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined();
+    expect(env.AWS_REGION).toBeUndefined();
     expect(env.GROWTHMIND_COLDSTART_MODEL).toBeUndefined();
   });
 
