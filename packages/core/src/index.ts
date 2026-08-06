@@ -439,3 +439,19 @@ export {
   type PersistedTranscript,
   type PersistedTranscriptSerialiser,
 } from "./replay/persisted-transcript";
+
+export {
+  DIVERGENCE_COHORT_FLOOR,
+  DIVERGENCE_MARGIN_PERCENT,
+  DIVERGENCE_COHORT_MATCH_VERSION,
+  DIVERGENCE_ANCHOR_SESSION_LIMIT,
+  type DivergenceResult,
+  type DivergenceGrade,
+  type DivergenceCohortInput,
+  type DivergenceOptions,
+} from "./divergence/types";
+export { computeDivergence } from "./divergence/divergence";
+export { gradeOf } from "./divergence/grade";
+export { sampleSessionIds } from "./divergence/sample";
+
+export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-dropoff-cohorts";
