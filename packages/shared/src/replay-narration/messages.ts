@@ -44,26 +44,24 @@ export const RECORDING_SUMMARY_SOURCE_MESSAGES = {
 } as const;
 
 export const RECORDING_SUMMARY_PENDING =
-  "We have not read this recording yet. A short description appears here once we have.";
+  "We have not read this recording yet. The description appears here on its own when it is ready — you can watch the recording below in the meantime.";
 
 export const RECORDING_SUMMARY_HELD =
   "We read this recording, but what we wrote about it could not be shown.";
 
-// The five sentences below are DRAFT and require Tom's ratification before merge: they are the
-// OQ1/OQ2/OQ3 Human call clauses on O-047 (see .ai/adds/o-047-recording-states-live.md AD-8).
 export const RECORDING_SUMMARY_NO_SOURCE =
   "We cannot read a recording source for this project, so no description is coming for this recording.";
 
-export const RECORDING_SUMMARY_NO_SOURCE_LINK = "Check your recording connection";
+export const RECORDING_SUMMARY_NO_SOURCE_LINK = "Check your analytics connection";
 
 export const RECORDING_SUMMARY_NOT_CONFIGURED =
-  "This installation is not set up to read recordings, so nothing will be written here. Whoever runs it has to finish that setup.";
+  "This installation is not set up to read recordings, so no description is coming for this one. That is a one-time setup step on the server for whoever runs Growthmind here — it cannot be done from these screens.";
 
 export const RECORDING_SUMMARY_READ_FAILED =
   "Something went wrong looking up the description for this recording. The recording itself is fine — reload the page to try again.";
 
 export const RECORDING_SUMMARY_PARTIAL =
-  "We could only read part of this recording, so this description may be missing some of what happened. We will pick up the rest when we can.";
+  "We could only read part of this recording, so this description may be missing some of what happened. The rest is still in your analytics.";
 
 export const ALL_RECORDING_NARRATION_MESSAGES: readonly string[] = [
   RECORDING_SUMMARY_PENDING,
