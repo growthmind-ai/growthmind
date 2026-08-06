@@ -102,23 +102,27 @@ function accumulatorFor(
   return created;
 }
 
-// dead_click and field_abandoned refuse the structural tier: a structural collision would
-// merge two controls and a structural fork would split one field, both over-counts (D-10).
-function recordBeat(tally: SessionTally, beat: ObservedBeat, key: ElementKey): void {
+// dead_click and field_abandoned refuse an absent or structural key: a structural collision
+// would merge two controls and a structural fork would split one field, both over-counts (D-10).
+// scroll_back alone takes a null key: replay/actions.ts resolves it with resolveIdentityAt, so
+// its element is the scroll container rather than a control, and containers carry no identity.
+function recordBeat(tally: SessionTally, beat: ObservedBeat, key: ElementKey | null): void {
   switch (beat.kind) {
     case "rage_click":
+      if (key === null) return;
       tally.rageMax = Math.max(tally.rageMax, beat.clicks);
       return;
     case "dead_click":
-      if (key.tier !== "stable") return;
+      if (key === null || key.tier !== "stable") return;
       if (!isInteractive(beat.element)) return;
       tally.deadRepeats.set(key.key, (tally.deadRepeats.get(key.key) ?? NO_MAGNITUDE) + ONE_BEAT);
       return;
     case "field_abandoned":
-      if (key.tier !== "stable") return;
+      if (key === null || key.tier !== "stable") return;
       tally.abandonedKeys.add(key.key);
       return;
     case "field_refocus":
+      if (key === null) return;
       tally.refocusMax = Math.max(tally.refocusMax, beat.focusCount);
       return;
     case "scroll_back":
@@ -180,10 +184,7 @@ function tallySession(
     const beat = observedBeatOf(action);
     if (beat === null || current === null) continue;
 
-    const key = stableElementKey(beat.element);
-    if (key === null) continue;
-
-    recordBeat(tallyFor(visited, current), beat, key);
+    recordBeat(tallyFor(visited, current), beat, stableElementKey(beat.element));
   }
 
   for (const [surface, tally] of visited) {
@@ -203,8 +204,8 @@ function winningSubkind(
       .map((tally) => magnitudeOf(tally, subkind))
       .filter((magnitude) => magnitude >= threshold);
 
-    if (qualifying.length < ruleSet.struggleObservedMinSessions) continue;
     if (qualifying.length === NO_MAGNITUDE) continue;
+    if (qualifying.length < ruleSet.struggleObservedMinSessions) continue;
 
     return {
       subkind,
@@ -226,8 +227,14 @@ export function observedStruggleCandidates(
   const keptIds = new Set(kept.map((session) => session.sessionId));
 
   const surfaces = new Map<string, SurfaceAccumulator>();
+  // One session can arrive as several recording chunks. Only the first is tallied, so a
+  // session is one reached session and one magnitude however many rows carry it.
+  const tallied = new Set<string>();
   for (const replay of corpus.replays ?? []) {
     if (!keptIds.has(replay.sessionId)) continue;
+    if (tallied.has(replay.sessionId)) continue;
+
+    tallied.add(replay.sessionId);
     tallySession(replay.transcript, surfaces);
   }
 
