@@ -86,7 +86,7 @@ Then run [.agents/skills/verify-a-change](.agents/skills/verify-a-change/SKILL.m
 - **Auth**: Better Auth
 - **Jobs**: Graphile Worker (Postgres-backed; cron with backfill)
 - **Validation**: Zod v4, schemas in `packages/shared` — the single source of truth for shapes
-- **AI**: Vercel AI SDK; analysis via Google Gemini (default `gemini-3.5-flash-lite`, configurable)
+- **AI**: Vercel AI SDK. The model is configuration, never a literal in application code — `packages/adapters/src/model/` owns it
 
 Exact versions live in the workspace `package.json` files. Read them there rather than trusting a number in this file.
 
