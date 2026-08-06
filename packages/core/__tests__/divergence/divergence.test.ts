@@ -144,6 +144,54 @@ describe("computeDivergence — the first diverging rank, not the deepest (FR-2)
   });
 });
 
+describe("computeDivergence — the margin boundary is inclusive (FR-2)", () => {
+  // marginPercent picked so margin/PERCENT_SCALE (0.25) and every reach rate
+  // below are dyadic fractions (quarters), not fifths — 1 - 0.8 rounds to
+  // 0.19999999999999996 in IEEE-754 and would falsely miss a `>=` boundary
+  // built on fifths, masking the exact comparison these tests exist to pin.
+  const MARGIN_PERCENT = 25;
+
+  test("diverges when the reach-rate gap is exactly the margin", () => {
+    const succeeded = cohort("succ", 4, [ORIGIN, "/target"]);
+    const failed = [
+      ...cohort("fail-reached", 3, [ORIGIN, "/target"]),
+      ...cohort("fail-stalled", 1, [ORIGIN]),
+    ];
+
+    const oracleSpine = buildStepSpine([...succeeded, ...failed], ORIGIN);
+    const targetRank = stepIndexOf(oracleSpine, "/target");
+
+    const input: DivergenceCohortInput = { surface: ORIGIN, succeeded, failed };
+    const options: DivergenceOptions = { cohortFloor: 4, marginPercent: MARGIN_PERCENT };
+
+    // succeededReachRate = 4/4 = 1, failedReachRate = 3/4 = 0.75, gap = 0.25
+    // — equal to, not past, the margin. Only `>=` calls this diverged; `>`
+    // would return no_gap_found instead.
+    const result = computeDivergence(input, options);
+
+    expect(result).toEqual({ kind: "diverged", rank: targetRank });
+  });
+
+  test("does not diverge when the reach-rate gap is one point under the margin", () => {
+    const succeeded = cohort("succ", 4, [ORIGIN, "/target"]);
+    const failed = [
+      ...cohort("fail-reached", 19, [ORIGIN, "/target"]),
+      ...cohort("fail-stalled", 6, [ORIGIN]),
+    ];
+
+    const input: DivergenceCohortInput = { surface: ORIGIN, succeeded, failed };
+    const options: DivergenceOptions = { cohortFloor: 4, marginPercent: MARGIN_PERCENT };
+
+    // succeededReachRate = 4/4 = 1, failedReachRate = 19/25 = 0.76, gap = 0.24
+    // — one point short of the margin, so no rank clears it and the result
+    // falls through to no_gap_found, the one no_divergence reason no other
+    // fixture in this file reaches.
+    const result = computeDivergence(input, options);
+
+    expect(result).toEqual({ kind: "no_divergence", reason: "no_gap_found" });
+  });
+});
+
 describe("computeDivergence — the cohort floor (FR-3)", () => {
   const FLOOR = 5;
 
