@@ -1,4 +1,5 @@
 import {
+  EVIDENCE_CLAIM_DROPPED,
   FINDING_BLOCK_ID_PREFIX,
   GET_IT_FIXED_ACTION_ID,
   GET_IT_FIXED_LABEL,
@@ -77,8 +78,33 @@ export type Observation = {
   readonly count: MeasuredCount;
 };
 
+// A citation link, pre-built by the caller exactly as apps/web/lib/findings/evidence.ts
+// builds ClaimView.citesHref — never constructed here from raw ids.
+export type DeliveredCauseClaim = {
+  readonly statement: string;
+  readonly citesHref: string | null;
+  readonly citesLabel: string;
+};
+
+// "explained" only when at least one claim survived the citation gate; "described" is the
+// arm that carries the honesty line when the cause stage attempted the finding and the gate
+// emptied every claim (droppedClaims > 0) — a finding with no cause_claims row at all never
+// reaches this type, its DeliveredExplanation simply omits `cause`.
+export type DeliveredCause =
+  | { readonly grade: "explained"; readonly claims: readonly DeliveredCauseClaim[]; readonly droppedClaims: number }
+  | { readonly grade: "described"; readonly claims: readonly DeliveredCauseClaim[]; readonly droppedClaims: number };
+
 export type DeliveredExplanation =
-  | { readonly source: "model_rendered"; readonly headline: string; readonly context: string }
+  | {
+      readonly source: "model_rendered";
+      readonly headline: string;
+      readonly context: string;
+
+      // Optional and additive (ADD-044): a finding whose cause stage never ran, or never
+      // produced a cause_claims row, carries no `cause` at all — rendering is byte-identical
+      // to before this field existed.
+      readonly cause?: DeliveredCause;
+    }
   | { readonly source: FloorSummarySource };
 
 export type SlackMessageInput =
@@ -133,11 +159,31 @@ export const observationSchema = z.object({
   count: measuredCountSchema,
 });
 
+const deliveredCauseClaimSchema = z.object({
+  statement: z.string().min(1),
+  citesHref: z.string().min(1).nullable(),
+  citesLabel: z.string().min(1),
+});
+
+export const deliveredCauseSchema = z.discriminatedUnion("grade", [
+  z.object({
+    grade: z.literal("explained"),
+    claims: z.array(deliveredCauseClaimSchema).min(1),
+    droppedClaims: z.number().int().nonnegative(),
+  }),
+  z.object({
+    grade: z.literal("described"),
+    claims: z.array(deliveredCauseClaimSchema).length(0),
+    droppedClaims: z.number().int().positive(),
+  }),
+]);
+
 export const deliveredExplanationSchema = z.union([
   z.object({
     source: z.literal("model_rendered"),
     headline: z.string().min(1),
     context: z.string().min(1),
+    cause: deliveredCauseSchema.optional(),
   }),
   z.object({ source: floorSummarySourceSchema }),
 ]);
@@ -248,9 +294,36 @@ type MessageParts = {
   readonly headline: string | null;
   readonly observations: readonly string[];
   readonly explanation: string | null;
+  readonly cause: string | null;
   readonly basis: string | null;
   readonly window: string | null;
 };
+
+// A real Slack mrkdwn link when a citation resolved to a recording moment (D5: mask/withheld
+// citations degrade citesHref to null upstream, never a dead link here) — the bare label
+// otherwise, exactly the same fallback apps/web's own citation control renders to.
+function claimLine(claim: DeliveredCauseClaim): string {
+  const cite =
+    claim.citesHref === null ? claim.citesLabel : `<${claim.citesHref}|${claim.citesLabel}>`;
+  return `${withoutTrailingStop(claim.statement)} (${cite}).`;
+}
+
+// The honesty line is the whole rendering for a "described, attempted" cause — never a
+// fabricated citation for a claim the gate actually dropped (D10).
+function causeTextOf(cause: DeliveredCause | undefined): string | null {
+  if (cause === undefined) return null;
+
+  if (cause.grade === "described") {
+    return cause.droppedClaims > 0 ? EVIDENCE_CLAIM_DROPPED : null;
+  }
+
+  const bullet = cause.claims.length > 1 ? "• " : "";
+  const lines = cause.claims.map((claim) => `${bullet}${claimLine(claim)}`);
+  if (cause.droppedClaims > 0) {
+    lines.push(EVIDENCE_CLAIM_DROPPED);
+  }
+  return lines.join("\n");
+}
 
 function blocksOf(parts: MessageParts): SlackTextBlock[] {
   const lead = parts.headline === null ? parts.heading : `${parts.heading}\n${parts.headline}`;
@@ -266,6 +339,10 @@ function blocksOf(parts: MessageParts): SlackTextBlock[] {
     blocks.push({ kind: "section", text: parts.explanation });
   }
 
+  if (parts.cause !== null) {
+    blocks.push({ kind: "section", text: parts.cause });
+  }
+
   const footer = [parts.basis, parts.window].filter((line): line is string => line !== null);
   if (footer.length > 0) {
     blocks.push({ kind: "context", text: footer.join("\n") });
@@ -274,10 +351,13 @@ function blocksOf(parts: MessageParts): SlackTextBlock[] {
   return blocks;
 }
 
+const MRKDWN_LINK_PATTERN = /<([^|>]+)\|([^>]+)>/g;
+
 function plainTextOf(blocks: readonly SlackTextBlock[]): string {
   return blocks
     .map((block) => block.text)
     .join("\n")
+    .replaceAll(MRKDWN_LINK_PATTERN, "$2")
     .replaceAll("*", "");
 }
 
@@ -386,16 +466,21 @@ export function renderSlackMessage(
       explanation.source === "model_rendered"
         ? truncateEnd(explanation.context, CONTEXT_BUDGET)
         : SUMMARY_SOURCE_MESSAGES[explanation.source],
+    cause: explanation.source === "model_rendered" ? causeTextOf(explanation.cause) : null,
     basis: firstCount ? renderBasisLine(firstCount) : null,
     window: firstCount ? renderWindowLine(firstCount) : null,
   };
 
+  // The causal clause is the "why", the same weight as `explanation` — it degrades in step
+  // with it (shortened together) and is dropped one rung later, still ahead of the basis/
+  // window footer.
   const ladder: readonly MessageParts[] = [
     parts,
     { ...parts, explanation: shortened(parts.explanation) },
-    { ...parts, explanation: shortened(parts.explanation), basis: null },
-    { ...parts, explanation: shortened(parts.explanation), basis: null, window: null },
-    { ...parts, explanation: null, basis: null, window: null },
+    { ...parts, explanation: shortened(parts.explanation), cause: null },
+    { ...parts, explanation: shortened(parts.explanation), cause: null, basis: null },
+    { ...parts, explanation: shortened(parts.explanation), cause: null, basis: null, window: null },
+    { ...parts, explanation: null, cause: null, basis: null, window: null },
   ];
 
   for (const rung of ladder) {

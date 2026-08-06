@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
+import { EVIDENCE_CLAIM_DROPPED, EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
 import {
   FINDING_BLOCK_ID_PREFIX,
   GET_IT_FIXED_ACTION_ID,
@@ -26,6 +26,9 @@ import {
   slackMessageInputSchema,
 } from "../../src/delivery/slack-message";
 import type {
+  DeliveredCause,
+  DeliveredCauseClaim,
+  DeliveredExplanation,
   DeliveryVocabulary,
   Observation,
   SlackActionsBlock,
@@ -519,5 +522,197 @@ describe("renderSlackMessage — the affordance that turns a finding into a fix"
         style: null,
       },
     ]);
+  });
+});
+
+// O-044: the finding the group exists to produce a "because" for was never wired into Slack —
+// the PRD's own Human Acceptance Test step 8 and the outcome's Goal block both name it
+// explicitly. These tests are the composer half of that wire (worker/__tests__/
+// delivery-lane-source.test.ts is the producer half).
+describe("renderSlackMessage — the causal clause (O-044)", () => {
+  type ModelRenderedArm = Extract<DeliveredExplanation, { source: "model_rendered" }>;
+
+  // No trailing period on the body: claimLine() rewrites "statement." into
+  // "statement (cite)." to avoid a double stop, so the raw fixture string only ever
+  // appears verbatim in the rendered output when it does not end in one itself.
+  const SURVIVING_STATEMENT = "The field was left blank, so the request never went out";
+
+  const SURVIVING_CLAIM: DeliveredCauseClaim = {
+    statement: `${SURVIVING_STATEMENT}.`,
+    citesHref: "/replays/o44-slack-recording?t=64000",
+    citesLabel: "from 1:04",
+  };
+
+  function deliverWithCause(cause: DeliveredCause | undefined): SlackMessageInput {
+    const base = deliver({}) as Extract<SlackMessageInput, { decision: "deliver" }>;
+    const explanation = base.explanation as ModelRenderedArm;
+    return {
+      ...base,
+      explanation: cause === undefined ? explanation : { ...explanation, cause },
+    };
+  }
+
+  test("(a) renders the causal clause and a real mrkdwn citation link for a claim that survived the citation gate", () => {
+    const message = renderSlackMessage(
+      deliverWithCause({ grade: "explained", claims: [SURVIVING_CLAIM], droppedClaims: 0 }),
+      VOCABULARY,
+    );
+
+    const causeBlock = message.blocks.find(
+      (block): block is SlackTextBlock =>
+        isTextBlock(block) && block.text.includes(SURVIVING_STATEMENT),
+    );
+    expect(causeBlock).toBeDefined();
+    // The real Slack mrkdwn link syntax lives in the block, so Slack renders it clickable.
+    expect(causeBlock?.text).toContain(
+      `<${SURVIVING_CLAIM.citesHref}|${SURVIVING_CLAIM.citesLabel}>`,
+    );
+
+    // The plaintext fallback is human-readable — no raw mrkdwn brackets or bare URLs.
+    expect(message.text).toContain(SURVIVING_STATEMENT);
+    expect(message.text).toContain(SURVIVING_CLAIM.citesLabel);
+    expect(message.text).not.toContain("<");
+    expect(message.text).not.toContain(">");
+    expect(message.text).not.toContain(SURVIVING_CLAIM.citesHref);
+    expect(message.text).not.toContain(EVIDENCE_CLAIM_DROPPED);
+  });
+
+  test("(a) falls back to the bare citation label, never a dead link, when the citation itself never resolved", () => {
+    const unresolved: DeliveredCauseClaim = { ...SURVIVING_CLAIM, citesHref: null };
+    const message = renderSlackMessage(
+      deliverWithCause({ grade: "explained", claims: [unresolved], droppedClaims: 0 }),
+      VOCABULARY,
+    );
+
+    expect(message.text).toContain(SURVIVING_STATEMENT);
+    expect(message.text).toContain(unresolved.citesLabel);
+    expect(message.blocks.some((block) => isTextBlock(block) && block.text.includes("<"))).toBe(
+      false,
+    );
+  });
+
+  test("(b) renders the honest dropped-claims line, never a fabricated citation, when the gate emptied every claim", () => {
+    const message = renderSlackMessage(
+      deliverWithCause({ grade: "described", claims: [], droppedClaims: 2 }),
+      VOCABULARY,
+    );
+
+    expect(message.text).toContain(EVIDENCE_CLAIM_DROPPED);
+    expect(message.blocks.some((block) => isTextBlock(block) && block.text.includes("<"))).toBe(
+      false,
+    );
+    expect(message.text).not.toContain(SURVIVING_STATEMENT);
+  });
+
+  test("(b) refuses a described grade the cause stage never actually attempted (droppedClaims: 0) — that row should never exist", () => {
+    // Decision 3's own predicate: a cause_claims row is only ever written when the gate had
+    // something to accept or reject (claims.length > 0 || droppedClaims > 0). A "described,
+    // attempted-but-nothing-happened" cause is not a shape the producer can hand this
+    // composer — the schema refuses it rather than silently rendering it as "no cause".
+    expect(() =>
+      renderSlackMessage(
+        deliverWithCause({ grade: "described", claims: [], droppedClaims: 0 } as unknown as DeliveredCause),
+        VOCABULARY,
+      ),
+    ).toThrow();
+  });
+
+  test("(c) a finding with no cause_claims row renders byte-identical to before the causal clause existed — regression guard", () => {
+    const message = renderSlackMessage(deliverWithCause(undefined), VOCABULARY);
+
+    expect(message).toEqual({
+      blocks: [
+        {
+          kind: "section",
+          text: "*/checkout/payment*\nSessions are stopping at the payment step.",
+        },
+        {
+          kind: "section",
+          text: "3 of 28 sessions left without going anywhere they could have gone (11%).",
+        },
+        {
+          kind: "section",
+          text: "Most of what reaches this step does not continue past it, and the ones that stop do not come back to it afterwards.",
+        },
+        {
+          kind: "context",
+          text: "Counted 28 of the 40 sessions we looked at. 12 set aside: 9 crawlers, monitors and scripts, 3 your own team.\nSessions from 1 June 2026 to 8 June 2026.",
+        },
+      ],
+      text: "/checkout/payment\nSessions are stopping at the payment step.\n3 of 28 sessions left without going anywhere they could have gone (11%).\nMost of what reaches this step does not continue past it, and the ones that stop do not come back to it afterwards.\nCounted 28 of the 40 sessions we looked at. 12 set aside: 9 crawlers, monitors and scripts, 3 your own team.\nSessions from 1 June 2026 to 8 June 2026.",
+      legibility: { characters: 400, lines: 6 },
+    });
+
+    // Every existing assertion in this file exercises `deliver({})`, which never sets `cause` —
+    // this is the exact same fixture, so the file's own pre-existing coverage is this test's
+    // second, broader witness that nothing shifted.
+    expect(message).toEqual(renderSlackMessage(deliver({}), VOCABULARY));
+  });
+
+  test("(d) the budget ladder drops the causal clause — after the explanation, before the basis/window footer — when it would overflow the message", () => {
+    const overflowingClaim: DeliveredCauseClaim = {
+      statement: `This kept happening because of the following ${"reason ".repeat(140)}`.trim(),
+      citesHref: "/replays/o44-slack-overflow?t=12000",
+      citesLabel: "from 0:12",
+    };
+
+    const withoutCause = renderSlackMessage(deliverWithCause(undefined), VOCABULARY);
+    expect(withoutCause.legibility.characters).toBeLessThan(SLACK_MESSAGE_CHARACTER_BUDGET / 2);
+
+    const message = renderSlackMessage(
+      deliverWithCause({ grade: "explained", claims: [overflowingClaim], droppedClaims: 0 }),
+      VOCABULARY,
+    );
+
+    expect(message.legibility.characters).toBeLessThanOrEqual(SLACK_MESSAGE_CHARACTER_BUDGET);
+    expect(message.legibility.lines).toBeLessThanOrEqual(SLACK_MESSAGE_LINE_BUDGET);
+
+    // The causal clause was dropped to make room...
+    expect(message.text).not.toContain(overflowingClaim.citesLabel);
+    expect(message.text.includes("This kept happening")).toBe(false);
+
+    // ...but the explanation and the basis/window footer — both lower in the drop order —
+    // survived untouched, proving cause was the thing that gave way.
+    expect(message.text).toContain("Sessions are stopping at the payment step.");
+    expect(message.text).toContain("Counted 28 of the 40 sessions");
+    expect(message.text).toContain("Sessions from 1 June 2026 to 8 June 2026.");
+  });
+
+  test("renders every surviving claim on its own bulleted line, plus the honesty line, when the gate both kept and dropped claims", () => {
+    const message = renderSlackMessage(
+      deliverWithCause({
+        grade: "explained",
+        claims: [SURVIVING_CLAIM, { ...SURVIVING_CLAIM, statement: "A second claim, cited too" }],
+        droppedClaims: 1,
+      }),
+      VOCABULARY,
+    );
+
+    expect(message.text).toContain(SURVIVING_STATEMENT);
+    expect(message.text).toContain("A second claim, cited too");
+    expect(message.text).toContain(EVIDENCE_CLAIM_DROPPED);
+    expect(message.legibility.lines).toBeLessThanOrEqual(SLACK_MESSAGE_LINE_BUDGET);
+  });
+
+  test("refuses a described cause with a claim in it — the citation gate's job is to make that shape unreachable, and the renderer must not paper over a violation", () => {
+    expect(() =>
+      renderSlackMessage(
+        deliverWithCause({
+          grade: "described",
+          claims: [SURVIVING_CLAIM],
+          droppedClaims: 1,
+        } as unknown as DeliveredCause),
+        VOCABULARY,
+      ),
+    ).toThrow();
+  });
+
+  test("refuses an explained cause with zero claims — the grade and the claims array must agree", () => {
+    expect(() =>
+      renderSlackMessage(
+        deliverWithCause({ grade: "explained", claims: [], droppedClaims: 0 } as unknown as DeliveredCause),
+        VOCABULARY,
+      ),
+    ).toThrow();
   });
 });
