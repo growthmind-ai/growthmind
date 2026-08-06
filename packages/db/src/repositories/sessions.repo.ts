@@ -4,7 +4,7 @@ import type {
   Origin,
   TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 
 import { sessions } from "../schema/sessions";
 import { orgCrud } from "./crud";
@@ -93,6 +93,13 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, sessions);
 
+  // Reads one row past the cap to detect truncation without a separate count query, then
+  // trims it back off before returning — shared by every bounded session list below.
+  async function boundedList(where: SQL | undefined, limit: number): Promise<BoundedSessions> {
+    const rows = await c.list({ where, orderBy: [desc(sessions.startedAt)], limit: limit + 1 });
+    return { sessions: rows.slice(0, limit), truncated: rows.length > limit };
+  }
+
   return {
     async upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]> {
       if (rows.length === 0) {
@@ -175,13 +182,10 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
       projectId: string,
       options: { limit: number },
     ): Promise<BoundedSessions> {
-      const rows = await c.list({
-        where: and(eq(sessions.projectId, projectId), isNotNull(sessions.identityEmailDomain)),
-        orderBy: [desc(sessions.startedAt)],
-        limit: options.limit + 1,
-      });
-
-      return { sessions: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+      return boundedList(
+        and(eq(sessions.projectId, projectId), isNotNull(sessions.identityEmailDomain)),
+        options.limit,
+      );
     },
 
     async listSessionsForDomain(
@@ -189,13 +193,10 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
       domain: string,
       options: { limit: number },
     ): Promise<BoundedSessions> {
-      const rows = await c.list({
-        where: and(eq(sessions.projectId, projectId), eq(sessions.identityEmailDomain, domain)),
-        orderBy: [desc(sessions.startedAt)],
-        limit: options.limit + 1,
-      });
-
-      return { sessions: rows.slice(0, options.limit), truncated: rows.length > options.limit };
+      return boundedList(
+        and(eq(sessions.projectId, projectId), eq(sessions.identityEmailDomain, domain)),
+        options.limit,
+      );
     },
   };
 }
