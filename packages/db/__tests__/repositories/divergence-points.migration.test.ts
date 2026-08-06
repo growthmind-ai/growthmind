@@ -4,14 +4,12 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
+import { SURFACE_COHORT_CUT } from "@growthmind/shared";
+
 import { sql } from "drizzle-orm";
 
 import { createDivergencePointsRepo } from "../../src/repositories/divergence-points.repo";
 import { createTestDb, seedOrgWithOwner, seedProject, type TestDb } from "../../src/testing";
-
-// TODO(o-045): replace with SURFACE_COHORT_CUT from @growthmind/shared once
-// packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 1).
-const SURFACE_COHORT_CUT = "surface";
 
 const MIGRATIONS_DIR = path.join(import.meta.dir, "..", "..", "drizzle");
 

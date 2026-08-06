@@ -12,6 +12,8 @@ import {
   type TimelineEvent,
 } from "@growthmind/core";
 
+import { browserCut, SURFACE_COHORT_CUT } from "@growthmind/shared";
+
 import type { RecordDivergenceInput } from "../../src/repositories/divergence-points.repo";
 import * as schema from "../../src/schema";
 import { createDivergenceService } from "../../src/services/divergence.service";
@@ -76,12 +78,9 @@ function cohortOf(idPrefix: string, paths: readonly string[]): readonly SessionT
   return cohortOfSize(idPrefix, paths, COHORT_SIZE);
 }
 
-// TODO(o-045): replace with SURFACE_COHORT_CUT / browserCut / deviceCut from
-// @growthmind/shared once packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 1).
-const SURFACE_COHORT_CUT = "surface";
-const BROWSER_CHROME_CUT = "browser:chrome";
-const BROWSER_SAFARI_CUT = "browser:safari";
-const BROWSER_UNKNOWN_CUT = "browser:unknown";
+const BROWSER_CHROME_CUT = browserCut("chrome");
+const BROWSER_SAFARI_CUT = browserCut("safari");
+const BROWSER_UNKNOWN_CUT = browserCut("unknown");
 
 const SUCCEEDED_PATHS = [SURFACE, DESTINATION] as const;
 const FAILED_PATHS = [SURFACE] as const;
@@ -263,7 +262,7 @@ describe("divergence service — per-cut persistence (ADD FR-7/FR-8, AC-5 ii, AC
         succeeded: succeeded.slice(CHROME_SUCCEEDED),
         failed: failed.slice(CHROME_FAILED),
       },
-    ]) {
+    ] as const) {
       await service.recordDivergence({
         projectId: project.id,
         surface: SURFACE,

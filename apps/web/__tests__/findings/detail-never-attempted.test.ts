@@ -6,6 +6,7 @@
 // it) — ADD Decision 3's table, restated as the UX spec's own arm 3/4 split.
 import { createDivergencePointsRepo } from "@growthmind/db";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { SURFACE_COHORT_CUT } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
@@ -48,6 +49,7 @@ describe("UX row 6 — a finding that never diverged", () => {
     await createDivergencePointsRepo(db, ctx).recordDivergence({
       projectId,
       surface: "/pricing",
+      cohortCut: SURFACE_COHORT_CUT,
       surfaceNormalisationVersion: 1,
       spineVersion: 1,
       cohortMatchVersion: 1,

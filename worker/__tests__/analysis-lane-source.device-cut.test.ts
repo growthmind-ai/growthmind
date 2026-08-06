@@ -323,7 +323,9 @@ describe("createAnalysisLaneSource — the device cut reaches divergence through
       taxonomy.deviceCut("unknown"),
     ];
 
-    expect(withAgents.rows.map((row) => row.cohortCut).toSorted()).toEqual(expected.toSorted());
+    expect<readonly string[]>(withAgents.rows.map((row) => row.cohortCut).toSorted()).toEqual(
+      expected.toSorted(),
+    );
     expect(withAgents.rows.length).toBeLessThanOrEqual(taxonomy.allCuts.length);
 
     for (const row of withAgents.rows) {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
-import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
+import { browserCut, URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import type { SessionSourcePullResult, TenantContext } from "@growthmind/shared";
 
 import { and, eq } from "drizzle-orm";
@@ -43,9 +43,7 @@ const NOW = new Date("2026-07-30T12:00:00.000Z");
 const DUE_AT = new Date("2026-07-30T11:59:00.000Z");
 const EVENT_AT = new Date("2026-07-30T11:58:00.000Z");
 
-// TODO(o-045): replace with browserCut("safari") from @growthmind/shared once
-// packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 1).
-const BROWSER_SAFARI_CUT = "browser:safari";
+const BROWSER_SAFARI_CUT = browserCut("safari");
 
 const DIVERGENCE_WINDOW_START = new Date("2026-07-23T00:00:00.000Z");
 const DIVERGENCE_WINDOW_END = new Date("2026-07-30T00:00:00.000Z");

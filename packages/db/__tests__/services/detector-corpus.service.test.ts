@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import type { AnalysisWindow } from "@growthmind/core";
+import type { SessionCohortCuts } from "@growthmind/shared";
 
 import { createDetectorCorpusService } from "../../src/services/detector-corpus.service";
 import {
@@ -30,10 +31,11 @@ const SAFARI_ON_IPHONE =
 
 const GARBAGE_USER_AGENT = ' not-a-user-agent {"a":1} ÿ';
 
-// TODO(o-045): replace with SessionCohortCuts from @growthmind/shared once
-// packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 3).
-const CHROME_DESKTOP_CUTS = { browser: "chrome", device: "desktop" };
-const UNKNOWN_CUTS = { browser: "unknown", device: "unknown" };
+const CHROME_DESKTOP_CUTS = {
+  browser: "chrome",
+  device: "desktop",
+} satisfies SessionCohortCuts;
+const UNKNOWN_CUTS = { browser: "unknown", device: "unknown" } satisfies SessionCohortCuts;
 
 interface SeededScope {
   readonly organizationId: string;

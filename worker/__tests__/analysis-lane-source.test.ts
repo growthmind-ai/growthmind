@@ -427,7 +427,7 @@ function throwingDivergenceService(message: string): {
 }
 
 // Mirrors divergenceRowsFor in packages/db/__tests__/repositories/divergence-points.repo.test.ts —
-// findBySurface only returns the most recent row (limit 1), so it can't tell "exactly one row"
+// findSurfaceCut only returns the most recent row (limit 1), so it can't tell "exactly one row"
 // apart from "N rows, most recent shown". This queries the table directly.
 async function divergenceRowsFor(projectId: string, surface: string) {
   return db
@@ -472,7 +472,7 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates[0]?.surface).toBe(ORIGIN);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const found = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     expect(found?.organizationId).toBe(workspace.organizationId);
     expect(found?.surface).toBe(ORIGIN);
@@ -523,13 +523,13 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates.length).toBe(2);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const foundOrigin = await repo.findBySurface(workspace.projectId, ORIGIN);
-    const foundSecondOrigin = await repo.findBySurface(workspace.projectId, SECOND_ORIGIN);
+    const foundOrigin = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
+    const foundSecondOrigin = await repo.findSurfaceCut(workspace.projectId, SECOND_ORIGIN);
 
     expect(foundOrigin?.surface).toBe(ORIGIN);
     expect(foundSecondOrigin?.surface).toBe(SECOND_ORIGIN);
 
-    // findBySurface returns "most recent, limit 1" — it would mask a duplicate. Count the
+    // findSurfaceCut returns "most recent, limit 1" — it would mask a duplicate. Count the
     // rows directly to prove the tick wrote exactly one, not just that at least one exists.
     const originRows = await divergenceRowsFor(workspace.projectId, ORIGIN);
     const secondOriginRows = await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN);
@@ -600,10 +600,10 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
 
     await source.laneForProject(workspace.projectId, NOW);
-    const afterFirst = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const afterFirst = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     await source.laneForProject(workspace.projectId, NOW);
-    const afterSecond = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const afterSecond = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     // The identity conflict target (org, project, surface, cohortMatchVersion, window) is
     // identical across both calls (same NOW, same window) — a second row would only be
@@ -623,7 +623,7 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates).toEqual([]);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const found = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     expect(found).toBeNull();
     expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(false);
@@ -773,7 +773,7 @@ describe("createAnalysisLaneSource — one failing cut is isolated from its sibl
     expect(lane.candidates.length).toBe(1);
 
     const rows = await divergenceRowsFor(workspace.projectId, ORIGIN);
-    const written = rows.map((row) => (row as CutRow).cohortCut);
+    const written: readonly string[] = rows.map((row) => (row as CutRow).cohortCut);
 
     expect(written).toContain(labels.surface);
     expect(written).not.toContain(labels.browserUnknown);

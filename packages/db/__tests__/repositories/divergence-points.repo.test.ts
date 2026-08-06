@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { and, eq, sql } from "drizzle-orm";
 
-import type { TenantContext } from "@growthmind/shared";
+import { browserCut, deviceCut, SURFACE_COHORT_CUT, type TenantContext } from "@growthmind/shared";
 
 import {
   createDivergencePointsRepo,
@@ -22,15 +22,12 @@ import {
 const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
 const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
 
-// TODO(o-045): replace with SURFACE_COHORT_CUT / COHORT_CUTS from @growthmind/shared once
-// packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 1).
-const SURFACE_COHORT_CUT = "surface";
-const BROWSER_CHROME_CUT = "browser:chrome";
-const BROWSER_SAFARI_CUT = "browser:safari";
-const BROWSER_UNKNOWN_CUT = "browser:unknown";
-const DEVICE_DESKTOP_CUT = "device:desktop";
-const DEVICE_MOBILE_CUT = "device:mobile";
-const DEVICE_TABLET_CUT = "device:tablet";
+const BROWSER_CHROME_CUT = browserCut("chrome");
+const BROWSER_SAFARI_CUT = browserCut("safari");
+const BROWSER_UNKNOWN_CUT = browserCut("unknown");
+const DEVICE_DESKTOP_CUT = deviceCut("desktop");
+const DEVICE_MOBILE_CUT = deviceCut("mobile");
+const DEVICE_TABLET_CUT = deviceCut("tablet");
 
 const ONE_FAN_OUT = [
   SURFACE_COHORT_CUT,
@@ -47,6 +44,7 @@ function makeRecordInput(
   return {
     projectId,
     surface: "/checkout",
+    cohortCut: SURFACE_COHORT_CUT,
     surfaceNormalisationVersion: 2,
     spineVersion: 1,
     cohortMatchVersion: 1,
@@ -102,7 +100,7 @@ describe("divergence points repository", () => {
 
     await repo.recordDivergence(input);
 
-    const found = await repo.findBySurface(project.id, input.surface);
+    const found = await repo.findSurfaceCut(project.id, input.surface);
 
     expect(found?.organizationId).toBe(org.organizationId);
     expect(found?.projectId).toBe(project.id);
@@ -143,7 +141,7 @@ describe("divergence points repository", () => {
 
     await ownerRepo.recordDivergence(input);
 
-    const found = await teammateRepo.findBySurface(project.id, input.surface);
+    const found = await teammateRepo.findSurfaceCut(project.id, input.surface);
 
     expect(found?.projectId).toBe(project.id);
     expect(found?.surface).toBe(input.surface);
@@ -172,7 +170,7 @@ describe("divergence points repository", () => {
 
     await repoA.recordDivergence(input);
 
-    const foundFromB = await repoB.findBySurface(projectA.id, input.surface);
+    const foundFromB = await repoB.findSurfaceCut(projectA.id, input.surface);
 
     expect(foundFromB).toBeNull();
   });
@@ -481,6 +479,6 @@ describe("divergence points repository — the cohort cut (ADD Decisions 5 and 6
     // @ts-expect-error a label outside COHORT_CUTS is not assignable (ADD Decision 1, D9)
     const rejected: RecordDivergenceInput["cohortCut"] = "browser:netscape";
 
-    expect(rejected).toBe("browser:netscape");
+    expect<string>(rejected).toBe("browser:netscape");
   });
 });

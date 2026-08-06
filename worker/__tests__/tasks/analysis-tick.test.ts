@@ -571,7 +571,7 @@ function harness(options: {
           Promise.reject(
             new Error("o44-divergence-points-repo not exercised by render-only fixtures"),
           ),
-        findBySurface: () => Promise.resolve(null),
+        findSurfaceCut: () => Promise.resolve(null),
       }),
       recordingSummariesFor: () => ({
         citationsFor: () => Promise.resolve([]),
