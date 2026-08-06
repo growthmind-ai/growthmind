@@ -93,3 +93,13 @@ export function beatsFromActions(
     attempt: attemptOf(action),
   }));
 }
+
+// A claim's citesHref/citesLabel are built from its first citation only — both the
+// Slack renderer and the findings-page evidence builder resolve the same beat this way.
+export function firstCitedBeat(
+  beats: readonly CauseBeatEvidence[],
+  citesBeats: readonly number[],
+): CauseBeatEvidence | undefined {
+  const index = citesBeats[0];
+  return index === undefined ? undefined : beats[index];
+}

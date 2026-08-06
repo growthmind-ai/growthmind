@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { TranscriptBeatKind } from "@growthmind/shared";
 
-import { beatKindOf, beatsFromActions } from "../../src/replay/beats";
+import { beatKindOf, beatsFromActions, firstCitedBeat } from "../../src/replay/beats";
 import { describeElement } from "../../src/replay/describe";
 import type {
   PersistedElement,
@@ -166,5 +166,25 @@ describe("beatsFromActions", () => {
 
     expect(beats.map((beat: ExpectedCauseBeat) => beat.index)).toEqual([0, 1, 2]);
     expect(beats.map((beat: ExpectedCauseBeat) => beat.kind)).toEqual(["click", "navigate", "exit"]);
+  });
+});
+
+describe("firstCitedBeat", () => {
+  test("should resolve a claim's citation to the beat at its first cited index", () => {
+    const beats = beatsFromActions(mixedKindActions());
+
+    expect(firstCitedBeat(beats, [3, 5])).toBe(beats[3]);
+  });
+
+  test("should return undefined for a claim citing no beats", () => {
+    const beats = beatsFromActions(mixedKindActions());
+
+    expect(firstCitedBeat(beats, [])).toBeUndefined();
+  });
+
+  test("should return undefined for a citation index outside the supplied beats", () => {
+    const beats = beatsFromActions(mixedKindActions());
+
+    expect(firstCitedBeat(beats, [beats.length])).toBeUndefined();
   });
 });

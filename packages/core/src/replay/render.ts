@@ -9,7 +9,7 @@ export const STAMP_SEPARATOR = "  ";
 
 export const EMPTY_TRANSCRIPT_LINE = "(nothing recorded)";
 
-function stamp(atMs: number): string {
+export function stampOf(atMs: number): string {
   const totalSeconds = Math.floor(atMs / MS_PER_SECOND);
   const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE);
   const seconds = totalSeconds % SECONDS_PER_MINUTE;
@@ -46,7 +46,7 @@ function sentence(action: SessionAction): string {
 
 export function renderTranscript(transcript: SessionTranscript): string {
   const lines = transcript.actions.map(
-    (action) => `${stamp(action.atMs)}${STAMP_SEPARATOR}${sentence(action)}`,
+    (action) => `${stampOf(action.atMs)}${STAMP_SEPARATOR}${sentence(action)}`,
   );
 
   if (transcript.droppedEvents > 0) {

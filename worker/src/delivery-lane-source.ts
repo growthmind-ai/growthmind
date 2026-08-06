@@ -5,6 +5,8 @@ import {
   beatsFromActions,
   confidenceBasisSchema,
   deliveryClaimsExpireBefore,
+  firstCitedBeat,
+  stampOf,
   toMeasuredCount,
   worthOf,
   type CauseBeatEvidence,
@@ -90,28 +92,6 @@ function contextFor(organization: SlackDeliveryOrganization): TenantContext {
 }
 
 type ScannedFindingText = Extract<FindingRecord["text"], { held: false }>;
-
-const MS_PER_SECOND = 1_000;
-const SECONDS_PER_MINUTE = 60;
-
-// Matches packages/core/src/replay/render.ts's own stamp format — the same third local copy
-// apps/web/lib/findings/evidence.ts already carries, per that file's own comment. A citation's
-// label has to read identically wherever it renders (web page or Slack message).
-function stampOf(atMs: number): string {
-  const totalSeconds = Math.floor(atMs / MS_PER_SECOND);
-  const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE);
-  const seconds = totalSeconds % SECONDS_PER_MINUTE;
-
-  return `${String(minutes)}:${String(seconds).padStart(2, "0")}`;
-}
-
-function firstCitedBeat(
-  beats: readonly CauseBeatEvidence[],
-  citesBeats: readonly number[],
-): CauseBeatEvidence | undefined {
-  const index = citesBeats[0];
-  return index === undefined ? undefined : beats[index];
-}
 
 // Same derivation as apps/web/lib/findings/evidence.ts's claimViewOf — a citation link is
 // null (never a dead link) when the anchor session's own citation is unresolvable (D5).

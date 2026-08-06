@@ -412,6 +412,7 @@ export {
   STAMP_SEPARATOR,
   EMPTY_TRANSCRIPT_LINE,
   renderTranscript,
+  stampOf,
 } from "./replay/render";
 export {
   NARRATION_MAX_ACTIONS,
@@ -442,7 +443,7 @@ export {
   type PersistedTranscript,
   type PersistedTranscriptSerialiser,
 } from "./replay/persisted-transcript";
-export { beatKindOf, beatsFromActions } from "./replay/beats";
+export { beatKindOf, beatsFromActions, firstCitedBeat } from "./replay/beats";
 
 export {
   DIVERGENCE_COHORT_FLOOR,
