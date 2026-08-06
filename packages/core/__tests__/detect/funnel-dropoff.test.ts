@@ -14,6 +14,7 @@ import type {
 } from "../../src/detect/types";
 import type { EvidenceSignal } from "../../src/evidence/signals";
 import { evidenceSignalSchema } from "../../src/evidence/signals";
+import { admissibleProofKinds } from "../../src/evidence/predicates";
 import { EVIDENCE_SHAPE_VERSION, evidenceShape } from "../../src/findings/evidence-shape";
 import { THRESHOLD_RULE_SETS } from "../../src/rules/thresholds";
 import type { ThresholdRuleSet } from "../../src/rules/types";
@@ -1378,6 +1379,7 @@ describe("detectFunnelDropoff — one origin with several destinations", () => {
           surface: candidate.surface,
           surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
           signals: candidate.signals,
+          proofKinds: admissibleProofKinds(candidate.signals, "confusing", ruleSetV1()),
 
           symptomClass: "confusing",
         },
