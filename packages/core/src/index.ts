@@ -104,6 +104,12 @@ export {
   type TraceEntry,
   type DowngradeTrace,
 } from "./evidence/trace";
+export {
+  stableElementKey,
+  isStructurallyAnonymous,
+  type ElementKey,
+  type ElementKeyTier,
+} from "./evidence/element-key";
 
 export {
   candidateFindingSchema,
