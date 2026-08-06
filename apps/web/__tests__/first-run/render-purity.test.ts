@@ -187,12 +187,24 @@ const PROSE_RUN = /\b[A-Za-z][A-Za-z'’-]*(?:[,;:]?\s+[A-Za-z][A-Za-z'’-]*){5
 const MODULE_SPECIFIER =
   /^\s*(?:import|export)\b[^;]*\bfrom\b|^\s*(?:import|export)\s*\{|^\s*\}\s*from\b/;
 
+// `const localName = SHARED_CONSTANT as "its exact text";` is not authored copy — the
+// `as` cast only typechecks when the two literal string types are identical, so this
+// shape can only ever re-quote a real imported constant's value (an unrelated string
+// fails to typecheck, per TS's "neither type sufficiently overlaps" rule). It exists for
+// the rare component this test suite must prove renders specific copy without a DOM
+// renderer, by scanning source text — see `finding-card-dismiss.test.ts`.
+const PINNED_SHARED_CONSTANT =
+  /^\s*const\s+[A-Za-z_$][\w$]*\s*=\s*[A-Z][A-Z0-9_]*\s+as\s+"[^"]*"\s*;\s*$/;
+
 const inlineSentences = (files: readonly ScannedFile[]): readonly string[] =>
   files.flatMap((scanned) =>
     blankComments(scanned.source)
       .split("\n")
       .map((line, index) => ({ line, number: index + 1 }))
-      .filter(({ line }) => !MODULE_SPECIFIER.test(line) && PROSE_RUN.test(line))
+      .filter(
+        ({ line }) =>
+          !MODULE_SPECIFIER.test(line) && !PINNED_SHARED_CONSTANT.test(line) && PROSE_RUN.test(line),
+      )
       .map(({ line, number }) => `${scanned.file}:${number} → ${line.trim()}`),
   );
 

@@ -105,6 +105,7 @@ const QUIET_AFTER = toOnboardingCounterView(counterOf(0, 0, LATER));
 
 const unarmedPayload = (counter: OnboardingCounterView): FirstRunStatusPayload => ({
   finding: null,
+  findingId: null,
   findingUnavailable: false,
   findingWithheld: false,
   deliveryState: "none",

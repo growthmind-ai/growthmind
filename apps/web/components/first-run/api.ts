@@ -12,6 +12,7 @@ export const FIRST_RUN_API = {
   status: "/api/first-run/status",
   arm: "/api/first-run/arm",
   dismiss: "/api/first-run/dismiss",
+  findingDismiss: "/api/first-run/finding/dismiss",
   interest: "/api/first-run/interest",
   agentKey: "/api/first-run/agent/key",
   agentRevoke: "/api/first-run/agent/revoke",

@@ -121,6 +121,7 @@ const stageMarkup = (
       nowMs: CLOCK().getTime(),
       channelId,
       channelLabel: channelId,
+      findingId: null,
       findingUnavailable: false,
       findingWithheld: false,
       delivery,
