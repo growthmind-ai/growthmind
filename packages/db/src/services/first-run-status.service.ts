@@ -10,6 +10,8 @@ import type { ScopedDb } from "../repositories/types";
 import { analysisRuns } from "../schema/analysis-runs";
 import { firstRunState } from "../schema/first-run-state";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
+import { createSignatureLedgerService } from "./signature-ledger.service";
+import type { SignatureHex } from "../signatures/hex";
 
 // Three facts about ONE row, from ONE read: the card, the delivery line and the fault
 // sentence each ran a bounded finding read of their own, and a row landing between two
@@ -172,6 +174,34 @@ async function readNewestFinding(
     });
 
     // No id, so `finding === null` implies `findingId === null` (B-038).
+    return fromThisWatch ? UNRENDERABLE : NO_FINDING;
+  }
+
+  // A dismissal is working as designed, never a fault (ADD o-019-dismissal-wired Decision
+  // 2) — the card falls back to whatever earlier stage state applies, exactly like a row
+  // that has not arrived yet. A thrown consult reuses the same fromThisWatch split as every
+  // other read in this function (Decision 3): a genuine failure on this watch's own row is
+  // an honest fault, a failure resolving an older row is silence, matching precedent exactly.
+  try {
+    // Unchecked, not `signatureHex()`: `findings.signature` has no format constraint at the
+    // schema level, and a malformed value should resolve "deliver" via a normal no-match
+    // query, not join this function's fault path for a genuinely failed consult call.
+    const decision = await createSignatureLedgerService(db, ctx).consultSignature(
+      projectId,
+      record.signature as SignatureHex,
+    );
+
+    if (decision.decision === "suppress") {
+      return NO_FINDING;
+    }
+  } catch (error) {
+    logger.error("first-run status: could not confirm the newest finding was not dismissed", {
+      organizationId: ctx.organizationId,
+      projectId,
+      findingId: record.id,
+      ...describeReadFailure(error),
+    });
+
     return fromThisWatch ? UNRENDERABLE : NO_FINDING;
   }
 

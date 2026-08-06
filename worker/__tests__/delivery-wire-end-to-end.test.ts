@@ -28,6 +28,7 @@ import {
 import {
   createRecordingDeliveryLogger,
   createRecordingPoster,
+  permissiveLedgerFor,
   seedFinding,
   seedSlackConnection,
   tableUnderConstruction,
@@ -52,6 +53,7 @@ const CHANNEL_B = "C0BBBBBBBBB";
 type MirrorCreateDeliveryLaneSource = (deps: {
   readonly db: TestDb;
   readonly logger: DeliveryLogger;
+  readonly ledgerFor: ReturnType<typeof permissiveLedgerFor>;
 }) => DeliveryLaneSource;
 
 const loadCreateDeliveryLaneSource = (): Promise<MirrorCreateDeliveryLaneSource> =>
@@ -151,7 +153,7 @@ async function runTheTick(poster: RecordingPoster): Promise<{
   const logger = createRecordingDeliveryLogger();
 
   const summary = await runDeliveryTick({
-    lanes: createDeliveryLaneSource({ db, logger }),
+    lanes: createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }),
     deliveriesFor: (ctx) => createDeliveriesRepo(db, ctx),
 
     posterFor: () => Promise.resolve(poster),
@@ -295,7 +297,7 @@ test("the channel id comes from the stored connection row and no caller can supp
   const org = await seedOrgWithFinding({ label: "payment", channelId: CHANNEL_A });
 
   const logger = createRecordingDeliveryLogger();
-  const lanes = createDeliveryLaneSource({ db, logger });
+  const lanes = createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() });
   const [lane] = await lanes.listDueLanes(NOW);
 
   expect(lanes.listDueLanes.length).toBe(1);
@@ -323,7 +325,11 @@ test("an organization with a workspace and no channel yields no lane and no ledg
 
   const logger = createRecordingDeliveryLogger();
   const watch = watchLedgerReads(db);
-  const lanes = createDeliveryLaneSource({ db: watch.db, logger });
+  const lanes = createDeliveryLaneSource({
+    db: watch.db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  });
 
   expect(await lanes.listDueLanes(NOW)).toEqual([]);
 
@@ -450,7 +456,7 @@ test("a finding older than the cutover is not replayed into the channel that rep
   const org = await seedOrgWithFinding({ label: "moved", channelId: CHANNEL_A });
 
   const logger = createRecordingDeliveryLogger();
-  const lanes = createDeliveryLaneSource({ db, logger });
+  const lanes = createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() });
 
   // Undelivered and deliverable BEFORE the move, so a green below is about the cutover
   // rather than about a lane that had nothing to send in the first place.
@@ -474,7 +480,11 @@ test("a finding exactly at the cutover instant stays with the channel that recei
   await moveChannelTo(CHANNEL_B, await persistedFindingCreatedAt());
 
   const logger = createRecordingDeliveryLogger();
-  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+  const [lane] = await createDeliveryLaneSource({
+    db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  }).listDueLanes(NOW);
 
   expect(lane?.candidates).toEqual([]);
 });
@@ -489,7 +499,11 @@ test("a finding made after the cutover still goes to the channel that replaced t
   await moveChannelTo(CHANNEL_B, new Date(createdAt.getTime() - 60_000));
 
   const logger = createRecordingDeliveryLogger();
-  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+  const [lane] = await createDeliveryLaneSource({
+    db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  }).listDueLanes(NOW);
 
   expect(lane?.channelId).toBe(CHANNEL_B);
   expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
@@ -502,7 +516,11 @@ test("a connection that has never moved holds nothing back", async () => {
   const org = await seedOrgWithFinding({ label: "never-moved", channelId: CHANNEL_A });
 
   const logger = createRecordingDeliveryLogger();
-  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+  const [lane] = await createDeliveryLaneSource({
+    db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  }).listDueLanes(NOW);
 
   expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
 });
@@ -536,7 +554,11 @@ test("a claim still in flight keeps its finding out of the candidate list", asyn
   await claimAndAbandon(org, new Date(NOW.getTime() - 60_000));
 
   const logger = createRecordingDeliveryLogger();
-  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+  const [lane] = await createDeliveryLaneSource({
+    db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  }).listDueLanes(NOW);
 
   expect(lane?.candidates).toEqual([]);
 });
@@ -548,7 +570,11 @@ test("a finding whose claim was abandoned becomes deliverable again", async () =
   await claimAndAbandon(org, new Date(NOW.getTime() - DELIVERY_CLAIM_TTL_MS - 60_000));
 
   const logger = createRecordingDeliveryLogger();
-  const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+  const [lane] = await createDeliveryLaneSource({
+    db,
+    logger,
+    ledgerFor: permissiveLedgerFor(),
+  }).listDueLanes(NOW);
 
   expect(lane?.candidates.map((candidate) => candidate.findingId)).toEqual([org.findingId]);
 });

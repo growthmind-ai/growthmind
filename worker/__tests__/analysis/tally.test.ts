@@ -95,6 +95,22 @@ describe("applyAttribution", () => {
   });
 });
 
+describe("newTally / applyAttribution — the suppressed counter (ADD Decision 5 item 6)", () => {
+  it("newTally initializes suppressed to 0, and applyAttribution never touches it", () => {
+    // `RunTally` does not carry `suppressed` yet (Wave 3 task 3.3 adds it) — read through a
+    // widened view so this Wave 0 red is a real assertion failure (the field is absent) rather
+    // than a compile error on a property that does not exist on the production type.
+    const tally = newTally();
+    const tallyRecord = tally as unknown as Record<string, unknown>;
+
+    expect(tallyRecord.suppressed).toBe(0);
+
+    applyAttribution(tally, attempted(10, 2));
+
+    expect(tallyRecord.suppressed).toBe(0);
+  });
+});
+
 describe("outcomeFor", () => {
   it("reports findings whenever the lane carried candidates", () => {
     expect(outcomeFor(laneWith(2, 40))).toBe("produced_findings");

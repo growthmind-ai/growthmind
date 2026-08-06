@@ -2,7 +2,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
-import { FINDING_BLOCK_ID_PREFIX, GET_IT_FIXED_ACTION_ID } from "@growthmind/shared";
+import {
+  FINDING_BLOCK_ID_PREFIX,
+  GET_IT_FIXED_ACTION_ID,
+  GET_IT_FIXED_LABEL,
+} from "@growthmind/shared";
+import { NOT_USEFUL_ACTION_ID, NOT_USEFUL_LABEL } from "@growthmind/shared";
 import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
 import type { ExclusionReason, NothingTodayReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -470,7 +475,10 @@ describe("renderSlackMessage — the affordance that turns a finding into a fix"
     const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
 
     expect(actions).toBeDefined();
-    expect(actions?.actions.map((action) => action.actionId)).toEqual([GET_IT_FIXED_ACTION_ID]);
+    expect(actions?.actions.map((action) => action.actionId)).toEqual([
+      GET_IT_FIXED_ACTION_ID,
+      NOT_USEFUL_ACTION_ID,
+    ]);
 
     const sources = deliverySources();
     expect(sources.length).toBeGreaterThan(1);
@@ -487,6 +495,29 @@ describe("renderSlackMessage — the affordance that turns a finding into a fix"
 
     expect(actions).toBeDefined();
     expect(actions?.blockId).toBe(`${FINDING_BLOCK_ID_PREFIX}${ACTION_FINDING_ID}`);
-    expect(actions?.actions.map((action) => action.value)).toEqual([ACTION_FINDING_ID]);
+    expect(actions?.actions.map((action) => action.value)).toEqual([
+      ACTION_FINDING_ID,
+      ACTION_FINDING_ID,
+    ]);
+  });
+
+  test("should include both action ids and labels when a finding id is present", () => {
+    const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
+
+    expect(actions).toBeDefined();
+    expect(actions?.actions).toEqual([
+      {
+        actionId: GET_IT_FIXED_ACTION_ID,
+        label: GET_IT_FIXED_LABEL,
+        value: ACTION_FINDING_ID,
+        style: "primary",
+      },
+      {
+        actionId: NOT_USEFUL_ACTION_ID,
+        label: NOT_USEFUL_LABEL,
+        value: ACTION_FINDING_ID,
+        style: null,
+      },
+    ]);
   });
 });

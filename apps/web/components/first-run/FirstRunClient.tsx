@@ -34,7 +34,8 @@ import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
 import { AgentPanel } from "./AgentPanel";
-import { FIRST_RUN_API, postJson } from "./api";
+import { FIRST_RUN_API, postForOutcome, postJson } from "./api";
+import type { DismissOutcome } from "./FindingCard";
 import styles from "./first-run.module.css";
 import {
   EMPTY_HOLD,
@@ -132,6 +133,22 @@ function Live(props: LiveProps) {
 const AGENT_STEP = LIVE_STEP_DESCRIPTORS.find(
   (descriptor): descriptor is PanelStep => descriptor.kind === "panel",
 );
+
+// The closure, not `FindingCard`, is what knows which finding to dismiss (ADD
+// Decision 2, part A): `findingId` is captured here, at the render where it was
+// still the active, undismissed finding, so a duplicate press targets the same
+// row even if a new finding has since arrived and `current.findingId` has moved on.
+function dismissFinding(findingId: string): () => Promise<DismissOutcome> {
+  return async () => {
+    const outcome = await postForOutcome(
+      FIRST_RUN_API.findingDismiss,
+      { findingId },
+      ONBOARDING_MESSAGES.networkFailure,
+    );
+
+    return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
+  };
+}
 
 interface FirstRunClientProps {
   readonly status: FirstRunStatusPayload;
@@ -362,10 +379,12 @@ export function FirstRunClient(props: FirstRunClientProps) {
               nowMs={nowMs}
               channelId={current.channelId}
               channelLabel={current.channelLabel}
+              findingId={current.findingId}
               findingUnavailable={findingUnavailable}
               findingWithheld={findingWithheld}
               delivery={current.deliveryState}
               deliveryReason={current.deliveryFailureReason ?? null}
+              onDismiss={current.findingId === null ? undefined : dismissFinding(current.findingId)}
             />
           ) : (
             <SetupStage

@@ -17,6 +17,7 @@ import type {
   MeasuredCountRow,
   ScopedDb,
   SignatureHex,
+  SignatureLedgerService,
 } from "@growthmind/db";
 import {
   createDeliveriesRepo,
@@ -220,9 +221,16 @@ function wasPostedInWindow(delivery: DeliveryRecord | null, windowStart: Date, a
   return postedAt >= windowStart.getTime() && postedAt <= at.getTime();
 }
 
+// ADD o-019-dismissal-wired Decision 4: declared locally rather than imported from
+// worker/src/analysis/types.ts, whose AnalysisLaneDeps.ledgerFor has the identical
+// shape — a sibling worktree (O-046) is concurrently modifying that file, and this
+// alias is one line, so a new dependency edge onto it would cost more than it saves.
+type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
+
 export interface DeliveryLaneSourceDeps {
   readonly db: ScopedDb;
   readonly logger: DeliveryLogger;
+  readonly ledgerFor: SignatureLedgerFor;
 }
 
 // Ordering is not delivery. This read failing must cost the lane its weighting and nothing
@@ -296,6 +304,33 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
             `delivery lane source: finding ${finding.id} carries written text that must not be shown (${hold.reason}/${String(hold.kind)}), so it was held back`,
           );
           continue;
+        }
+
+        // Before the slot is spent, like the held-text check above: a dismissal is
+        // permanent, so a dismissed row must never be one of the FINDINGS_CONSIDERED_PER_LANE
+        // rows that stand between it and a project's real findings (ADD Decision 4). An
+        // unreadable signature is left to deliverableFor()'s own validation further down.
+        if (isSignatureHex(finding.signature)) {
+          try {
+            const decision = await deps
+              .ledgerFor(ctx)
+              .consultSignature(projectId, signatureHex(finding.signature));
+
+            if (decision.decision === "suppress") {
+              deps.logger.warn(
+                `delivery lane source: finding ${finding.id} carries a signature the ledger resolved as ${decision.reason}, so it was held back`,
+              );
+              continue;
+            }
+          } catch (error) {
+            // A thrown consult is not a resolved suppress decision (ADD Decision 3) — the
+            // finding is held back this tick only, the same fail-toward-doubt rule the
+            // analysis lane applies.
+            deps.logger.error(
+              `delivery lane source: finding ${finding.id} could not be checked against the dismissal ledger this tick, so it was held back — ${describeDriverError(error)}`,
+            );
+            continue;
+          }
         }
 
         considered += 1;

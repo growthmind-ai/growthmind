@@ -37,6 +37,10 @@ import { readOrFallback } from "@/lib/read-or-fallback";
 import { slackOAuthConfigured } from "@/lib/slack/oauth";
 
 export type FirstRunStatusPayload = FirstRunStatus & {
+  // Non-null iff there is a live, dismissable finding — `readNewestFinding` folds a
+  // dismissed row into the same `NO_FINDING` sentinel as "nothing has arrived yet".
+  readonly findingId: string | null;
+
   readonly findingUnavailable: boolean;
 
   // Not derivable from `findingUnavailable`: an unrenderable row may still have reached
@@ -199,6 +203,7 @@ export async function buildFirstRunStatus(
 
   return {
     finding: facts.finding,
+    findingId: facts.findingId,
     findingUnavailable: facts.findingUnavailable,
     findingWithheld: facts.findingWithheld,
     armedAt: facts.armedAt,

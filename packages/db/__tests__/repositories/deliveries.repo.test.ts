@@ -568,6 +568,38 @@ describe("deliveries repository", () => {
     expect(fromB?.deliveryId).toBe(claimedB.delivery?.id);
   });
 
+  it("resolveDeliveryForInteraction returns the delivery's signature on its principal", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-principal-signature",
+      userName: "Owner Principal Signature",
+      email: "owner-principal-signature@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "checkout-principal-signature",
+    });
+    const repo = createDeliveriesRepo(db, org.ctx);
+    const signature = testSignature("f".repeat(64));
+    const messageRef = "1785481299.555555";
+
+    await repo.claimForPost(
+      makeClaimInput(project.id, { findingId: "finding-principal-signature", signature }),
+    );
+    await repo.markPosted({
+      findingId: "finding-principal-signature",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T10:00:00.000Z"),
+      messageRef,
+    });
+
+    const principal = await resolveDeliveryForInteraction(db, {
+      channelId: CHANNEL,
+      messageRef,
+    });
+
+    expect(principal?.signature).toBe(signature);
+  });
+
   it("resolves no delivery for a message Growthmind did not write", async () => {
     const org = await seedOrgWithOwner(db, {
       orgName: "acme-unknown-message",

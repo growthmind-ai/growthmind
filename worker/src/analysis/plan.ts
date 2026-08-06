@@ -6,8 +6,13 @@ import {
   reviewFindingText,
   splitSentences,
 } from "@growthmind/core";
-import type { AnalysisRunRecord, AnalysisRunsRepo, FindingsRepo } from "@growthmind/db";
-import { describeHold } from "@growthmind/db";
+import type {
+  AnalysisRunRecord,
+  AnalysisRunsRepo,
+  FindingsRepo,
+  SignatureLedgerService,
+} from "@growthmind/db";
+import { describeDriverError, describeHold, signatureHex } from "@growthmind/db";
 import type { SummaryRenderResult } from "@growthmind/shared";
 import { describeError } from "@growthmind/shared";
 
@@ -25,6 +30,7 @@ export async function planCandidate(
   candidate: CandidateFinding,
   position: number,
   tickAt: Date,
+  ledger: SignatureLedgerService,
 ): Promise<CandidatePlan> {
   if (!surfaceIsSafeToSend(position, lane.projectId, candidate, deps.logger)) {
     return { capExhausted: false, action: { kind: "refused" } };
@@ -32,6 +38,27 @@ export async function planCandidate(
 
   const identity = identityFor(position, lane.projectId, candidate, deps.logger);
   if (identity === null) {
+    return { capExhausted: false, action: { kind: "refused" } };
+  }
+
+  // Reuses the already-computed signature rather than the `CandidateFinding` overload —
+  // recomputing here risks two separately-derived signatures for the same candidate
+  // diverging if `SIGNATURE_TUPLE_VERSION` or any input changes mid-flight (D12).
+  try {
+    const decision = await ledger.consultSignature(
+      lane.projectId,
+      signatureHex(identity.signature),
+    );
+    if (decision.decision === "suppress") {
+      return { capExhausted: false, action: { kind: "suppressed", reason: decision.reason } };
+    }
+  } catch (error) {
+    // A thrown consult is not a resolved suppress decision (ADD Decision 3) — it is the
+    // same shape as `identityFor`'s own failure mode, gated before spend, and lands in the
+    // existing `refused` bucket rather than a new field on this outcome.
+    deps.logger.error(
+      `analysis tick: candidate ${identity.signature} could not be checked against the dismissal ledger, so nothing was claimed, sent or written for it — ${describeDriverError(error)}`,
+    );
     return { capExhausted: false, action: { kind: "refused" } };
   }
 

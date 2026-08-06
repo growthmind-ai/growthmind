@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 
 import {
+  createDismissalsRepo,
   createFixesService,
+  createSignatureLedgerService,
   resolveDeliveryForInteraction,
   type OpenFixResult,
   type ScopedDb,
 } from "@growthmind/db";
 import {
+  DISMISSAL_ACKNOWLEDGEMENT,
+  DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT,
   FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
   FIX_DETAIL_MISSING_REFUSAL,
   FIX_SURFACE_FORBIDDEN_REFUSALS,
@@ -132,17 +136,62 @@ async function mintFor(db: ScopedDb, interaction: SlackInteractionPayload): Prom
   return sentenceFor(result);
 }
 
+// The read is purely for copy selection (which sentence to say); the write below is
+// unconditional and idempotent either way, so a race between the read and a concurrent
+// press changes only which acknowledgement sentence is said, never how many dismissal
+// rows or ledger stamps result (ADD "Slack dismiss handler" implementation note).
+async function dismissFor(
+  db: ScopedDb,
+  interaction: SlackInteractionPayload,
+): Promise<string | null> {
+  const principal = await resolveDeliveryForInteraction(db, {
+    channelId: interaction.container.channel_id ?? interaction.channel.id,
+    messageRef: interaction.container.message_ts,
+  });
+
+  if (principal === null) {
+    logger.warn("slack interactivity: a press arrived on a message this deployment never posted");
+    return null;
+  }
+
+  const existing = await createDismissalsRepo(db, principal.context).findFor(
+    principal.findingId,
+    "not_useful",
+  );
+
+  // No Slack-user-to-org-member identity mapping exists (ADD's cross-cutting decision) —
+  // the same system-actor footing `openFor` already stands on for "Get it fixed".
+  await createSignatureLedgerService(db, principal.context).recordDismissal({
+    projectId: principal.projectId,
+    findingId: principal.findingId,
+    signature: principal.signature,
+    action: "not_useful",
+    dismissedByUserId: null,
+  });
+
+  logger.info("slack interactivity: a dismissal press was served", {
+    findingId: principal.findingId,
+    alreadyRecorded: existing !== null,
+  });
+
+  return existing !== null ? DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT : DISMISSAL_ACKNOWLEDGEMENT;
+}
+
 interface PressWork {
   readonly interaction: SlackInteractionPayload;
   readonly identity: string;
   readonly redelivered: boolean;
+  readonly action: "open_fix" | "dismiss";
 }
 
 async function servePress(work: PressWork): Promise<void> {
   let sentence: string | null;
 
   try {
-    sentence = await mintFor(getDb(), work.interaction);
+    sentence =
+      work.action === "dismiss"
+        ? await dismissFor(getDb(), work.interaction)
+        : await mintFor(getDb(), work.interaction);
   } catch (error) {
     // Releasing the claim leaves Slack's redelivery of the same payload free to try again.
     forgetHandled(work.identity);
@@ -206,7 +255,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const actionId = interaction.actions[0]?.action_id ?? "";
-  if (resolveSlackAction(actionId).action === "ignore") {
+  const resolution = resolveSlackAction(actionId);
+  if (resolution.action === "ignore") {
     logger.info("slack interactivity: a press named an action this deployment does not serve", {
       actionId,
     });
@@ -224,7 +274,9 @@ export async function POST(request: Request): Promise<Response> {
   // duplicate-in-a-shared-channel failure wearing a delivery hat.
   const redelivered = request.headers.get("x-slack-retry-num") !== null;
 
-  await afterResponse(() => servePress({ interaction, identity, redelivered }));
+  await afterResponse(() =>
+    servePress({ interaction, identity, redelivered, action: resolution.action }),
+  );
 
   return ok();
 }

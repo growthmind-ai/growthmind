@@ -17,7 +17,7 @@ import {
   type StagePersistedFacts,
 } from "@growthmind/shared";
 
-import { FindingCard } from "./FindingCard";
+import { FindingCard, type DismissOutcome } from "./FindingCard";
 import styles from "./first-run.module.css";
 import { WaitLog } from "./WaitLog";
 
@@ -43,6 +43,16 @@ interface StageProps {
   // Written by the delivery lane when the post failed, so the repair is the sentence
   // that already exists rather than a second one composed on this screen.
   readonly deliveryReason: string | null;
+
+  // Metadata about the current finding, the same category as the flags above — not a
+  // `reduceStage` input. `null` whenever `state.kind !== "finding"`.
+  readonly findingId: string | null;
+
+  // Absent when the caller hasn't wired dismissal: `FindingCard` must not render the
+  // control at all in that case (D11), never render it inert. `| undefined`, not just
+  // `?`: `exactOptionalPropertyTypes` treats a value explicitly typed `T | undefined`
+  // differently from an omitted key, and `FirstRunClient` passes this through as one.
+  readonly onDismiss?: (() => Promise<DismissOutcome>) | undefined;
 }
 
 // Where it went, for the one state that cannot show it. NOT `renderDeliveryClosure`: an
@@ -106,7 +116,12 @@ export function Stage(props: StageProps) {
       </Text>
 
       {state.kind === "finding" ? (
-        <FindingCard finding={state.finding} arriving={arriving} />
+        <FindingCard
+          finding={state.finding}
+          arriving={arriving}
+          findingId={props.findingId}
+          onDismiss={props.onDismiss}
+        />
       ) : null}
 
       {state.kind === "finding" ? (

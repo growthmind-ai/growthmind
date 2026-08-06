@@ -258,6 +258,37 @@ describe("findings repository", () => {
     );
   });
 
+  it("findById returns a finding scoped to the caller's organization, and null for another org's id", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: "acme-findbyid-a",
+      userName: "Owner FindById A",
+      email: "owner-findbyid-a@acme.example",
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: "acme-findbyid-b",
+      userName: "Owner FindById B",
+      email: "owner-findbyid-b@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "checkout-findbyid",
+    });
+    const run = await seedAnalysisRun(db, { ctx: orgA.ctx, projectId: project.id });
+
+    const repoA = createFindingsRepo(db, orgA.ctx);
+    const repoB = createFindingsRepo(db, orgB.ctx);
+
+    const written = await repoA.persist(
+      makePersistInput(project.id, run.id, { signature: signatureFor("findbyid") }),
+    );
+
+    const found = await repoA.findById(project.id, written.id);
+    expect(found?.id).toBe(written.id);
+
+    const crossOrg = await repoB.findById(project.id, written.id);
+    expect(crossOrg).toBeNull();
+  });
+
   // R-1 lets a fix reference its finding instead of copying it, and that is only safe while
   // a persisted finding cannot change under the reference.
   it("declares no method that updates a persisted finding", async () => {

@@ -1,4 +1,8 @@
-import { FINDING_BLOCK_ID_PREFIX, GET_IT_FIXED_ACTION_ID } from "@growthmind/shared";
+import {
+  FINDING_BLOCK_ID_PREFIX,
+  GET_IT_FIXED_ACTION_ID,
+  NOT_USEFUL_ACTION_ID,
+} from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import { resolveSlackAction } from "../../lib/slack/interaction-router";
@@ -24,5 +28,9 @@ describe("resolveSlackAction", () => {
         action: "ignore",
       });
     }
+  });
+
+  test("resolves NOT_USEFUL_ACTION_ID to a dismiss resolution, distinct from ignore", () => {
+    expect(resolveSlackAction(NOT_USEFUL_ACTION_ID)).toEqual({ action: "dismiss" });
   });
 });

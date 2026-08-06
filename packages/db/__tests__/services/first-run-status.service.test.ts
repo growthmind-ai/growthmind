@@ -18,7 +18,10 @@ import { createAnalysisRunsRepo } from "../../src/repositories/analysis-runs.rep
 import { createFindingsRepo, type MeasuredCountRow } from "../../src/repositories/findings.repo";
 import type { ScopedDb } from "../../src/repositories/types";
 import { findings } from "../../src/schema/findings";
+import { signatureAncestry } from "../../src/schema/signature-ancestry";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
+import { createSignatureLedgerService } from "../../src/services/signature-ledger.service";
+import { sha256Hex, type SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
 import {
@@ -132,7 +135,12 @@ async function seedScope(db: TestDb, label: string): Promise<Scope> {
 
 const headlineFor = (label: string): string => `Checkout drops after the ${label} step`;
 
-async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<string> {
+async function seedFindingRow(
+  db: TestDb,
+  scope: Scope,
+  label: string,
+  overrides: { readonly signature?: string } = {},
+): Promise<string> {
   const run = await seedAnalysisRun(db, { ctx: scope.ctx, projectId: scope.projectId });
   const repo = createFindingsRepo(db, scope.ctx);
   const text = scannedTextFor(headlineFor(label), ["One line of context, never a blob."]);
@@ -140,7 +148,7 @@ async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<
   await repo.persist({
     projectId: scope.projectId,
     runId: run.id,
-    signature: randomUUID(),
+    signature: overrides.signature ?? randomUUID(),
     signatureVersion: 1,
     detector: "funnel_dropoff",
     summarySource: "model_rendered",
@@ -172,6 +180,23 @@ async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<
   const [row] = await repo.listForProject(scope.projectId, { limit: 1 });
   if (row === undefined) throw new Error("the seeded finding could not be read back");
   return row.id;
+}
+
+// Backdates a named-signature row so a caller can control which side of armedAt it lands
+// on — the exact control seedShapeRefusedFindingRow already needs for its own fixture.
+async function seedFindingRowAt(
+  db: TestDb,
+  scope: Scope,
+  label: string,
+  signature: SignatureHex,
+  createdAt: Date,
+): Promise<string> {
+  const id = await seedFindingRow(db, scope, label, { signature });
+  await readRawRows(
+    db,
+    sql`UPDATE findings SET created_at = ${createdAt.toISOString()} WHERE id = ${id}`,
+  );
+  return id;
 }
 
 // `counts` is jsonb, so a shape the render schema refuses can be written straight in —
@@ -487,6 +512,81 @@ describe("first-run status service — two legs, three tables, one read", () => 
   });
 });
 
+// ADD o-019-dismissal-wired Decision 2/3: readNewestFinding becomes ledger-aware. A
+// resolved suppression is working as designed (NO_FINDING, never UNRENDERABLE — the
+// existing fault-styled sentinel would misrepresent a deliberate dismissal as a fault).
+// A thrown consultSignature call reuses the function's own existing fromThisWatch split.
+describe("a dismissal is not a fault (ADD o-019-dismissal-wired Decision 2, Decision 3)", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  test("treats a dismissed newest finding as though it had not arrived yet", async () => {
+    const createService = await loadCreateService();
+    const scope = await seedScope(db, "dismissed-newest");
+    const signature = sha256Hex("first-run-status.test:dismissed-newest");
+
+    const findingId = await seedFindingRow(db, scope, "dismissed-newest", { signature });
+
+    await createSignatureLedgerService(db, scope.ctx).recordDismissal({
+      projectId: scope.projectId,
+      findingId,
+      signature,
+      action: "not_useful",
+      dismissedByUserId: null,
+    });
+
+    const facts = await createService(db, scope.ctx).read(scope.projectId);
+
+    expect(facts.finding).toBeNull();
+    expect(facts.findingId).toBeNull();
+  });
+
+  test("treats a suppression-check failure on this watch's finding as unrenderable, and on an older finding as absent", async () => {
+    const createService = await loadCreateService();
+    const createFirstRunRepo = await loadCreateFirstRunRepo();
+
+    const thisWatch = await seedScope(db, "consult-throws-this-watch");
+    await createFirstRunRepo(db, thisWatch.ctx).arm(thisWatch.projectId, ARMED_AT);
+    await seedFindingRowAt(
+      db,
+      thisWatch,
+      "consult-throws-this-watch",
+      sha256Hex("first-run-status.test:consult-throws:this-watch"),
+      AFTER_ARMING,
+    );
+
+    const older = await seedScope(db, "consult-throws-older");
+    await createFirstRunRepo(db, older.ctx).arm(older.projectId, ARMED_AT);
+    await seedFindingRowAt(
+      db,
+      older,
+      "consult-throws-older",
+      sha256Hex("first-run-status.test:consult-throws:older"),
+      BEFORE_ARMING,
+    );
+
+    const failing = failTableReads(db, signatureAncestry, new Error("ledger outage"));
+
+    const thisWatchFacts = await createService(failing, thisWatch.ctx).read(thisWatch.projectId);
+    expect(thisWatchFacts.findingUnavailable).toBe(true);
+    expect(thisWatchFacts.finding).toBeNull();
+    expect(thisWatchFacts.findingId).toBeNull();
+
+    const olderFacts = await createService(failing, older.ctx).read(older.projectId);
+    expect(olderFacts.findingUnavailable).toBe(false);
+    expect(olderFacts.finding).toBeNull();
+    expect(olderFacts.findingId).toBeNull();
+  });
+});
+
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
 }
@@ -587,8 +687,10 @@ describe("planted-offender control — proving row 6 bites", () => {
 
 // B-042: B-040 made `findingUnavailable` terminal, which stops the poll — and the flag
 // was raised for a caught driver error too. One pool timeout mid-watch therefore ended
-// the watch for good, because only a poll could ever have cleared it.
-const failFindingReads = (realDb: TestDb, thrown: Error): TestDb =>
+// the watch for good, because only a poll could ever have cleared it. Generalised to a
+// target table (rather than hard-coded to `findings`) so ADD o-019-dismissal-wired
+// Decision 3's ledger-outage test can fault-inject `signatureAncestry` the same way.
+const failTableReads = (realDb: TestDb, table: unknown, thrown: Error): TestDb =>
   new Proxy(realDb, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -610,9 +712,9 @@ const failFindingReads = (realDb: TestDb, thrown: Error): TestDb =>
                 ? (member as (...a: unknown[]) => unknown).bind(bt)
                 : member;
             }
-            return (table: unknown) => {
-              if (table === findings) throw thrown;
-              return (member as (t: unknown) => unknown).call(bt, table);
+            return (t: unknown) => {
+              if (t === table) throw thrown;
+              return (member as (t: unknown) => unknown).call(bt, t);
             };
           },
         });
@@ -637,8 +739,9 @@ describe("a driver failure does not end the watch", () => {
     const scope = await seedScope(db, "driver-blip");
     await seedFindingRow(db, scope, "readable");
 
-    const blind = failFindingReads(
+    const blind = failTableReads(
       db,
+      findings,
       driverQueryError({
         sql: "select * from findings where project_id = $1",
         params: [scope.projectId],

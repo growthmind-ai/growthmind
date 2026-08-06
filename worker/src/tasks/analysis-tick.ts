@@ -40,6 +40,9 @@ export type LaneTally = {
   readonly findingsPersisted: number;
   readonly unrenderable: number;
   readonly refused: number;
+  // In-memory/log-only (ADD o-019-dismissal-wired Decision 5 item 6) — mirrors
+  // RunTally.suppressed and is never passed into runs.close()'s persisted columns.
+  readonly suppressed: number;
   readonly modelCallsAttempted: number;
 };
 
@@ -52,6 +55,7 @@ const NO_WORK_DONE: LaneTally = {
   findingsPersisted: 0,
   unrenderable: 0,
   refused: 0,
+  suppressed: 0,
   modelCallsAttempted: 0,
 };
 
@@ -60,6 +64,7 @@ function laneTallyOf(tally: RunTally): LaneTally {
     findingsPersisted: tally.findingsPersisted,
     unrenderable: tally.unrenderable,
     refused: tally.refused,
+    suppressed: tally.suppressed,
     modelCallsAttempted: tally.modelCallsAttempted,
   };
 }
@@ -172,12 +177,21 @@ export async function runAnalysisLane(
         candidate,
         index + 1,
         tickAt,
+        ledger,
       );
 
       if (plan.capExhausted) tally.capExhausted = true;
 
       if (plan.action.kind === "reuse") {
         tally.findingsPersisted += 1;
+        continue;
+      }
+
+      if (plan.action.kind === "suppressed") {
+        deps.logger.info(
+          `analysis tick: project ${lane.projectId} candidate ${candidate.surface} was not written up — the dismissal ledger already resolved it as ${plan.action.reason}, which is expected and permanent, not a fault`,
+        );
+        tally.suppressed += 1;
         continue;
       }
 

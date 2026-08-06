@@ -534,3 +534,41 @@ describe("the coding-assistant panel's copy — O-026, UX §8.2, §8.3", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("the FindingCard dismiss control's copy — O-019, ADD Decision 2 / UX spec", () => {
+  test(`carries the five new FindingCard dismiss copy strings, none using "permanent" or "org-wide"`, async () => {
+    const namespace = await loadOnboardingMessages();
+    const registered = new Set(await everyOnboardingMessage());
+
+    // Wave 1 task 1.3 owns these five exports (packages/shared/src/onboarding/messages.ts),
+    // per .ai/ux/o-019-dismissal-wired.md's decided Variant 1 copy: idle label, pending label,
+    // the always-visible caption, the FR-9 confirmed line, and the error line.
+    const expected = [
+      "FINDING_DISMISS_LABEL",
+      "FINDING_DISMISS_PENDING_LABEL",
+      "FINDING_DISMISS_CAPTION",
+      "FINDING_DISMISS_CONFIRMED_LINE",
+      "FINDING_DISMISS_ERROR_LINE",
+    ] as const;
+
+    const missingExports = expected.filter((name) => typeof namespace[name] !== "string");
+    expect(missingExports).toEqual([]);
+
+    const unregistered = expected.filter((name) => {
+      const value = namespace[name];
+      return typeof value !== "string" || !registered.has(value);
+    });
+    expect(unregistered).toEqual([]);
+
+    for (const name of expected) {
+      const value = namespace[name];
+      if (typeof value !== "string") continue;
+
+      expect(value.trim().length).toBeGreaterThan(0);
+
+      const lower = value.toLowerCase();
+      expect(lower.includes("permanent")).toBe(false);
+      expect(lower.includes("org-wide")).toBe(false);
+    }
+  });
+});

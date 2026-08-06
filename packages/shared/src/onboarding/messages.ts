@@ -554,6 +554,19 @@ export const FINDING_CONFIDENCE_UNKNOWN =
 export const NETWORK_FAILURE_NOTICE =
   "Couldn't reach the server — check your connection and try again.";
 
+// FindingCard dismiss control (O-019, ADD Decision 2 / .ai/ux/o-019-dismissal-wired.md Variant
+// 1). Neither the caption nor the confirmed line says "permanent" or "org-wide" — both state
+// scope and permanence as plain facts instead ("for the whole team", "won't come back").
+export const FINDING_DISMISS_LABEL = "Not useful";
+
+export const FINDING_DISMISS_PENDING_LABEL = "Dismissing…";
+
+export const FINDING_DISMISS_CAPTION = "Removes it for the whole team — it won't come back.";
+
+export const FINDING_DISMISS_CONFIRMED_LINE = "Dismissed. Nobody on this team will see it again.";
+
+export const FINDING_DISMISS_ERROR_LINE = "That didn't go through — this finding is still here.";
+
 export const ONBOARDING_MESSAGES = {
   setUpCta: SET_UP_CTA_LABEL,
   landingSettled: LANDING_SETTLED_LINE,
@@ -901,4 +914,10 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   FINDING_CONFIDENCE_UNKNOWN,
 
   NETWORK_FAILURE_NOTICE,
+
+  FINDING_DISMISS_LABEL,
+  FINDING_DISMISS_PENDING_LABEL,
+  FINDING_DISMISS_CAPTION,
+  FINDING_DISMISS_CONFIRMED_LINE,
+  FINDING_DISMISS_ERROR_LINE,
 ];

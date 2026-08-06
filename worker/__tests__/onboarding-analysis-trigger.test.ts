@@ -494,6 +494,12 @@ function createFakeLedger(): { serviceFor: (ctx: TenantContext) => SignatureLedg
   return {
     serviceFor: (ctx) =>
       ({
+        // planCandidate (worker/src/analysis/plan.ts) now consults this for every
+        // candidate unconditionally — a permissive default keeps this file's tests
+        // exercising the same "deliver" path they did before dismissal existed.
+        consultSignature() {
+          return Promise.resolve({ decision: "deliver", reason: "not_seen_before" });
+        },
         recordSignature(
           projectId: string,
           subject: CandidateFinding,
