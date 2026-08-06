@@ -311,6 +311,23 @@ export {
 } from "./summary/types";
 
 export {
+  modelCallStageSchema,
+  MODEL_CALL_STAGE,
+  type ModelCallStage,
+} from "./analysis/model-call-stage";
+
+export {
+  causeClaimOutputSchema,
+  causeModelOutputSchema,
+  causeRenderResultSchema,
+  CAUSE_CLAIM_MAX_CITED_BEATS,
+  CAUSE_MODEL_MAX_CLAIMS,
+  type CauseClaimOutput,
+  type CauseModelOutput,
+  type CauseRenderResult,
+} from "./cause/types";
+
+export {
   ANALYSIS_RUN_STATUS_MESSAGES,
   ANALYSIS_OUTCOME_MESSAGES,
   ANALYSIS_STOP_REASON_MESSAGES,
