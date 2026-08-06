@@ -18,6 +18,9 @@ const ROOT: NavGroup = {
 
 const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
 
+// Same connection as Recordings, one level up: sessions grouped by account.
+const COMPANIES: NavItem = { href: ROUTES.companies, label: "Companies" };
+
 // Slack first: that is where the work arrives (product decisions §10).
 const WORK: NavGroup = {
   label: "Work",
@@ -27,12 +30,14 @@ const WORK: NavGroup = {
     { href: ROUTES.fixes, label: "Fixes" },
     { href: ROUTES.experiments, label: "Experiments" },
     RECORDINGS,
+    COMPANIES,
   ],
 };
 
-// Recordings read through the analytics connection the org already has, so they answer
-// for everyone rather than only the preview list — the same reason the agent page does.
-const WORK_LIVE: NavGroup = { label: "Work", items: [RECORDINGS] };
+// Recordings and Companies read through the analytics connection the org already has, so
+// they answer for everyone rather than only the preview list — the same reason the agent
+// page does.
+const WORK_LIVE: NavGroup = { label: "Work", items: [RECORDINGS, COMPANIES] };
 
 const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };
 

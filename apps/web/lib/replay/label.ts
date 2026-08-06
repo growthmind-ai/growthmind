@@ -1,4 +1,4 @@
-const MAX_LABEL_CHARS = 72;
+export const MAX_LABEL_CHARS = 72;
 
 export interface RecordingLabel {
   readonly text: string;
@@ -31,7 +31,7 @@ export function timeOnPage(meta: Record<string, unknown>): TimeOnPage | null {
   return { badge: `${active} active`, total: total === active ? null : total };
 }
 
-function truncate(value: string): string {
+export function truncate(value: string): string {
   return value.length <= MAX_LABEL_CHARS ? value : `${value.slice(0, MAX_LABEL_CHARS - 1)}…`;
 }
 

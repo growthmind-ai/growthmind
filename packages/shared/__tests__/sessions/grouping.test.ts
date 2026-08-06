@@ -4,8 +4,14 @@ import {
   SESSION_BUCKET_MS,
   SESSION_GROUPING_VERSION,
   deriveSessionKey,
+  groupSessionsByDomain,
+  recordingIdFromSessionKey,
 } from "../../src/sessions/grouping";
-import type { SessionKeyInput } from "../../src/sessions/grouping";
+import type {
+  AccountGroup,
+  GroupableSessionFact,
+  SessionKeyInput,
+} from "../../src/sessions/grouping";
 
 const PH_SESSION = "s0-ph-session-0001";
 const IDENTITY = "s0-distinct-0001";
@@ -91,5 +97,76 @@ describe("deriveSessionKey", () => {
   test("SESSION_BUCKET_MS is 30 minutes and the rules are versioned", () => {
     expect(SESSION_BUCKET_MS).toBe(30 * 60_000);
     expect(SESSION_GROUPING_VERSION).toBe(1);
+  });
+});
+
+function fact(
+  identityEmailDomain: string,
+  startedAt: Date,
+  overrides: Partial<GroupableSessionFact> = {},
+): GroupableSessionFact {
+  return { identityEmailDomain, startedAt, ...overrides };
+}
+
+function groupFor(groups: readonly AccountGroup[], domain: string): AccountGroup | undefined {
+  return groups.find((group) => group.domain === domain);
+}
+
+describe("groupSessionsByDomain", () => {
+  test("excludes a free-mail domain and never merges it into another group's count", () => {
+    const groups = groupSessionsByDomain([
+      fact("acme.example", MID_BUCKET),
+      fact("gmail.com", MID_BUCKET),
+      fact("gmail.com", LATE_SAME_BUCKET),
+      fact("gmail.com", BUCKET_END),
+    ]);
+
+    expect(groupFor(groups, "gmail.com")).toBeUndefined();
+    expect(groupFor(groups, "acme.example")?.sessionCount).toBe(1);
+  });
+
+  test("computes sessionCount and mostRecentSessionAt per domain across multiple sessions for the same domain", () => {
+    const groups = groupSessionsByDomain([
+      fact("acme.example", MID_BUCKET),
+      fact("acme.example", NEXT_BUCKET_START),
+      fact("acme.example", LATE_SAME_BUCKET),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.domain).toBe("acme.example");
+    expect(groups[0]?.sessionCount).toBe(3);
+    expect(groups[0]?.mostRecentSessionAt.getTime()).toBe(NEXT_BUCKET_START.getTime());
+  });
+
+  test("sorts groups by mostRecentSessionAt, descending", () => {
+    const groups = groupSessionsByDomain([
+      fact("early.example", MID_BUCKET),
+      fact("latest.example", NEXT_BUCKET_START),
+      fact("middle.example", LATE_SAME_BUCKET),
+    ]);
+
+    expect(groups.map((group) => group.domain)).toEqual([
+      "latest.example",
+      "middle.example",
+      "early.example",
+    ]);
+  });
+
+  test("returns an empty array for no sessions", () => {
+    expect(groupSessionsByDomain([])).toEqual([]);
+  });
+});
+
+describe("recordingIdFromSessionKey", () => {
+  test('returns the id for a "ph:"-prefixed key', () => {
+    expect(recordingIdFromSessionKey("ph:abc123")).toBe("abc123");
+  });
+
+  test('returns null for a "gm:"-prefixed key, the shape with no native session id', () => {
+    expect(recordingIdFromSessionKey("gm:identity:123")).toBeNull();
+  });
+
+  test('returns null for a bare "ph:" key with nothing after the prefix', () => {
+    expect(recordingIdFromSessionKey("ph:")).toBeNull();
   });
 });
