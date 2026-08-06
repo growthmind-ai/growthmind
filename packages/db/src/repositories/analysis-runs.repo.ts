@@ -8,6 +8,7 @@ import {
   type AnalysisOutcome,
   type AnalysisRunStatus,
   type AnalysisStopReason,
+  type ModelCallStage,
   type TenantContext,
 } from "@growthmind/shared";
 import { eq, lt, sql } from "drizzle-orm";
@@ -68,6 +69,7 @@ export interface ClaimModelCallInput {
 
   readonly organizationCap: number;
   readonly at: Date;
+  readonly stage: ModelCallStage;
 }
 
 export type ClaimModelCallResult =
@@ -211,7 +213,7 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
 
       const result = await (db as unknown as RawExecutor).execute(sql`
         insert into analysis_model_calls
-          (id, organization_id, project_id, run_id, signature, signature_version, attempted_at)
+          (id, organization_id, project_id, run_id, signature, signature_version, attempted_at, stage)
         select
           ${id},
           ${ctx.organizationId},
@@ -219,7 +221,8 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
           ${input.runId},
           ${input.signature},
           ${input.signatureVersion},
-          ${input.at}
+          ${input.at},
+          ${input.stage}
         where exists (
           -- The project must be OURS. Folded into the same statement rather
           -- than read first, so the claim stays one statement with no prior
@@ -233,7 +236,10 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
           -- CEILING 1, PER PROJECT. Both scoping columns named out loud: a
           -- dropped org predicate here is invisible in the return value,
           -- because a widened count simply spends another org's budget
-          -- without erroring.
+          -- without erroring. Counted across BOTH stages (ADD Decision 2) —
+          -- this ceiling answers "how much has this project spent," and
+          -- spend is stage-agnostic; a stage filter here would let the cause
+          -- stage double the effective project cap.
           select count(*) from analysis_model_calls c
            where c.organization_id = ${ctx.organizationId}
              and c.project_id = ${input.projectId}
@@ -246,11 +252,12 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
           -- every organisation's claims summed, and one customer's spending
           -- would refuse another's claims. The project is deliberately NOT
           -- named: this ceiling is the sum across every project the
-          -- organisation has, which is the whole point of it.
+          -- organisation has, which is the whole point of it. Also counted
+          -- across both stages, same reasoning as CEILING 1.
           select count(*) from analysis_model_calls c
            where c.organization_id = ${ctx.organizationId}
         ) < ${input.organizationCap}
-        on conflict (organization_id, project_id, signature) do nothing
+        on conflict (organization_id, project_id, signature, stage) do nothing
         returning id
       `);
 
@@ -267,6 +274,7 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
               analysisModelCalls,
               eq(analysisModelCalls.projectId, input.projectId),
               eq(analysisModelCalls.signature, input.signature),
+              eq(analysisModelCalls.stage, input.stage),
             ),
           )
           .limit(1),

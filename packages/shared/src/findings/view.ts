@@ -70,6 +70,10 @@ export interface ClaimView {
   // Beat indexes, not ids: the note is placed on the grid row of its first citation.
   readonly citesBeats: readonly number[];
   readonly citesLabel: string;
+
+  // Pre-built recording deep link, null when the anchor session's citation itself
+  // is unresolvable (mask/withheld) — never constructed client-side (view.ts:1-2).
+  readonly citesHref: string | null;
 }
 
 export interface SessionChoice {

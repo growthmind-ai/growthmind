@@ -326,3 +326,20 @@ export async function seedUnscannedFinding(
 
   return { id: row.id };
 }
+
+// O-044's D11 wiring proof: worker/__tests__/analysis/cause.test.ts (producer half) and
+// apps/web/__tests__/findings/detail-gate-emptied.test.ts (consumer half) must run against
+// the SAME org/project/finding/divergence-row/session ids, or the "one wire, not a producer
+// test and a consumer test that never touch each other" claim (ADD Decision 7/8, D11) is
+// unenforced — two independently hand-copied literals can silently drift apart. A single
+// exported constant is the enforcement; both suites import this, neither redeclares it.
+export const CAUSE_STAGE_D11_FIXTURE = {
+  organizationId: "o44-shared-org",
+  organizationName: "Acme Shared D11",
+  projectId: "o44-shared-project",
+  findingId: "o44-shared-finding",
+  surface: "/checkout",
+  anchorSessionId: "o44-shared-session",
+  windowStart: new Date("2026-07-30T00:00:00.000Z"),
+  windowEnd: new Date("2026-08-06T00:00:00.000Z"),
+} as const;

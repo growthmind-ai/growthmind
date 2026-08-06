@@ -231,10 +231,13 @@ export {
   renderSlackMessage,
   observationSchema,
   deliveredExplanationSchema,
+  deliveredCauseSchema,
   slackMessageInputSchema,
   type DeliveryVocabulary,
   type Observation,
   type DeliveredExplanation,
+  type DeliveredCause,
+  type DeliveredCauseClaim,
   type SlackMessageInput,
   type SlackBlock,
   type SlackTextBlock,
@@ -409,6 +412,7 @@ export {
   STAMP_SEPARATOR,
   EMPTY_TRANSCRIPT_LINE,
   renderTranscript,
+  stampOf,
 } from "./replay/render";
 export {
   NARRATION_MAX_ACTIONS,
@@ -439,6 +443,7 @@ export {
   type PersistedTranscript,
   type PersistedTranscriptSerialiser,
 } from "./replay/persisted-transcript";
+export { beatKindOf, beatsFromActions, firstCitedBeat } from "./replay/beats";
 
 export {
   DIVERGENCE_COHORT_FLOOR,
@@ -455,3 +460,7 @@ export { gradeOf } from "./divergence/grade";
 export { sampleSessionIds } from "./divergence/sample";
 
 export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-dropoff-cohorts";
+
+export { type CauseBeatEvidence, type CauseClaim } from "./cause/types";
+export { guardCauseText, type CauseGuardVerdict } from "./cause/guard";
+export { applyCitationGate, type CitationGateResult } from "./cause/citation-gate";

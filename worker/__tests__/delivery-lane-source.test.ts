@@ -2,10 +2,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { scanResidualPii, type CandidateFinding } from "@growthmind/core";
+import {
+  scanResidualPii,
+  type CandidateFinding,
+  type DeliveredExplanation,
+} from "@growthmind/core";
+import { createCauseClaimsRepo, createRecordingSummariesRepo } from "@growthmind/db";
 import type { SignatureHex, SignatureLedgerService } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
-import { createTestDb } from "@growthmind/db/testing";
+import { createTestDb, scannedTextFor, seedSession, type TestDb } from "@growthmind/db/testing";
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
 import type { SuppressionDecision } from "@growthmind/core";
 import { describe, expect, test } from "bun:test";
@@ -443,3 +448,258 @@ test("does not spend a considered slot on a dismissed finding", async () => {
     await close();
   }
 }, 60_000);
+
+// O-044: the finding this whole product exists to produce a "because" for was computed
+// (cause stage + citation gate) and rendered on the web findings page, but never reached
+// Slack — the PRD's Human Acceptance Test step 8 and the outcome's own Goal block both name
+// this explicitly. These are the producer half of that wire (packages/core/__tests__/
+// delivery/slack-message.test.ts is the composer half).
+describe("delivery lane source — the causal clause (O-044)", () => {
+  type ModelRenderedArm = Extract<DeliveredExplanation, { source: "model_rendered" }>;
+
+  const CAUSE_RECORDING_ID = "o44-lane-source-recording";
+  const CAUSE_SESSION_KEY = `ph:${CAUSE_RECORDING_ID}`;
+  const CAUSE_ACTION_AT_MS = 64_000;
+
+  // Mirrors apps/web/__tests__/findings/detail-explained.test.ts's own seeding: a citesHref
+  // only ever resolves through a real session + recording summary row joined by sessionKey,
+  // never a made-up anchorSessionId string. Reuses the workspace's own connection —
+  // seedPollableWorkspace already created one, and project_connections enforces at most one
+  // active connection per project.
+  async function seedCauseRecording(
+    db: TestDb,
+    ctx: TenantContext,
+    projectId: string,
+    connectionId: string,
+  ): Promise<{ sessionId: string }> {
+    const session = await seedSession(db, {
+      organizationId: ctx.organizationId,
+      projectId,
+      connectionId,
+      sessionKey: CAUSE_SESSION_KEY,
+    });
+    const summaryText = scannedTextFor("Someone left the email field blank", [
+      "They left the field blank and the request never went out.",
+    ]);
+
+    await createRecordingSummariesRepo(db, ctx).persist({
+      projectId,
+      recordingId: CAUSE_RECORDING_ID,
+      summarySource: "model_rendered",
+      headline: summaryText.headline,
+      context: summaryText.context,
+      transcript: "1:04  left the email field blank",
+      pages: ["/checkout"],
+      durationMs: 90_000,
+      actionCount: 1,
+      notableCount: 1,
+      droppedEvents: 0,
+      startedAt: new Date("2026-08-01T00:01:04.000Z"),
+      provider: "posthog",
+      sessionKey: CAUSE_SESSION_KEY,
+      sessionGroupingVersion: 1,
+      actions: {
+        v: 1,
+        actions: [
+          {
+            kind: "input",
+            atMs: CAUSE_ACTION_AT_MS,
+            element: { nodeId: 1, tag: "input", classes: ["email"] },
+          },
+        ],
+      },
+      actionsVersion: 1,
+      actionsOmitted: 0,
+      pullStop: "exhausted",
+      pullReason: null,
+      pullWatermarkAt: null,
+      resolvedModelId: "claude-sonnet-5",
+      tokensIn: 40,
+      tokensOut: 17,
+    });
+
+    return { sessionId: session.id };
+  }
+
+  test("(a) a finding whose cause stage cleared the citation gate is delivered with the causal clause and a real citation link", async () => {
+    const { db, close } = await createTestDb();
+
+    try {
+      const workspace = await seedPollableWorkspace(db, {
+        prefix: "o44-lane-explained-",
+        now: NOW,
+      });
+      const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+      await seedSlackConnection(
+        db,
+        { organizationId: workspace.organizationId, channelId: CHANNEL },
+        OWNER_SCHEMA,
+      );
+
+      const finding = await seedFinding(db, ctx, {
+        projectId: workspace.projectId,
+        surface: "/checkout/payment",
+        context: CLEAN_CONTEXT,
+        at: NOW,
+      });
+
+      const { sessionId } = await seedCauseRecording(
+        db,
+        ctx,
+        workspace.projectId,
+        workspace.connectionId,
+      );
+
+      await createCauseClaimsRepo(db, ctx).persist({
+        projectId: workspace.projectId,
+        findingId: finding.findingId,
+        anchorSessionId: sessionId,
+        claims: [
+          {
+            statement: "The field was left blank, so the request never went out.",
+            citesBeats: [0],
+          },
+        ],
+        droppedClaims: 0,
+        resolvedModelId: "claude-sonnet-5",
+        tokensIn: 300,
+        tokensOut: 60,
+      });
+
+      const logger = createRecordingDeliveryLogger();
+      const [lane] = await createDeliveryLaneSource({
+        db,
+        logger,
+        ledgerFor: permissiveLedgerFor(),
+      }).listDueLanes(NOW);
+
+      const candidate = (lane?.candidates ?? []).find(
+        (entry) => entry.findingId === finding.findingId,
+      );
+      expect(candidate).toBeDefined();
+
+      const explanation = candidate?.message.explanation as ModelRenderedArm;
+      expect(explanation.source).toBe("model_rendered");
+      expect(explanation.cause?.grade).toBe("explained");
+      expect(explanation.cause?.claims).toHaveLength(1);
+      expect(explanation.cause?.claims[0]?.statement).toBe(
+        "The field was left blank, so the request never went out.",
+      );
+      expect(explanation.cause?.claims[0]?.citesHref).toBe(
+        `/replays/${CAUSE_RECORDING_ID}?t=${String(CAUSE_ACTION_AT_MS)}`,
+      );
+      expect(explanation.cause?.claims[0]?.citesLabel).toBe("from 1:04");
+      expect(explanation.cause?.droppedClaims).toBe(0);
+      expect(logger.errors).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  test("(b) a finding whose citation gate emptied every claim is delivered with the honest dropped-claims line, never a fabricated citation", async () => {
+    const { db, close } = await createTestDb();
+
+    try {
+      const workspace = await seedPollableWorkspace(db, {
+        prefix: "o44-lane-gate-emptied-",
+        now: NOW,
+      });
+      const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+      await seedSlackConnection(
+        db,
+        { organizationId: workspace.organizationId, channelId: CHANNEL },
+        OWNER_SCHEMA,
+      );
+
+      const finding = await seedFinding(db, ctx, {
+        projectId: workspace.projectId,
+        surface: "/checkout/payment",
+        context: CLEAN_CONTEXT,
+        at: NOW,
+      });
+
+      // droppedClaims > 0, claims: [] — Decision 3's "the gate attempted the finding and
+      // emptied every claim" row. No recording summary is seeded: this branch must never
+      // call citationsFor at all, since there is nothing left to cite.
+      await createCauseClaimsRepo(db, ctx).persist({
+        projectId: workspace.projectId,
+        findingId: finding.findingId,
+        anchorSessionId: "session-anchor-drops-only-lane-source",
+        claims: [],
+        droppedClaims: 2,
+        resolvedModelId: "claude-sonnet-5",
+        tokensIn: 420,
+        tokensOut: 0,
+      });
+
+      const logger = createRecordingDeliveryLogger();
+      const [lane] = await createDeliveryLaneSource({
+        db,
+        logger,
+        ledgerFor: permissiveLedgerFor(),
+      }).listDueLanes(NOW);
+
+      const candidate = (lane?.candidates ?? []).find(
+        (entry) => entry.findingId === finding.findingId,
+      );
+      expect(candidate).toBeDefined();
+
+      const explanation = candidate?.message.explanation as ModelRenderedArm;
+      expect(explanation.cause).toEqual({ grade: "described", claims: [], droppedClaims: 2 });
+      expect(logger.errors).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  test("(c) a finding with no cause_claims row is delivered exactly as before the causal clause existed — regression guard", async () => {
+    const { db, close } = await createTestDb();
+
+    try {
+      const workspace = await seedPollableWorkspace(db, { prefix: "o44-lane-no-row-", now: NOW });
+      const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+      await seedSlackConnection(
+        db,
+        { organizationId: workspace.organizationId, channelId: CHANNEL },
+        OWNER_SCHEMA,
+      );
+
+      // The common case (PRD): the cause stage is gated on a real divergence, so most
+      // model_rendered findings carry no cause_claims row at all.
+      const finding = await seedFinding(db, ctx, {
+        projectId: workspace.projectId,
+        surface: "/checkout/payment",
+        context: CLEAN_CONTEXT,
+        at: NOW,
+      });
+
+      const logger = createRecordingDeliveryLogger();
+      const [lane] = await createDeliveryLaneSource({
+        db,
+        logger,
+        ledgerFor: permissiveLedgerFor(),
+      }).listDueLanes(NOW);
+
+      const candidate = (lane?.candidates ?? []).find(
+        (entry) => entry.findingId === finding.findingId,
+      );
+      expect(candidate).toBeDefined();
+
+      const explanation = candidate?.message.explanation as ModelRenderedArm;
+      // No `cause` key at all — not `cause: undefined` written explicitly, not an empty
+      // object — the exact shape messageInputFor produced before this stage existed.
+      expect(explanation).toEqual({
+        source: "model_rendered",
+        headline: "The payment step is losing sessions",
+        context: "Sessions reached the payment step and left without finishing.",
+      });
+      expect(Object.hasOwn(explanation, "cause")).toBe(false);
+      expect(logger.errors).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+});

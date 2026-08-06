@@ -5,7 +5,7 @@ import { beatsAreCited, claimRows, rowsInGroup } from "../../src/findings/view";
 import type { ClaimView, EvidenceView, FindingRow } from "../../src/findings/view";
 
 function claim(statement: string, citesBeats: readonly number[]): ClaimView {
-  return { statement, citesBeats, citesLabel: "from 00:11" };
+  return { statement, citesBeats, citesLabel: "from 00:11", citesHref: null };
 }
 
 function row(id: string, group: FindingRow["group"]): FindingRow {

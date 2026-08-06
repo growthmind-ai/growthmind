@@ -1,9 +1,12 @@
-import type { SessionSummariser } from "@growthmind/adapters";
+import type { CauseExplainer, SessionSummariser } from "@growthmind/adapters";
 import type { CandidateFinding } from "@growthmind/core";
 import type {
   AnalysisRunsRepo,
+  CauseClaimsRepo,
+  DivergencePointsRepo,
   FindingPayloadsRepo,
   FindingsRepo,
+  RecordingSummariesRepo,
   ScannedText,
   SignatureLedgerService,
 } from "@growthmind/db";
@@ -39,9 +42,23 @@ export type FindingsRepoFor = (ctx: TenantContext) => FindingsRepo;
 export type FindingPayloadsRepoFor = (ctx: TenantContext) => FindingPayloadsRepo;
 export type AnalysisRunsRepoFor = (ctx: TenantContext) => AnalysisRunsRepo;
 export type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
+export type CauseClaimsRepoFor = (ctx: TenantContext) => CauseClaimsRepo;
+export type DivergencePointsRepoFor = (ctx: TenantContext) => DivergencePointsRepo;
+
+// Only the one method the cause stage's anchor-session resolution needs
+// (ADD Decision 4) — narrower than the full repo so a fake doesn't have to
+// stand in for methods the cause stage never calls.
+export type RecordingSummariesRepoFor = (
+  ctx: TenantContext,
+) => Pick<RecordingSummariesRepo, "citationsFor">;
 
 export type ConfiguredSummariser = {
   readonly port: SessionSummariser;
+  readonly resolvedModelId: string;
+};
+
+export type ConfiguredCauseExplainer = {
+  readonly port: CauseExplainer;
   readonly resolvedModelId: string;
 };
 
@@ -59,6 +76,20 @@ export interface AnalysisLaneDeps {
 
   now: () => Date;
   logger: AnalysisLogger;
+
+  // ADD Decision 7 Impact list. causeExplainer is resolved once at composition
+  // (worker/src/index.ts), like summariser; causeClaimsFor/divergencePointsFor
+  // are resolved once per lane by runAnalysisLane, like findingsFor/runsFor,
+  // and the resolved repos are passed down to planCause positionally.
+  // recordingSummariesFor is not named in the ADD's own Impact list — Decision 4
+  // requires a citationsFor call from inside planCause itself to resolve the
+  // anchor session, and Wave 0's own test contract (worker/__tests__/analysis/
+  // cause.test.ts) fixed this as a dependency on AnalysisLaneDeps rather than a
+  // positional argument, so it is threaded the same way causeExplainer is.
+  causeExplainer: ConfiguredCauseExplainer | null;
+  causeClaimsFor: CauseClaimsRepoFor;
+  divergencePointsFor: DivergencePointsRepoFor;
+  recordingSummariesFor: RecordingSummariesRepoFor;
 }
 
 export interface AnalysisTickDeps extends AnalysisLaneDeps {

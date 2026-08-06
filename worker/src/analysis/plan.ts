@@ -14,7 +14,7 @@ import type {
 } from "@growthmind/db";
 import { describeDriverError, describeHold, signatureHex } from "@growthmind/db";
 import type { SummaryRenderResult } from "@growthmind/shared";
-import { describeError } from "@growthmind/shared";
+import { describeError, MODEL_CALL_STAGE } from "@growthmind/shared";
 
 import { floorAction, floorTextFor, identityFor, surfaceIsSafeToSend } from "./gates";
 import { summariseInputFor } from "./shapes";
@@ -91,6 +91,7 @@ export async function planCandidate(
     projectCap: deps.projectCap,
     organizationCap: deps.organizationCap,
     at: tickAt,
+    stage: MODEL_CALL_STAGE.RENDER,
   });
 
   if (!claim.claimed) {

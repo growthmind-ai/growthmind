@@ -2,28 +2,40 @@
 // `slack_connections`, never supplied by a caller, so a cross-org post is impossible.
 import {
   COUNT_ROLES,
+  beatsFromActions,
   confidenceBasisSchema,
   deliveryClaimsExpireBefore,
+  firstCitedBeat,
+  stampOf,
   toMeasuredCount,
   worthOf,
+  type CauseBeatEvidence,
   type ConfidenceBasis,
   type CountRole,
+  type DeliveredCause,
+  type DeliveredCauseClaim,
   type DetectorName,
   type GrowthContext,
 } from "@growthmind/core";
 import type {
+  CauseClaimRecord,
+  CauseClaimsRepo,
   DeliveryRecord,
   FindingRecord,
   MeasuredCountRow,
+  RecordingSummariesRepo,
   ScopedDb,
+  SessionRecordingCitation,
   SignatureHex,
   SignatureLedgerService,
 } from "@growthmind/db";
 import {
+  createCauseClaimsRepo,
   createDeliveriesRepo,
   createFindingsRepo,
   createGrowthContextRepo,
   createProjectsRepo,
+  createRecordingSummariesRepo,
   describeDriverError,
   describeHold,
   isDeliveryTarget,
@@ -37,7 +49,7 @@ import {
   listOrgsWithActiveSlackConnection,
   systemContextFor,
 } from "@growthmind/db/system";
-import { describeError } from "@growthmind/shared";
+import { citesLabel, describeError } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
 
 import type {
@@ -81,10 +93,85 @@ function contextFor(organization: SlackDeliveryOrganization): TenantContext {
 
 type ScannedFindingText = Extract<FindingRecord["text"], { held: false }>;
 
-function messageInputFor(
+// Same derivation as apps/web/lib/findings/evidence.ts's claimViewOf — a citation link is
+// null (never a dead link) when the anchor session's own citation is unresolvable (D5).
+function causeClaimLine(
+  claim: CauseClaimRecord["claims"][number],
+  beats: readonly CauseBeatEvidence[],
+  citation: SessionRecordingCitation | undefined,
+): DeliveredCauseClaim {
+  const cited = firstCitedBeat(beats, claim.citesBeats);
+  const href =
+    citation === undefined || cited === undefined
+      ? null
+      : `/replays/${citation.recordingId}?t=${String(cited.atMs)}`;
+
+  return {
+    statement: claim.statement,
+    citesHref: href,
+    citesLabel: citesLabel(cited === undefined ? "" : stampOf(cited.atMs)),
+  };
+}
+
+type CitationsForFn = (
+  projectId: string,
+  sessionIds: readonly string[],
+) => Promise<readonly SessionRecordingCitation[]>;
+
+// Only ever called for a finding whose cause_claims row exists (Decision 3's own predicate,
+// re-checked here rather than re-derived differently) — a finding with no row never reaches
+// this function, so DeliveredExplanation.cause stays entirely absent for it (the byte-identical
+// regression guard packages/core/__tests__/delivery/slack-message.test.ts asserts).
+async function causeFor(
+  projectId: string,
+  causeClaims: CauseClaimRecord,
+  citationsFor: CitationsForFn,
+): Promise<DeliveredCause> {
+  if (causeClaims.claims.length === 0) {
+    // The row only exists here when droppedClaims > 0 (Decision 3's table) — the gate
+    // attempted the finding and emptied every claim.
+    return { grade: "described", claims: [], droppedClaims: causeClaims.droppedClaims };
+  }
+
+  const citations = await citationsFor(projectId, [causeClaims.anchorSessionId]);
+  const citation = citations.find((entry) => entry.sessionId === causeClaims.anchorSessionId);
+  const beats: readonly CauseBeatEvidence[] =
+    citation === undefined || citation.actions === null ? [] : beatsFromActions(citation.actions);
+
+  return {
+    grade: "explained",
+    claims: causeClaims.claims.map((claim) => causeClaimLine(claim, beats, citation)),
+    droppedClaims: causeClaims.droppedClaims,
+  };
+}
+
+// A non-critical read (D8): a finding still delivers with no causal clause, exactly as it did
+// before this stage existed, if the cause_claims lookup itself fails this tick.
+async function causeClaimsForFinding(
+  logger: DeliveryLogger,
+  causeClaimsRepo: CauseClaimsRepo,
+  finding: FindingRecord,
+): Promise<CauseClaimRecord | null> {
+  if (finding.summarySource !== "model_rendered") {
+    return null;
+  }
+
+  try {
+    return await causeClaimsRepo.findForFinding(finding.projectId, finding.id);
+  } catch (error) {
+    logger.error(
+      `delivery lane source: finding ${finding.id} could not be checked for a causal claim this tick, so it will deliver without one — ${describeDriverError(error)}`,
+    );
+    return null;
+  }
+}
+
+async function messageInputFor(
   finding: FindingRecord,
   text: ScannedFindingText,
-): DeliverMessageInput | null {
+  causeClaims: CauseClaimRecord | null,
+  citationsFor: CitationsForFn,
+): Promise<DeliverMessageInput | null> {
   const roles = COUNT_ROLES[finding.detector];
   if (finding.counts.length !== roles.length) {
     return null;
@@ -113,11 +200,22 @@ function messageInputFor(
     return null;
   }
 
+  if (causeClaims === null) {
+    return {
+      decision: "deliver",
+      surfacePath: finding.surface,
+      observations,
+      explanation: { source: "model_rendered", headline: text.headline, context },
+    };
+  }
+
+  const cause = await causeFor(finding.projectId, causeClaims, citationsFor);
+
   return {
     decision: "deliver",
     surfacePath: finding.surface,
     observations,
-    explanation: { source: "model_rendered", headline: text.headline, context },
+    explanation: { source: "model_rendered", headline: text.headline, context, cause },
   };
 }
 
@@ -132,12 +230,14 @@ function sampleSizeFor(counts: readonly MeasuredCountRow[]): {
   return { numerator: last.numerator, denominator: last.denominator };
 }
 
-function deliverableFor(
+async function deliverableFor(
   finding: FindingRecord,
   text: ScannedFindingText,
   growth: GrowthContext | null,
   logger: DeliveryLogger,
-): DeliverableFinding | null {
+  causeClaimsRepo: CauseClaimsRepo,
+  citationsFor: CitationsForFn,
+): Promise<DeliverableFinding | null> {
   if (!isSignatureHex(finding.signature)) {
     logger.error(
       `delivery lane source: finding ${finding.id} carries a signature that is not a digest, so it was held back`,
@@ -163,9 +263,11 @@ function deliverableFor(
     return null;
   }
 
+  const causeClaims = await causeClaimsForFinding(logger, causeClaimsRepo, finding);
+
   let message: DeliverMessageInput | null;
   try {
-    message = messageInputFor(finding, text);
+    message = await messageInputFor(finding, text, causeClaims, citationsFor);
   } catch (error) {
     logger.error(
       `delivery lane source: finding ${finding.id} carries counts that could not be rebuilt — ${describeError(error)}`,
@@ -268,6 +370,8 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
     try {
       const findings = createFindingsRepo(deps.db, ctx);
       const deliveries = createDeliveriesRepo(deps.db, ctx);
+      const causeClaimsRepo = createCauseClaimsRepo(deps.db, ctx);
+      const recordingSummaries: RecordingSummariesRepo = createRecordingSummariesRepo(deps.db, ctx);
 
       // Read once per lane, not per finding, and read fresh every tick: a correction to
       // what a surface is worth reorders this queue on the next tick rather than from the
@@ -349,7 +453,15 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
           continue;
         }
 
-        const deliverable = deliverableFor(finding, text, growth, deps.logger);
+        const deliverable = await deliverableFor(
+          finding,
+          text,
+          growth,
+          deps.logger,
+          causeClaimsRepo,
+          (recordProjectId, sessionIds) =>
+            recordingSummaries.citationsFor(recordProjectId, sessionIds),
+        );
         if (deliverable !== null) {
           candidates.push(deliverable);
         }

@@ -1,18 +1,35 @@
-import { createFindingsRepo, type FindingRecord, type ScopedDb } from "@growthmind/db";
+import {
+  createCauseClaimsRepo,
+  createFindingsRepo,
+  createRecordingSummariesRepo,
+  type CauseClaimRecord,
+  type FindingRecord,
+  type ScopedDb,
+} from "@growthmind/db";
 import { coverageSentences } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
-import type { FindingGroup, FindingRow, OverviewView } from "@growthmind/shared";
+import type {
+  BeatView,
+  ClaimView,
+  FindingGroup,
+  FindingRow,
+  OverviewView,
+} from "@growthmind/shared";
+
+import { buildEvidenceView } from "./evidence";
 
 const FINDINGS_READ_LIMIT = 50;
 
 const WITHHELD_HEADLINE = "A finding we can't show you yet";
 
-function groupOf(record: FindingRecord): FindingGroup {
+// The single place a finding's grade is derived (FR-12) — a finding earns "explained" iff a
+// cause_claims row exists with at least one claim that survived the citation gate; every other
+// shape (never attempted, gate emptied everything, model_rendered but no cause row, floor
+// rendered, withheld) stays "described"/"measurement"/"withheld" as before.
+function groupOf(record: FindingRecord, causeClaims: CauseClaimRecord | null): FindingGroup {
   if (record.text.held) return "withheld";
   if (record.summarySource !== "model_rendered") return "measurement";
-
-  // No claim ever cites a beat yet — the cause stage that produces claims (O-044) is not
-  // built, so nothing persisted today can honestly earn "explained" (evidence-standard §1).
+  if (causeClaims !== null && causeClaims.claims.length > 0) return "explained";
   return "described";
 }
 
@@ -42,13 +59,13 @@ function observedOnOf(record: FindingRecord): string {
   return record.windowEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-function rowFrom(record: FindingRecord): FindingRow {
+function rowFrom(record: FindingRecord, causeClaims: CauseClaimRecord | null): FindingRow {
   const { headline, context } = contentOf(record);
   const { numerator, denominator } = impactCountOf(record);
 
   return {
     id: record.id,
-    group: groupOf(record),
+    group: groupOf(record, causeClaims),
     headline,
     context,
     aside: null,
@@ -93,7 +110,14 @@ export async function readLiveOverview(
     limit: FINDINGS_READ_LIMIT,
   });
 
-  const rows = records.map((record) => rowFrom(record));
+  const causeClaimsByFinding = await createCauseClaimsRepo(db, ctx).findForFindings(
+    projectId,
+    records.map((record) => record.id),
+  );
+
+  const rows = records.map((record) =>
+    rowFrom(record, causeClaimsByFinding.get(record.id) ?? null),
+  );
 
   return {
     window: windowLabelOf(records),
@@ -110,6 +134,13 @@ export interface FindingDetailView {
   readonly countLine: string;
   readonly coverageLine: string;
   readonly withheld: boolean;
+
+  readonly grade: "explained" | "described";
+  readonly evidence: {
+    readonly beats: readonly BeatView[];
+    readonly claims: readonly ClaimView[];
+    readonly droppedClaims: number;
+  } | null;
 }
 
 function countLineOf(record: FindingRecord): string {
@@ -129,6 +160,9 @@ export async function readLiveFinding(
   const record = await createFindingsRepo(db, ctx).findById(projectId, id);
   if (record === null) return null;
 
+  const causeClaims = await createCauseClaimsRepo(db, ctx).findForFinding(projectId, record.id);
+  const group = groupOf(record, causeClaims);
+
   const { headline, context } = contentOf(record);
   const last = record.counts[record.counts.length - 1];
 
@@ -141,10 +175,14 @@ export async function readLiveFinding(
       sessionsRead: last?.basis.totalInWindow ?? 0,
       sessionsSetAside: last?.basis.setAside.reduce((sum, entry) => sum + entry.count, 0) ?? 0,
       found: 1,
-      explained: 0,
-      described: groupOf(record) === "described" ? 1 : 0,
-      withheld: groupOf(record) === "withheld" ? 1 : 0,
+      explained: group === "explained" ? 1 : 0,
+      described: group === "described" ? 1 : 0,
+      withheld: group === "withheld" ? 1 : 0,
     }).join(" "),
     withheld: record.text.held,
+    grade: group === "explained" ? "explained" : "described",
+    evidence: await buildEvidenceView(record, causeClaims, (recordProjectId, sessionIds) =>
+      createRecordingSummariesRepo(db, ctx).citationsFor(recordProjectId, sessionIds),
+    ),
   };
 }

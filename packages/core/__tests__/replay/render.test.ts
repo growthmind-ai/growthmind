@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { EMPTY_TRANSCRIPT_LINE, renderTranscript } from "../../src/replay/render";
+import { EMPTY_TRANSCRIPT_LINE, renderTranscript, stampOf } from "../../src/replay/render";
 import { buildTranscript } from "../../src/replay/transcript";
 import {
   API_KEY_NODE_ID,
@@ -147,5 +147,16 @@ describe("renderTranscript", () => {
     ]);
 
     expect(renderTranscript(transcript)).toContain("62:05  session ended");
+  });
+});
+
+describe("stampOf", () => {
+  test("should render minutes unpadded and seconds zero-padded", () => {
+    expect(stampOf(4_000)).toBe("0:04");
+    expect(stampOf(65_000)).toBe("1:05");
+  });
+
+  test("should keep minutes past the hour readable rather than resetting the clock", () => {
+    expect(stampOf(3_725_000)).toBe("62:05");
   });
 });

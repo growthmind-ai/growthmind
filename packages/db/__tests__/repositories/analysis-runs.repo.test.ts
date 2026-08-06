@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { ANALYSIS_RUN_STATUS_MESSAGES, type TenantContext } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -205,6 +207,7 @@ describe("analysis runs repository", () => {
       projectCap: cap,
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       at: TICK_AT,
+      stage: "render",
     });
     expect(first).toEqual({ claimed: true });
 
@@ -216,6 +219,7 @@ describe("analysis runs repository", () => {
       projectCap: cap,
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       at: TICK_AT,
+      stage: "render",
     });
     expect(repeat).toEqual({ claimed: false, reason: "already_claimed" });
 
@@ -227,6 +231,7 @@ describe("analysis runs repository", () => {
       projectCap: cap,
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       at: TICK_AT,
+      stage: "render",
     });
     expect(past).toEqual({ claimed: false, reason: "cap_exhausted" });
 
@@ -242,6 +247,7 @@ describe("analysis runs repository", () => {
       projectCap: cap,
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       at: TICK_AT,
+      stage: "render",
     });
     expect(repeatWhileSpent).toEqual({ claimed: false, reason: "already_claimed" });
 
@@ -253,8 +259,174 @@ describe("analysis runs repository", () => {
       projectCap: 0,
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       at: TICK_AT,
+      stage: "render",
     });
     expect(zeroCap).toEqual({ claimed: false, reason: "cap_exhausted" });
+  });
+
+  async function modelCallRowCountFor(projectId: string, signature: string): Promise<number> {
+    const rows = await db
+      .select({ id: analysisModelCalls.id })
+      .from(analysisModelCalls)
+      .where(
+        and(
+          eq(analysisModelCalls.projectId, projectId),
+          eq(analysisModelCalls.signature, signature),
+        ),
+      );
+
+    return rows.length;
+  }
+
+  // ADD Decision 2: the cap-ledger's unique index widens from (org, project, signature) to
+  // (org, project, signature, stage), so a render-stage claim and a cause-stage claim on the
+  // same finding do not collide. Red until the schema and claimModelCall's raw SQL both name
+  // `stage` in their conflict target — today every stage collides on the pre-Decision-2 index.
+  it("claimModelCall claims the render stage and the cause stage independently for the same signature", async () => {
+    const { repo, projectId, runId } = await seedOpenRun("stage-independence");
+    const signature = claimSignature("stage-independence");
+
+    const renderClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "render",
+    });
+    expect(renderClaim).toEqual({ claimed: true });
+
+    const causeClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "cause",
+    });
+    expect(causeClaim).toEqual({ claimed: true });
+
+    const renderRepeat = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "render",
+    });
+    expect(renderRepeat).toEqual({ claimed: false, reason: "already_claimed" });
+
+    const causeRepeat = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "cause",
+    });
+    expect(causeRepeat).toEqual({ claimed: false, reason: "already_claimed" });
+  });
+
+  // FR-8's own acceptance criterion: a row-count query, not a findBy-style existence check
+  // (the O-043 CR-6 pattern this file already established for the org ceiling, above).
+  it("exactly 2 rows are claimable per finding, queried by row count", async () => {
+    const { repo, projectId, runId } = await seedOpenRun("row-count");
+    const signature = claimSignature("row-count");
+
+    const renderClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "render",
+    });
+    expect(renderClaim).toEqual({ claimed: true });
+
+    const causeClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "cause",
+    });
+    expect(causeClaim).toEqual({ claimed: true });
+
+    expect(await modelCallRowCountFor(projectId, signature)).toBe(2);
+
+    const thirdAttempt = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "render",
+    });
+    expect(thirdAttempt).toEqual({ claimed: false, reason: "already_claimed" });
+
+    expect(await modelCallRowCountFor(projectId, signature)).toBe(2);
+  });
+
+  // D12 / ADD Decision 2's required migration-correctness test: a row written before the
+  // stage column existed (inserted with stage omitted, so the DB default applies) must not
+  // be reinterpreted as unclaimed once the column ships — its identity as a render-stage
+  // claim is a fact about history, not a guess a backfill would need to correct.
+  it("a pre-migration render-stage row is not reinterpreted as unclaimed after the stage column ships", async () => {
+    const { ctx, repo, projectId, runId } = await seedOpenRun("d12-premigration");
+    const signature = claimSignature("d12-premigration");
+
+    // Simulates a row written on the pre-Decision-2 schema: every column that schema had,
+    // `stage` entirely absent from the insert (the future DB default is what stands in for it).
+    await db.insert(analysisModelCalls).values({
+      id: randomUUID(),
+      organizationId: ctx.organizationId,
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      attemptedAt: TICK_AT,
+    });
+
+    const renderClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "render",
+    });
+    expect(renderClaim).toEqual({ claimed: false, reason: "already_claimed" });
+
+    const causeClaim = await repo.claimModelCall({
+      projectId,
+      runId,
+      signature,
+      signatureVersion: 1,
+      projectCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
+      at: TICK_AT,
+      stage: "cause",
+    });
+    expect(causeClaim).toEqual({ claimed: true });
+
+    expect(await modelCallRowCountFor(projectId, signature)).toBe(2);
   });
 
   async function seedOrgWithProjects(
@@ -312,6 +484,7 @@ describe("analysis runs repository", () => {
           projectCap: PROJECT_CAP,
           organizationCap: ORGANIZATION_CAP,
           at: TICK_AT,
+          stage: "render",
         });
         expect(claim).toEqual({ claimed: true });
       }
@@ -327,6 +500,7 @@ describe("analysis runs repository", () => {
       projectCap: PROJECT_CAP,
       organizationCap: ORGANIZATION_CAP,
       at: TICK_AT,
+      stage: "render",
     });
 
     expect(refused).toEqual({ claimed: false, reason: "cap_exhausted" });
@@ -341,6 +515,7 @@ describe("analysis runs repository", () => {
       projectCap: PROJECT_CAP,
       organizationCap: ORGANIZATION_CAP + 1,
       at: TICK_AT,
+      stage: "render",
     });
     expect(allowed).toEqual({ claimed: true });
     expect(await claimCountForOrg(ctx)).toBe(5);
@@ -363,6 +538,7 @@ describe("analysis runs repository", () => {
       projectCap: PROJECT_CAP,
       organizationCap: ORGANIZATION_CAP,
       at: TICK_AT,
+      stage: "render",
     });
     expect(spentByB).toEqual({ claimed: true });
     expect(await claimCountForOrg(orgB.ctx)).toBe(1);
@@ -375,6 +551,7 @@ describe("analysis runs repository", () => {
       projectCap: PROJECT_CAP,
       organizationCap: ORGANIZATION_CAP,
       at: TICK_AT,
+      stage: "render",
     });
     expect(allowedForA).toEqual({ claimed: true });
 
@@ -389,6 +566,7 @@ describe("analysis runs repository", () => {
       projectCap: PROJECT_CAP,
       organizationCap: ORGANIZATION_CAP,
       at: TICK_AT,
+      stage: "render",
     });
     expect(beyondForA).toEqual({ claimed: false, reason: "cap_exhausted" });
     expect(await claimCountForOrg(orgA.ctx)).toBe(1);

@@ -548,6 +548,29 @@ function harness(options: {
               },
             })
           : ledger.serviceFor,
+
+      // O-044's cause stage: null explainer means planCause stops before ever
+      // touching these repos (worker/src/analysis/cause.ts), so this render-only
+      // harness only needs them to be safely constructible, never meaningfully
+      // exercised.
+      causeExplainer: null,
+      causeClaimsFor: () => ({
+        persist: () =>
+          Promise.reject(new Error("o44-cause-claims-repo not exercised by render-only fixtures")),
+        findForFinding: () => Promise.resolve(null),
+        findForFindings: () => Promise.resolve(new Map()),
+      }),
+      divergencePointsFor: () => ({
+        recordDivergence: () =>
+          Promise.reject(
+            new Error("o44-divergence-points-repo not exercised by render-only fixtures"),
+          ),
+        findBySurface: () => Promise.resolve(null),
+      }),
+      recordingSummariesFor: () => ({
+        citationsFor: () => Promise.resolve([]),
+      }),
+
       projectCap: options.cap === undefined ? 12 : options.cap,
        
       organizationCap: ORG_CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
