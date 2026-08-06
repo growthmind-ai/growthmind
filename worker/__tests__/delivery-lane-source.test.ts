@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { COUNT_ROLES, scanResidualPii, type CountRole } from "@growthmind/core";
+import { scanResidualPii } from "@growthmind/core";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb } from "@growthmind/db/testing";
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
@@ -46,16 +46,12 @@ describe("worker/src/delivery-lane-source.ts", () => {
     expect(/\btoMeasuredCount\s*\(/.test(SOURCE)).toBe(true);
   });
 
-  // `findings` persists no detector column, so this file resolves observation labels by
-  // count arity and keeps the FIRST-declared detector on a collision (.ai/decisions/0016).
-  // `funnel_dropoff` and `observed_struggle` both carry two counts, so which of them owns
-  // arity 2 is decided by an object-literal order in packages/core — a different package
-  // from the one whose Slack wording depends on it.
-  test("keeps funnel_dropoff at arity 2, so reordering COUNT_ROLES in packages/core cannot hand the slot to another detector", () => {
-    const declared = Object.values(COUNT_ROLES) as readonly (readonly CountRole[])[];
-    const firstAtArityTwo = declared.find((roles) => roles.length === 2);
-
-    expect(firstAtArityTwo).toEqual(COUNT_ROLES.funnel_dropoff);
+  // `findings` persists its own detector (decision 0016) — this file must resolve labels from
+  // that column directly, never by count arity. `funnel_dropoff` and `observed_struggle` both
+  // declare two counts, which is exactly the pair an arity-keyed lookup used to collide on.
+  test("never resolves a finding's Slack copy by its count arity", () => {
+    expect(/\bROLES_BY_ARITY\b/.test(SOURCE)).toBe(false);
+    expect(/\.counts\.length\)/.test(SOURCE)).toBe(false);
   });
 });
 
@@ -180,15 +176,14 @@ test("held findings spend no consideration slot, so a project with a lane's wort
   }
 }, 60_000);
 
-// The rendered half of the arity-collision invariant above. A reorder of `COUNT_ROLES`
-// costs no type error and drops no finding — it silently reworded every funnel_dropoff
-// post in production ("hit the error" for a session that simply left), so the assertion
-// has to be on the label a customer reads, not on the map that produced it.
-test("a persisted two-count finding still reads 'left without continuing', whatever order COUNT_ROLES is declared in", async () => {
+// The rendered half of decision 0016's fix. `funnel_dropoff` and `observed_struggle` both
+// persist exactly two counts — the arity that used to collide — so the only way this passes
+// is if the label lookup reads `finding.detector`, never the shape of `finding.counts`.
+test("a funnel_dropoff and an observed_struggle finding with the same count arity render their own distinct labels", async () => {
   const { db, close } = await createTestDb();
 
   try {
-    const workspace = await seedPollableWorkspace(db, { prefix: "o41-labels-", now: NOW });
+    const workspace = await seedPollableWorkspace(db, { prefix: "o46-labels-", now: NOW });
     const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
 
     await seedSlackConnection(
@@ -197,9 +192,18 @@ test("a persisted two-count finding still reads 'left without continuing', whate
       OWNER_SCHEMA,
     );
 
-    const finding = await seedFinding(db, ctx, {
+    const dropoff = await seedFinding(db, ctx, {
       projectId: workspace.projectId,
+      detector: "funnel_dropoff",
       surface: "/checkout/review",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const struggle = await seedFinding(db, ctx, {
+      projectId: workspace.projectId,
+      detector: "observed_struggle",
+      surface: "/checkout/address",
       context: CLEAN_CONTEXT,
       at: NOW,
     });
@@ -207,16 +211,13 @@ test("a persisted two-count finding still reads 'left without continuing', whate
     const logger = createRecordingDeliveryLogger();
     const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
 
-    const candidate = (lane?.candidates ?? []).find(
-      (entry) => entry.findingId === finding.findingId,
-    );
+    const labelsFor = (findingId: string): readonly string[] | undefined =>
+      (lane?.candidates ?? [])
+        .find((entry) => entry.findingId === findingId)
+        ?.message.observations.map((observation) => observation.label);
 
-    // Guards the assertion below against passing on an absent candidate.
-    expect(candidate).toBeDefined();
-    expect(candidate?.message.observations.map((observation) => observation.label)).toEqual([
-      "reached this step",
-      "left without continuing",
-    ]);
+    expect(labelsFor(dropoff.findingId)).toEqual(["reached this step", "left without continuing"]);
+    expect(labelsFor(struggle.findingId)).toEqual(["reached this step", "showed struggle"]);
   } finally {
     await close();
   }

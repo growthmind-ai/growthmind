@@ -57,6 +57,7 @@ function findingInput(params: {
     projectId: params.projectId,
     signature: params.signature,
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     runId: params.runId,
     summarySource: "floor_no_key_configured",
     headline: CLEAN_TEXT.headline,

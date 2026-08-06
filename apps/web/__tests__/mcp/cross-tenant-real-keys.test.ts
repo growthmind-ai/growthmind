@@ -359,6 +359,7 @@ async function seedLiveFixInOrgB(): Promise<LiveFixture> {
     runId: run.id,
     signature: createHmac("sha256", "mcpxk").update(LIVE_SURFACE).digest("hex"),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: "model_rendered",
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { DetectorName } from "@growthmind/core";
 import type { SummarySource } from "@growthmind/shared";
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
@@ -15,6 +16,14 @@ const SUMMARY_SOURCES = [
   "floor_model_output_invalid",
   "floor_model_text_rejected",
 ] as const satisfies readonly [SummarySource, ...SummarySource[]];
+
+// A finding's detector, persisted rather than inferred from its count shape (decision 0016) —
+// two detectors can declare the same count arity, and an arity-keyed lookup silently collided.
+const DETECTORS = [
+  "funnel_dropoff",
+  "error_event",
+  "observed_struggle",
+] as const satisfies readonly [DetectorName, ...DetectorName[]];
 
 const SURFACE_ROLES = ["surface"] as const;
 
@@ -39,6 +48,8 @@ export const findings = pgTable(
     signature: text("signature").notNull(),
 
     signatureVersion: integer("signature_version").notNull(),
+
+    detector: text("detector", { enum: DETECTORS }).notNull(),
 
     summarySource: text("summary_source", { enum: SUMMARY_SOURCES }).notNull(),
     headline: text("headline").notNull(),

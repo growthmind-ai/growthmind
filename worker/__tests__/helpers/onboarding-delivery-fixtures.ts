@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import { reviewFindingText } from "@growthmind/core";
+import { reviewFindingText, type DetectorName } from "@growthmind/core";
 import { schema } from "@growthmind/db";
 import type { PersistFindingInput } from "@growthmind/db";
 import { createAnalysisRunsRepo, createFindingsRepo } from "@growthmind/db";
@@ -119,6 +119,7 @@ export async function seedSlackConnection(
 
 export interface SeedFindingParams {
   projectId: string;
+  detector?: DetectorName;
   surface?: string;
   headline?: string;
   context?: readonly string[];
@@ -164,6 +165,7 @@ export async function seedFinding(
 
   const signature =
     params.signature ?? randomUUID().replaceAll("-", "").padEnd(64, "0").slice(0, 64);
+  const detector = params.detector ?? "funnel_dropoff";
   const surface = params.surface ?? "/checkout/payment";
   const headline = params.headline ?? "The payment step is losing sessions";
   const context = params.context ?? [
@@ -173,7 +175,7 @@ export async function seedFinding(
   const counts = seededCounts(params.at);
   const confidenceBasis = "threshold_met";
   const windowStart = new Date(params.at.getTime() - 7 * 24 * 60 * 60 * 1_000);
-  const evidenceShape = `{"detector":"funnel_dropoff","surface":"${surface}","v":1}`;
+  const evidenceShape = `{"detector":"${detector}","surface":"${surface}","v":1}`;
 
   // A dirty fixture cannot go through `persist` — its input type refuses one. It takes the
   // seeder that writes the pre-sprint shape, and differs in nothing else.
@@ -188,6 +190,7 @@ export async function seedFinding(
           headline,
           context,
           signature,
+          detector,
           surface,
           finalClass: "confusing",
           counts,
@@ -203,6 +206,7 @@ export async function seedFinding(
           runId: opened.run.id,
           signature,
           signatureVersion: 1,
+          detector,
 
           summarySource: "model_rendered",
           headline: verdict.headline,

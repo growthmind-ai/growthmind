@@ -142,6 +142,7 @@ async function seedFindingRow(db: TestDb, scope: Scope, label: string): Promise<
     runId: run.id,
     signature: randomUUID(),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: "model_rendered",
     headline: text.headline,
     context: text.context,

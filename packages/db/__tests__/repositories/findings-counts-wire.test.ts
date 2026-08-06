@@ -72,6 +72,7 @@ describe("a persisted finding's counts reach the MCP wire", () => {
       runId: run.id,
       signature: SIGNATURE,
       signatureVersion: 1,
+      detector: "funnel_dropoff",
       summarySource: summarySourceSchema.enum.model_rendered,
       headline: CLEAN_TEXT.headline,
       context: CLEAN_TEXT.context,

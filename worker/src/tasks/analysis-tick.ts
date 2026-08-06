@@ -202,6 +202,7 @@ export async function runAnalysisLane(
         runId: run.id,
         signature: identity.signature,
         signatureVersion: identity.signatureVersion,
+        detector: candidate.detector,
         summarySource: rendered.summarySource,
         headline: rendered.headline,
         context: rendered.context,

@@ -55,6 +55,7 @@ describe("finding payloads repository", () => {
       runId: run.id,
       signature: SIGNATURE,
       signatureVersion: 1,
+      detector: "funnel_dropoff",
       summarySource: summarySourceSchema.enum.model_rendered,
       headline: CLEAN_TEXT.headline,
       context: CLEAN_TEXT.context,
