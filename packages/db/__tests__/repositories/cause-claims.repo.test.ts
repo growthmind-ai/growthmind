@@ -56,6 +56,11 @@ interface CauseClaimsRepo {
   persist(input: PersistCauseClaimsInput): Promise<CauseClaimRecord>;
 
   findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null>;
+
+  findForFindings(
+    projectId: string,
+    findingIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CauseClaimRecord>>;
 }
 
 type CreateCauseClaimsRepo = (db: TestDb, ctx: TenantContext) => CauseClaimsRepo;
@@ -196,6 +201,35 @@ describe("cause claims repository", () => {
 
     const found = await repo.findForFinding(scope.projectId, scope.findingId);
     expect(found?.id).toBe(first.id);
+  });
+
+  it("findForFindings batches a lookup across multiple findings in one query, not one call per finding", async () => {
+    const createCauseClaimsRepo = await loadCreateRepo();
+    const scope = await seedScope(db, "batched-lookup");
+    const repo = createCauseClaimsRepo(db, scope.owner);
+
+    const secondFinding = await seedUnscannedFinding(db, {
+      ctx: scope.owner,
+      projectId: scope.projectId,
+      runId: (await seedAnalysisRun(db, { ctx: scope.owner, projectId: scope.projectId })).id,
+      headline: "A second finding with no cause claim.",
+      context: ["Nothing to see here."],
+    });
+
+    await repo.persist(survivorsAndDropsInput(scope));
+    // secondFinding is deliberately left without a persisted cause_claims row.
+
+    const byFinding = await repo.findForFindings(scope.projectId, [
+      scope.findingId,
+      secondFinding.id,
+    ]);
+
+    expect(byFinding.size).toBe(1);
+    expect(byFinding.get(scope.findingId)?.droppedClaims).toBe(1);
+    expect(byFinding.has(secondFinding.id)).toBe(false);
+
+    const empty = await repo.findForFindings(scope.projectId, []);
+    expect(empty.size).toBe(0);
   });
 
   it("a teammate in the same org can read a cause_claims row created by a different actor", async () => {

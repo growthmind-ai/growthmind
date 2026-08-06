@@ -1,5 +1,5 @@
 import type { TenantContext } from "@growthmind/shared";
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { CAUSE_CLAIMS_CONFLICT_TARGET, causeClaims } from "../schema/cause-claims";
 import { orgCrud } from "./crud";
@@ -30,10 +30,21 @@ export interface CauseClaimsRepo {
   persist(input: PersistCauseClaimsInput): Promise<CauseClaimRecord>;
 
   findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null>;
+
+  // Batched over citationsFor's own convention — a findings-list page renders up to
+  // FINDINGS_READ_LIMIT rows, and a per-row findForFinding call there is an N+1 query.
+  findForFindings(
+    projectId: string,
+    findingIds: readonly string[],
+  ): Promise<ReadonlyMap<string, CauseClaimRecord>>;
 }
 
 function byFinding(projectId: string, findingId: string): SQL | undefined {
   return and(eq(causeClaims.projectId, projectId), eq(causeClaims.findingId, findingId));
+}
+
+function byFindings(projectId: string, findingIds: readonly string[]): SQL | undefined {
+  return and(eq(causeClaims.projectId, projectId), inArray(causeClaims.findingId, [...findingIds]));
 }
 
 export function createCauseClaimsRepo(db: ScopedExecutor, ctx: TenantContext): CauseClaimsRepo {
@@ -65,6 +76,18 @@ export function createCauseClaimsRepo(db: ScopedExecutor, ctx: TenantContext): C
 
     async findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null> {
       return c.maybe(byFinding(projectId, findingId));
+    },
+
+    async findForFindings(
+      projectId: string,
+      findingIds: readonly string[],
+    ): Promise<ReadonlyMap<string, CauseClaimRecord>> {
+      if (findingIds.length === 0) {
+        return new Map();
+      }
+
+      const rows = await c.list({ where: byFindings(projectId, findingIds) });
+      return new Map(rows.map((row) => [row.findingId, row]));
     },
   };
 }

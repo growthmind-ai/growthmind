@@ -104,14 +104,9 @@ export async function readLiveOverview(
     limit: FINDINGS_READ_LIMIT,
   });
 
-  const causeClaimsRepo = createCauseClaimsRepo(db, ctx);
-  const causeClaimsByFinding = new Map(
-    await Promise.all(
-      records.map(
-        async (record) =>
-          [record.id, await causeClaimsRepo.findForFinding(projectId, record.id)] as const,
-      ),
-    ),
+  const causeClaimsByFinding = await createCauseClaimsRepo(db, ctx).findForFindings(
+    projectId,
+    records.map((record) => record.id),
   );
 
   const rows = records.map((record) => rowFrom(record, causeClaimsByFinding.get(record.id) ?? null));
