@@ -146,6 +146,42 @@ describe("candidateFindingSchema — reachability", () => {
   });
 });
 
+describe("candidateFindingSchema — the trace must conclude the final class (B-020)", () => {
+  test("should reject a candidate whose trace does not end on its final class, satisfied", () => {
+    // The one-token mis-wire this exists for: `finalClass: claim.claimedClass` where the call
+    // site meant `outcome.finalClass`. Reachability passes — broken reaches broken — and the
+    // trace underneath says the gate never proved it.
+    expect(
+      rejectionPaths(
+        candidateFixture(FIXTURE_NOW, { claimedClass: "broken", finalClass: "broken" }),
+      ),
+    ).toContain("trace");
+
+    // The same shape one step further on: the trace's last entry is the right class and was
+    // not satisfied, so nothing proved the candidate at all.
+    const endsUnsatisfied = brokenDowngradedToConfusingTrace().map((entry, index, entries) =>
+      index === entries.length - 1
+        ? {
+            ...entry,
+            satisfied: false,
+            reasonCode: "confusing_unsatisfied" as const,
+            reason: GATE_REASON_MESSAGES.confusing_unsatisfied,
+          }
+        : entry,
+    );
+
+    expect(rejectionPaths(candidateFixture(FIXTURE_NOW, { trace: endsUnsatisfied }))).toContain(
+      "trace",
+    );
+  });
+
+  test("should accept the candidate the gate actually produces", () => {
+    // Anti-vacuity: the refinement must not reject the real downgrade, where the trace opens on
+    // an unsatisfied broken and closes on a satisfied confusing.
+    expect(candidateFindingSchema.safeParse(candidateFixture(FIXTURE_NOW)).success).toBe(true);
+  });
+});
+
 describe("candidateFindingSchema — counts carry denominators", () => {
   test("should reject a candidate carrying a count without a denominator", () => {
     const noDenominator = {
