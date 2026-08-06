@@ -162,6 +162,13 @@
       "when": 1785967841694,
       "tag": "0022_unusual_marauders",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786014248432,
+      "tag": "0023_lazy_bishop",
+      "breakpoints": true
     }
   ]
 }
