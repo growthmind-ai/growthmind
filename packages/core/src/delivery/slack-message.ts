@@ -2,6 +2,8 @@ import {
   FINDING_BLOCK_ID_PREFIX,
   GET_IT_FIXED_ACTION_ID,
   GET_IT_FIXED_LABEL,
+  NOT_USEFUL_ACTION_ID,
+  NOT_USEFUL_LABEL,
   SUMMARY_SOURCE_MESSAGES,
   nothingTodayReasonSchema,
 } from "@growthmind/shared";
@@ -331,6 +333,12 @@ function actionsFor(findingId: string | undefined): SlackActionsBlock | null {
         label: GET_IT_FIXED_LABEL,
         value: findingId,
         style: "primary",
+      },
+      {
+        actionId: NOT_USEFUL_ACTION_ID,
+        label: NOT_USEFUL_LABEL,
+        value: findingId,
+        style: null,
       },
     ],
   };

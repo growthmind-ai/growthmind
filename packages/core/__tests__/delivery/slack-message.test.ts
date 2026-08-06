@@ -2,7 +2,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
-import { FINDING_BLOCK_ID_PREFIX, GET_IT_FIXED_ACTION_ID, GET_IT_FIXED_LABEL } from "@growthmind/shared";
+import {
+  FINDING_BLOCK_ID_PREFIX,
+  GET_IT_FIXED_ACTION_ID,
+  GET_IT_FIXED_LABEL,
+} from "@growthmind/shared";
+import { NOT_USEFUL_ACTION_ID, NOT_USEFUL_LABEL } from "@growthmind/shared";
 import { SUMMARY_SOURCE_MESSAGES, nothingTodayReasonSchema } from "@growthmind/shared";
 import type { ExclusionReason, NothingTodayReason } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
@@ -444,12 +449,6 @@ describe("describesPeople — the gate on prose that would re-label a session", 
   });
 });
 
-// TODO(Wave 1, ADD "Slack dismiss handler" section / .ai/ux/o-019-dismissal-wired.md): import
-// NOT_USEFUL_ACTION_ID / NOT_USEFUL_LABEL from "@growthmind/shared" once
-// packages/shared/src/delivery/interaction-ids.ts defines them, beside GET_IT_FIXED_ACTION_ID.
-const NOT_USEFUL_ACTION_ID = "growthmind.not_useful.v1";
-const NOT_USEFUL_LABEL = "Not useful";
-
 const ACTION_FINDING_ID = "fnd-t1sm-get-it-fixed";
 
 const DELIVERY_SRC_DIR = join(import.meta.dir, "..", "..", "src", "delivery");
@@ -476,7 +475,10 @@ describe("renderSlackMessage — the affordance that turns a finding into a fix"
     const actions = actionsBlockOf(renderSlackMessage(deliverWithFinding(), VOCABULARY).blocks);
 
     expect(actions).toBeDefined();
-    expect(actions?.actions.map((action) => action.actionId)).toEqual([GET_IT_FIXED_ACTION_ID]);
+    expect(actions?.actions.map((action) => action.actionId)).toEqual([
+      GET_IT_FIXED_ACTION_ID,
+      NOT_USEFUL_ACTION_ID,
+    ]);
 
     const sources = deliverySources();
     expect(sources.length).toBeGreaterThan(1);
@@ -493,7 +495,10 @@ describe("renderSlackMessage — the affordance that turns a finding into a fix"
 
     expect(actions).toBeDefined();
     expect(actions?.blockId).toBe(`${FINDING_BLOCK_ID_PREFIX}${ACTION_FINDING_ID}`);
-    expect(actions?.actions.map((action) => action.value)).toEqual([ACTION_FINDING_ID]);
+    expect(actions?.actions.map((action) => action.value)).toEqual([
+      ACTION_FINDING_ID,
+      ACTION_FINDING_ID,
+    ]);
   });
 
   test("should include both action ids and labels when a finding id is present", () => {

@@ -45,6 +45,7 @@ import {
   underConstructionSpecifier,
 } from "../../../packages/shared/__tests__/onboarding/module-under-construction";
 import { planCandidate } from "../../src/analysis/plan";
+import { tenantContextFor } from "../../src/analysis/types";
 import type {
   AnalysisLane,
   AnalysisLaneDeps,
@@ -1544,15 +1545,17 @@ test("a candidate whose floor text itself is dirty records the finding with the 
     tickAt: TICK_AT,
   });
 
+  const dirtyLane = lane({ candidates: [CANDIDATE_FLOOR_DIRTY] });
   const plan = await planCandidate(
     planned.deps,
-    lane({ candidates: [CANDIDATE_FLOOR_DIRTY] }),
+    dirtyLane,
     planned.runs.repoFor(OTHER_WORKER),
     planned.findings.repoFor(OTHER_WORKER),
     opened.run,
     CANDIDATE_FLOOR_DIRTY,
     1,
     TICK_AT,
+    planned.deps.ledgerFor(tenantContextFor(dirtyLane)),
   );
 
   expect(plan.action.kind).toBe("persist");

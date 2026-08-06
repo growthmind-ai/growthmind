@@ -8,7 +8,12 @@ import type {
   SignatureLedgerService,
 } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
-import type { SummarySource, SummaryUsage, TenantContext } from "@growthmind/shared";
+import type {
+  SummarySource,
+  SummaryUsage,
+  SuppressionReasonCode,
+  TenantContext,
+} from "@growthmind/shared";
 
 import type { TaskLogger } from "../task-logger";
 
@@ -114,7 +119,12 @@ export type CandidateAction =
    * could not be derived at all. A member of its own, never `unrenderable`: the two are
    * told apart by a reader of the logs and of the tick summary, and collapsing them
    * would hide a transmission refusal inside a rendering complaint. */
-  | { readonly kind: "refused" };
+  | { readonly kind: "refused" }
+  /** The ledger resolved a permanent dismissal for this signature. A member of its own,
+   * never folded into `refused`: a resolved suppress decision is the ledger working as
+   * designed, told apart from "we couldn't establish an identity" or "the consult call
+   * itself threw" (both of which are `refused` — see ADD o-019-dismissal-wired Decision 3). */
+  | { readonly kind: "suppressed"; readonly reason: SuppressionReasonCode };
 
 export type CandidatePlan = {
   readonly capExhausted: boolean;

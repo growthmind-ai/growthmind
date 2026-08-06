@@ -10,6 +10,9 @@ export type RunTally = {
   findingsPersisted: number;
   unrenderable: number;
   refused: number;
+  // In-memory/log-only (ADD o-019-dismissal-wired Decision 5 item 6) — never passed into
+  // runs.close()'s persisted columns; the PRD's Data Requirements rule out a new column.
+  suppressed: number;
   capExhausted: boolean;
 };
 
@@ -23,6 +26,7 @@ export function newTally(): RunTally {
     findingsPersisted: 0,
     unrenderable: 0,
     refused: 0,
+    suppressed: 0,
     capExhausted: false,
   };
 }
