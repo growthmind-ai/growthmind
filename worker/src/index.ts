@@ -3,6 +3,7 @@ import type { TaskList } from "graphile-worker";
 import {
   DEFAULT_COLDSTART_MODEL,
   createBusinessResearcher,
+  createCauseExplainer,
   createColdstartModel,
   createRecordingNarrator,
   createSessionSummariser,
@@ -13,8 +14,10 @@ import { modelSummaryOutputSchema, narrationOutputSchema } from "@growthmind/cor
 import type { ScopedDb } from "@growthmind/db";
 import {
   createAnalysisRunsRepo,
+  createCauseClaimsRepo,
   createDb,
   createDeliveriesRepo,
+  createDivergencePointsRepo,
   createFindingPayloadsRepo,
   createFindingsRepo,
   createGrowthContextRepo,
@@ -33,6 +36,7 @@ import type { WorkerEnv } from "@growthmind/shared";
 import {
   bindingReadOutputSchema,
   businessResearchPayloadSchema,
+  causeModelOutputSchema,
   logger,
   parseWorkerEnv,
   resolveCredentialKey,
@@ -56,6 +60,7 @@ import type {
   AnalysisLaneSource,
   AnalysisLogger,
   AnalysisTickDeps,
+  ConfiguredCauseExplainer,
   ConfiguredSummariser,
 } from "./tasks/analysis-tick";
 import { runAnalysisTick } from "./tasks/analysis-tick";
@@ -135,6 +140,7 @@ async function resolveDeliveryComposition(): Promise<DeliveryComposition | null>
 
 type AnalysisComposition = {
   summariser: ConfiguredSummariser | null;
+  causeExplainer: ConfiguredCauseExplainer | null;
   lanes: AnalysisLaneSource;
 };
 
@@ -168,6 +174,26 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
       outputSchema: modelSummaryOutputSchema,
     }),
     resolvedModelId: coldstart.resolvedModelId,
+  };
+}
+
+// Mirrors resolveSummariser exactly (ADD Decision 7) — the cause stage reuses the
+// same coldstart model resolution, never a model provider config of its own.
+function resolveCauseExplainer(env: WorkerEnv): ConfiguredCauseExplainer | null {
+  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (apiKey === undefined) {
+    return null;
+  }
+
+  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
+
+  return {
+    port: createCauseExplainer({
+      model: createColdstartModel({ apiKey, resolvedModelId }),
+      resolvedModelId,
+      outputSchema: causeModelOutputSchema,
+    }),
+    resolvedModelId,
   };
 }
 
@@ -217,7 +243,7 @@ function resolveAnalysisComposition(): AnalysisComposition | null {
 
   const { env } = resolveResources();
 
-  return { summariser: resolveSummariser(env), lanes };
+  return { summariser: resolveSummariser(env), causeExplainer: resolveCauseExplainer(env), lanes };
 }
 
 function analysisDepsFor(
@@ -230,11 +256,15 @@ function analysisDepsFor(
     lanes: composed.lanes,
 
     summariser: composed.summariser,
+    causeExplainer: composed.causeExplainer,
 
     findingsFor: (ctx) => createFindingsRepo(db, ctx),
     payloadsFor: (ctx) => createFindingPayloadsRepo(db, ctx),
     runsFor: (ctx) => createAnalysisRunsRepo(db, ctx),
     ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
+    causeClaimsFor: (ctx) => createCauseClaimsRepo(db, ctx),
+    divergencePointsFor: (ctx) => createDivergencePointsRepo(db, ctx),
+    recordingSummariesFor: (ctx) => createRecordingSummariesRepo(db, ctx),
 
     projectCap: COLDSTART_MODEL_CALL_CAP,
     organizationCap: ORG_MODEL_CALL_CAP,

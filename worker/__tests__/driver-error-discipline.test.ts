@@ -37,6 +37,11 @@ const ALLOWED: readonly Allowed[] = [
     why: "the model port, not the database",
   },
   {
+    file: "analysis/cause.ts",
+    wraps: "explainer.port.explain",
+    why: "the cause-stage model port, not the database — same shape as plan.ts's site",
+  },
+  {
     file: "delivery-lane-source.ts",
     wraps: "messageInputFor",
     why: "rebuilds counts already in memory",

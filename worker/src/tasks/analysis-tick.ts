@@ -1,4 +1,10 @@
-import type { AnalysisRunRecord, AnalysisRunsRepo, SignatureLedgerService } from "@growthmind/db";
+import type {
+  AnalysisRunRecord,
+  AnalysisRunsRepo,
+  CauseClaimsRepo,
+  DivergencePointsRepo,
+  SignatureLedgerService,
+} from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import type { AnalysisStopReason, TenantContext } from "@growthmind/shared";
 import { ANALYSIS_RUN_STATUS_MESSAGES } from "@growthmind/shared";
@@ -7,6 +13,8 @@ import { serialiseFixSpecInput } from "@growthmind/core";
 
 import { isolated } from "../task-logger";
 import { planCandidate } from "../analysis/plan";
+import { identityFor } from "../analysis/gates";
+import { planCause, type CauseAnalysisRunsRepo } from "../analysis/cause";
 import { toCountRows } from "../analysis/shapes";
 import type { RunTally } from "../analysis/tally";
 import { applyAttribution, newTally, outcomeFor } from "../analysis/tally";
@@ -17,6 +25,7 @@ import type {
   AnalysisLogger,
   AnalysisTickDeps,
   AnalysisTickSummary,
+  CandidateIdentity,
   LaneOutcome,
 } from "../analysis/types";
 
@@ -28,10 +37,14 @@ export type {
   AnalysisTickDeps,
   AnalysisTickSummary,
   AnalysisRunsRepoFor,
+  CauseClaimsRepoFor,
+  ConfiguredCauseExplainer,
   ConfiguredSummariser,
+  DivergencePointsRepoFor,
   FindingPayloadsRepoFor,
   FindingsRepoFor,
   LaneOutcome,
+  RecordingSummariesRepoFor,
   SignatureLedgerFor,
 } from "../analysis/types";
 export { ANALYSIS_ACTOR_ID } from "../analysis/types";
@@ -106,6 +119,38 @@ async function recordPayload(
   );
 }
 
+// ADD Decision 7: attempted for both the persist and reuse branches — a finding
+// reused from a prior tick may never have had its cause stage attempted, since
+// the render claim being already_claimed says nothing about the cause claim's
+// state. Never throws; planCause itself is the non-throwing boundary.
+async function attemptCauseStage(
+  deps: AnalysisLaneDeps,
+  lane: AnalysisLane,
+  causeRuns: CauseAnalysisRunsRepo,
+  causeClaims: CauseClaimsRepo,
+  divergencePoints: DivergencePointsRepo,
+  findingId: string,
+  identity: CandidateIdentity,
+  candidate: CandidateFinding,
+  tickAt: Date,
+): Promise<void> {
+  if (candidate.detector !== "funnel_dropoff") {
+    return;
+  }
+
+  await planCause(
+    deps,
+    lane,
+    causeRuns,
+    causeClaims,
+    divergencePoints,
+    findingId,
+    identity,
+    candidate,
+    tickAt,
+  );
+}
+
 async function closeRun(
   deps: AnalysisLaneDeps,
   runs: AnalysisRunsRepo,
@@ -151,11 +196,13 @@ export async function runAnalysisLane(
   const findings = deps.findingsFor(ctx);
   const runs = deps.runsFor(ctx);
   const ledger = deps.ledgerFor(ctx);
+  const causeClaims = deps.causeClaimsFor(ctx);
+  const divergencePoints = deps.divergencePointsFor(ctx);
 
   const opened = await runs.open({ projectId: lane.projectId, tickAt });
 
   if (!opened.opened) {
-     
+
     deps.logger.info(
       `analysis tick: project ${lane.projectId} is already being checked by another run, so this tick left it alone`,
     );
@@ -164,6 +211,13 @@ export async function runAnalysisLane(
 
   const run = opened.run;
   const tally = newTally();
+
+  // The cause stage's cap-ledger claim shares this tick's own run — the render
+  // stage's own claim already does — so this binds run.id once rather than
+  // asking planCause to originate a value it has no way to derive (ADD Decision 7).
+  const causeRuns: CauseAnalysisRunsRepo = {
+    claimModelCall: (input) => runs.claimModelCall({ ...input, runId: run.id }),
+  };
 
   try {
      
@@ -184,6 +238,29 @@ export async function runAnalysisLane(
 
       if (plan.action.kind === "reuse") {
         tally.findingsPersisted += 1;
+
+        // A reused finding may never have had its cause stage attempted — the
+        // render claim being already_claimed says nothing about the cause
+        // claim's state (ADD Decision 7), so its identity and finding id are
+        // re-resolved the same deterministic way planCandidate itself did.
+        const identity = identityFor(index + 1, lane.projectId, candidate, deps.logger);
+        if (identity !== null) {
+          const existing = await findings.findBySignature(lane.projectId, identity.signature);
+          if (existing !== null) {
+            await attemptCauseStage(
+              deps,
+              lane,
+              causeRuns,
+              causeClaims,
+              divergencePoints,
+              existing.id,
+              identity,
+              candidate,
+              tickAt,
+            );
+          }
+        }
+
         continue;
       }
 
@@ -241,6 +318,18 @@ export async function runAnalysisLane(
       await recordPayload(deps, ctx, persisted.id, candidate);
 
       await recordIdentity(ledger, lane, candidate, identity.signature, deps.logger);
+
+      await attemptCauseStage(
+        deps,
+        lane,
+        causeRuns,
+        causeClaims,
+        divergencePoints,
+        persisted.id,
+        identity,
+        candidate,
+        tickAt,
+      );
     }
   } catch (error) {
      
