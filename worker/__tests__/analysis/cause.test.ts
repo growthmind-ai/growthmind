@@ -287,20 +287,20 @@ interface FakeRuns {
   claimed: () => readonly string[];
 }
 
+function runsClaimKey(organizationId: string, input: ClaimModelCallWithStageInput): string {
+  return `${organizationId}|${input.projectId}|${input.signature}|${input.stage}`;
+}
+
 function createFakeRuns(): FakeRuns {
   const claims = new Set<string>();
   const attempts: string[] = [];
-
-  function key(organizationId: string, input: ClaimModelCallWithStageInput): string {
-    return `${organizationId}|${input.projectId}|${input.signature}|${input.stage}`;
-  }
 
   return {
     claimAttempts: () => [...attempts],
     claimed: () => [...claims],
     repoFor: (ctx) => ({
       claimModelCall(input: ClaimModelCallWithStageInput): Promise<ClaimModelCallResult> {
-        const k = key(ctx.organizationId, input);
+        const k = runsClaimKey(ctx.organizationId, input);
         attempts.push(k);
         if (claims.has(k)) {
           return Promise.resolve({ claimed: false, reason: "already_claimed" });
@@ -318,19 +318,20 @@ interface FakeCauseClaims {
   rowFor: (findingId: string) => CauseClaimRecord | undefined;
 }
 
+function causeClaimsRowKey(organizationId: string, projectId: string, findingId: string): string {
+  return `${organizationId}|${projectId}|${findingId}`;
+}
+
 function createFakeCauseClaims(): FakeCauseClaims {
   const stored = new Map<string, CauseClaimRecord>();
   let nextId = 1;
-
-  const key = (organizationId: string, projectId: string, findingId: string): string =>
-    `${organizationId}|${projectId}|${findingId}`;
 
   return {
     rows: () => [...stored.values()],
     rowFor: (findingId) => [...stored.values()].find((row) => row.findingId === findingId),
     repoFor: (ctx) => ({
       persist(input: PersistCauseClaimsInput): Promise<CauseClaimRecord> {
-        const k = key(ctx.organizationId, input.projectId, input.findingId);
+        const k = causeClaimsRowKey(ctx.organizationId, input.projectId, input.findingId);
         const existing = stored.get(k);
         if (existing) return Promise.resolve(existing);
 
@@ -345,7 +346,9 @@ function createFakeCauseClaims(): FakeCauseClaims {
         return Promise.resolve(row);
       },
       findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null> {
-        return Promise.resolve(stored.get(key(ctx.organizationId, projectId, findingId)) ?? null);
+        return Promise.resolve(
+          stored.get(causeClaimsRowKey(ctx.organizationId, projectId, findingId)) ?? null,
+        );
       },
     }),
   };
@@ -356,22 +359,25 @@ interface FakeDivergencePoints {
   seed: (row: DivergencePointRecord) => void;
 }
 
+function divergenceRowKey(organizationId: string, projectId: string, surface: string): string {
+  return `${organizationId}|${projectId}|${surface}`;
+}
+
 function createFakeDivergencePoints(): FakeDivergencePoints {
   const rows = new Map<string, DivergencePointRecord>();
 
-  const key = (organizationId: string, projectId: string, surface: string): string =>
-    `${organizationId}|${projectId}|${surface}`;
-
   return {
     seed: (row) => {
-      rows.set(key(row.organizationId, row.projectId, row.surface), row);
+      rows.set(divergenceRowKey(row.organizationId, row.projectId, row.surface), row);
     },
     repoFor: (ctx) => ({
       recordDivergence(_input: RecordDivergenceInput): Promise<DivergencePointRecord> {
         return notThisLane("recordDivergence")();
       },
       findBySurface(projectId: string, surface: string): Promise<DivergencePointRecord | null> {
-        return Promise.resolve(rows.get(key(ctx.organizationId, projectId, surface)) ?? null);
+        return Promise.resolve(
+          rows.get(divergenceRowKey(ctx.organizationId, projectId, surface)) ?? null,
+        );
       },
     }),
   };
