@@ -302,7 +302,7 @@ describe("the model is never asked twice about one recording", () => {
     const outcome = await runReplayNarrationTick(deps);
 
     expect(outcome.summarised).toBe(2);
-    expect(logs.join(" ")).toContain("the next tick lists them again");
+    expect(logs.join(" ")).toContain("1 were left for a later tick");
   });
 });
 
@@ -889,6 +889,51 @@ describe("how a pull that stopped short reaches the row", () => {
     expect(kinds?.filter((kind) => kind === "dead_click")).toHaveLength(3);
     expect(kinds?.at(0)).toBe("page");
     expect(kinds?.at(-1)).toBe("ended");
+  });
+
+  test("should keep a long recording's clock origin when a retry reads nothing at all", async () => {
+    const store = fakeRepo();
+    const rateLimitedEmpty: ReplayEventsResult = {
+      ok: false,
+      failure: { code: "rate_limited", message: "Your recording source asked us to slow down." },
+      partialEvents: [],
+      resumeCursor: null,
+      bytesReceived: 0,
+      pagesFetched: 0,
+      droppedMalformed: 0,
+      eventsReceived: 0,
+    };
+    const rateLimitedLong: ReplayEventsResult = {
+      ok: false,
+      failure: { code: "rate_limited", message: "Your recording source asked us to slow down." },
+      partialEvents: [...manyEvents(150)],
+      resumeCursor: "5",
+      bytesReceived: 0,
+      pagesFetched: 1,
+      droppedMalformed: 0,
+      eventsReceived: 150,
+    };
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({ ok: true, source: sourceReturning(rateLimitedLong) }),
+    });
+    await runReplayNarrationTick(deps);
+
+    const originalOrigin = transcriptRows(store)[0]?.pullOriginAt;
+    expect(originalOrigin).not.toBeNull();
+    // Over 120 actions is the point: compactTranscript keeps only 120, so the retry's
+    // monotonic guard sees an equal action count and applies the update — the exact case
+    // where the origin would otherwise be silently overwritten with null.
+    expect(transcriptRows(store)[0]?.actions?.actions.length).toBe(120);
+
+    const { deps: retryDeps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({ ok: true, source: sourceReturning(rateLimitedEmpty) }),
+    });
+    await runReplayNarrationTick(retryDeps);
+
+    expect(transcriptRows(store)[0]?.pullOriginAt).toEqual(originalOrigin);
   });
 
   test("should read a recording with no row at all before one waiting on a retry", async () => {

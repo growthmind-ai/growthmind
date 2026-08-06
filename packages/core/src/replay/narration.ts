@@ -100,6 +100,7 @@ export type HeldTranscript = {
   readonly pages: readonly string[];
   readonly durationMs: number;
   readonly droppedEvents: number;
+  readonly clockOriginAtMs: number | null;
 };
 
 export type ResumedTranscript = {
@@ -114,6 +115,10 @@ function withoutTrailingEnd(actions: readonly SessionAction[]): readonly Session
 // The held half is what the row already carries, and the pulled half continues it on the same
 // clock. `omitted` carries across because those beats are gone from the row, not from the
 // recording — dropping the count would let a resumed row report fewer actions than it read.
+// A continuation that read zero events reports no clock origin of its own — a rate-limited
+// retry does this often — and falling back to the pulled side alone would forget the origin
+// the held half was already measured from, landing its beats at atMs 0 instead of their true
+// offset. The held origin is preserved whenever the pull has none to offer.
 export function resumeDigest(held: HeldTranscript, pulled: SessionTranscript): ResumedTranscript {
   const actions = [
     ...withoutTrailingEnd(rehydratePersistedActions(held.actions)),
@@ -123,7 +128,7 @@ export function resumeDigest(held: HeldTranscript, pulled: SessionTranscript): R
   const walk: SessionTranscript = {
     actions,
     startedAt: pulled.startedAt,
-    clockOriginAtMs: pulled.clockOriginAtMs,
+    clockOriginAtMs: pulled.clockOriginAtMs ?? held.clockOriginAtMs,
     durationMs: Math.max(held.durationMs, pulled.durationMs),
     pages: [...new Set([...held.pages, ...pulled.pages])],
     counts: tallyActions(actions),

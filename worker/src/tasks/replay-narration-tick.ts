@@ -323,6 +323,7 @@ async function narrateOne(
             pages: held.pages,
             durationMs: held.durationMs,
             droppedEvents: held.droppedEvents,
+            clockOriginAtMs: priorClockOriginAtMs,
           },
           freshWalk,
         );
@@ -453,10 +454,13 @@ async function runLane(
   tally.attempted = due.length;
 
   if (fresh.length + retries.length > due.length) {
+    // Usually later than the watermark this tick advanced to, so a later tick lists them again —
+    // except when one sits at the exact instant the budget cut, which the watermark cannot
+    // distinguish from "already read" (B-053's residual). Left as a name-and-count, not a promise.
     deps.logger.info(
       `replay narration: project ${lane.projectId} had ${String(fresh.length + retries.length)} ` +
-        `recordings to read and this tick read the ${String(due.length)} oldest; the rest start ` +
-        `later than the watermark this tick advanced to, so the next tick lists them again`,
+        `recordings to read and this tick read the ${String(due.length)} oldest; ` +
+        `${String(fresh.length + retries.length - due.length)} were left for a later tick`,
     );
   }
 

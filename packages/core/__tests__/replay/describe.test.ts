@@ -110,10 +110,18 @@ describe("describeElement", () => {
     expect(describeElement(identityOf(node, 4))).toBe("input");
   });
 
-  test("should withhold a free-text label, which is where a person's name reaches the row", () => {
+  test("should withhold a multi-word label on shape alone, not on detecting a name in it", () => {
     const node = element(4, "BUTTON", { "aria-label": "Delete invoice for Jane Cooper" });
 
     expect(describeElement(identityOf(node, 4))).toBe("button");
+  });
+
+  // B-052's residual, named rather than hidden: there is no name detector, so a single-word
+  // value that happens to be a name passes the shape check and isCleanForDelivery both.
+  test("should NOT withhold a single-word name — no name detector exists (B-052 residual)", () => {
+    const node = element(4, "BUTTON", { "aria-label": "JaneCooper" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("button[aria-label=JaneCooper]");
   });
 
   test("should withhold a token-shaped value the delivery scan refuses", () => {

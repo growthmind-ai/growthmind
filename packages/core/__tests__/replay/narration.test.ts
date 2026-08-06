@@ -255,7 +255,10 @@ describe("the budget constant", () => {
   });
 });
 
-function heldFrom(actions: readonly SessionAction[]): HeldTranscript {
+function heldFrom(
+  actions: readonly SessionAction[],
+  clockOriginAtMs: number | null = null,
+): HeldTranscript {
   const persisted = serialisePersistedTranscript(actions, PERSISTED_TRANSCRIPT_VERSION);
 
   return {
@@ -264,7 +267,12 @@ function heldFrom(actions: readonly SessionAction[]): HeldTranscript {
     pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
     durationMs: 1_000,
     droppedEvents: 0,
+    clockOriginAtMs,
   };
+}
+
+function emptyContinuation(): SessionTranscript {
+  return transcriptOf([]);
 }
 
 describe("resumeDigest — a held row continued by the pull that resumed it", () => {
@@ -303,5 +311,22 @@ describe("resumeDigest — a held row continued by the pull that resumed it", ()
     const { walk } = resumeDigest(held, pulled);
 
     expect(walk.pages).toEqual(["/pricing", "/checkout"]);
+  });
+
+  test("should keep the held row's clock origin when a rate-limited continuation reads nothing", () => {
+    const held = heldFrom([click(0)], 1_700_000_000_000);
+
+    const { walk } = resumeDigest(held, emptyContinuation());
+
+    expect(walk.clockOriginAtMs).toBe(1_700_000_000_000);
+  });
+
+  test("should prefer the continuation's own origin when it read something", () => {
+    const held = heldFrom([click(0)], 1_700_000_000_000);
+    const pulled = { ...transcriptOf([click(500)]), clockOriginAtMs: 1_700_000_500_000 };
+
+    const { walk } = resumeDigest(held, pulled);
+
+    expect(walk.clockOriginAtMs).toBe(1_700_000_500_000);
   });
 });
