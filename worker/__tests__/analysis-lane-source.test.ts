@@ -24,6 +24,7 @@ import {
 import {
   recordingSessionKey,
   SESSION_GROUPING_VERSION,
+  SURFACE_COHORT_CUT,
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -478,7 +479,7 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(found?.surface).toBe(ORIGIN);
   });
 
-  test("listDueLanes persists at most one divergence row per surface per tick", async () => {
+  test("listDueLanes persists at most one divergence row per surface and cut per tick", async () => {
     const workspace = await seedPollableWorkspace(db, { prefix: "o043b-", now: NOW });
     const SECOND_ORIGIN = "/signup";
 
@@ -530,12 +531,19 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(foundSecondOrigin?.surface).toBe(SECOND_ORIGIN);
 
     // findSurfaceCut returns "most recent, limit 1" — it would mask a duplicate. Count the
-    // rows directly to prove the tick wrote exactly one, not just that at least one exists.
-    const originRows = await divergenceRowsFor(workspace.projectId, ORIGIN);
-    const secondOriginRows = await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN);
+    // rows directly to prove the tick wrote each cut once, not just that at least one exists.
+    const originCuts = (await divergenceRowsFor(workspace.projectId, ORIGIN)).map(
+      (row) => row.cohortCut,
+    );
+    const secondOriginCuts = (await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN)).map(
+      (row) => row.cohortCut,
+    );
 
-    expect(originRows).toHaveLength(1);
-    expect(secondOriginRows).toHaveLength(1);
+    expect(new Set(originCuts).size).toBe(originCuts.length);
+    expect(new Set(secondOriginCuts).size).toBe(secondOriginCuts.length);
+
+    expect(originCuts.filter((cut) => cut === SURFACE_COHORT_CUT)).toHaveLength(1);
+    expect(secondOriginCuts.filter((cut) => cut === SURFACE_COHORT_CUT)).toHaveLength(1);
   });
 
   test("a divergence computation failure for one surface does not prevent that project's candidates from being returned", async () => {
