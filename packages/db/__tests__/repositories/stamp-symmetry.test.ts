@@ -3,6 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
 import type { SessionSourcePullResult, TenantContext } from "@growthmind/shared";
 
+import { and, eq } from "drizzle-orm";
+
+import { createDivergencePointsRepo } from "../../src/repositories/divergence-points.repo";
 import { createEventsRepo } from "../../src/repositories/events.repo";
 import { createPollRunsRepo } from "../../src/repositories/poll-runs.repo";
 import { createProjectConnectionsRepo } from "../../src/repositories/project-connections.repo";
@@ -15,6 +18,7 @@ import {
   SYSTEM_ACTOR,
   type PollableConnection,
 } from "../../src/system";
+import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames, scannedTextFor } from "../../src/testing";
 import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
@@ -38,6 +42,13 @@ const NAMES = laneNames("sym");
 const NOW = new Date("2026-07-30T12:00:00.000Z");
 const DUE_AT = new Date("2026-07-30T11:59:00.000Z");
 const EVENT_AT = new Date("2026-07-30T11:58:00.000Z");
+
+// TODO(o-045): replace with browserCut("safari") from @growthmind/shared once
+// packages/shared/src/cohort-cuts/cuts.ts lands (ADD Decision 1).
+const BROWSER_SAFARI_CUT = "browser:safari";
+
+const DIVERGENCE_WINDOW_START = new Date("2026-07-23T00:00:00.000Z");
+const DIVERGENCE_WINDOW_END = new Date("2026-07-30T00:00:00.000Z");
 
 interface WorkerScope {
   requestCtx: TenantContext;
@@ -312,6 +323,42 @@ describe("stamp/filter symmetry — the worker writes it, the scoped read serves
     expect(served?.projectId).toBe(scope.projectId);
     expect(served?.sessionKey).toBe(sessionKey);
     expect(served?.sessionGroupingVersion).toBe(SESSION_GROUPING_VERSION);
+  });
+
+  it("should stamp organization_id on a per-cut divergence row the analysis tick wrote", async () => {
+    const scope = await claimAsWorker(db, "divergence-cut");
+
+    await createDivergencePointsRepo(db, scope.systemCtx).recordDivergence({
+      projectId: scope.projectId,
+      surface: "/pricing",
+      cohortCut: BROWSER_SAFARI_CUT,
+      surfaceNormalisationVersion: 2,
+      spineVersion: 1,
+      cohortMatchVersion: 1,
+      windowStart: DIVERGENCE_WINDOW_START,
+      windowEnd: DIVERGENCE_WINDOW_END,
+      kind: "refused",
+      divergedAtRank: null,
+      reason: "cohort_below_floor",
+      succeededCohortSize: 2,
+      failedCohortSize: 3,
+      succeededSessionIdsSample: [],
+      failedSessionIdsSample: [],
+    });
+
+    const served = await db
+      .select()
+      .from(schema.divergencePoints)
+      .where(
+        and(
+          eq(schema.divergencePoints.organizationId, scope.requestCtx.organizationId),
+          eq(schema.divergencePoints.projectId, scope.projectId),
+        ),
+      );
+
+    expect(served).toHaveLength(1);
+    expect(served[0]?.cohortCut).toBe(BROWSER_SAFARI_CUT);
+    expect(served[0]?.organizationId).toBe(scope.requestCtx.organizationId);
   });
 });
 
