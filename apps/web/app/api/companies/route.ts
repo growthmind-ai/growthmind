@@ -17,7 +17,14 @@ export async function handle(_request: Request, deps: CompaniesRouteDeps): Promi
     return companiesListRefusal("signed_out");
   }
 
-  const project = await findFirstProjectForOrg(deps.db, ctx);
+  let project;
+  try {
+    project = await findFirstProjectForOrg(deps.db, ctx);
+  } catch (error) {
+    logger.error("companies: the org's project could not be read", { error });
+    return Response.json({ message: COMPANY_LIST_UNREADABLE }, { status: 503 });
+  }
+
   if (project === undefined) {
     // Reading must not provision anything — same rule replay/deps.ts states outright.
     return Response.json({ groups: [], truncated: false });

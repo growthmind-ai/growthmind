@@ -16,7 +16,7 @@ export function CompanyRow({ group }: { readonly group: CompanyGroupDTO }) {
         <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
           <Anchor
             component={Link}
-            href={ROUTES.companyDetail.replace("[domain]", group.domain)}
+            href={ROUTES.companyDetail.replace("[domain]", encodeURIComponent(group.domain))}
             fw={600}
             truncate="end"
           >

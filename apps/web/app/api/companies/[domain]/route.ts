@@ -37,7 +37,14 @@ export async function handle(
     return Response.json({ message: COMPANY_DETAIL_NOT_FOUND }, { status: 404 });
   }
 
-  const project = await findFirstProjectForOrg(deps.db, ctx);
+  let project;
+  try {
+    project = await findFirstProjectForOrg(deps.db, ctx);
+  } catch (error) {
+    logger.error("companies: the org's project could not be read", { error });
+    return Response.json({ message: COMPANY_SESSIONS_UNREADABLE }, { status: 503 });
+  }
+
   if (project === undefined) {
     return Response.json({ message: COMPANY_DETAIL_NOT_FOUND }, { status: 404 });
   }
