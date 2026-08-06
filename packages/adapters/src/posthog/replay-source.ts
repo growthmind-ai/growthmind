@@ -15,7 +15,7 @@ import type {
 import { REPLAY_FAILURE_MESSAGES } from "@growthmind/shared";
 
 import { scrubSecrets } from "../http/scrub";
-import type { ReplaySource } from "../replay-source";
+import type { ReplayPullOptions, ReplaySource } from "../replay-source";
 import {
   MAX_BLOB_CHUNKS_PER_PULL,
   MAX_BLOB_KEY_SPAN,
@@ -40,6 +40,15 @@ type ReplayFailureContext = "recordings" | "snapshots";
 // recordings list means the project id is wrong, a 404 against one recording's
 // snapshots means that recording is gone. Only that distinction has no equivalent on
 // the session-source SourceFailureCode, so it is drawn here rather than in the client.
+// A cursor this source wrote on an earlier pull is a blob key. Anything else is ignored rather
+// than trusted, so a corrupt or foreign value restarts the recording instead of skipping it.
+function resumeBlobKey(resumeFrom: string | null | undefined): number | null {
+  if (resumeFrom === null || resumeFrom === undefined) return null;
+
+  const key = Number(resumeFrom);
+  return Number.isSafeInteger(key) && key >= 0 ? key : null;
+}
+
 function toReplayFailureCode(
   code: SourceFailureCode,
   context: ReplayFailureContext,
@@ -167,7 +176,10 @@ export function createPostHogReplaySource(
       };
     },
 
-    async pullEvents(recordingId: string): Promise<ReplayEventsResult> {
+    async pullEvents(
+      recordingId: string,
+      options?: ReplayPullOptions,
+    ): Promise<ReplayEventsResult> {
       const sourcesResponse = await client.getSnapshotSources(client.snapshotsUrl(recordingId));
       if (!sourcesResponse.ok) {
         return {
@@ -209,7 +221,9 @@ export function createPostHogReplaySource(
       let droppedMalformed = sourcesPage.droppedMalformed;
 
       const endBlobKey = Number(range.end);
-      let chunkStart = Number(range.start);
+      const resumeAt = resumeBlobKey(options?.resumeFrom);
+      let chunkStart =
+        resumeAt === null ? Number(range.start) : Math.max(Number(range.start), resumeAt);
       let chunksFetched = 0;
 
       while (chunkStart <= endBlobKey) {

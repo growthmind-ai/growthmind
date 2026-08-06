@@ -15,7 +15,6 @@ export function personsUrl(host: string, sourceProjectId: string): string {
   return `${trimHost(host)}/api/projects/${encodeURIComponent(sourceProjectId)}/persons`;
 }
 
-// Nothing customer-supplied to encode, and the trailing slash is the vendor's.
 // see scripts/spikes/notes/posthog-projects-endpoint.md
 export function projectsUrl(host: string): string {
   return `${trimHost(host)}/api/projects/`;
@@ -24,7 +23,6 @@ export function projectsUrl(host: string): string {
 // Order is contract: a wrong-region key answers 401, not 403, so both mean "try the next".
 export const PROBE_ORIGINS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"] as const;
 
-// Every key is SDK-set and may be absent: PostHog derives none server-side. Always optional.
 export const PH_PROP = {
   SET: "$set",
 
@@ -43,22 +41,14 @@ export const PINNED_PAGE_LIMIT_FLOOR = 220;
 
 export const MAX_PAGES_PER_RUN = 25;
 
-// Recordings are a different listing endpoint from events, sized independently of
-// PAGE_LIMIT/PINNED_PAGE_LIMIT_FLOOR above (those are pinned to the events endpoint).
 export const RECORDINGS_PAGE_LIMIT = 100;
 
-// The vendor answers HTTP 400 "Cannot request more than 20 blob keys at once" above this
-// span (verified live against eu.posthog.com, 2026-08-05); a recording of a few minutes
-// already exceeds it, so pullEvents must chunk the blob-key range rather than request it whole.
+// The vendor answers HTTP 400 above this span. see .ai/decisions/0015-replay-pull-bounds.md
 export const MAX_BLOB_KEY_SPAN = 20;
 
-// Bounds pullEvents' chunk walk the same way MAX_PAGES_PER_RUN bounds listRecordings' page
-// walk — this package's structural test forbids an unbounded loop.
 export const MAX_BLOB_CHUNKS_PER_PULL = 25;
 
-// Bounds the same walk by bytes: the measured complete-pull p90 of 16.26 MiB, rounded up
-// to the next power of two. Re-derive it from complete pulls only — a pooled p90 rounds
-// to 16 MiB and truncates the largest recording measured.
+// The complete-pull p90 of 16.26 MiB, rounded up to the next power of two.
 export const MAX_PULL_BYTES = 33_554_432;
 
 export const OVERLAP_WINDOW_SECONDS = 900;

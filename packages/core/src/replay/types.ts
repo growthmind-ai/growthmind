@@ -105,6 +105,10 @@ export type SessionTranscript = {
   readonly actions: readonly SessionAction[];
 
   readonly startedAt: Date | null;
+
+  // The instant `atMs` counts from. A later pull of the same recording is stamped against it,
+  // so the two halves share one clock.
+  readonly clockOriginAtMs: number | null;
   readonly durationMs: number;
   readonly pages: readonly string[];
   readonly counts: TranscriptCounts;

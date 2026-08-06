@@ -1,6 +1,6 @@
 import type { RrwebEvent } from "@growthmind/shared";
 
-import { toActions } from "./actions";
+import { walkActions } from "./actions";
 import { readReplayEvents } from "./parse";
 import type { SessionAction, SessionTranscript, TranscriptCounts } from "./types";
 
@@ -13,7 +13,7 @@ const NO_COUNTS: TranscriptCounts = {
   scrollBacks: 0,
 };
 
-function tally(actions: readonly SessionAction[]): TranscriptCounts {
+export function tallyActions(actions: readonly SessionAction[]): TranscriptCounts {
   const counted = { ...NO_COUNTS };
 
   for (const action of actions) {
@@ -28,7 +28,7 @@ function tally(actions: readonly SessionAction[]): TranscriptCounts {
   return counted;
 }
 
-function pagesOf(actions: readonly SessionAction[]): readonly string[] {
+export function pagesOfActions(actions: readonly SessionAction[]): readonly string[] {
   const seen = new Set<string>();
   for (const action of actions) {
     if (action.kind === "page") seen.add(action.href);
@@ -36,16 +36,24 @@ function pagesOf(actions: readonly SessionAction[]): readonly string[] {
   return [...seen];
 }
 
-export function buildTranscript(events: readonly RrwebEvent[]): SessionTranscript {
+export function buildTranscript(
+  events: readonly RrwebEvent[],
+  clockOriginAtMs: number | null = null,
+): SessionTranscript {
   const { dropped, firstTsMs, lastTsMs } = readReplayEvents(events);
-  const actions = toActions(events);
+  const walk = walkActions(events, clockOriginAtMs);
+
+  // Measured from the shared clock when there is one, so a resumed half reports how far into
+  // the recording it reached rather than how long its own slice of it ran.
+  const spanFrom = clockOriginAtMs ?? firstTsMs;
 
   return {
-    actions,
+    actions: walk.actions,
     startedAt: firstTsMs === null ? null : new Date(firstTsMs),
-    durationMs: firstTsMs === null || lastTsMs === null ? 0 : lastTsMs - firstTsMs,
-    pages: pagesOf(actions),
-    counts: tally(actions),
+    clockOriginAtMs: walk.clockOriginAtMs,
+    durationMs: spanFrom === null || lastTsMs === null ? 0 : lastTsMs - spanFrom,
+    pages: pagesOfActions(walk.actions),
+    counts: tallyActions(walk.actions),
     droppedEvents: dropped,
   };
 }

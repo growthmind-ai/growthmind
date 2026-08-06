@@ -7,7 +7,7 @@ import type {
   RrwebEvent,
 } from "@growthmind/shared";
 
-import type { ReplaySource } from "../replay-source";
+import type { ReplayPullOptions, ReplaySource } from "../replay-source";
 import { createRrwebClient } from "./client";
 import {
   MAX_EVENT_PAGES,
@@ -23,6 +23,14 @@ import { parseEventsPage, parseRecordingsPage } from "./parse";
 function withLimit(url: string, limit: number): string {
   const search = new URLSearchParams({ limit: String(limit) });
   return `${url}?${search.toString()}`;
+}
+
+// A stored cursor is a page URL, so it is honoured only when it still addresses the host this
+// connection is configured for — a moved or tampered host restarts the recording instead.
+function resumeUrl(host: string, resumeFrom: string | null | undefined): string | null {
+  if (resumeFrom === null || resumeFrom === undefined) return null;
+
+  return resumeFrom.startsWith(`${host.replace(/\/+$/, "")}/`) ? resumeFrom : null;
 }
 
 export function createRrwebReplaySource(
@@ -135,15 +143,16 @@ export function createRrwebReplaySource(
 
     // bytesReceived is 0 on every arm below: this source reads parsed JSON pages, so it has
     // no body size to report and a number here would be an invented one.
-    async pullEvents(recordingId: string): Promise<ReplayEventsResult> {
+    async pullEvents(
+      recordingId: string,
+      options?: ReplayPullOptions,
+    ): Promise<ReplayEventsResult> {
       const events: RrwebEvent[] = [];
       let pagesFetched = 0;
       let droppedMalformed = 0;
 
-      let cursor: string | null = withLimit(
-        recordingEventsUrl(config.host, recordingId),
-        PAGE_LIMIT,
-      );
+      const firstPage = withLimit(recordingEventsUrl(config.host, recordingId), PAGE_LIMIT);
+      let cursor: string | null = resumeUrl(config.host, options?.resumeFrom) ?? firstPage;
 
       while (cursor !== null) {
         if (pagesFetched >= MAX_EVENT_PAGES) {

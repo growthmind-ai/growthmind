@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   PERSISTED_TRANSCRIPT_VERSION,
   readPersistedTranscript,
+  rehydratePersistedActions,
   serialisePersistedTranscript,
 } from "../../src/index";
 import type { ElementIdentity, SessionAction } from "../../src/replay/types";
@@ -117,6 +118,28 @@ describe("readPersistedTranscript — the only path from a stored jsonb value to
     expect(read).not.toBeNull();
     expect(read?.actions).toHaveLength(FIXTURE_ACTIONS.length);
     expect(read?.actions[0]?.atMs).toBe(0);
+  });
+});
+
+describe("rehydratePersistedActions — the held half of a resumed pull", () => {
+  test("should turn a stored row's actions back into live actions a walk can continue", () => {
+    const written = serialisePersistedTranscript(FIXTURE_ACTIONS, PERSISTED_TRANSCRIPT_VERSION);
+
+    const rehydrated = rehydratePersistedActions(written.actions);
+
+    expect(rehydrated).toEqual(FIXTURE_ACTIONS);
+  });
+
+  test("should drop an action missing the field its kind requires, rather than throw", () => {
+    const incomplete = [
+      { kind: "click" as const, atMs: 500 },
+      { kind: "page" as const, atMs: 0, href: "https://app.growthmind.test/settings" },
+    ];
+
+    const rehydrated = rehydratePersistedActions(incomplete);
+
+    expect(rehydrated).toHaveLength(1);
+    expect(rehydrated[0]?.kind).toBe("page");
   });
 });
 

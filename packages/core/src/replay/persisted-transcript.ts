@@ -223,6 +223,62 @@ const PERSISTED_TRANSCRIPT_READERS: ReadonlyMap<number, PersistedTranscriptReade
   [1, readV1],
 ]);
 
+function identityOf(element: PersistedElement): ElementIdentity {
+  return {
+    nodeId: element.nodeId,
+    tagName: element.tag,
+    classes: element.classes,
+    attributes: {},
+    ...(element.id === undefined ? {} : { id: element.id }),
+    ...(element.role === undefined ? {} : { role: element.role }),
+    ...(element.testId === undefined ? {} : { testId: element.testId }),
+  };
+}
+
+function rehydrateAction(action: PersistedSessionAction): SessionAction | null {
+  const { kind, atMs, element, href, clicks, spanMs, focusCount, durationMs } = action;
+
+  switch (kind) {
+    case "page":
+      return href === undefined ? null : { kind, atMs, href };
+    case "click":
+    case "double_click":
+    case "dead_click":
+    case "input":
+    case "field_abandoned":
+    case "scroll_back":
+      return element === undefined ? null : { kind, atMs, element: identityOf(element) };
+    case "rage_click":
+      return element === undefined || clicks === undefined || spanMs === undefined
+        ? null
+        : { kind, atMs, element: identityOf(element), clicks, spanMs };
+    case "field_refocus":
+      return element === undefined || focusCount === undefined
+        ? null
+        : { kind, atMs, element: identityOf(element), focusCount };
+    case "wait":
+      return durationMs === undefined ? null : { kind, atMs, durationMs };
+    case "ended":
+      return { kind, atMs };
+  }
+}
+
+// The stored beat carries no attribute map, so a rehydrated element describes itself from the
+// six allow-listed fields and nothing else. An action missing a field its kind requires is
+// dropped rather than defaulted, which would invent a beat the recording never held.
+export function rehydratePersistedActions(
+  actions: readonly PersistedSessionAction[],
+): readonly SessionAction[] {
+  const rehydrated: SessionAction[] = [];
+
+  for (const action of actions) {
+    const live = rehydrateAction(action);
+    if (live !== null) rehydrated.push(live);
+  }
+
+  return rehydrated;
+}
+
 export function readPersistedTranscript(value: unknown): PersistedTranscript | null {
   const stored = storedVersionSchema.safeParse(value);
   if (!stored.success) return null;

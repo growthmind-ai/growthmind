@@ -7,6 +7,8 @@ import {
   renderRecordingFloor,
   renderTranscript,
   renderWithheldRecordingFloor,
+  readPersistedTranscript,
+  resumeDigest,
   reviewFindingText,
   serialisePersistedTranscript,
   PERSISTED_TRANSCRIPT_VERSION,
@@ -161,6 +163,7 @@ type PullOutcome = {
   readonly stop: TranscriptPullStop;
   readonly reason: string | null;
   readonly bytesReceived: number | null;
+  readonly resumeCursor: string | null;
 };
 
 // The rrweb source reads parsed JSON pages and reports 0 on every arm, so carrying its count
@@ -174,6 +177,7 @@ function readPull(provider: ReplaySourceKind, pulled: ReplayEventsResult): PullO
       stop: "failed",
       reason: pulled.failure.message,
       bytesReceived,
+      resumeCursor: pulled.resumeCursor,
     };
   }
 
@@ -182,6 +186,7 @@ function readPull(provider: ReplaySourceKind, pulled: ReplayEventsResult): PullO
     stop: pulled.stop,
     reason: pulled.stop === "exhausted" ? null : REPLAY_PULL_STOP_MESSAGES[pulled.stop],
     bytesReceived,
+    resumeCursor: pulled.stop === "exhausted" ? null : pulled.resumeCursor,
   };
 }
 
@@ -190,6 +195,7 @@ type PulledEvidence = {
   readonly transcript: string;
   readonly pull: PullOutcome;
   readonly watermark: Date | null;
+  readonly clockOriginAtMs: number | null;
 };
 
 // One builder for the first attempt and the retry, so a re-read row can never carry a different
@@ -213,6 +219,9 @@ function evidenceFor(args: PulledEvidence) {
     pullReason: args.pull.reason,
     pullWatermarkAt: args.watermark,
     bytesReceived: args.pull.bytesReceived,
+
+    pullResumeCursor: args.pull.resumeCursor,
+    pullOriginAt: args.clockOriginAtMs === null ? null : new Date(args.clockOriginAtMs),
   };
 }
 
@@ -273,7 +282,19 @@ async function narrateOne(
   watermark: Date | null,
   attempt: PullAttempt,
 ): Promise<void> {
-  const pulled = await source.pullEvents(recording.recordingId);
+  // The held row is what an earlier attempt already read: its resume cursor tells the source
+  // where to continue rather than re-fetching chunks it already paid for, and its clock origin
+  // keeps the continuation's atMs on the same timeline as the beats already stored.
+  const held = attempt === "retry" ? await summaries.findFor(lane.projectId, recording.recordingId) : null;
+  const resumeFrom = held?.pullResumeCursor ?? null;
+  const priorClockOriginAtMs = held?.pullOriginAt === null || held?.pullOriginAt === undefined
+    ? null
+    : held.pullOriginAt.getTime();
+
+  const pulled = await source.pullEvents(
+    recording.recordingId,
+    resumeFrom === null ? undefined : { resumeFrom },
+  );
   const pull = readPull(source.kind, pulled);
 
   if (!pulled.ok) {
@@ -283,9 +304,36 @@ async function narrateOne(
     );
   }
 
-  const walk = buildTranscript(pull.events);
-  const digest = compactTranscript(walk);
-  const evidence = { digest, transcript: renderTranscript(walk), pull, watermark };
+  const freshWalk = buildTranscript(pull.events, priorClockOriginAtMs);
+
+  // A held row carries only the digest an earlier attempt persisted, not the raw events behind
+  // it — resumeDigest continues that digest with the newly pulled beats rather than replacing it,
+  // so a resumed pull never reports fewer beats than the row already held. Re-read through
+  // readPersistedTranscript rather than trusting the stored shape: it is the one place a stored
+  // payload is proven readable, on this boundary same as any other (D5).
+  const heldTranscript = held === null ? null : readPersistedTranscript(held.actions);
+
+  const { walk, digest } =
+    heldTranscript === null || held === null
+      ? { walk: freshWalk, digest: compactTranscript(freshWalk) }
+      : resumeDigest(
+          {
+            actions: heldTranscript.actions,
+            omitted: held.actionsOmitted ?? 0,
+            pages: held.pages,
+            durationMs: held.durationMs,
+            droppedEvents: held.droppedEvents,
+          },
+          freshWalk,
+        );
+
+  const evidence = {
+    digest,
+    transcript: renderTranscript(walk),
+    pull,
+    watermark,
+    clockOriginAtMs: walk.clockOriginAtMs,
+  };
 
   // The row already carries a narration bought with a model call, and the words describe a
   // recording, not a pull. Re-reading the beats does not buy a second one.

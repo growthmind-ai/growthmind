@@ -86,6 +86,11 @@ export interface PersistRecordingSummaryInput {
   readonly pullWatermarkAt?: Date | null;
   readonly bytesReceived?: number | null;
 
+  // The cursor a not-yet-exhausted pull reported, and the wall-clock instant its walk's
+  // atMs offsets are measured from — both null once a pull is exhausted or has never run.
+  readonly pullResumeCursor?: string | null;
+  readonly pullOriginAt?: Date | null;
+
   readonly resolvedModelId: string | null;
   readonly tokensIn?: number | null;
   readonly tokensOut?: number | null;
@@ -115,6 +120,9 @@ export interface RefreshFailedPullInput {
   readonly pullReason: string | null;
   readonly pullWatermarkAt: Date | null;
   readonly bytesReceived: number | null;
+
+  readonly pullResumeCursor: string | null;
+  readonly pullOriginAt: Date | null;
 }
 
 export interface RecordingSummariesRepo {
@@ -242,6 +250,9 @@ export function createRecordingSummariesRepo(
           pullWatermarkAt: input.pullWatermarkAt ?? null,
           bytesReceived: input.bytesReceived ?? null,
 
+          pullResumeCursor: input.pullResumeCursor ?? null,
+          pullOriginAt: input.pullOriginAt ?? null,
+
           resolvedModelId: input.resolvedModelId,
 
           tokensIn: input.tokensIn ?? null,
@@ -295,6 +306,9 @@ export function createRecordingSummariesRepo(
           pullReason: input.pullReason,
           pullWatermarkAt: input.pullWatermarkAt,
           bytesReceived: input.bytesReceived,
+
+          pullResumeCursor: input.pullResumeCursor,
+          pullOriginAt: input.pullOriginAt,
 
           updatedAt: new Date(),
         },

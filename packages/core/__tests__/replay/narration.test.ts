@@ -9,7 +9,13 @@ import {
   renderDigest,
   renderRecordingFloor,
   renderWithheldRecordingFloor,
+  resumeDigest,
+  type HeldTranscript,
 } from "../../src/replay/narration";
+import {
+  PERSISTED_TRANSCRIPT_VERSION,
+  serialisePersistedTranscript,
+} from "../../src/replay/persisted-transcript";
 import type { SessionAction, SessionTranscript } from "../../src/replay/types";
 
 const ELEMENT = {
@@ -46,6 +52,7 @@ function transcriptOf(actions: readonly SessionAction[]): SessionTranscript {
       scrollBacks: 0,
     },
     droppedEvents: 0,
+    clockOriginAtMs: null,
   };
 }
 
@@ -245,5 +252,56 @@ describe("describeSessionDuration", () => {
 describe("the budget constant", () => {
   test("is a positive bound, because the whole point is that a session is not small", () => {
     expect(NARRATION_MAX_ACTIONS).toBeGreaterThan(0);
+  });
+});
+
+function heldFrom(actions: readonly SessionAction[]): HeldTranscript {
+  const persisted = serialisePersistedTranscript(actions, PERSISTED_TRANSCRIPT_VERSION);
+
+  return {
+    actions: persisted.actions,
+    omitted: 0,
+    pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
+    durationMs: 1_000,
+    droppedEvents: 0,
+  };
+}
+
+describe("resumeDigest — a held row continued by the pull that resumed it", () => {
+  test("should place the pulled continuation after the held beats, on the pulled clock", () => {
+    const held = heldFrom([page(0, "/pricing"), click(1_000)]);
+    const pulled = transcriptOf([click(1_500), click(2_000)]);
+
+    const { walk } = resumeDigest(held, pulled);
+
+    expect(walk.actions.map((action) => action.kind)).toEqual(["page", "click", "click", "click"]);
+    expect(walk.actions.map((action) => action.atMs)).toEqual([0, 1_000, 1_500, 2_000]);
+  });
+
+  test("should drop the held row's trailing 'ended' marker before continuing the walk", () => {
+    const held = heldFrom([click(0), { kind: "ended", atMs: 5_000 }]);
+    const pulled = transcriptOf([click(5_500)]);
+
+    const { walk } = resumeDigest(held, pulled);
+
+    expect(walk.actions.map((action) => action.kind)).toEqual(["click", "click"]);
+  });
+
+  test("should carry the held row's omitted count forward into the resumed digest", () => {
+    const held: HeldTranscript = { ...heldFrom([click(0)]), omitted: 3 };
+    const pulled = transcriptOf([click(1_000)]);
+
+    const { digest } = resumeDigest(held, pulled);
+
+    expect(digest.omitted).toBeGreaterThanOrEqual(3);
+  });
+
+  test("should union held and pulled pages without duplicating one both sides visited", () => {
+    const held = heldFrom([page(0, "/pricing")]);
+    const pulled = transcriptOf([page(1_000, "/pricing"), page(2_000, "/checkout")]);
+
+    const { walk } = resumeDigest(held, pulled);
+
+    expect(walk.pages).toEqual(["/pricing", "/checkout"]);
   });
 });

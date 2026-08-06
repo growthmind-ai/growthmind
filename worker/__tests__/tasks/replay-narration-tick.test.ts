@@ -96,7 +96,23 @@ function fakeRepo() {
       rows.push(input);
       return Promise.resolve({ id: `row-${String(rows.length)}` } as RecordingSummaryRecord);
     },
-    findFor: () => Promise.resolve(null),
+    // Faithful, not stubbed to null: a stub here hid the retry path from ever combining a held
+    // digest with a resumed pull, the same way a stubbed latestStartedAt hid B-053.
+    findFor: (_projectId, recordingId) => {
+      const row = rowFor(recordingId);
+      if (row === undefined) return Promise.resolve(null);
+
+      return Promise.resolve({
+        actions: row.actions ?? null,
+        actionsOmitted: row.actionsOmitted ?? null,
+        pages: row.pages,
+        durationMs: row.durationMs,
+        droppedEvents: row.droppedEvents,
+        pullResumeCursor: row.pullResumeCursor ?? null,
+        pullOriginAt: row.pullOriginAt ?? null,
+        pullStop: row.pullStop ?? null,
+      } as RecordingSummaryRecord);
+    },
     summarisedIds: (_projectId, ids) =>
       Promise.resolve(new Set(ids.filter((id) => rowFor(id) !== undefined))),
     retryablePullIds: (_projectId, ids) =>
@@ -813,6 +829,66 @@ describe("how a pull that stopped short reaches the row", () => {
     expect(narrations).toBe(1);
     expect(store.rows).toHaveLength(1);
     expect(transcriptRows(store)[0]?.pullStop).toBe("failed");
+  });
+
+  test("should pass the row's stored resume cursor to the retried pull, not restart it", async () => {
+    const store = fakeRepo();
+    const seenResumeFrom: (string | null | undefined)[] = [];
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            pullEvents: (_recordingId, options) => {
+              seenResumeFrom.push(options?.resumeFrom);
+              return Promise.resolve({
+                ...partialPull(eventsFor()),
+                resumeCursor: seenResumeFrom.length === 1 ? "12" : null,
+              });
+            },
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+
+    expect(seenResumeFrom).toEqual([undefined, "12"]);
+  });
+
+  test("should continue a held digest with the resumed pull's beats, not replace it", async () => {
+    const store = fakeRepo();
+
+    const { deps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            pullEvents: () => Promise.resolve(partialPull(eventsFor())),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const { deps: retryDeps } = depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            pullEvents: () => Promise.resolve(eventsOk(manyEvents(2))),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(retryDeps);
+
+    const kinds = transcriptRows(store)[0]?.actions?.actions.map((action) => action.kind);
+    expect(kinds?.filter((kind) => kind === "page")).toHaveLength(2);
+    expect(kinds?.filter((kind) => kind === "dead_click")).toHaveLength(3);
+    expect(kinds?.at(0)).toBe("page");
+    expect(kinds?.at(-1)).toBe("ended");
   });
 
   test("should read a recording with no row at all before one waiting on a retry", async () => {

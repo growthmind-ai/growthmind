@@ -62,7 +62,7 @@ export { createRecordingNarrator, describeDuration } from "./model/narrator";
 export type { RecordingNarrator, NarrateInput } from "./model/narrator";
 export { DEFAULT_COLDSTART_MODEL } from "./model/constants";
 
-export type { ReplaySource } from "./replay-source";
+export type { ReplayPullOptions, ReplaySource } from "./replay-source";
 
 export { createRrwebReplaySource } from "./rrweb/replay-source";
 export { RRWEB_SOURCE_KIND } from "./rrweb/constants";

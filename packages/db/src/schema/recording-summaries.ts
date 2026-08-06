@@ -75,6 +75,14 @@ export const recordingSummaries = pgTable(
     pullReason: text("pull_reason"),
     pullWatermarkAt: timestamp("pull_watermark_at", { withTimezone: true }),
 
+    // Where the next pull of this recording starts, in whatever shape the source's own cursor
+    // takes. Null means "read it from the beginning", never "resume at nothing".
+    pullResumeCursor: text("pull_resume_cursor"),
+
+    // The instant the stored transcript's clock counts from, so a resumed half stamps onto the
+    // same timeline as the half already held.
+    pullOriginAt: timestamp("pull_origin_at", { withTimezone: true }),
+
     // Nullable rather than zero-defaulted: the rrweb source reads parsed JSON and can never
     // report a byte count, so "not measured" has to stay distinguishable from "measured zero".
     bytesReceived: integer("bytes_received"),

@@ -1,3 +1,4 @@
+import { isCleanForDelivery } from "../delivery/residual-pii";
 import { UNKNOWN_TAG_NAME, isUnknownIdentity } from "./nodes";
 import type { ElementIdentity } from "./types";
 
@@ -22,6 +23,11 @@ export const DESCRIBE_VALUE_MAX_LENGTH = 40;
 
 export const DESCRIBE_TRUNCATION_MARKER = "…";
 
+// A rendered attribute value is one developer-authored token that is also clean under the
+// delivery scan. An open attribute map read off a live DOM carries labels and URLs
+// interpolated with a person's data (B-052), which persisted-transcript.ts never copies.
+export const DESCRIBE_IDENTIFIER_VALUE = /^[A-Za-z0-9._~:/?#=&%+-]+$/;
+
 const WHITESPACE_RUN = /\s+/g;
 
 const ABSOLUTE_URL = /^[a-z][\w+.-]*:\/\/([^/?#\s]*)(\S*)$/i;
@@ -37,13 +43,31 @@ function withoutOrigin(value: string): string {
   return path.length === 0 || path === "/" ? host : path;
 }
 
-function readableValue(value: string): string {
-  const collapsed = withoutOrigin(value.replaceAll(WHITESPACE_RUN, " ").trim());
-  if (collapsed.length <= DESCRIBE_VALUE_MAX_LENGTH) return collapsed;
+function collapse(value: string): string {
+  return withoutOrigin(value.replaceAll(WHITESPACE_RUN, " ").trim());
+}
+
+function truncate(value: string): string {
+  if (value.length <= DESCRIBE_VALUE_MAX_LENGTH) return value;
 
   // Keep the tail: two values long enough to truncate usually differ at the end.
   const tail = Math.max(0, DESCRIBE_VALUE_MAX_LENGTH - DESCRIBE_TRUNCATION_MARKER.length);
-  return `${DESCRIBE_TRUNCATION_MARKER}${collapsed.slice(-tail).trimStart()}`;
+  return `${DESCRIBE_TRUNCATION_MARKER}${value.slice(-tail).trimStart()}`;
+}
+
+function readableValue(value: string): string {
+  return truncate(collapse(value));
+}
+
+// Both gates read the whole value: truncating first could leave a token-shaped tail of a
+// value the gates would have refused.
+function attributeValue(value: string): string | null {
+  const collapsed = collapse(value);
+  if (collapsed.length === 0) return null;
+  if (!DESCRIBE_IDENTIFIER_VALUE.test(collapsed)) return null;
+  if (!isCleanForDelivery(collapsed)) return null;
+
+  return truncate(collapsed);
 }
 
 function attributeSuffix(identity: ElementIdentity): string {
@@ -51,8 +75,8 @@ function attributeSuffix(identity: ElementIdentity): string {
     const value = identity.attributes[name];
     if (value === undefined) continue;
 
-    const readable = readableValue(value);
-    if (readable.length > 0) return `[${name}=${readable}]`;
+    const readable = attributeValue(value);
+    if (readable !== null) return `[${name}=${readable}]`;
   }
   return "";
 }

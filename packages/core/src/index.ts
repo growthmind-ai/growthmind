@@ -402,9 +402,12 @@ export {
   renderWithheldRecordingFloor,
   describeSessionDuration,
   countNotable,
+  resumeDigest,
   type NarrationOutput,
   type TranscriptDigest,
   type FloorNarration,
+  type HeldTranscript,
+  type ResumedTranscript,
 } from "./replay/narration";
 export {
   PERSISTED_TRANSCRIPT_VERSION,
@@ -412,6 +415,7 @@ export {
   PERSISTED_TRANSCRIPT_SERIALISERS,
   serialisePersistedTranscript,
   readPersistedTranscript,
+  rehydratePersistedActions,
   type PersistedElement,
   type PersistedSessionAction,
   type PersistedTranscript,

@@ -111,6 +111,7 @@ describe("buildTranscript", () => {
     expect(buildTranscript([])).toEqual({
       actions: [],
       startedAt: null,
+      clockOriginAtMs: null,
       durationMs: 0,
       pages: [],
       counts: {
