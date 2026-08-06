@@ -3,16 +3,7 @@ import type { CredentialKeyResolution, DecryptResult, TenantContext } from "@gro
 import { describe, expect, test } from "bun:test";
 
 import * as replayDeps from "../../lib/replay/deps";
-
-// AD-6's contract, declared here until task 3.2 exports it from lib/replay/deps.
-type RecordingSourceState = "ready" | "no_connection" | "unreadable_credential" | "not_configured";
-
-interface RecordingSourceQuery {
-  readonly ctx: TenantContext;
-  readonly projectId: string;
-}
-
-type RecordingSourceStateFor = (query: RecordingSourceQuery) => Promise<RecordingSourceState>;
+import type { RecordingSourceState, RecordingSourceStateFor } from "../../lib/replay/deps";
 
 interface SourceStatePort {
   readonly recordingSourceStateOf: (opened: DecryptResult | null) => RecordingSourceState;
