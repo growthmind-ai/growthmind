@@ -53,15 +53,8 @@ import type {
   AnalysisLogger,
   AnalysisTickDeps,
   AnalysisTickSummary,
-  LaneTally,
 } from "../../src/tasks/analysis-tick";
 import { runAnalysisLane, runAnalysisTick } from "../../src/tasks/analysis-tick";
-
-// ADD o-019-dismissal-wired Decision 5: `RunTally`/`LaneTally` gain a `suppressed`
-// counter, in-memory/log-only (never persisted — the PRD's Data Requirements are
-// explicit: no new columns). Not on the type yet, so declared locally as a TODO for
-// production rather than imported.
-type LaneTallyWithSuppressed = LaneTally & { readonly suppressed: number };
 
 const TICK_AT = new Date("2026-08-01T09:00:00.000Z");
 const WINDOW = {
@@ -1440,7 +1433,7 @@ test("runAnalysisLane does not write up a candidate whose signature the ledger r
   expect(result.outcome).toBe("completed");
   expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeUndefined();
   expect(result.tally.findingsPersisted).toBe(0);
-  expect((result.tally as LaneTallyWithSuppressed).suppressed).toBe(1);
+  expect(result.tally.suppressed).toBe(1);
 
   // Cost containment: a dismissed candidate never reaches the model.
   expect(summariser.calls()).toBe(0);
@@ -1463,7 +1456,28 @@ test("does not write up a candidate when consultSignature throws", async () => {
   // in the existing `refused` bucket, the same shape as `identityFor`'s own failure
   // mode, never the new `suppressed` counter.
   expect(result.tally.refused).toBe(1);
-  expect((result.tally as LaneTallyWithSuppressed).suppressed ?? 0).toBe(0);
+  expect(result.tally.suppressed).toBe(0);
+});
+
+test("a consultSignature throw refuses only the candidate it was checking, and a sibling still persists", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({ summariser });
+  h.ledger.throwOnConsult(signatureOf(CANDIDATE_A));
+
+  const { lanes: _tickOnlySource, ...laneOnlyDeps } = h.deps;
+  const deps: AnalysisLaneDeps = laneOnlyDeps;
+
+  const result = await runAnalysisLane(deps, lane({ candidates: [CANDIDATE_A, CANDIDATE_B] }), TICK_AT);
+
+  expect(result.outcome).toBe("completed");
+  expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeUndefined();
+  expect(result.tally.refused).toBe(1);
+
+  // The isolation claim itself: CANDIDATE_A's thrown consult never reaches CANDIDATE_B's
+  // own turn through the loop — mirrors the delivery lane's own "holds a candidate back,
+  // and only that candidate" test for the identical fail-toward-doubt rule (ADD Decision 3).
+  expect(h.findings.rowFor(signatureOf(CANDIDATE_B))).toBeDefined();
+  expect(result.tally.findingsPersisted).toBe(1);
 });
 
 const PLANTED_CREDENTIAL = "sk-plantedbyatestneverarealkey";

@@ -183,6 +183,9 @@ async function readNewestFinding(
   // other read in this function (Decision 3): a genuine failure on this watch's own row is
   // an honest fault, a failure resolving an older row is silence, matching precedent exactly.
   try {
+    // Unchecked, not `signatureHex()`: `findings.signature` has no format constraint at the
+    // schema level, and a malformed value should resolve "deliver" via a normal no-match
+    // query, not join this function's fault path for a genuinely failed consult call.
     const decision = await createSignatureLedgerService(db, ctx).consultSignature(
       projectId,
       record.signature as SignatureHex,

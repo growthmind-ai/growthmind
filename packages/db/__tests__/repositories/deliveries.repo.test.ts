@@ -4,7 +4,6 @@ import {
   createDeliveriesRepo,
   resolveDeliveryForInteraction,
   type ClaimDeliveryInput,
-  type InteractionPrincipal,
 } from "../../src/repositories/deliveries.repo";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -19,12 +18,6 @@ import {
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;
 }
-
-// TODO(ADD o-019-dismissal-wired Decision 1): production InteractionPrincipal gains
-// `readonly signature: SignatureHex`, read straight off deliveries.signature — one field
-// added to resolveDeliveryForInteraction's existing select projection, no join, no second
-// query (packages/db/src/repositories/deliveries.repo.ts).
-type InteractionPrincipalWithSignature = InteractionPrincipal & { readonly signature: SignatureHex };
 
 const CHANNEL = "C0FINDINGS";
 const OTHER_CHANNEL = "C0ENGINEERING";
@@ -599,10 +592,10 @@ describe("deliveries repository", () => {
       messageRef,
     });
 
-    const principal = (await resolveDeliveryForInteraction(db, {
+    const principal = await resolveDeliveryForInteraction(db, {
       channelId: CHANNEL,
       messageRef,
-    })) as InteractionPrincipalWithSignature | null;
+    });
 
     expect(principal?.signature).toBe(signature);
   });
