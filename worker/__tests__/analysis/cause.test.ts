@@ -123,14 +123,28 @@ interface ConfiguredCauseExplainer {
   readonly resolvedModelId: string;
 }
 
+// O-045 ADD Decision 5: divergence_points now holds one row per cohort cut, so the lookup the
+// cause stage binds to has to name the surface-level cut rather than the most recent row for
+// the surface. The mirrors below stand in for packages/shared's COHORT_CUTS until Wave 4.
+const SURFACE_COHORT_CUT_MIRROR = "surface";
+const BROWSER_UNKNOWN_CUT_MIRROR = "browser:unknown";
+
+type CutAwareDivergencePointRecord = DivergencePointRecord & { readonly cohortCut: string };
+
+interface DivergenceLookups extends DivergencePointsRepo {
+  findBySurface(projectId: string, surface: string): Promise<CutAwareDivergencePointRecord | null>;
+
+  findSurfaceCut(projectId: string, surface: string): Promise<CutAwareDivergencePointRecord | null>;
+}
+
 // AnalysisLaneDeps gains causeExplainer/causeClaimsFor/divergencePointsFor per the ADD's own
 // Decision 7 Impact list. recordingSummariesFor is not named there — Decision 4 requires a
 // citationsFor call at this call site, so it is carried here as the same shape of dependency
 // until Wave 1 settles exactly where it is threaded from.
-type CauseAnalysisLaneDeps = AnalysisLaneDeps & {
+type CauseAnalysisLaneDeps = Omit<AnalysisLaneDeps, "divergencePointsFor"> & {
   readonly causeExplainer: ConfiguredCauseExplainer | null;
   readonly causeClaimsFor: (ctx: TenantContext) => CauseClaimsRepo;
-  readonly divergencePointsFor: (ctx: TenantContext) => DivergencePointsRepo;
+  readonly divergencePointsFor: (ctx: TenantContext) => DivergenceLookups;
   readonly recordingSummariesFor: (
     ctx: TenantContext,
   ) => Pick<RecordingSummariesRepo, "citationsFor">;
@@ -141,7 +155,7 @@ type PlanCause = (
   lane: AnalysisLane,
   runs: StageAwareAnalysisRunsRepo,
   causeClaims: CauseClaimsRepo,
-  divergencePoints: DivergencePointsRepo,
+  divergencePoints: DivergenceLookups,
   findingId: string,
   identity: CandidateIdentity,
   candidate: CandidateFinding,
@@ -233,12 +247,15 @@ const IDENTITY: CandidateIdentity = {
   signatureVersion: SIGNATURE_TUPLE_VERSION,
 };
 
-function divergenceRow(overrides: Partial<DivergencePointRecord> = {}): DivergencePointRecord {
+function divergenceRow(
+  overrides: Partial<CutAwareDivergencePointRecord> = {},
+): CutAwareDivergencePointRecord {
   return {
     id: "o44-cause-divergence-row",
     organizationId: ORG,
     projectId: PROJECT,
     surface: SURFACE,
+    cohortCut: SURFACE_COHORT_CUT_MIRROR,
     surfaceNormalisationVersion: 1,
     spineVersion: 1,
     cohortMatchVersion: 1,
@@ -378,28 +395,59 @@ function createFakeCauseClaims(): FakeCauseClaims {
 }
 
 interface FakeDivergencePoints {
-  repoFor: (ctx: TenantContext) => DivergencePointsRepo;
-  seed: (row: DivergencePointRecord) => void;
+  repoFor: (ctx: TenantContext) => DivergenceLookups;
+  seed: (row: CutAwareDivergencePointRecord) => void;
 }
 
-function divergenceRowKey(organizationId: string, projectId: string, surface: string): string {
-  return `${organizationId}|${projectId}|${surface}`;
+// Backed by an array, not one hand-built row: a single-row fake cannot tell the surface-level
+// row apart from a bucket row written after it, which is the whole of ADD Decision 5.
+// findBySurface mirrors the repository's real `order by created_at desc limit 1` across every
+// cut; findSurfaceCut narrows to the surface sentinel first.
+function mostRecentRow(
+  candidates: readonly CutAwareDivergencePointRecord[],
+): CutAwareDivergencePointRecord | null {
+  return candidates.toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
 }
 
 function createFakeDivergencePoints(): FakeDivergencePoints {
-  const rows = new Map<string, DivergencePointRecord>();
+  const rows: CutAwareDivergencePointRecord[] = [];
+
+  const forSurface = (
+    organizationId: string,
+    projectId: string,
+    surface: string,
+  ): readonly CutAwareDivergencePointRecord[] =>
+    rows.filter(
+      (row) =>
+        row.organizationId === organizationId &&
+        row.projectId === projectId &&
+        row.surface === surface,
+    );
 
   return {
     seed: (row) => {
-      rows.set(divergenceRowKey(row.organizationId, row.projectId, row.surface), row);
+      rows.push(row);
     },
     repoFor: (ctx) => ({
       recordDivergence(_input: RecordDivergenceInput): Promise<DivergencePointRecord> {
         return notThisLane("recordDivergence")();
       },
-      findBySurface(projectId: string, surface: string): Promise<DivergencePointRecord | null> {
+      findBySurface(
+        projectId: string,
+        surface: string,
+      ): Promise<CutAwareDivergencePointRecord | null> {
+        return Promise.resolve(mostRecentRow(forSurface(ctx.organizationId, projectId, surface)));
+      },
+      findSurfaceCut(
+        projectId: string,
+        surface: string,
+      ): Promise<CutAwareDivergencePointRecord | null> {
         return Promise.resolve(
-          rows.get(divergenceRowKey(ctx.organizationId, projectId, surface)) ?? null,
+          mostRecentRow(
+            forSurface(ctx.organizationId, projectId, surface).filter(
+              (row) => row.cohortCut === SURFACE_COHORT_CUT_MIRROR,
+            ),
+          ),
         );
       },
     }),
@@ -873,5 +921,120 @@ describe("planCause", () => {
     expect(h.runs.claimed()).toEqual([
       `${SHARED_D11_FIXTURE.organizationId}|${SHARED_D11_FIXTURE.projectId}|${sharedIdentity.signature}|cause`,
     ]);
+  });
+});
+
+const SURFACE_ROW_CREATED_AT = new Date("2026-08-06T08:58:00.000Z");
+const BUCKET_ROW_CREATED_AT = new Date("2026-08-06T08:59:00.000Z");
+
+const SURFACE_SUCCEEDED_COHORT_SIZE = 12;
+const SURFACE_FAILED_COHORT_SIZE = 8;
+const SURFACE_DIVERGED_AT_RANK = 3;
+
+const BUCKET_SUCCEEDED_COHORT_SIZE = 2;
+const BUCKET_FAILED_COHORT_SIZE = 3;
+
+function seedSurfaceAndRefusedBucket(h: Harness): void {
+  h.divergencePoints.seed(
+    divergenceRow({
+      id: "o45-surface-cut-row",
+      cohortCut: SURFACE_COHORT_CUT_MIRROR,
+      kind: "diverged",
+      reason: null,
+      divergedAtRank: SURFACE_DIVERGED_AT_RANK,
+      succeededCohortSize: SURFACE_SUCCEEDED_COHORT_SIZE,
+      failedCohortSize: SURFACE_FAILED_COHORT_SIZE,
+      createdAt: SURFACE_ROW_CREATED_AT,
+      updatedAt: SURFACE_ROW_CREATED_AT,
+    }),
+  );
+
+  h.divergencePoints.seed(
+    divergenceRow({
+      id: "o45-browser-unknown-cut-row",
+      cohortCut: BROWSER_UNKNOWN_CUT_MIRROR,
+      kind: "refused",
+      reason: "cohort_below_floor",
+      divergedAtRank: null,
+      succeededCohortSize: BUCKET_SUCCEEDED_COHORT_SIZE,
+      failedCohortSize: BUCKET_FAILED_COHORT_SIZE,
+      createdAt: BUCKET_ROW_CREATED_AT,
+      updatedAt: BUCKET_ROW_CREATED_AT,
+    }),
+  );
+
+  h.recordingSummaries.seed(readableCitation("session-bad-1"));
+}
+
+describe("planCause — the surface-level row is what the cause stage binds to (O-045, ADD Decision 5)", () => {
+  test("the explainer is called once and receives the surface row's denominators, never a bucket's", async () => {
+    const planCause = await loadPlanCause();
+    const h = harness({
+      explainerBehaviour: () =>
+        causeOk([
+          {
+            statement: "The record stalled here because the field was left blank.",
+            citesBeats: [0],
+          },
+        ]),
+    });
+    seedSurfaceAndRefusedBucket(h);
+
+    await planCause(
+      h.deps,
+      lane(),
+      h.runs.repoFor(CTX),
+      h.causeClaims.repoFor(CTX),
+      h.divergencePoints.repoFor(CTX),
+      FINDING_ID,
+      IDENTITY,
+      CANDIDATE,
+      TICK_AT,
+    );
+
+    expect(h.explainer?.calls()).toHaveLength(1);
+
+    const call = h.explainer?.calls()[0];
+    expect([
+      call?.surface,
+      call?.succeededCohortSize,
+      call?.failedCohortSize,
+      call?.divergedAtRank,
+    ]).toEqual([
+      SURFACE,
+      SURFACE_SUCCEEDED_COHORT_SIZE,
+      SURFACE_FAILED_COHORT_SIZE,
+      SURFACE_DIVERGED_AT_RANK,
+    ]);
+  });
+
+  test("a refused bucket row does not stop the finding being explained", async () => {
+    const planCause = await loadPlanCause();
+    const h = harness({
+      explainerBehaviour: () =>
+        causeOk([
+          {
+            statement: "The record stalled here because the field was left blank.",
+            citesBeats: [0],
+          },
+        ]),
+    });
+    seedSurfaceAndRefusedBucket(h);
+
+    await planCause(
+      h.deps,
+      lane(),
+      h.runs.repoFor(CTX),
+      h.causeClaims.repoFor(CTX),
+      h.divergencePoints.repoFor(CTX),
+      FINDING_ID,
+      IDENTITY,
+      CANDIDATE,
+      TICK_AT,
+    );
+
+    expect(h.runs.claimAttempts()).toEqual([`${ORG}|${PROJECT}|${IDENTITY.signature}|cause`]);
+    expect(h.runs.claimed()).toEqual([`${ORG}|${PROJECT}|${IDENTITY.signature}|cause`]);
+    expect(h.causeClaims.rowFor(FINDING_ID)?.anchorSessionId).toBe("session-bad-1");
   });
 });

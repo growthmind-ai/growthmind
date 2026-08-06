@@ -8,6 +8,7 @@ import {
 import {
   and,
   createDivergencePointsRepo,
+  createDivergenceService,
   createRecordingSummariesRepo,
   eq,
   schema,
@@ -27,6 +28,11 @@ import {
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import {
+  assertUnderConstruction,
+  loadModuleUnderConstruction,
+  underConstructionSpecifier,
+} from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import {
   ANALYSIS_WINDOW_MS,
   createAnalysisLaneSource,
@@ -74,6 +80,7 @@ async function persistPathSession(
   workspace: SeededWorkspace,
   paths: readonly string[],
   startedAt: Date,
+  userAgent: string | null = null,
 ): Promise<void> {
   const key = randomUUID();
   const session = await seedSession(db, {
@@ -82,6 +89,7 @@ async function persistPathSession(
     connectionId: workspace.connectionId,
     sessionKey: `ph:o012-${key}`,
     entryUrlPath: paths[0] ?? null,
+    userAgent,
     startedAt,
     lastEventAt: new Date(startedAt.getTime() + (paths.length - 1) * EVENT_STRIDE_MS),
   });
@@ -107,12 +115,14 @@ async function persistCohort(
   count: number,
   paths: readonly string[],
   firstStartedAt: Date,
+  userAgent: string | null = null,
 ): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await persistPathSession(
       workspace,
       paths,
       new Date(firstStartedAt.getTime() + index * SESSION_STRIDE_MS),
+      userAgent,
     );
   }
 }
@@ -617,5 +627,169 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
 
     expect(found).toBeNull();
     expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(false);
+  });
+});
+
+const CUT_TAXONOMY_OWNER =
+  "backend-execution-agent, Wave 4 (packages/shared/src/cohort-cuts/cuts.ts, ADD Decision 1)";
+
+const COHORT_CUT_COLUMN_OWNER =
+  "backend-execution-agent, Wave 6 (packages/db/src/schema/divergence-points.ts + migration 0026)";
+
+const CHROME_ON_WINDOWS =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/120.0.0.0 Safari/537.36";
+
+const SAFARI_ON_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+  "Version/17.0 Mobile/15E148 Safari/604.1";
+
+const UNREADABLE_USER_AGENT = " not-a-user-agent ";
+
+interface CohortCutLabels {
+  readonly surface: string;
+  readonly browserUnknown: string;
+  readonly deviceUnknown: string;
+}
+
+async function cohortCutLabels(): Promise<CohortCutLabels> {
+  const namespace = await loadModuleUnderConstruction({
+    modulePath: underConstructionSpecifier("packages/shared/src/cohort-cuts/cuts.ts"),
+    ownedBy: CUT_TAXONOMY_OWNER,
+  });
+
+  const surface = namespace["SURFACE_COHORT_CUT"];
+  const browserCut = namespace["browserCut"];
+  const deviceCut = namespace["deviceCut"];
+
+  assertUnderConstruction(
+    typeof surface === "string" &&
+      typeof browserCut === "function" &&
+      typeof deviceCut === "function",
+    {
+      contract:
+        "packages/shared/src/cohort-cuts/cuts.ts exports SURFACE_COHORT_CUT, browserCut and deviceCut",
+      ownedBy: CUT_TAXONOMY_OWNER,
+    },
+  );
+
+  return {
+    surface: surface as string,
+    browserUnknown: (browserCut as (family: string) => string)("unknown"),
+    deviceUnknown: (deviceCut as (device: string) => string)("unknown"),
+  };
+}
+
+type CutRow = typeof schema.divergencePoints.$inferSelect & { readonly cohortCut: string };
+
+type CutAwareDivergenceInput = Parameters<DivergenceService["recordDivergence"]>[0] & {
+  readonly cohortCut?: string;
+};
+
+// The real service for every sibling cut, so "the surface row and its siblings survived" is
+// read back off real rows rather than off a counter in a fake.
+function divergenceServiceFailingOnCut(
+  ctx: TenantContext,
+  failingCut: string,
+  message: string,
+): DivergenceService {
+  const real = createDivergenceService(db, ctx);
+
+  return {
+    recordDivergence(input) {
+      if ((input as CutAwareDivergenceInput).cohortCut === failingCut) {
+        return Promise.reject(new Error(message));
+      }
+      return real.recordDivergence(input);
+    },
+  };
+}
+
+describe("createAnalysisLaneSource — one failing cut is isolated from its siblings (O-045, D8)", () => {
+  test("a cut whose write throws leaves the surface row and every sibling cut persisted, and names itself in the log", async () => {
+    const labels = await cohortCutLabels();
+    assertUnderConstruction("cohortCut" in schema.divergencePoints, {
+      contract: "divergence_points carries a cohort_cut column that every write supplies",
+      ownedBy: COHORT_CUT_COLUMN_OWNER,
+    });
+
+    const workspace = await seedPollableWorkspace(db, { prefix: "o045c-", now: NOW });
+
+    await persistCohort(
+      workspace,
+      3,
+      [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN],
+      IN_WINDOW_AT,
+      CHROME_ON_WINDOWS,
+    );
+
+    const droppedAt = new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000);
+    await persistCohort(workspace, 5, [ORIGIN], droppedAt, CHROME_ON_WINDOWS);
+    await persistCohort(
+      workspace,
+      5,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 5 * SESSION_STRIDE_MS),
+      SAFARI_ON_IPHONE,
+    );
+    await persistCohort(
+      workspace,
+      1,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 10 * SESSION_STRIDE_MS),
+      null,
+    );
+    await persistCohort(
+      workspace,
+      1,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 11 * SESSION_STRIDE_MS),
+      UNREADABLE_USER_AGENT,
+    );
+
+    const reachedAt = new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000);
+    await persistCohort(workspace, 8, [ORIGIN, DESTINATION], reachedAt, CHROME_ON_WINDOWS);
+    await persistCohort(
+      workspace,
+      7,
+      [ORIGIN, DESTINATION],
+      new Date(reachedAt.getTime() + 8 * SESSION_STRIDE_MS),
+      SAFARI_ON_IPHONE,
+    );
+
+    const message = `o045c: simulated divergence failure for ${labels.browserUnknown}`;
+    const logger = recordingLogger();
+
+    const deps: AnalysisLaneSourceDeps & { readonly divergenceServiceFor: DivergenceServiceFor } = {
+      db,
+      logger,
+      divergenceServiceFor: (ctx) =>
+        divergenceServiceFailingOnCut(ctx, labels.browserUnknown, message),
+    };
+
+    const lane = await createAnalysisLaneSource(deps).laneForProject(workspace.projectId, NOW);
+    if (lane === null) throw new Error("expected a lane despite the failing cut");
+
+    expect(lane.candidates.length).toBe(1);
+
+    const rows = await divergenceRowsFor(workspace.projectId, ORIGIN);
+    const written = rows.map((row) => (row as CutRow).cohortCut);
+
+    expect(written).toContain(labels.surface);
+    expect(written).not.toContain(labels.browserUnknown);
+
+    // Written after the failing cut in the ADD's own order, so its presence is the isolation
+    // claim rather than "the loop had not reached the throw yet".
+    expect(written).toContain(labels.deviceUnknown);
+    expect(new Set(written).size).toBe(written.length);
+
+    expect(
+      logger.lines.some(
+        (line) =>
+          line.includes(ORIGIN) &&
+          line.includes(workspace.projectId) &&
+          line.includes(labels.browserUnknown),
+      ),
+    ).toBe(true);
   });
 });

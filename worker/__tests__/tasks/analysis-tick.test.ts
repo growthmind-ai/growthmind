@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,8 @@ import {
   scanResidualPii,
 } from "@growthmind/core";
 import type { CandidateFinding, MeasuredCount, SuppressionDecision, TraceEntry } from "@growthmind/core";
-import { computeFindingSignature, signatureHex } from "@growthmind/db";
+import { and, computeFindingSignature, eq, schema, signatureHex } from "@growthmind/db";
+import { createTestDb, seedEvents, seedSession, type TestDb } from "@growthmind/db/testing";
 import type {
   AnalysisRunRecord,
   AnalysisRunsRepo,
@@ -41,9 +43,12 @@ import { tenantContextSchema } from "@growthmind/shared";
 import { expect, test } from "bun:test";
 
 import {
+  assertUnderConstruction,
+  loadModuleUnderConstruction,
   loadUnderConstruction,
   underConstructionSpecifier,
 } from "../../../packages/shared/__tests__/onboarding/module-under-construction";
+import { createAnalysisLaneSource } from "../../src/analysis-lane-source";
 import { planCandidate } from "../../src/analysis/plan";
 import { tenantContextFor } from "../../src/analysis/types";
 import type {
@@ -55,6 +60,7 @@ import type {
   AnalysisTickSummary,
 } from "../../src/tasks/analysis-tick";
 import { runAnalysisLane, runAnalysisTick } from "../../src/tasks/analysis-tick";
+import { seedPollableWorkspace, type SeededWorkspace } from "../helpers/wire-fixtures";
 
 const TICK_AT = new Date("2026-08-01T09:00:00.000Z");
 const WINDOW = {
@@ -1791,4 +1797,227 @@ test("no log argument from any degrade or withhold path contains the planted off
   expect(
     lines.filter((line) => line.includes(signature) && line.includes(PLANTED_CREDENTIAL_KIND)),
   ).toHaveLength(1);
+});
+
+// O-045 gate (d)/AC-4: the cut fans a project's divergence writes out to one row per cut, and
+// the ledger must not follow it. Driven through the real lane source over a real corpus,
+// because a hand-built lane cannot span a browser cut at all.
+const CUT_TAXONOMY_OWNER =
+  "backend-execution-agent, Wave 4 (packages/shared/src/cohort-cuts/cuts.ts, ADD Decision 1)";
+
+const COHORT_CUT_COLUMN_OWNER =
+  "backend-execution-agent, Wave 6 (packages/db/src/schema/divergence-points.ts + migration 0026)";
+
+const CUT_ORIGIN = "/pricing";
+const CUT_DESTINATION = "/checkout";
+const CUT_DETOUR = "/faq";
+const CUT_NORMALISATION_VERSION = 1;
+const CUT_SESSION_STRIDE_MS = 60_000;
+const CUT_EVENT_STRIDE_MS = 1_000;
+
+const CUT_CORPUS_AT = new Date("2026-07-27T09:00:00.000Z");
+
+const CUT_CHROME_ON_WINDOWS =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/120.0.0.0 Safari/537.36";
+
+const CUT_SAFARI_ON_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+  "Version/17.0 Mobile/15E148 Safari/604.1";
+
+const CUT_UNREADABLE_USER_AGENT = " not-a-user-agent ";
+
+interface CutLabels {
+  readonly surface: string;
+  readonly browser: (family: string) => string;
+  readonly device: (device: string) => string;
+}
+
+async function cutLabels(): Promise<CutLabels> {
+  const namespace = await loadModuleUnderConstruction({
+    modulePath: underConstructionSpecifier("packages/shared/src/cohort-cuts/cuts.ts"),
+    ownedBy: CUT_TAXONOMY_OWNER,
+  });
+
+  const surface = namespace["SURFACE_COHORT_CUT"];
+  const browser = namespace["browserCut"];
+  const device = namespace["deviceCut"];
+
+  assertUnderConstruction(
+    typeof surface === "string" && typeof browser === "function" && typeof device === "function",
+    {
+      contract:
+        "packages/shared/src/cohort-cuts/cuts.ts exports SURFACE_COHORT_CUT, browserCut and deviceCut",
+      ownedBy: CUT_TAXONOMY_OWNER,
+    },
+  );
+
+  return {
+    surface: surface as string,
+    browser: browser as (family: string) => string,
+    device: device as (device: string) => string,
+  };
+}
+
+type CutRow = typeof schema.divergencePoints.$inferSelect & { readonly cohortCut: string };
+
+interface CutSeedAgents {
+  readonly desktop: string | null;
+  readonly mobile: string | null;
+  readonly absent: string | null;
+  readonly unreadable: string | null;
+}
+
+const CUT_AGENTS_PRESENT: CutSeedAgents = {
+  desktop: CUT_CHROME_ON_WINDOWS,
+  mobile: CUT_SAFARI_ON_IPHONE,
+  absent: null,
+  unreadable: CUT_UNREADABLE_USER_AGENT,
+};
+
+const CUT_AGENTS_ALL_NULL: CutSeedAgents = {
+  desktop: null,
+  mobile: null,
+  absent: null,
+  unreadable: null,
+};
+
+async function seedCutSession(
+  db: TestDb,
+  workspace: SeededWorkspace,
+  paths: readonly string[],
+  startedAt: Date,
+  userAgent: string | null,
+): Promise<void> {
+  const key = randomUUID();
+  const session = await seedSession(db, {
+    organizationId: workspace.organizationId,
+    projectId: workspace.projectId,
+    connectionId: workspace.connectionId,
+    sessionKey: `ph:o045tick-${key}`,
+    entryUrlPath: paths[0] ?? null,
+    userAgent,
+    startedAt,
+    lastEventAt: new Date(startedAt.getTime() + (paths.length - 1) * CUT_EVENT_STRIDE_MS),
+  });
+
+  await seedEvents(
+    db,
+    paths.map((urlPath, index) => ({
+      organizationId: workspace.organizationId,
+      projectId: workspace.projectId,
+      connectionId: workspace.connectionId,
+      sessionId: session.id,
+      sourceEventId: `o045tick-${key}-e${String(index).padStart(3, "0")}`,
+      name: `step_${String(index)}`,
+      occurredAt: new Date(startedAt.getTime() + index * CUT_EVENT_STRIDE_MS),
+      urlPath,
+      urlPathNormalisationVersion: CUT_NORMALISATION_VERSION,
+    })),
+  );
+}
+
+async function seedCutCorpus(
+  db: TestDb,
+  workspace: SeededWorkspace,
+  agents: CutSeedAgents,
+): Promise<void> {
+  let placed = 0;
+
+  const group = async (
+    sessions: number,
+    paths: readonly string[],
+    userAgent: string | null,
+  ): Promise<void> => {
+    for (let index = 0; index < sessions; index += 1) {
+      const startedAt = new Date(CUT_CORPUS_AT.getTime() + placed * CUT_SESSION_STRIDE_MS);
+      placed += 1;
+      await seedCutSession(db, workspace, paths, startedAt, userAgent);
+    }
+  };
+
+  await group(3, [CUT_ORIGIN, CUT_DETOUR, CUT_ORIGIN, CUT_DETOUR, CUT_ORIGIN], agents.desktop);
+  await group(8, [CUT_ORIGIN, CUT_DESTINATION], agents.desktop);
+  await group(7, [CUT_ORIGIN, CUT_DESTINATION], agents.mobile);
+  await group(5, [CUT_ORIGIN], agents.desktop);
+  await group(5, [CUT_ORIGIN], agents.mobile);
+  await group(1, [CUT_ORIGIN], agents.absent);
+  await group(1, [CUT_ORIGIN], agents.unreadable);
+}
+
+interface TickOverCorpus {
+  readonly cuts: readonly string[];
+  readonly candidatesInLane: number;
+  readonly claimAttempts: number;
+  readonly claimsMade: number;
+  readonly modelCallsAttempted: number;
+}
+
+async function tickOverCorpus(
+  prefix: string,
+  agents: CutSeedAgents,
+): Promise<TickOverCorpus> {
+  const { db, close } = await createTestDb();
+
+  try {
+    const workspace = await seedPollableWorkspace(db, { prefix, now: TICK_AT });
+    await seedCutCorpus(db, workspace, agents);
+
+    const h = harness({});
+    const source = createAnalysisLaneSource({ db, logger: h.deps.logger });
+
+    const seeded = await source.laneForProject(workspace.projectId, TICK_AT);
+    if (seeded === null) throw new Error(`expected a lane for ${workspace.projectId}`);
+
+    const summary = await runAnalysisTick({ ...h.deps, lanes: source });
+
+    const rows = await db
+      .select()
+      .from(schema.divergencePoints)
+      .where(
+        and(
+          eq(schema.divergencePoints.organizationId, workspace.organizationId),
+          eq(schema.divergencePoints.projectId, workspace.projectId),
+        ),
+      );
+
+    return {
+      cuts: rows.map((row) => (row as CutRow).cohortCut),
+      candidatesInLane: seeded.candidates.length,
+      claimAttempts: h.runs.claimAttempts().length,
+      claimsMade: h.runs.claimed().length,
+      modelCallsAttempted: summary.modelCallsAttempted,
+    };
+  } finally {
+    await close();
+  }
+}
+
+test("a corpus spanning two browser cuts and two device cuts claims exactly the model calls its all-null twin claims", async () => {
+  const labels = await cutLabels();
+  assertUnderConstruction("cohortCut" in schema.divergencePoints, {
+    contract: "divergence_points carries a cohort_cut column that every write supplies",
+    ownedBy: COHORT_CUT_COLUMN_OWNER,
+  });
+
+  const carried = await tickOverCorpus("o045f-", CUT_AGENTS_PRESENT);
+  const bare = await tickOverCorpus("o045g-", CUT_AGENTS_ALL_NULL);
+
+  const browserCuts = new Set(["chrome", "safari", "unknown"].map(labels.browser));
+  const deviceCuts = new Set(["desktop", "mobile", "unknown"].map(labels.device));
+
+  // Without this the delta below is satisfied by a corpus that spans no cut at all.
+  expect(carried.cuts.filter((cut) => browserCuts.has(cut)).length).toBeGreaterThanOrEqual(2);
+  expect(carried.cuts.filter((cut) => deviceCuts.has(cut)).length).toBeGreaterThanOrEqual(2);
+  expect(carried.cuts).toContain(labels.surface);
+  expect(carried.cuts.length).toBeGreaterThan(bare.cuts.length);
+
+  expect(carried.claimAttempts).toBe(bare.claimAttempts);
+  expect(carried.claimsMade).toBe(bare.claimsMade);
+  expect(carried.modelCallsAttempted).toBe(bare.modelCallsAttempted);
+
+  // One claim per candidate, never one per cut: the ledger never learns the fan-out happened.
+  expect(carried.candidatesInLane).toBe(bare.candidatesInLane);
+  expect(carried.claimAttempts).toBe(carried.candidatesInLane);
+  expect(carried.claimsMade).toBeGreaterThan(0);
 });
