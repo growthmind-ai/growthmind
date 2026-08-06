@@ -16,6 +16,8 @@ const ROOT: NavGroup = {
   items: [{ href: ROUTES.home, label: "Home" }],
 };
 
+const FINDINGS: NavItem = { href: ROUTES.findings, label: "Findings" };
+
 const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
 
 // Same connection as Recordings, one level up: sessions grouped by account.
@@ -26,7 +28,7 @@ const WORK: NavGroup = {
   label: "Work",
   items: [
     { href: ROUTES.channel, label: "In Slack" },
-    { href: ROUTES.findings, label: "Findings" },
+    FINDINGS,
     { href: ROUTES.fixes, label: "Fixes" },
     { href: ROUTES.experiments, label: "Experiments" },
     RECORDINGS,
@@ -34,10 +36,10 @@ const WORK: NavGroup = {
   ],
 };
 
-// Recordings and Companies read through the analytics connection the org already has, so
+// Findings, Recordings and Companies read real rows under the org's own tenant context, so
 // they answer for everyone rather than only the preview list — the same reason the agent
-// page does.
-const WORK_LIVE: NavGroup = { label: "Work", items: [RECORDINGS, COMPANIES] };
+// page does. Channel, Fixes and Experiments stay preview-only until their own record is live.
+const WORK_LIVE: NavGroup = { label: "Work", items: [FINDINGS, RECORDINGS, COMPANIES] };
 
 const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };
 
