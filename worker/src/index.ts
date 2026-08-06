@@ -180,20 +180,18 @@ function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
 // Mirrors resolveSummariser exactly (ADD Decision 7) — the cause stage reuses the
 // same coldstart model resolution, never a model provider config of its own.
 function resolveCauseExplainer(env: WorkerEnv): ConfiguredCauseExplainer | null {
-  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (apiKey === undefined) {
+  const coldstart = resolveColdstartModel(env);
+  if (coldstart === null) {
     return null;
   }
 
-  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
-
   return {
     port: createCauseExplainer({
-      model: createColdstartModel({ apiKey, resolvedModelId }),
-      resolvedModelId,
+      model: coldstart.model,
+      resolvedModelId: coldstart.resolvedModelId,
       outputSchema: causeModelOutputSchema,
     }),
-    resolvedModelId,
+    resolvedModelId: coldstart.resolvedModelId,
   };
 }
 
