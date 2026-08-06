@@ -1,6 +1,7 @@
 import type { InterestProviderId, TenantContext } from "@growthmind/shared";
 import { asc, eq } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { providerInterest } from "../schema/provider-interest";
 import { orgCrud } from "./crud";
 import type { ScopedExecutor } from "./types";
@@ -33,6 +34,8 @@ export function createProviderInterestRepo(
           fetch: [eq(providerInterest.provider, provider)],
         },
       );
+
+      await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
 
       return { claimed: result.claimed };
     },

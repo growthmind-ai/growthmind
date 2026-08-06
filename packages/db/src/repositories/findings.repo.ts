@@ -3,6 +3,7 @@ import { summarySourceSchema, type SummarySource, type TenantContext } from "@gr
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { publishLive } from "../live/publish";
 import { findings } from "../schema/findings";
 import { orgCrud } from "./crud";
 import { readFindingText, type FindingText, type ScannedText } from "./finding-text";
@@ -145,6 +146,10 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
           fetch: [bySignature(input.projectId, input.signature)],
         },
       );
+
+      // Beside the write rather than in the analysis task: a finding arrives from a worker
+      // nobody in a browser triggered, and no page has a timer left to notice it (D11).
+      await publishLive(db, { organizationId: ctx.organizationId, topic: "findings" });
 
       return toRecord(row);
     },

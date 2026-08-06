@@ -1,6 +1,7 @@
 import type { DismissalAction, TenantContext } from "@growthmind/shared";
 import { and, desc, eq } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { dismissals } from "../schema/dismissals";
 import { orgCrud } from "./crud";
 import type { SignatureHex } from "../signatures/hex";
@@ -34,7 +35,7 @@ export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): Di
 
   return {
     async record(input: RecordDismissalRowInput): Promise<DismissalRecord> {
-      return c.insertOrFetch(
+      const row = await c.insertOrFetch(
         {
           projectId: input.projectId,
           findingId: input.findingId,
@@ -48,6 +49,13 @@ export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): Di
           fetch: [eq(dismissals.findingId, input.findingId), eq(dismissals.action, input.action)],
         },
       );
+
+      // A dismissal folds the finding out of both surfaces, and it can arrive from Slack —
+      // a press nobody's browser made (D1).
+      await publishLive(db, { organizationId: ctx.organizationId, topic: "findings" });
+      await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+
+      return row;
     },
 
     async findFor(findingId: string, action: DismissalAction): Promise<DismissalRecord | null> {

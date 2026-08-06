@@ -25,11 +25,11 @@ import {
   type StepSequenceFacts,
 } from "@growthmind/shared";
 
+import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { SlackConnection } from "@/components/slack/SlackConnection";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { shouldRevealLead } from "@/lib/first-run/lead-reveal";
 import { resolveOfflineNotice } from "@/lib/first-run/offline-notice";
-import { agentStillWatched, resolvePollCadenceMs } from "@/lib/first-run/poll-cadence";
 import type { FirstRunStatusPayload } from "@/lib/first-run/status";
 import { ROUTES } from "@/lib/routes";
 
@@ -92,15 +92,6 @@ function readStatus(body: unknown): FirstRunStatusPayload | null {
   };
 }
 
-async function pollStatus(): Promise<FirstRunStatusPayload | null> {
-  try {
-    const response = await fetch(FIRST_RUN_API.status);
-    return response.ok ? readStatus((await response.json()) as unknown) : null;
-  } catch {
-    return null;
-  }
-}
-
 const LiveCounter = createContext<OnboardingCounterView | null>(null);
 
 // The server subtree's counter is a frozen element tree; a client component
@@ -159,11 +150,18 @@ interface FirstRunClientProps {
 export function FirstRunClient(props: FirstRunClientProps) {
   const router = useRouter();
 
-  const [polled, setPolled] = useState<FirstRunStatusPayload | null>(null);
+  // What a press just wrote, held only until the server re-renders with it. `base` is the
+  // payload it was made against, and every server render mints a new one — so a refresh
+  // drops the overlay by identity rather than by anyone remembering to clear it.
+  const [overlay, setOverlay] = useState<{
+    readonly base: FirstRunStatusPayload;
+    readonly next: FirstRunStatusPayload;
+  } | null>(null);
+
   const [nowMs, setNowMs] = useState(() => seedClock(props.status));
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [lost, setLost] = useState(false);
+  const [connected, setConnected] = useState(true);
   const [reopened, setReopened] = useState(false);
   const [folding, setFolding] = useState(false);
 
@@ -171,7 +169,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
   // and a one-time key kept inside either instance is destroyed by that swap.
   const [hold, setHold] = useState<AgentPanelHold>(EMPTY_HOLD);
 
-  const current = polled ?? props.status;
+  const current = overlay !== null && overlay.base === props.status ? overlay.next : props.status;
 
   const facts: StagePersistedFacts = {
     armedAt: toStamp(current.armedAt),
@@ -207,10 +205,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
   // press, so a key minted in this tab is one the payload cannot know about, and
   // waiting for it to say so is waiting for a poll that never starts.
   const agentConnected = current.agentConnection.kind === "connected";
-  const agentWaiting = agentStillWatched({
-    connection: current.agentConnection,
-    heldKey: hold.rawKey,
-  });
 
   // Every member is a persisted row or stamp, so a second tab, a reload and a
   // return tomorrow all land on the sentence the database describes.
@@ -232,8 +226,6 @@ export function FirstRunClient(props: FirstRunClientProps) {
   const armedOnArrival = useRef(armed);
   const wasOffered = useRef(offered);
   const lead = useRef<HTMLDivElement>(null);
-  const handle = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const busy = useRef(false);
 
   // The one control that ends setup is above the steps; the press that completes the
   // last step is at the bottom of the page.
@@ -259,49 +251,24 @@ export function FirstRunClient(props: FirstRunClientProps) {
     return undefined;
   }, [offered]);
 
-  // Whether a terminal stage still has something to watch is the cadence question, and it
-  // has one home. Asking it here as well is how the screen stopped polling with the
-  // delivery line still reading "not posted", and how a founder who never armed but has a
-  // finding from the hourly check got a counter that never moved again.
-  const cadenceMs = resolvePollCadenceMs({
-    attached,
-    armed,
-    terminal,
-    deliveryState: current.deliveryState,
-    agentWaiting,
-  });
+  // The elapsed time the armed stage renders, and nothing else — no fetch, no question for
+  // the server. It runs only while something is still counting, so a settled screen has no
+  // timer at all.
+  const ticking = armed && !terminal;
 
   useEffect(() => {
-    if (cadenceMs === null) {
-      clearInterval(handle.current);
+    if (!ticking) {
       return undefined;
     }
 
-    handle.current = setInterval(() => {
-      setNowMs(Date.now());
-
-      if (busy.current) {
-        return;
-      }
-      busy.current = true;
-
-      void pollStatus().then((next) => {
-        busy.current = false;
-        setLost(next === null);
-
-        if (next !== null) {
-          setPolled(next);
-        }
-      });
-    }, cadenceMs);
-
+    const clock = setInterval(() => setNowMs(Date.now()), 1_000);
     const first = setTimeout(() => setNowMs(Date.now()), 0);
 
     return () => {
       clearTimeout(first);
-      clearInterval(handle.current);
+      clearInterval(clock);
     };
-  }, [cadenceMs]);
+  }, [ticking]);
 
   useEffect(() => {
     if (!folding) {
@@ -326,7 +293,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
     }
 
     setFolding(!armed);
-    setPolled(next);
+    setOverlay({ base: props.status, next });
   }
 
   async function finish(): Promise<void> {
@@ -358,7 +325,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   const resolved = new Map(deriveStepStates(sequenceFacts).map((view) => [view.id, view]));
 
-  const notice = resolveOfflineNotice({ lost, armed, terminal });
+  const notice = resolveOfflineNotice({ lost: !connected, armed, terminal });
 
   // The one switch: the server sequence and the armed phase's own agent card are
   // the two sides of it, so neither can ever mount beside the other.
@@ -366,6 +333,14 @@ export function FirstRunClient(props: FirstRunClientProps) {
 
   return (
     <Live counter={current.counter} agent={current.agentConnection} held={{ hold, setHold }}>
+      {/* Every fact on this screen is written by something outside this browser — a worker
+        run, a Slack redirect, a coding assistant's first call — so it listens on all three
+        rather than asking on a timer. */}
+      <LiveRefresh
+        topics={["first_run", "findings", "agent_connection"]}
+        onConnection={setConnected}
+      />
+
       <Stack gap="md">
         {/* The payoff is first in both phases: the blocker panel naming the one
           next thing before there is anything to watch, the stage after arming.

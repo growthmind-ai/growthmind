@@ -7,7 +7,7 @@ import type { AgentConnection } from "@growthmind/shared";
 import { readAgentConnection } from "@/components/first-run/api";
 import { LiveAgentConnection } from "@/components/first-run/live-agent";
 import { useLiveTopics } from "@/components/live/LiveRefresh";
-import { agentStillWatched } from "@/lib/first-run/poll-cadence";
+import { agentStillWatched } from "@/lib/first-run/agent-watch";
 
 interface AgentConnectionLiveProps {
   readonly initial: AgentConnection;

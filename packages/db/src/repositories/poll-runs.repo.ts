@@ -1,6 +1,7 @@
 import type { PollRunOutcome, SourceFailureCode, TenantContext } from "@growthmind/shared";
 import { and, eq, sql } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { sessionSourcePollRuns } from "../schema/session-source-poll-runs";
 import { orgCrud } from "./crud";
 import { scoped } from "./scope";
@@ -69,6 +70,12 @@ export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): Poll
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, sessionSourcePollRuns);
 
+  // The setup screen's counter and its "checking now" line both read a run, and a run starts
+  // and finishes in a worker no browser is watching (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+  }
+
   async function completedForConnection(connectionId: string): Promise<PollRunRecord | null> {
     const rows = await c.list({
       where: and(
@@ -84,13 +91,17 @@ export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): Poll
 
   return {
     async start(input: StartPollRunInput): Promise<PollRunRecord> {
-      return c.insert({
+      const row = await c.insert({
         projectId: input.projectId,
         connectionId: input.connectionId,
         startedAt: input.startedAt,
         status: "running",
         outcome: null,
       });
+
+      await announce();
+
+      return row;
     },
 
     async finish(id: string, terminal: PollRunTerminal): Promise<PollRunRecord | null> {
@@ -113,7 +124,7 @@ export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): Poll
               failureMessage: terminal.failureMessage,
             };
 
-      return c.update(
+      const row = await c.update(
         {
           ...columns,
           eventsReceived: terminal.eventsReceived,
@@ -126,6 +137,15 @@ export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): Poll
         eq(sessionSourcePollRuns.id, id),
         eq(sessionSourcePollRuns.status, "running"),
       );
+
+      // Null means another writer finished this run first, so nothing on screen moved.
+      if (row === null) {
+        return null;
+      }
+
+      await announce();
+
+      return row;
     },
 
     async latestCompletedFor(connectionId: string): Promise<PollRunRecord | null> {
