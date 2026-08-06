@@ -53,7 +53,11 @@ describe("CompanyListBody", () => {
   });
 
   test("ready with one group renders that domain and no truncation note", () => {
-    const html = render({ state: "ready", groups: [group({ domain: "acme.example" })], truncated: false });
+    const html = render({
+      state: "ready",
+      groups: [group({ domain: "acme.example" })],
+      truncated: false,
+    });
     const text = readMarkup(html).text;
 
     expect(text).toContain("acme.example");

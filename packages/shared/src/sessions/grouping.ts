@@ -81,7 +81,11 @@ export function groupSessionsByDomain(
   }
 
   return [...groups.entries()]
-    .map(([domain, g]) => ({ domain, sessionCount: g.count, mostRecentSessionAt: g.mostRecentSessionAt }))
+    .map(([domain, g]) => ({
+      domain,
+      sessionCount: g.count,
+      mostRecentSessionAt: g.mostRecentSessionAt,
+    }))
     .toSorted((a, b) => b.mostRecentSessionAt.getTime() - a.mostRecentSessionAt.getTime());
 }
 

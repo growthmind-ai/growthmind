@@ -1,8 +1,4 @@
-import {
-  COMPANY_LIST_UNREADABLE,
-  groupSessionsByDomain,
-  logger,
-} from "@growthmind/shared";
+import { COMPANY_LIST_UNREADABLE, groupSessionsByDomain, logger } from "@growthmind/shared";
 import { createSessionsRepo, findFirstProjectForOrg } from "@growthmind/db";
 
 import { toCompanyGroupDto } from "@/lib/companies/dto";

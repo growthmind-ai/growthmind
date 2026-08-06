@@ -39,9 +39,9 @@ describe("the companies page is reachable by every org member (D1, D7)", () => {
     ];
 
     expect(hrefsIn(withoutCompanies)).not.toContain(ROUTES.companies);
-    expect(
-      hrefsIn([{ label: "x", items: [{ href: ROUTES.companies, label: "y" }] }]),
-    ).toContain(ROUTES.companies);
+    expect(hrefsIn([{ label: "x", items: [{ href: ROUTES.companies, label: "y" }] }])).toContain(
+      ROUTES.companies,
+    );
   });
 
   test("a viewer who is not on the preview allow list still has a way to /companies", () => {

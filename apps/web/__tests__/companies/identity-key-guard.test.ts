@@ -44,7 +44,7 @@ function sourceFilesUnder(dir: string): readonly string[] {
   return found;
 }
 
-describe("no identityKey or inline \"ph:\" check leaks into the companies surface (D9, D10 Layer 2)", () => {
+describe('no identityKey or inline "ph:" check leaks into the companies surface (D9, D10 Layer 2)', () => {
   test("scans real files before trusting an empty pass, then finds zero identityKey/ph: leaks", () => {
     const files = GUARDED_DIRS.flatMap(sourceFilesUnder);
 
@@ -63,7 +63,9 @@ describe("no identityKey or inline \"ph:\" check leaks into the companies surfac
     }
     expect(files.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_FILES);
 
-    const identityKeyLeaks = files.filter((file) => readFileSync(file, "utf8").includes("identityKey"));
+    const identityKeyLeaks = files.filter((file) =>
+      readFileSync(file, "utf8").includes("identityKey"),
+    );
     expect(identityKeyLeaks).toEqual([]);
 
     // grouping.ts is the one file allowed to hold the literal check — it is the named helper

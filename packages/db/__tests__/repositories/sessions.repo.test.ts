@@ -217,12 +217,7 @@ describe("sessions repository", () => {
       const { ctx, projectId, connectionId } = await setUp(db, "groupable-truncate");
       const repo = createSessionsRepo(db, ctx);
       const limit = 3;
-      const times = [
-        EARLY,
-        MIDDLE,
-        LATE,
-        new Date("2026-07-30T12:00:00.000Z"),
-      ];
+      const times = [EARLY, MIDDLE, LATE, new Date("2026-07-30T12:00:00.000Z")];
 
       for (const [index, startedAt] of times.entries()) {
         await seedSession(db, {

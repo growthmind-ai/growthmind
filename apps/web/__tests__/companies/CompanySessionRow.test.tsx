@@ -44,7 +44,11 @@ function session(story: CompanySessionStory, recordingId: string | null): Compan
 
 function markup(companySession: CompanySessionDTO): string {
   return renderToStaticMarkup(
-    createElement(MantineProvider, null, createElement(CompanySessionRow, { session: companySession })),
+    createElement(
+      MantineProvider,
+      null,
+      createElement(CompanySessionRow, { session: companySession }),
+    ),
   );
 }
 
