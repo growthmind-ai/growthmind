@@ -1,5 +1,4 @@
-import { Anchor, Stack, Text } from "@mantine/core";
-import Link from "next/link";
+import { Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 
 import {
@@ -9,6 +8,7 @@ import {
 } from "@growthmind/shared";
 
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
+import { AnchorLink } from "@/components/ui/Links";
 import type { CompanySessionDTO } from "@/lib/companies/dto";
 import { truncate } from "@/lib/replay/label";
 
@@ -48,9 +48,9 @@ export function CompanySessionRow({ session }: { readonly session: CompanySessio
         {storyLine(session.story)}
 
         {session.recordingId === null ? null : (
-          <Anchor component={Link} href={`/replays/${session.recordingId}`} size="sm">
+          <AnchorLink href={`/replays/${session.recordingId}`} size="sm">
             Watch this recording
-          </Anchor>
+          </AnchorLink>
         )}
       </Stack>
     </SurfaceCard>
