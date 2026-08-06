@@ -1,7 +1,7 @@
 import type { RrwebEvent } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
-import { buildTranscript } from "../../src/replay/transcript";
+import { buildTranscript, pagesOfActions, tallyActions } from "../../src/replay/transcript";
 import {
   API_KEY_NODE_ID,
   BASE_TS,
@@ -160,5 +160,48 @@ describe("buildTranscript", () => {
     buildTranscript(events);
 
     expect(JSON.stringify(events)).toBe(before);
+  });
+});
+
+// Both are re-exported from packages/core's barrel so a consumer building a SessionTranscript
+// from actions it already has (rather than raw rrweb events) never re-derives this counting
+// twice — packages/db/src/services/detector-corpus.service.ts is exactly that consumer.
+describe("tallyActions", () => {
+  test("should count each action kind directly from an action list, without a rrweb walk", () => {
+    expect(tallyActions(buildTranscript(busySession()).actions)).toEqual({
+      clicks: 1,
+      deadClicks: 1,
+      rageClicks: 1,
+      refocuses: 1,
+      abandonedFields: 1,
+      scrollBacks: 1,
+    });
+  });
+
+  test("should count nothing for an empty action list", () => {
+    expect(tallyActions([])).toEqual({
+      clicks: 0,
+      deadClicks: 0,
+      rageClicks: 0,
+      refocuses: 0,
+      abandonedFields: 0,
+      scrollBacks: 0,
+    });
+  });
+});
+
+describe("pagesOfActions", () => {
+  test("should list each distinct page once, in the order it was first opened", () => {
+    const transcript = buildTranscript([
+      ...busySession(),
+      metaEvent(9_500, SETTINGS_PAGE),
+      metaEvent(9_600, BILLING_PAGE),
+    ]);
+
+    expect(pagesOfActions(transcript.actions)).toEqual([SETTINGS_PAGE, BILLING_PAGE]);
+  });
+
+  test("should list no page for an action list with none", () => {
+    expect(pagesOfActions([])).toEqual([]);
   });
 });

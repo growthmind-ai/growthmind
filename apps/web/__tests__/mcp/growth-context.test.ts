@@ -496,6 +496,7 @@ describe("get_growth_context and get_fix over real rows, driven through POST /ap
       runId: org.runId,
       signature: randomUUID(),
       signatureVersion: 1,
+      detector: "funnel_dropoff",
       summarySource: "model_rendered",
       headline: text.headline,
       context: text.context,

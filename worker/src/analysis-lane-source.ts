@@ -2,6 +2,7 @@ import {
   assembleCandidates,
   detectErrorEvent,
   detectFunnelDropoff,
+  detectObservedStruggle,
   funnelDropoffCohorts,
   THRESHOLD_RULE_SET_VERSION,
   THRESHOLD_RULE_SETS,
@@ -70,7 +71,11 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
       );
 
       const { candidates, rejected } = assembleCandidates(
-        [detectFunnelDropoff(corpus, rules), detectErrorEvent(corpus, rules)],
+        [
+          detectFunnelDropoff(corpus, rules),
+          detectErrorEvent(corpus, rules),
+          detectObservedStruggle(corpus, rules),
+        ],
         rules,
       );
 

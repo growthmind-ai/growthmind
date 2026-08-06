@@ -88,6 +88,7 @@ function makePersistInput(
     runId,
     signature: signatureFor("checkout-step-2"),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: summarySourceSchema.enum.model_rendered,
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,
@@ -151,15 +152,20 @@ describe("findings repository", () => {
     const bySignature = await repo.findBySignature(project.id, input.signature);
     expect(bySignature?.id).toBe(written.id);
 
+    const byId = await repo.findById(project.id, written.id);
+    expect(byId?.id).toBe(written.id);
+
     const listed = await repo.listForProject(project.id, { limit: 10 });
     expect(listed.map((row) => row.id)).toContain(written.id);
 
     const wrongProject = await repo.findBySignature(siblingProject.id, input.signature);
     expect(wrongProject).toBeNull();
+    expect(await repo.findById(siblingProject.id, written.id)).toBeNull();
     expect(await repo.listForProject(siblingProject.id, { limit: 10 })).toEqual([]);
 
     const foreignRepo = createFindingsRepo(db, orgB.ctx);
     expect(await foreignRepo.findBySignature(project.id, input.signature)).toBeNull();
+    expect(await foreignRepo.findById(project.id, written.id)).toBeNull();
     expect(await foreignRepo.listForProject(project.id, { limit: 10 })).toEqual([]);
   });
 
@@ -262,7 +268,7 @@ describe("findings repository", () => {
     });
 
     const methods = Object.keys(createFindingsRepo(db, org.ctx)).toSorted();
-    expect(methods).toEqual(["findBySignature", "listForProject", "persist"]);
+    expect(methods).toEqual(["findById", "findBySignature", "listForProject", "persist"]);
 
     const source = readFileSync(FINDINGS_REPO_PATH, "utf8");
     const declared = /export interface FindingsRepo\s*\{([\s\S]*?)\n\}/.exec(source);

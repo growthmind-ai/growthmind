@@ -32,9 +32,9 @@ const BINDINGS = [
 // customer or their end users typed, which rrweb cannot mask out of an attribute.
 const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind }> = {
   "app/(app)/(preview)/experiments/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
-  "app/(app)/(preview)/findings/page.tsx": { bindings: 1, kind: "our-copy" },
-  "app/(app)/(preview)/findings/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/(preview)/fixes/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
+  "app/(app)/findings/page.tsx": { bindings: 1, kind: "our-copy" },
+  "app/(app)/findings/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/agent/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/settings/page.tsx": { bindings: 5, kind: "our-copy" },
   "components/settings/BusinessContext.tsx": { bindings: 1, kind: "our-copy" },

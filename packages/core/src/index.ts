@@ -402,7 +402,7 @@ export {
   FIELD_TAG_NAMES,
   toActions,
 } from "./replay/actions";
-export { buildTranscript } from "./replay/transcript";
+export { buildTranscript, pagesOfActions, tallyActions } from "./replay/transcript";
 export {
   MS_PER_SECOND,
   SECONDS_PER_MINUTE,

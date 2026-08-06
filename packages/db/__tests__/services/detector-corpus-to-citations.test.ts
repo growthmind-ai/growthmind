@@ -120,11 +120,13 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
         sessionKey,
         sessionGroupingVersion: SESSION_GROUPING_VERSION,
         actions: transcriptOf([
-          { kind: "page", atMs: 0 },
+          { kind: "page", atMs: 0, href: "/pricing" },
           {
             kind: "rage_click",
             atMs: RAGE_CLICK_AT_MS,
             element: { nodeId: 21, tag: "BUTTON", classes: ["gm-buy"] },
+            clicks: 4,
+            spanMs: 900,
           },
         ]),
         actionsVersion: 1,
@@ -170,6 +172,119 @@ describe("a corpus session set resolves to recordings and per-action offsets (D1
       expect(citation.actions).not.toBeNull();
       expect(citation.actions?.map((action) => action.atMs)).toEqual([0, RAGE_CLICK_AT_MS]);
     }
+  });
+
+  it("should also carry replays derived from the same citations' actions (D11)", async () => {
+    const { projectId, analysisCtx, seededByRecording } = await seedProjectWithRecordings("replay");
+
+    const corpus = await createDetectorCorpusService(db, analysisCtx).read(projectId, WINDOW);
+
+    const keptSessionIds = corpus.sessions
+      .filter((session) => session.exclusionReason === "none")
+      .map((session) => session.sessionId);
+
+    expect(new Set(corpus.replays?.map((replay) => replay.sessionId))).toEqual(
+      new Set(keptSessionIds),
+    );
+
+    for (const replay of corpus.replays ?? []) {
+      expect(seededByRecording.has(replay.sessionId)).toBe(true);
+      expect(replay.transcript.actions.map((action) => action.atMs)).toEqual([0, RAGE_CLICK_AT_MS]);
+      expect(replay.transcript.actions.map((action) => action.kind)).toEqual([
+        "page",
+        "rage_click",
+      ]);
+    }
+  });
+
+  it("should carry a replay with an empty transcript for a recording pulled with zero actions, not drop it", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("empty-actions"),
+      userName: NAMES.userName("empty-actions"),
+      email: NAMES.email("empty-actions"),
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("empty-actions"),
+    });
+    const connection = await seedConnection(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+    });
+
+    const recordingId = "0198c4f2-7a1b-7c3d-9e4f-0000000000ea";
+    const sessionKey = recordingSessionKey("posthog", recordingId);
+    if (sessionKey === null)
+      throw new Error(`recordingSessionKey returned no key for ${recordingId}`);
+
+    const session = await seedSession(db, {
+      organizationId: org.organizationId,
+      projectId: project.id,
+      connectionId: connection.id,
+      sessionKey,
+      startedAt: SESSION_STARTED_AT,
+      entryUrlPath: "/pricing",
+      exclusionReason: "none",
+    });
+
+    const narrationCtx = systemContextFor(SYSTEM_ACTOR.REPLAY_NARRATION_TICK, {
+      organizationId: org.organizationId,
+      organizationName: org.organizationName,
+    });
+
+    await transcriptRepo(db, narrationCtx).persist({
+      projectId: project.id,
+      recordingId,
+      summarySource: "model_rendered",
+      headline: CLEAN.headline,
+      context: CLEAN.context,
+      transcript: "0:00  nothing happened",
+      pages: [],
+      durationMs: 0,
+      actionCount: 0,
+      notableCount: 0,
+      droppedEvents: 0,
+      startedAt: SESSION_STARTED_AT,
+      resolvedModelId: "test-model",
+      provider: "posthog",
+      sessionKey,
+      sessionGroupingVersion: SESSION_GROUPING_VERSION,
+      actions: transcriptOf([]),
+      actionsVersion: 1,
+      actionsOmitted: 0,
+      pullStop: "exhausted",
+      pullReason: null,
+      pullWatermarkAt: null,
+    });
+
+    const analysisCtx = systemContextFor(SYSTEM_ACTOR.ANALYSIS_TICK, {
+      organizationId: org.organizationId,
+      organizationName: org.organizationName,
+    });
+
+    const corpus = await createDetectorCorpusService(db, analysisCtx).read(project.id, WINDOW);
+
+    const replay = corpus.replays?.find((entry) => entry.sessionId === session.id);
+    expect(replay).toBeDefined();
+    expect(replay?.transcript.actions).toEqual([]);
+  });
+
+  it("should carry no replay for a session the corpus set aside", async () => {
+    const { projectId, analysisCtx, seededByRecording } =
+      await seedProjectWithRecordings("replay-set-aside");
+
+    const corpus = await createDetectorCorpusService(db, analysisCtx).read(projectId, WINDOW);
+
+    const setAsideSessionIds = corpus.sessions
+      .filter((session) => session.exclusionReason !== "none")
+      .map((session) => session.sessionId);
+
+    expect(setAsideSessionIds).toHaveLength(1);
+    expect(seededByRecording.get(setAsideSessionIds[0] ?? "")).toBe(SET_ASIDE_RECORDING_ID);
+
+    expect(
+      (corpus.replays ?? []).filter((replay) => setAsideSessionIds.includes(replay.sessionId)),
+    ).toEqual([]);
   });
 
   it("should carry no citation for a session the corpus set aside", async () => {

@@ -105,6 +105,7 @@ beforeAll(async () => {
     runId: run.id,
     signature: createHmac("sha256", "mcpwire").update(LIVE_SURFACE).digest("hex"),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: "model_rendered",
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,

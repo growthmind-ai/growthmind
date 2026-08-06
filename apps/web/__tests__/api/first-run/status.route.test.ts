@@ -161,6 +161,7 @@ async function seedFinding(
     runId: run.id,
     signature: randomUUID(),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: "model_rendered",
     headline: text.headline,
     context: text.context,
@@ -454,6 +455,7 @@ describe("GET /api/first-run/status (AD-16, AD-18, AD-3)", () => {
       runId: run.id,
       signature: randomUUID(),
       signatureVersion: 1,
+      detector: "funnel_dropoff",
       summarySource: "model_rendered",
       headline: "A row written by an older shape",
 

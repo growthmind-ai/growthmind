@@ -1,6 +1,6 @@
 {
-  "id": "b5f3f6ac-828e-43bc-8e66-b86b18df2f84",
-  "prevId": "ad9573d6-afdb-44ad-8511-8f956749e14d",
+  "id": "639e019d-685c-4588-97de-8a8e1203d822",
+  "prevId": "b5f3f6ac-828e-43bc-8e66-b86b18df2f84",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2791,6 +2791,217 @@
         "signature_ancestry_project_id_projects_id_fk": {
           "name": "signature_ancestry_project_id_projects_id_fk",
           "tableFrom": "signature_ancestry",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.divergence_points": {
+      "name": "divergence_points",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "surface": {
+          "name": "surface",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "surface_normalisation_version": {
+          "name": "surface_normalisation_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "spine_version": {
+          "name": "spine_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cohort_match_version": {
+          "name": "cohort_match_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_end": {
+          "name": "window_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "diverged_at_rank": {
+          "name": "diverged_at_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "succeeded_cohort_size": {
+          "name": "succeeded_cohort_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failed_cohort_size": {
+          "name": "failed_cohort_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "succeeded_session_ids_sample": {
+          "name": "succeeded_session_ids_sample",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failed_session_ids_sample": {
+          "name": "failed_session_ids_sample",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "divergence_points_identity_key": {
+          "name": "divergence_points_identity_key",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "surface",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cohort_match_version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "window_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "window_end",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "divergence_points_organization_id_idx": {
+          "name": "divergence_points_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "divergence_points_organization_id_organization_id_fk": {
+          "name": "divergence_points_organization_id_organization_id_fk",
+          "tableFrom": "divergence_points",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "divergence_points_project_id_projects_id_fk": {
+          "name": "divergence_points_project_id_projects_id_fk",
+          "tableFrom": "divergence_points",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"

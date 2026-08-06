@@ -1,6 +1,7 @@
 import { Group, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 
+import { ensureProject } from "@growthmind/db";
 import {
   calibrationSentence,
   coverageSentences,
@@ -10,13 +11,13 @@ import {
 } from "@growthmind/shared";
 import type { FindingGroup, FindingRow } from "@growthmind/shared";
 
-import { RestoreButton } from "@/components/preview/RestoreButton";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ListRow } from "@/components/ui/ListRow";
 import { ClosingNote, PageHeader } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { readOverview, readRow } from "@/lib/preview/findings";
-import { readPreviewState } from "@/lib/preview/session";
+import { getDb } from "@/lib/db";
+import { readLiveOverview } from "@/lib/findings/read";
+import { getTenantContext } from "@/lib/tenant";
 import { findingPath } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";
@@ -93,10 +94,15 @@ function GroupBlock({
   );
 }
 
-export default async function SeenPage() {
-  const state = await readPreviewState();
-  const dismissed = new Set(Object.keys(state.dismissed));
-  const overview = readOverview(dismissed);
+export default async function FindingsPage() {
+  const ctx = await getTenantContext();
+  if (ctx === null) {
+    return null;
+  }
+
+  const db = getDb();
+  const { projectId } = await ensureProject(db, ctx);
+  const overview = await readLiveOverview(db, ctx, projectId);
 
   return (
     <Stack gap="lg">
@@ -108,7 +114,6 @@ export default async function SeenPage() {
         <Stack gap="xs">
           <Text>{coverageSentences(overview.coverage).join(" ")}</Text>
           <Text>{calibrationSentence(overview.calibration)}</Text>
-          <Text>{overview.recalibration}</Text>
         </Stack>
       </SurfaceCard>
 
@@ -117,25 +122,6 @@ export default async function SeenPage() {
           <GroupBlock key={group} group={group} rows={rowsInGroup(overview.rows, group)} />
         ))}
       </Stack>
-
-      {dismissed.size === 0 ? null : (
-        <Stack gap={0}>
-          <CountedHeading title="You told us these were not useful" count={dismissed.size} />
-          {[...dismissed].map((id) => {
-            const row = readRow(id);
-            if (row === null) return null;
-
-            return (
-              <Group key={id} justify="space-between" wrap="nowrap" py="xs" gap="md">
-                <Text size="sm" c="dimmed">
-                  {row.headline} — &ldquo;{state.dismissed[id]}&rdquo;
-                </Text>
-                <RestoreButton id={id} />
-              </Group>
-            );
-          })}
-        </Stack>
-      )}
 
       <ClosingNote>
         Nothing here needs you today. What&apos;s worth acting on arrives in your channel, one at a

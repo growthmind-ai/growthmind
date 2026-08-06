@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { reviewFindingText, type ScannedText } from "@growthmind/core";
+import { reviewFindingText, type DetectorName, type ScannedText } from "@growthmind/core";
 import { summarySourceSchema, tenantContextSchema, type TenantContext } from "@growthmind/shared";
 
 import { createAnalysisRunsRepo } from "../repositories/analysis-runs.repo";
@@ -264,6 +264,7 @@ export interface SeedUnscannedFindingParams {
   readonly headline: string;
   readonly context: readonly string[];
   readonly signature?: string;
+  readonly detector?: DetectorName;
   readonly surface?: string;
   readonly finalClass?: string;
   readonly counts?: readonly MeasuredCountRow[];
@@ -299,6 +300,7 @@ export async function seedUnscannedFinding(
       runId: params.runId,
       signature: params.signature ?? randomUUID(),
       signatureVersion: 1,
+      detector: params.detector ?? "funnel_dropoff",
       summarySource: summarySourceSchema.enum.model_rendered,
       headline: params.headline,
       context: params.context,

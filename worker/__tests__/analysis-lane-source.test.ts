@@ -1,9 +1,27 @@
 import { randomUUID } from "node:crypto";
 
-import { candidateFindingSchema } from "@growthmind/core";
-import { createDivergencePointsRepo, type DivergenceService } from "@growthmind/db";
-import { createTestDb, seedEvents, seedSession, type TestDb } from "@growthmind/db/testing";
-import type { TenantContext } from "@growthmind/shared";
+import {
+  candidateFindingSchema,
+  THRESHOLD_RULE_SET_VERSION,
+  THRESHOLD_RULE_SETS,
+} from "@growthmind/core";
+import {
+  createDivergencePointsRepo,
+  createRecordingSummariesRepo,
+  type DivergenceService,
+} from "@growthmind/db";
+import {
+  createTestDb,
+  scannedTextFor,
+  seedEvents,
+  seedSession,
+  type TestDb,
+} from "@growthmind/db/testing";
+import {
+  recordingSessionKey,
+  SESSION_GROUPING_VERSION,
+  type TenantContext,
+} from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
@@ -94,6 +112,79 @@ async function persistCohort(
       new Date(firstStartedAt.getTime() + index * SESSION_STRIDE_MS),
     );
   }
+}
+
+function currentRules() {
+  const rules = THRESHOLD_RULE_SETS.get(THRESHOLD_RULE_SET_VERSION);
+  if (!rules) {
+    throw new Error(`no threshold rule set registered for ${String(THRESHOLD_RULE_SET_VERSION)}`);
+  }
+  return rules;
+}
+
+// A rage-click burst on the same surface, replayed for enough sessions to clear
+// struggleObservedMinSessions — the corpus.replays half of the O-041 wiring gap.
+async function persistStrugglingSession(
+  workspace: SeededWorkspace,
+  surface: string,
+  clicks: number,
+  startedAt: Date,
+): Promise<void> {
+  const recordingId = randomUUID();
+  const sessionKey = recordingSessionKey("posthog", recordingId);
+  if (sessionKey === null) {
+    throw new Error(`recordingSessionKey returned no key for ${recordingId}`);
+  }
+
+  await seedSession(db, {
+    organizationId: workspace.organizationId,
+    projectId: workspace.projectId,
+    connectionId: workspace.connectionId,
+    sessionKey,
+    entryUrlPath: surface,
+    startedAt,
+  });
+
+  const text = scannedTextFor("Someone struggled on this step", [
+    "They clicked the same control repeatedly and never continued.",
+  ]);
+
+  await createRecordingSummariesRepo(db, workspace.ownerCtx).persist({
+    projectId: workspace.projectId,
+    recordingId,
+    summarySource: "model_rendered",
+    headline: text.headline,
+    context: text.context,
+    transcript: "0:00  rage-clicked the button",
+    pages: [surface],
+    durationMs: 5_000,
+    actionCount: 2,
+    notableCount: 1,
+    droppedEvents: 0,
+    startedAt,
+    resolvedModelId: "test-model",
+    provider: "posthog",
+    sessionKey,
+    sessionGroupingVersion: SESSION_GROUPING_VERSION,
+    actions: {
+      v: 1,
+      actions: [
+        { kind: "page", atMs: 0, href: `https://o046.example.invalid${surface}` },
+        {
+          kind: "rage_click",
+          atMs: 2_000,
+          element: { nodeId: 1, tag: "BUTTON", classes: ["gm-buy"] },
+          clicks,
+          spanMs: 900,
+        },
+      ],
+    },
+    actionsVersion: 1,
+    actionsOmitted: 0,
+    pullStop: "exhausted",
+    pullReason: null,
+    pullWatermarkAt: null,
+  });
 }
 
 describe("createAnalysisLaneSource — persisted events to a CandidateFinding ( e2e)", () => {
@@ -250,6 +341,55 @@ describe("createAnalysisLaneSource — persisted events to a CandidateFinding ( 
         (line) => line.includes("gate rejected") && line.includes(workspace.projectId),
       ),
     ).toBe(true);
+  });
+
+  test("a project whose sessions carry replay transcripts with a qualifying rage-click burst yields an observed_struggle candidate", async () => {
+    const rules = currentRules();
+    const workspace = await seedPollableWorkspace(db, { prefix: "o046a-", now: NOW });
+
+    for (let index = 0; index < rules.struggleObservedMinSessions; index += 1) {
+      await persistStrugglingSession(
+        workspace,
+        ORIGIN,
+        rules.struggleRageClickMin,
+        new Date(IN_WINDOW_AT.getTime() + index * SESSION_STRIDE_MS),
+      );
+    }
+
+    const logger = recordingLogger();
+    const source = createAnalysisLaneSource({ db, logger });
+    const lanes = await source.listDueLanes(NOW);
+    const lane = lanes.find((candidate) => candidate.projectId === workspace.projectId);
+    if (lane === undefined) throw new Error("expected a lane for the struggling project");
+
+    const struggle = lane.candidates.find(
+      (candidate) => candidate.detector === "observed_struggle",
+    );
+    if (struggle === undefined) {
+      throw new Error(
+        `expected an observed_struggle candidate; got detectors [${lane.candidates.map((c) => c.detector).join(", ")}]`,
+      );
+    }
+
+    expect(() => candidateFindingSchema.parse(struggle)).not.toThrow();
+    expect(struggle.surface).toBe(ORIGIN);
+  });
+
+  // D5: a corpus whose sessions carry no replay data at all (no recording ever pulled) must not
+  // crash the tick or produce a struggle candidate out of nothing — `corpus.replays` stays empty
+  // and `observedStruggleCandidates` iterates zero replays, same as any other empty-input case.
+  test("a project with sessions but no replay transcripts never yields an observed_struggle candidate", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o046b-", now: NOW });
+    await persistCohort(workspace, 12, [ORIGIN], IN_WINDOW_AT);
+
+    const source = createAnalysisLaneSource({ db, logger: recordingLogger() });
+    const lanes = await source.listDueLanes(NOW);
+    const lane = lanes.find((candidate) => candidate.projectId === workspace.projectId);
+    if (lane === undefined) throw new Error("expected a lane for the replay-less project");
+
+    expect(lane.candidates.some((candidate) => candidate.detector === "observed_struggle")).toBe(
+      false,
+    );
   });
 });
 
