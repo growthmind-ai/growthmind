@@ -61,6 +61,15 @@ export const firstRunArmInputSchema = z.strictObject({});
 
 export const firstRunDismissInputSchema = z.strictObject({});
 
+// Required field, not the sibling routes' `z.strictObject({})` precedent: this route acts on
+// one finding out of a sequence that can change over time, so the client captures the id at
+// the moment the card rendered rather than the server re-deriving "the current finding" fresh
+// on every POST (ADD Decision 2, part A).
+export const firstRunFindingDismissInputSchema = z.strictObject({
+  findingId: z.string().min(1),
+});
+export type FirstRunFindingDismissInput = z.infer<typeof firstRunFindingDismissInputSchema>;
+
 // One page at a time: a whole-list write from a stale page reverts the nightly derivation.
 export const settingsPageRoleInputSchema = z.strictObject({
   surface: z.string().min(1).max(512),

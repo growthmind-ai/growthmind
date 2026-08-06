@@ -5,6 +5,10 @@ export const GET_IT_FIXED_ACTION_ID = "growthmind.get_it_fixed.v1";
 // button from one import anyway.
 export const GET_IT_FIXED_LABEL = "Get it fixed";
 
+export const NOT_USEFUL_ACTION_ID = "growthmind.not_useful.v1";
+
+export const NOT_USEFUL_LABEL = "Not useful";
+
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
 
 export const SLACK_INTERACTION_ACTOR = "slack:interaction";

@@ -116,7 +116,8 @@ describe("degradation states — enum totality", () => {
 
   test("ALL_CUSTOMER_FACING_MESSAGES and ALL_DELIVERY_MESSAGES are unchanged in count from before this sprint", () => {
     expect(ALL_CUSTOMER_FACING_MESSAGES.length).toBe(27);
-    expect(ALL_DELIVERY_MESSAGES.length).toBe(24);
+    // O-019 registers DISMISSAL_ACKNOWLEDGEMENT and DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT.
+    expect(ALL_DELIVERY_MESSAGES.length).toBe(26);
   });
 
   test("floor_model_text_rejected no longer attributes every content rejection to an accuracy check", () => {

@@ -98,6 +98,13 @@ export const FIX_QUEUED_ACKNOWLEDGEMENT =
 export const FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT =
   "Already queued. Ask your coding agent to work on your open fixes.";
 
+export const DISMISSAL_ACKNOWLEDGEMENT =
+  "Right — nobody on this team will see this one again.";
+
+// Said on a second press, mirroring FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT's split.
+export const DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT =
+  "Already dismissed. Nobody on this team will see it.";
+
 export const FIX_DETAIL_MISSING_REFUSAL =
   "This one was found before we started keeping the detail a coding agent needs. The next check will produce one that works.";
 
@@ -127,6 +134,8 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       NO_RATE_SENTENCE,
       FIX_QUEUED_ACKNOWLEDGEMENT,
       FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT,
+      DISMISSAL_ACKNOWLEDGEMENT,
+      DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT,
       FIX_DETAIL_MISSING_REFUSAL,
       SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
       ...Object.values(FIX_SURFACE_FORBIDDEN_REFUSALS),
