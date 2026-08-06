@@ -37,9 +37,7 @@ describe("the replay detail page hears a recording change", () => {
     // of leaving it green against a topic nothing publishes (D11).
     const topic = liveTopicSchema.parse("recordings");
 
-    expect(detailPageSource()).toMatch(
-      new RegExp(`<LiveRefresh\\s+topics=\\{\\["${topic}"\\]\\}`),
-    );
+    expect(detailPageSource()).toMatch(new RegExp(`<LiveRefresh\\s+topics=\\{\\["${topic}"\\]\\}`));
   });
 
   // A user landing after the write sees the settled state only while the page renders from the

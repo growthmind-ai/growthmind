@@ -91,17 +91,16 @@ export function resolveReplayDeps(db: ScopedDb = getDb()): ReplayRouteDeps {
 }
 
 export type RecordingSourceState =
-  | "ready"
-  | "no_connection"
-  | "unreadable_credential"
-  | "not_configured";
+  "ready" | "no_connection" | "unreadable_credential" | "not_configured";
 
 export interface RecordingSourceQuery {
   readonly ctx: TenantContext;
   readonly projectId: string;
 }
 
-export type RecordingSourceStateFor = (query: RecordingSourceQuery) => Promise<RecordingSourceState>;
+export type RecordingSourceStateFor = (
+  query: RecordingSourceQuery,
+) => Promise<RecordingSourceState>;
 
 export function recordingSourceStateOf(opened: DecryptResult | null): RecordingSourceState {
   if (opened === null) {
