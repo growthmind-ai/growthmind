@@ -11,6 +11,8 @@ export {
 // unscanned-row seeder to be named in exactly one non-test source file, its own home.
 export * from "./fixtures";
 
+export { recordPublishedTopics, type LiveRecorder } from "./live";
+
 export {
   laneNames,
   seedEvent,
