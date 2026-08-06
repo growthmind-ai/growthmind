@@ -179,6 +179,17 @@ function toRecord(row: SummaryRow): RecordingSummaryRecord {
   };
 }
 
+// A retry rewrites the cursor and watermark of a row it read nothing new on, which is wanted and
+// invisible: nothing a reader of the replay page can see moved. Only a pull that stopped failing,
+// or a transcript that grew, is worth waking every open page in the org for (D3).
+function readsDifferently(before: SummaryRow | null, after: SummaryRow): boolean {
+  return (
+    after.pullStop !== RETRYABLE_PULL_STOP ||
+    before === null ||
+    after.actionCount > before.actionCount
+  );
+}
+
 function byRecording(projectId: string, recordingId: string) {
   return and(
     eq(recordingSummaries.projectId, projectId),
@@ -302,6 +313,11 @@ export function createRecordingSummariesRepo(
     async refreshFailedPull(input: RefreshFailedPullInput): Promise<RecordingSummaryRecord | null> {
       const pages = pagesSchema.parse(input.pages);
 
+      // Read for the publish decision only, never for the write predicate. `actionCount` never
+      // decreases, so a value read before a concurrent tick's write is at most the value the
+      // update replaced — which cannot turn a real advance into a withheld publish.
+      const before = await c.maybe(byRecording(input.projectId, input.recordingId));
+
       // One statement, so two overlapping ticks cannot both read "failed" and both write. The
       // action-count predicate keeps the row monotonic: a retry throttled earlier than the first
       // attempt would otherwise replace a longer transcript with a shorter one.
@@ -337,7 +353,9 @@ export function createRecordingSummariesRepo(
         return null;
       }
 
-      await announce();
+      if (readsDifferently(before, row)) {
+        await announce();
+      }
 
       return toRecord(row);
     },

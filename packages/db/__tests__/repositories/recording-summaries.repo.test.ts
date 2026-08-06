@@ -56,6 +56,8 @@ const BYTE_CAP_REASON = "This recording is larger than we read in one visit.";
 
 const RATE_LIMIT_REASON = "Your recording source asked us to slow down, so we stopped early.";
 
+const SEEDED_ACTION_COUNT = 12;
+
 const REFRESHED_ACTION_COUNT = 24;
 
 const CLEAN = scannedTextFor("Someone pressed the buy button and nothing happened", [
@@ -72,7 +74,7 @@ function inputFor(projectId: string, recordingId: string): PersistRecordingSumma
     transcript: "0:00  opened /pricing",
     pages: ["/pricing"],
     durationMs: 92_000,
-    actionCount: 12,
+    actionCount: SEEDED_ACTION_COUNT,
     notableCount: 1,
     droppedEvents: 0,
     startedAt: STARTED_AT,
@@ -948,6 +950,83 @@ describe("recording summaries repository", () => {
       expect(refreshed).toBeNull();
       expect(recorder.published).toEqual([]);
       expect(recorder.malformed).toEqual([]);
+    });
+
+    async function seedFailedPull(label: string, recordingId: string) {
+      const { org, project } = await seedOrg(label);
+      await transcriptRepo(db, org.ctx).persist(
+        transcriptInputFor(project.id, recordingId, {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      return { org, project };
+    }
+
+    it("should publish nothing when a failing retry read nothing new", async () => {
+      const { org, project } = await seedFailedPull("publish-on-stuck-retry", "rec-stuck-retry");
+
+      const stuck: Partial<TranscriptRefreshInput> = {
+        actionCount: SEEDED_ACTION_COUNT,
+        notableCount: 1,
+        pullStop: "failed",
+        pullReason: RATE_LIMIT_REASON,
+      };
+
+      const recorder = recordPublishedTopics(db);
+      const repo = transcriptRepo(recorder.db, org.ctx);
+
+      const first = await repo.refreshFailedPull(
+        refreshInputFor(project.id, "rec-stuck-retry", stuck),
+      );
+      const second = await repo.refreshFailedPull(
+        refreshInputFor(project.id, "rec-stuck-retry", stuck),
+      );
+
+      expect(recorder.published).toEqual([]);
+      expect(recorder.malformed).toEqual([]);
+
+      // The cursor and watermark still move on a retry that read nothing new — only the publish
+      // is withheld, so a resumable pull is not traded away for a quiet page.
+      expect(first?.bytesReceived).toBe(2_048);
+      expect(second?.pullWatermarkAt?.toISOString()).toBe(WATERMARK_AT.toISOString());
+    });
+
+    it("should publish when a failing retry read further", async () => {
+      const { org, project } = await seedFailedPull("publish-on-longer-retry", "rec-longer-retry");
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-longer-retry", {
+          pullStop: "failed",
+          pullReason: RATE_LIMIT_REASON,
+        }),
+      );
+
+      expect(refreshed?.actionCount).toBe(REFRESHED_ACTION_COUNT);
+      expect(refreshed?.pullStop).toBe("failed");
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
+    });
+
+    it("should publish when a retry settles a pull that read nothing further", async () => {
+      const { org, project } = await seedFailedPull("publish-on-settling-retry", "rec-settled-late");
+
+      const recorder = recordPublishedTopics(db);
+      const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
+        refreshInputFor(project.id, "rec-settled-late", {
+          actionCount: SEEDED_ACTION_COUNT,
+          notableCount: 1,
+        }),
+      );
+
+      expect(refreshed?.actionCount).toBe(SEEDED_ACTION_COUNT);
+      expect(refreshed?.pullStop).toBe("exhausted");
+      expect(recorder.published).toEqual([
+        { organizationId: org.organizationId, topic: RECORDINGS_TOPIC },
+      ]);
     });
 
     it("should publish the repository's own tenant and refuse another organization's project", async () => {
