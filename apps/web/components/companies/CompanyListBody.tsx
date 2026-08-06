@@ -1,9 +1,10 @@
-import { Skeleton, Stack, Text } from "@mantine/core";
+import { Stack, Text } from "@mantine/core";
 
 import { COMPANY_LIST_NONE_YET, COMPANY_LIST_TRUNCATED } from "@growthmind/shared";
 
 import type { CompanyGroupDTO } from "@/lib/companies/dto";
 import { CompanyRow } from "@/components/companies/CompanyRow";
+import { LoadingSkeletonStack } from "@/components/ui/LoadingSkeletonStack";
 
 export type Load =
   | { readonly state: "loading" }
@@ -12,12 +13,7 @@ export type Load =
 
 export function CompanyListBody({ load }: { readonly load: Load }) {
   if (load.state === "loading") {
-    return (
-      <Stack gap="sm">
-        <Skeleton height={72} radius="md" />
-        <Skeleton height={72} radius="md" />
-      </Stack>
-    );
+    return <LoadingSkeletonStack />;
   }
 
   if (load.state === "failed") {

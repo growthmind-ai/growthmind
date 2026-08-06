@@ -1,9 +1,10 @@
-import { Skeleton, Stack, Text } from "@mantine/core";
+import { Stack, Text } from "@mantine/core";
 
 import { COMPANY_DETAIL_NOT_FOUND, COMPANY_SESSIONS_TRUNCATED } from "@growthmind/shared";
 
 import { CompanySessionRow } from "@/components/companies/CompanySessionRow";
 import type { CompanySessionDTO } from "@/lib/companies/dto";
+import { LoadingSkeletonStack } from "@/components/ui/LoadingSkeletonStack";
 
 export type Load =
   | { readonly state: "loading" }
@@ -13,12 +14,7 @@ export type Load =
 
 export function CompanySessionsBody({ load }: { readonly load: Load }) {
   if (load.state === "loading") {
-    return (
-      <Stack gap="sm">
-        <Skeleton height={72} radius="md" />
-        <Skeleton height={72} radius="md" />
-      </Stack>
-    );
+    return <LoadingSkeletonStack />;
   }
 
   if (load.state === "not_found") {
