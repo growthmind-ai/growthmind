@@ -1,3 +1,4 @@
+import { detectorNameSchema, type DetectorName } from "@growthmind/core";
 import { summarySourceSchema, type SummarySource, type TenantContext } from "@growthmind/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -46,6 +47,7 @@ export interface PersistFindingInput {
   readonly signature: string;
 
   readonly signatureVersion: number;
+  readonly detector: DetectorName;
   readonly summarySource: SummarySource;
   readonly headline: ScannedText;
   readonly context: readonly ScannedText[];
@@ -74,6 +76,8 @@ export interface FindingsRepo {
   persist(input: PersistFindingInput): Promise<FindingRecord>;
 
   findBySignature(projectId: string, signature: string): Promise<FindingRecord | null>;
+
+  findById(projectId: string, id: string): Promise<FindingRecord | null>;
 
   listForProject(projectId: string, options: ListFindingsOptions): Promise<FindingRecord[]>;
 }
@@ -107,6 +111,7 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
 
   return {
     async persist(input: PersistFindingInput): Promise<FindingRecord> {
+      const detector = detectorNameSchema.parse(input.detector);
       const summarySource = summarySourceSchema.parse(input.summarySource);
       const counts = countsSchema.parse(input.counts);
       await s.assertProjectOwned(input.projectId, notOurProject);
@@ -117,6 +122,7 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
           runId: input.runId,
           signature: input.signature,
           signatureVersion: input.signatureVersion,
+          detector,
           summarySource,
           headline: input.headline,
           context: input.context,
@@ -145,6 +151,12 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
 
     async findBySignature(projectId: string, signature: string): Promise<FindingRecord | null> {
       const row = await c.maybe(bySignature(projectId, signature));
+
+      return row ? toRecord(row) : null;
+    },
+
+    async findById(projectId: string, id: string): Promise<FindingRecord | null> {
+      const row = await c.maybe(eq(findings.projectId, projectId), eq(findings.id, id));
 
       return row ? toRecord(row) : null;
     },

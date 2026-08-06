@@ -82,6 +82,7 @@ function makeFindingInput(
     projectId,
     signature: SIGNATURE_DB4,
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     runId,
     summarySource: "floor_no_key_configured",
     headline: CLEAN_TEXT.headline,

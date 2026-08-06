@@ -61,6 +61,7 @@ async function seedFindingIn(
     runId: run.id,
     signature: sha256Hex(`fixes.repo.test:${label}`),
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: summarySourceSchema.enum.model_rendered,
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,

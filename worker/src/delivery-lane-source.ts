@@ -8,6 +8,7 @@ import {
   worthOf,
   type ConfidenceBasis,
   type CountRole,
+  type DetectorName,
   type GrowthContext,
 } from "@growthmind/core";
 import type {
@@ -55,27 +56,22 @@ export const FINDINGS_CONSIDERED_PER_LANE = 50;
 // silent stop on every later finding this project produces.
 export const FINDINGS_READ_PER_LANE = FINDINGS_CONSIDERED_PER_LANE * 4;
 
-const OBSERVATION_LABELS: Record<CountRole, string> = {
+const DEFAULT_OBSERVATION_LABELS: Record<CountRole, string> = {
   reached_surface: "reached this step",
   left_without_continuing: "left without continuing",
   affected_sessions: "hit the error",
 };
 
-// Resolved by count arity (findings has no persisted detector column). An arity
-// collision keeps the FIRST-declared detector, never null — a later addition must
-// never blank an earlier one out of delivery. See .ai/decisions/0016.
-const ROLES_BY_ARITY: ReadonlyMap<number, readonly CountRole[]> = buildRolesByArity();
+// Per-detector overrides for roles whose default copy doesn't fit. An observed struggle is not
+// "hit the error" — that's error_event's framing (see count-roles.ts's own comment on this).
+const OBSERVATION_LABEL_OVERRIDES: Partial<
+  Record<DetectorName, Partial<Record<CountRole, string>>>
+> = {
+  observed_struggle: { affected_sessions: "showed struggle" },
+};
 
-function buildRolesByArity(): ReadonlyMap<number, readonly CountRole[]> {
-  const byArity = new Map<number, readonly CountRole[]>();
-
-  for (const roles of Object.values(COUNT_ROLES) as readonly (readonly CountRole[])[]) {
-    if (!byArity.has(roles.length)) {
-      byArity.set(roles.length, roles);
-    }
-  }
-
-  return byArity;
+function observationLabelFor(detector: DetectorName, role: CountRole): string {
+  return OBSERVATION_LABEL_OVERRIDES[detector]?.[role] ?? DEFAULT_OBSERVATION_LABELS[role];
 }
 
 function contextFor(organization: SlackDeliveryOrganization): TenantContext {
@@ -88,14 +84,14 @@ function messageInputFor(
   finding: FindingRecord,
   text: ScannedFindingText,
 ): DeliverMessageInput | null {
-  const roles = ROLES_BY_ARITY.get(finding.counts.length) ?? null;
-  if (roles === null) {
+  const roles = COUNT_ROLES[finding.detector];
+  if (finding.counts.length !== roles.length) {
     return null;
   }
 
   const observations = finding.counts.map((row, index) => {
-    const role = roles[index] ?? "affected_sessions";
-    return { label: OBSERVATION_LABELS[role], count: toMeasuredCount(row) };
+    const role = roles[index] as CountRole;
+    return { label: observationLabelFor(finding.detector, role), count: toMeasuredCount(row) };
   });
 
   if (observations.length === 0) {

@@ -112,6 +112,7 @@ async function freshOrg(): Promise<SeededOrg> {
     runId: run.id,
     signature,
     signatureVersion: 1,
+    detector: "funnel_dropoff",
     summarySource: "model_rendered",
     headline: CLEAN_TEXT.headline,
     context: CLEAN_TEXT.context,

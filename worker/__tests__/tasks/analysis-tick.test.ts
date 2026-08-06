@@ -279,6 +279,17 @@ function createFakeFindings(): FakeFindings {
           stored.get(findingKey(ctx.organizationId, projectId, signature)) ?? null,
         );
       },
+
+      findById(projectId: string, id: string): Promise<FindingRecord | null> {
+        return Promise.resolve(
+          [...stored.values()].find(
+            (row) =>
+              row.organizationId === ctx.organizationId &&
+              row.projectId === projectId &&
+              row.id === id,
+          ) ?? null,
+        );
+      },
     }),
   };
 }
