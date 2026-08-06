@@ -18,20 +18,16 @@ import {
 import { DELIVERY_ACTOR_ID } from "../src/tasks/delivery-tick";
 import {
   createRecordingDeliveryLogger,
+  permissiveLedgerFor,
   seedFinding,
   seedSlackConnection,
 } from "./helpers/onboarding-delivery-fixtures";
 import { seedPollableWorkspace } from "./helpers/wire-fixtures";
 
-// ADD o-019-dismissal-wired Decision 4: `DeliveryLaneSourceDeps` gains a `ledgerFor`
-// dependency, mirroring `AnalysisLaneDeps.ledgerFor` exactly. Not on the deps type yet,
-// so declared locally here (a TODO for production) rather than imported — see the ADD's
-// own note that the two aliases are structurally interchangeable regardless.
+// ADD o-019-dismissal-wired Decision 4: declared locally rather than imported from
+// worker/src/analysis/types.ts — see that file's identical note (a sibling worktree, O-046,
+// concurrently modifies it).
 type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
-
-type DeliveryLaneSourceDepsWithLedger = DeliveryLaneSourceDeps & {
-  readonly ledgerFor: SignatureLedgerFor;
-};
 
 function refusesHere(name: string): () => never {
   return () => {
@@ -65,11 +61,10 @@ function fakeLedgerFor(
 }
 
 function laneSourceWithLedger(
-  deps: DeliveryLaneSourceDeps,
+  deps: Omit<DeliveryLaneSourceDeps, "ledgerFor">,
   ledgerFor: SignatureLedgerFor,
 ): ReturnType<typeof createDeliveryLaneSource> {
-  const withLedger = { ...deps, ledgerFor } as DeliveryLaneSourceDepsWithLedger;
-  return createDeliveryLaneSource(withLedger);
+  return createDeliveryLaneSource({ ...deps, ledgerFor });
 }
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -161,7 +156,7 @@ test("a finding whose persisted text is held never becomes a delivery candidate,
     });
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
 
     const candidateIds = (lane?.candidates ?? []).map((candidate) => candidate.findingId);
     expect(candidateIds).not.toContain(held.findingId);
@@ -216,7 +211,7 @@ test("held findings spend no consideration slot, so a project with a lane's wort
     }
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
 
     expect((lane?.candidates ?? []).map((candidate) => candidate.findingId)).toContain(
       deliverable.findingId,
@@ -261,7 +256,7 @@ test("a funnel_dropoff and an observed_struggle finding with the same count arit
     });
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
 
     const labelsFor = (findingId: string): readonly string[] | undefined =>
       (lane?.candidates ?? [])

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { reviewFindingText, type DetectorName } from "@growthmind/core";
 import { schema } from "@growthmind/db";
-import type { PersistFindingInput } from "@growthmind/db";
+import type { PersistFindingInput, SignatureLedgerService } from "@growthmind/db";
 import { createAnalysisRunsRepo, createFindingsRepo } from "@growthmind/db";
 import type { TestDb } from "@growthmind/db/testing";
 import { seedUnscannedFinding } from "@growthmind/db/testing";
@@ -60,6 +60,30 @@ export function tableUnderConstruction(name: string, ownedBy: string): AnyTable 
   });
 
   return table as AnyTable;
+}
+
+// `DeliveryLaneSourceDeps.ledgerFor` is required (ADD o-019-dismissal-wired Decision 4,
+// mirroring the analysis lane exactly) — every fixture that constructs one, including tests
+// with nothing to say about dismissal, must supply it. `consultSignature` always resolves
+// "deliver"; every other method refuses, since the delivery lane never calls them.
+export function permissiveLedgerFor(): (ctx: TenantContext) => SignatureLedgerService {
+  return () => ({
+    recordSignature: () => {
+      throw new Error("permissiveLedgerFor: recordSignature should not be called by the delivery lane");
+    },
+    consultSignature: () => Promise.resolve({ decision: "deliver", reason: "not_seen_before" }),
+    markSignatureDelivered: () => {
+      throw new Error(
+        "permissiveLedgerFor: markSignatureDelivered should not be called by the delivery lane",
+      );
+    },
+    recordDismissal: () => {
+      throw new Error("permissiveLedgerFor: recordDismissal should not be called by the delivery lane");
+    },
+    recordAncestry: () => {
+      throw new Error("permissiveLedgerFor: recordAncestry should not be called by the delivery lane");
+    },
+  });
 }
 
 export const SLACK_TEST_KEY: CredentialKey = {

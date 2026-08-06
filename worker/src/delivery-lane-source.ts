@@ -230,10 +230,7 @@ type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
 export interface DeliveryLaneSourceDeps {
   readonly db: ScopedDb;
   readonly logger: DeliveryLogger;
-  // Optional: a caller that never wires a ledger (e.g. an existing test harness built
-  // before this dependency existed) gets the pre-dismissal behaviour unchanged, rather
-  // than a required field it must now thread through every fixture.
-  readonly ledgerFor?: SignatureLedgerFor;
+  readonly ledgerFor: SignatureLedgerFor;
 }
 
 // Ordering is not delivery. This read failing must cost the lane its weighting and nothing
@@ -313,7 +310,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
         // permanent, so a dismissed row must never be one of the FINDINGS_CONSIDERED_PER_LANE
         // rows that stand between it and a project's real findings (ADD Decision 4). An
         // unreadable signature is left to deliverableFor()'s own validation further down.
-        if (deps.ledgerFor !== undefined && isSignatureHex(finding.signature)) {
+        if (isSignatureHex(finding.signature)) {
           try {
             const decision = await deps
               .ledgerFor(ctx)

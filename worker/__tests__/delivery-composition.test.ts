@@ -95,47 +95,6 @@ const CLEAN_COMPOSITION = `
   );
 `;
 
-// ADD o-019-dismissal-wired Decision 4: `ledgerFor` on `DeliveryLaneSourceDeps` is optional
-// at the type level (a deliberate trade-off, so the many pre-existing test call sites that
-// predate this dependency don't all need updating) — which means nothing except this test
-// stops the ONE production call site below from silently dropping the field. A dropped
-// `ledgerFor` fails no type check and no other test: the delivery lane just stops consulting
-// the dismissal ledger, with no error and no log line naming what changed.
-const PLANTED_COMPOSITION_MISSING_LEDGER = `
-  async function resolveDeliveryComposition() {
-    const { db, env } = resolveResources();
-    if (!(await existsAnyActiveSlackConnection(db))) {
-      return null;
-    }
-    return {
-      lanes: createDeliveryLaneSource({ db, logger: taskLoggerFor(logger) }),
-      posterFor: makePosterFor(db, env),
-    };
-  }
-`;
-
-const CLEAN_COMPOSITION_WITH_LEDGER = `
-  async function resolveDeliveryComposition() {
-    const { db, env } = resolveResources();
-    if (!(await existsAnyActiveSlackConnection(db))) {
-      return null;
-    }
-    return {
-      lanes: createDeliveryLaneSource({
-        db,
-        logger: taskLoggerFor(logger),
-        ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
-      }),
-      posterFor: makePosterFor(db, env),
-    };
-  }
-`;
-
-function suppliesLedgerFor(source: string): boolean {
-  const call = /createDeliveryLaneSource\(\{[\s\S]*?\}\)/.exec(source)?.[0] ?? "";
-  return /\bledgerFor\s*:/.test(call);
-}
-
 let db: TestDb;
 let close: () => Promise<void>;
 
@@ -214,26 +173,6 @@ test("an installation with a slack connection resolves a poster factory and a la
 
   expect(source).toContain("posterFor");
   expect(source).not.toMatch(/\bposter:\s*composed\.poster\b/);
-});
-
-test("resolveDeliveryComposition supplies a ledgerFor, so a dismissal is never silently unwired", () => {
-  expect(suppliesLedgerFor(PLANTED_COMPOSITION_MISSING_LEDGER)).toBe(false);
-  expect(suppliesLedgerFor(CLEAN_COMPOSITION_WITH_LEDGER)).toBe(true);
-
-  const source = readSourceUnderConstruction({
-    repoRelativePath: INDEX_SOURCE_PATH,
-    ownedBy: OWNER_COMPOSITION,
-  });
-
-  assertUnderConstruction(suppliesLedgerFor(source), {
-    contract:
-      "resolveDeliveryComposition's createDeliveryLaneSource({...}) call includes " +
-      "ledgerFor: (ctx) => createSignatureLedgerService(db, ctx) — DeliveryLaneSourceDeps.ledgerFor " +
-      "is optional at the type level (ADD o-019-dismissal-wired Decision 4), so this is the only " +
-      "check standing between a refactor and the delivery lane silently no longer consulting the " +
-      "dismissal ledger",
-    ownedBy: "ADD o-019-dismissal-wired Decision 4 (worker/src/index.ts)",
-  });
 });
 
 function requirePosterForContract(): void {
