@@ -1,10 +1,17 @@
 import type {
   AnalysisWindow,
   DetectorCorpus,
+  SessionAction,
+  SessionReplay,
   SessionTimeline,
   TimelineEvent,
 } from "@growthmind/core";
-import { DETECTOR_CORPUS_MAX_SESSIONS } from "@growthmind/core";
+import {
+  DETECTOR_CORPUS_MAX_SESSIONS,
+  pagesOfActions,
+  rehydratePersistedActions,
+  tallyActions,
+} from "@growthmind/core";
 import type { AudienceRule, ExclusionReason, TenantContext } from "@growthmind/shared";
 import { confirmedAudienceRules, evaluateAudience, readBusinessContext } from "@growthmind/shared";
 import { asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
@@ -33,6 +40,35 @@ export interface DetectorCorpusService {
 const CAP_PROBE_LIMIT = DETECTOR_CORPUS_MAX_SESSIONS + 1;
 
 const NOT_COMPUTED_BY_THE_READ = 0;
+
+// `startedAt`/`clockOriginAtMs` have no source in a citation (only `buildTranscript`'s original
+// rrweb pull knows them) and are left null — both fields are nullable by design for exactly
+// this "unknown" case, and no detector reads either off `corpus.replays` today.
+function durationOf(actions: readonly SessionAction[]): number {
+  const first = actions[0];
+  const last = actions[actions.length - 1];
+  if (first === undefined || last === undefined) return 0;
+  return Math.max(0, last.atMs - first.atMs);
+}
+
+function replayFrom(citation: SessionRecordingCitation): SessionReplay | null {
+  if (citation.actions === null) return null;
+
+  const actions = rehydratePersistedActions(citation.actions);
+
+  return {
+    sessionId: citation.sessionId,
+    transcript: {
+      actions,
+      startedAt: null,
+      clockOriginAtMs: null,
+      durationMs: durationOf(actions),
+      pages: pagesOfActions(actions),
+      counts: tallyActions(actions),
+      droppedEvents: citation.omitted,
+    },
+  };
+}
 
 async function readConfirmedAudienceRules(
   db: ScopedDb,
@@ -179,6 +215,10 @@ export function createDetectorCorpusService(
         keptSessionIds,
       );
 
+      const replays = citations
+        .map((citation) => replayFrom(citation))
+        .filter((replay) => replay !== null);
+
       const connection = await findLatestConnection(db, ctx, projectId);
 
       const [completedPoll] = await db
@@ -208,6 +248,7 @@ export function createDetectorCorpusService(
         }),
         sessions: timelines,
         citations,
+        replays,
         basis: {
           totalInWindow: timelines.length,
           kept: keptSessionIds.length,

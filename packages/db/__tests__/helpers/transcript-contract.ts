@@ -16,6 +16,9 @@ export type PersistedSessionAction = {
   readonly kind: string;
   readonly atMs: number;
   readonly element?: Record<string, unknown>;
+  readonly href?: string;
+  readonly clicks?: number;
+  readonly spanMs?: number;
 };
 
 export type PersistedTranscript = {
