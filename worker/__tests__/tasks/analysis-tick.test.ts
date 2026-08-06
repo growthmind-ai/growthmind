@@ -1396,6 +1396,7 @@ test("runAnalysisLane returns its tally rather than mutating a shared summary", 
     findingsPersisted: 1,
     unrenderable: 0,
     refused: 0,
+    suppressed: 0,
     modelCallsAttempted: 1,
   });
 
@@ -1418,6 +1419,7 @@ test("runAnalysisLane returns its tally rather than mutating a shared summary", 
     findingsPersisted: 0,
     unrenderable: 0,
     refused: 0,
+    suppressed: 0,
     modelCallsAttempted: 0,
   });
 

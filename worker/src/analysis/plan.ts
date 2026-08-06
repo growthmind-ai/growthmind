@@ -12,7 +12,7 @@ import type {
   FindingsRepo,
   SignatureLedgerService,
 } from "@growthmind/db";
-import { describeHold, signatureHex } from "@growthmind/db";
+import { describeDriverError, describeHold, signatureHex } from "@growthmind/db";
 import type { SummaryRenderResult } from "@growthmind/shared";
 import { describeError } from "@growthmind/shared";
 
@@ -57,7 +57,7 @@ export async function planCandidate(
     // same shape as `identityFor`'s own failure mode, gated before spend, and lands in the
     // existing `refused` bucket rather than a new field on this outcome.
     deps.logger.error(
-      `analysis tick: candidate ${identity.signature} could not be checked against the dismissal ledger, so nothing was claimed, sent or written for it — ${describeError(error)}`,
+      `analysis tick: candidate ${identity.signature} could not be checked against the dismissal ledger, so nothing was claimed, sent or written for it — ${describeDriverError(error)}`,
     );
     return { capExhausted: false, action: { kind: "refused" } };
   }

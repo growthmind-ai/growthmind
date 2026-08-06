@@ -124,7 +124,11 @@ async function resolveDeliveryComposition(): Promise<DeliveryComposition | null>
   }
 
   return {
-    lanes: createDeliveryLaneSource({ db, logger: taskLoggerFor(logger) }),
+    lanes: createDeliveryLaneSource({
+      db,
+      logger: taskLoggerFor(logger),
+      ledgerFor: (ctx) => createSignatureLedgerService(db, ctx),
+    }),
     posterFor: makePosterFor(db, env),
   };
 }
