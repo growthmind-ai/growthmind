@@ -37,11 +37,7 @@ const NO_MAGNITUDE = 0;
 const ONE_BEAT = 1;
 
 type ObservedBeat =
-  | RageClickAction
-  | DeadClickAction
-  | FieldAbandonedAction
-  | FieldRefocusAction
-  | ScrollBackAction;
+  RageClickAction | DeadClickAction | FieldAbandonedAction | FieldRefocusAction | ScrollBackAction;
 
 type SessionTally = {
   rageMax: number;
