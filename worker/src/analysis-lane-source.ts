@@ -3,12 +3,17 @@ import {
   detectErrorEvent,
   detectFunnelDropoff,
   detectObservedStruggle,
+  funnelDropoffCohorts,
   THRESHOLD_RULE_SET_VERSION,
   THRESHOLD_RULE_SETS,
 } from "@growthmind/core";
 import type { ThresholdRuleSet } from "@growthmind/core";
-import type { ScopedDb } from "@growthmind/db";
-import { createDetectorCorpusService, describeDriverError } from "@growthmind/db";
+import type { DivergenceService, ScopedDb } from "@growthmind/db";
+import {
+  createDetectorCorpusService,
+  createDivergenceService,
+  describeDriverError,
+} from "@growthmind/db";
 import type { AnalysableProject } from "@growthmind/db/system";
 import {
   SYSTEM_ACTOR,
@@ -43,6 +48,7 @@ function contextFor(project: {
 export interface AnalysisLaneSourceDeps {
   readonly db: ScopedDb;
   readonly logger: AnalysisLogger;
+  readonly divergenceServiceFor?: (ctx: TenantContext) => DivergenceService;
 }
 
 export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): AnalysisLaneSource {
@@ -79,6 +85,27 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
             `${rejection.surface} for project ${project.projectId} — final rung unsatisfied, ` +
             `never delivered (trace length ${String(rejection.trace.length)})`,
         );
+      }
+
+      const divergenceServiceFor =
+        deps.divergenceServiceFor ?? ((c: TenantContext) => createDivergenceService(deps.db, c));
+      const divergenceService = divergenceServiceFor(ctx);
+
+      for (const cohort of funnelDropoffCohorts(corpus, rules)) {
+        try {
+          await divergenceService.recordDivergence({
+            projectId: project.projectId,
+            surface: cohort.origin,
+            window,
+            succeeded: cohort.succeeded,
+            failed: cohort.failed,
+          });
+        } catch (error) {
+          deps.logger.error(
+            `analysis lane source: divergence computation failed for ${cohort.origin} on project ` +
+              `${project.projectId}: ${describeDriverError(error)}`,
+          );
+        }
       }
 
       return {

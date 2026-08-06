@@ -1,50 +1,22 @@
 import { measuredCount } from "../counts/measured-count";
 
-import { PERCENT_SCALE } from "../counts/percent";
 import type { EvidenceSignal } from "../evidence/signals";
 import type { ThresholdRuleSet } from "../rules/types";
-import { sessionWalk, surfaceNormalisationVersionOf, transitionsOf } from "../spine/walk";
+import { sessionWalk, surfaceNormalisationVersionOf } from "../spine/walk";
 import { analysedSessions } from "./analysed";
+import { funnelDropoffCohorts } from "./funnel-dropoff-cohorts";
 import type { DetectorCandidate, DetectorCorpus, DetectorResult } from "./types";
-
-const AFTER_FIRST_VISIT_OFFSET = 1;
 
 export function detectFunnelDropoff(
   corpus: DetectorCorpus,
   ruleSet: ThresholdRuleSet,
 ): DetectorResult {
   const { kept, coverage } = analysedSessions(corpus);
-  const walks = kept.map(sessionWalk);
+  const cohorts = funnelDropoffCohorts(corpus, ruleSet);
 
   const candidates: DetectorCandidate[] = [];
 
-  for (const [origin, rawDestinations] of transitionsOf(walks)) {
-    const destinations = new Set(
-      [...rawDestinations].filter((destination) => destination !== origin),
-    );
-
-    if (!destinations.size) continue;
-
-    const atOrigin = walks.filter((walk) => walk.includes(origin));
-
-    if (atOrigin.length < ruleSet.funnelMinSessionsAtOrigin) continue;
-
-    const dropped = atOrigin.filter((walk) => {
-      const firstVisit = walk.indexOf(origin);
-      return !walk
-        .slice(firstVisit + AFTER_FIRST_VISIT_OFFSET)
-        .some((path) => destinations.has(path));
-    });
-
-    if (dropped.length < ruleSet.funnelMinDropoffSessions) continue;
-
-    if (
-      dropped.length * PERCENT_SCALE <
-      ruleSet.funnelDropoffRateThresholdPercent * atOrigin.length
-    ) {
-      continue;
-    }
-
+  for (const cohort of cohorts) {
     const countOf = (numerator: number) =>
       measuredCount({
         numerator,
@@ -55,7 +27,10 @@ export function detectFunnelDropoff(
         basis: corpus.basis,
       });
 
-    const originVisits = atOrigin.map((walk) => walk.filter((path) => path === origin).length);
+    const atOrigin = [...cohort.succeeded, ...cohort.failed];
+    const originVisits = atOrigin.map(
+      (session) => sessionWalk(session).filter((path) => path === cohort.origin).length,
+    );
     const attempts = Math.max(...originVisits);
     const strugglingSessions = originVisits.filter(
       (visits) => visits >= ruleSet.struggleRepeatedAttemptMin,
@@ -66,7 +41,7 @@ export function detectFunnelDropoff(
       signals.push({
         kind: "struggle",
         subkind: "repeated_attempt",
-        surface: origin,
+        surface: cohort.origin,
         attempts,
 
         strugglingSessions: countOf(strugglingSessions),
@@ -79,11 +54,11 @@ export function detectFunnelDropoff(
 
       claimSubject: "surface",
 
-      surface: origin,
-      surfaceNormalisationVersion: surfaceNormalisationVersionOf(kept, origin),
+      surface: cohort.origin,
+      surfaceNormalisationVersion: surfaceNormalisationVersionOf(kept, cohort.origin),
       signals,
 
-      counts: [countOf(atOrigin.length), countOf(dropped.length)],
+      counts: [countOf(atOrigin.length), countOf(cohort.failed.length)],
       timeframe: corpus.window,
 
       coverage,

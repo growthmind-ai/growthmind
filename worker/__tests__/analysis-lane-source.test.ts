@@ -5,7 +5,14 @@ import {
   THRESHOLD_RULE_SET_VERSION,
   THRESHOLD_RULE_SETS,
 } from "@growthmind/core";
-import { createRecordingSummariesRepo } from "@growthmind/db";
+import {
+  and,
+  createDivergencePointsRepo,
+  createRecordingSummariesRepo,
+  eq,
+  schema,
+  type DivergenceService,
+} from "@growthmind/db";
 import {
   createTestDb,
   scannedTextFor,
@@ -13,10 +20,18 @@ import {
   seedSession,
   type TestDb,
 } from "@growthmind/db/testing";
-import { recordingSessionKey, SESSION_GROUPING_VERSION } from "@growthmind/shared";
+import {
+  recordingSessionKey,
+  SESSION_GROUPING_VERSION,
+  type TenantContext,
+} from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { ANALYSIS_WINDOW_MS, createAnalysisLaneSource } from "../src/analysis-lane-source";
+import {
+  ANALYSIS_WINDOW_MS,
+  createAnalysisLaneSource,
+  type AnalysisLaneSourceDeps,
+} from "../src/analysis-lane-source";
 import type { AnalysisLogger } from "../src/tasks/analysis-tick";
 import { seedPollableWorkspace, type SeededWorkspace } from "./helpers/wire-fixtures";
 
@@ -378,5 +393,229 @@ describe("createAnalysisLaneSource — persisted events to a CandidateFinding ( 
     expect(lane.candidates.some((candidate) => candidate.detector === "observed_struggle")).toBe(
       false,
     );
+  });
+});
+
+type DivergenceServiceFor = (ctx: TenantContext) => DivergenceService;
+
+function throwingDivergenceService(message: string): {
+  readonly service: DivergenceService;
+  calls: number;
+} {
+  const state = { calls: 0 };
+  return {
+    service: {
+      recordDivergence: () => {
+        state.calls += 1;
+        return Promise.reject(new Error(message));
+      },
+    } as DivergenceService,
+    get calls() {
+      return state.calls;
+    },
+  };
+}
+
+// Mirrors divergenceRowsFor in packages/db/__tests__/repositories/divergence-points.repo.test.ts —
+// findBySurface only returns the most recent row (limit 1), so it can't tell "exactly one row"
+// apart from "N rows, most recent shown". This queries the table directly.
+async function divergenceRowsFor(projectId: string, surface: string) {
+  return db
+    .select()
+    .from(schema.divergencePoints)
+    .where(
+      and(
+        eq(schema.divergencePoints.projectId, projectId),
+        eq(schema.divergencePoints.surface, surface),
+      ),
+    );
+}
+
+// ADD Decision 5 (tasks/o-043-divergence-beat/add.md) wires divergence computation inside
+// buildLane, after assembleCandidates, behind its own inner try/catch distinct from the
+// outer per-project one. These tests drive the real entry points (laneForProject/
+// listDueLanes) per the Wave 0 Contract Checklist's D11 rows — never a hand-built call to
+// computeDivergence in isolation.
+describe("createAnalysisLaneSource — divergence wiring at the real entry point (O-043, D11)", () => {
+  test("laneForProject persists a divergence row for a project with a qualifying funnel_dropoff surface", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o043a-", now: NOW });
+
+    await persistCohort(workspace, 3, [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN], IN_WINDOW_AT);
+    await persistCohort(
+      workspace,
+      12,
+      [ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      workspace,
+      15,
+      [ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const source = createAnalysisLaneSource({ db, logger: recordingLogger() });
+    const lane = await source.laneForProject(workspace.projectId, NOW);
+    if (lane === null) throw new Error("expected a lane for the qualifying project");
+
+    expect(lane.candidates.length).toBe(1);
+    expect(lane.candidates[0]?.surface).toBe(ORIGIN);
+
+    const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
+    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+
+    expect(found?.organizationId).toBe(workspace.organizationId);
+    expect(found?.surface).toBe(ORIGIN);
+  });
+
+  test("listDueLanes persists at most one divergence row per surface per tick", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o043b-", now: NOW });
+    const SECOND_ORIGIN = "/signup";
+
+    await persistCohort(workspace, 3, [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN], IN_WINDOW_AT);
+    await persistCohort(
+      workspace,
+      12,
+      [ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      workspace,
+      15,
+      [ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    await persistCohort(
+      workspace,
+      3,
+      [SECOND_ORIGIN, DETOUR, SECOND_ORIGIN, DETOUR, SECOND_ORIGIN],
+      IN_WINDOW_AT,
+    );
+    await persistCohort(
+      workspace,
+      12,
+      [SECOND_ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      workspace,
+      15,
+      [SECOND_ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const source = createAnalysisLaneSource({ db, logger: recordingLogger() });
+    const lanes = await source.listDueLanes(NOW);
+    const lane = lanes.find((candidate) => candidate.projectId === workspace.projectId);
+    if (lane === undefined) throw new Error("expected a lane for the two-surface project");
+
+    expect(lane.candidates.length).toBe(2);
+
+    const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
+    const foundOrigin = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const foundSecondOrigin = await repo.findBySurface(workspace.projectId, SECOND_ORIGIN);
+
+    expect(foundOrigin?.surface).toBe(ORIGIN);
+    expect(foundSecondOrigin?.surface).toBe(SECOND_ORIGIN);
+
+    // findBySurface returns "most recent, limit 1" — it would mask a duplicate. Count the
+    // rows directly to prove the tick wrote exactly one, not just that at least one exists.
+    const originRows = await divergenceRowsFor(workspace.projectId, ORIGIN);
+    const secondOriginRows = await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN);
+
+    expect(originRows).toHaveLength(1);
+    expect(secondOriginRows).toHaveLength(1);
+  });
+
+  test("a divergence computation failure for one surface does not prevent that project's candidates from being returned", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o043c-", now: NOW });
+
+    await persistCohort(workspace, 3, [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN], IN_WINDOW_AT);
+    await persistCohort(
+      workspace,
+      12,
+      [ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      workspace,
+      15,
+      [ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const failure = throwingDivergenceService(`o043c: simulated divergence failure for ${ORIGIN}`);
+    const logger = recordingLogger();
+
+    const deps: AnalysisLaneSourceDeps & { readonly divergenceServiceFor: DivergenceServiceFor } = {
+      db,
+      logger,
+      divergenceServiceFor: () => failure.service,
+    };
+
+    const source = createAnalysisLaneSource(deps);
+    const lane = await source.laneForProject(workspace.projectId, NOW);
+    if (lane === null) throw new Error("expected a lane despite the divergence failure");
+
+    expect(lane.candidates.length).toBe(1);
+    expect(lane.sessionsConsidered).toBe(30);
+
+    expect(failure.calls).toBeGreaterThan(0);
+    expect(
+      logger.lines.some(
+        (line) => line.includes("divergence") && line.includes(workspace.projectId),
+      ),
+    ).toBe(true);
+  });
+
+  test("re-running laneForProject for the identical window does not create a second divergence row", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o043d-", now: NOW });
+
+    await persistCohort(workspace, 3, [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN], IN_WINDOW_AT);
+    await persistCohort(
+      workspace,
+      12,
+      [ORIGIN],
+      new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000),
+    );
+    await persistCohort(
+      workspace,
+      15,
+      [ORIGIN, DESTINATION],
+      new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000),
+    );
+
+    const source = createAnalysisLaneSource({ db, logger: recordingLogger() });
+    const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
+
+    await source.laneForProject(workspace.projectId, NOW);
+    const afterFirst = await repo.findBySurface(workspace.projectId, ORIGIN);
+
+    await source.laneForProject(workspace.projectId, NOW);
+    const afterSecond = await repo.findBySurface(workspace.projectId, ORIGIN);
+
+    // The identity conflict target (org, project, surface, cohortMatchVersion, window) is
+    // identical across both calls (same NOW, same window) — a second row would only be
+    // possible if the second call bypassed the upsert-on-conflict path (ADD Decision 4).
+    expect(afterFirst?.id).toBeDefined();
+    expect(afterSecond?.id).toBe(afterFirst?.id);
+  });
+
+  test("a project with zero funnel_dropoff-qualifying surfaces produces zero divergence rows and no error", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o043e-", now: NOW });
+
+    const logger = recordingLogger();
+    const source = createAnalysisLaneSource({ db, logger });
+    const lane = await source.laneForProject(workspace.projectId, NOW);
+    if (lane === null) throw new Error("expected a lane for the empty project");
+
+    expect(lane.candidates).toEqual([]);
+
+    const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
+    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+
+    expect(found).toBeNull();
+    expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(false);
   });
 });
