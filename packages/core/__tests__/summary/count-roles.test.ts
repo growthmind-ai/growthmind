@@ -231,6 +231,7 @@ function struggleTranscript(index: number, ruleSet: ThresholdRuleSet): SessionTr
       scrollBacks: NO_ACTIONS_OF_KIND,
     },
     droppedEvents: NO_ACTIONS_OF_KIND,
+    clockOriginAtMs: null,
   };
 }
 

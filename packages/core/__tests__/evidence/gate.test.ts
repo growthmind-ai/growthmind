@@ -647,6 +647,7 @@ function o041Transcript(clicks: number): SessionTranscript {
       scrollBacks: 0,
     },
     droppedEvents: 0,
+    clockOriginAtMs: null,
   };
 }
 

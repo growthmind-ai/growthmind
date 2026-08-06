@@ -252,6 +252,7 @@ function transcriptOf(
     pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
     counts: countsOf(actions),
     droppedEvents,
+    clockOriginAtMs: null,
   };
 }
 

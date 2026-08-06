@@ -138,6 +138,7 @@ function t3obsTranscript(scrollBacks: number): SessionTranscript {
     pages: [T3OBS_SURFACE],
     counts: { ...T3OBS_QUIET_COUNTS, scrollBacks },
     droppedEvents: 0,
+    clockOriginAtMs: null,
   };
 }
 

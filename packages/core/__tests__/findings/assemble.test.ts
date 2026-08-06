@@ -257,6 +257,7 @@ function rageTranscript(clicks: number): SessionTranscript {
     pages: [OBSERVED_HREF],
     counts: { ...QUIET_COUNTS, rageClicks: 1 },
     droppedEvents: 0,
+    clockOriginAtMs: null,
   };
 }
 
