@@ -1,7 +1,7 @@
 import type { TenantContext } from "@growthmind/shared";
-import { and, eq, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 
-import { causeClaims } from "../schema/cause-claims";
+import { CAUSE_CLAIMS_CONFLICT_TARGET, causeClaims } from "../schema/cause-claims";
 import { orgCrud } from "./crud";
 import type { ScopedExecutor } from "./types";
 
@@ -41,16 +41,26 @@ export function createCauseClaimsRepo(db: ScopedExecutor, ctx: TenantContext): C
 
   return {
     async persist(input: PersistCauseClaimsInput): Promise<CauseClaimRecord> {
-      return c.insert({
-        projectId: input.projectId,
-        findingId: input.findingId,
-        anchorSessionId: input.anchorSessionId,
-        claims: input.claims,
-        droppedClaims: input.droppedClaims,
-        resolvedModelId: input.resolvedModelId,
-        tokensIn: input.tokensIn,
-        tokensOut: input.tokensOut,
-      });
+      return c.insertOrFetch(
+        {
+          projectId: input.projectId,
+          findingId: input.findingId,
+          anchorSessionId: input.anchorSessionId,
+          claims: input.claims,
+          droppedClaims: input.droppedClaims,
+          resolvedModelId: input.resolvedModelId,
+          tokensIn: input.tokensIn,
+          tokensOut: input.tokensOut,
+        },
+        {
+          target: CAUSE_CLAIMS_CONFLICT_TARGET,
+          set: {
+            claims: sql`excluded.claims`,
+            droppedClaims: sql`excluded.dropped_claims`,
+          },
+          fetch: [byFinding(input.projectId, input.findingId)],
+        },
+      );
     },
 
     async findForFinding(projectId: string, findingId: string): Promise<CauseClaimRecord | null> {

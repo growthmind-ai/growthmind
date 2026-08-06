@@ -183,6 +183,21 @@ describe("cause claims repository", () => {
     expect(found?.droppedClaims).toBe(2);
   });
 
+  it("persist is idempotent — a second call for the same finding never throws and never forks the row (D3/D6)", async () => {
+    const createCauseClaimsRepo = await loadCreateRepo();
+    const scope = await seedScope(db, "retried-tick");
+    const repo = createCauseClaimsRepo(db, scope.owner);
+    const input = dropsOnlyInput(scope);
+
+    const first = await repo.persist(input);
+    const second = await repo.persist(input);
+
+    expect(second.id).toBe(first.id);
+
+    const found = await repo.findForFinding(scope.projectId, scope.findingId);
+    expect(found?.id).toBe(first.id);
+  });
+
   it("a teammate in the same org can read a cause_claims row created by a different actor", async () => {
     const createCauseClaimsRepo = await loadCreateRepo();
     const scope = await seedScope(db, "teammate-read");

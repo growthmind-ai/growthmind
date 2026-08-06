@@ -49,3 +49,9 @@ export const causeClaims = pgTable(
     index("cause_claims_organization_id_idx").on(table.organizationId),
   ],
 );
+
+export const CAUSE_CLAIMS_CONFLICT_TARGET = [
+  causeClaims.organizationId,
+  causeClaims.projectId,
+  causeClaims.findingId,
+];
