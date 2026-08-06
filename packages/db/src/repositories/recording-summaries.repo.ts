@@ -8,6 +8,7 @@ import type { ReplaySourceKind } from "@growthmind/shared";
 import { and, desc, eq, inArray, isNotNull, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { publishLive } from "../live/publish";
 import { recordingSummaries, type TranscriptPullStop } from "../schema/recording-summaries";
 import { sessions } from "../schema/sessions";
 import { orgCrud } from "./crud";
@@ -192,6 +193,12 @@ export function createRecordingSummariesRepo(
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, recordingSummaries);
 
+  // Beside the writes rather than in the callers: a task that forgot to announce would leave
+  // every open replay page silently stale, and there is no timer behind it (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "recordings" });
+  }
+
   async function heldIds(
     projectId: string,
     recordingIds: readonly string[],
@@ -222,7 +229,10 @@ export function createRecordingSummariesRepo(
       const pages = pagesSchema.parse(input.pages);
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const row = await c.insertOrFetch(
+      // `claim` rather than `insertOrFetch` for the one bit `insertOrFetch` discards: whether
+      // this call inserted. A publish on a fetch would wake every open page for a row that did
+      // not change (D3).
+      const { claimed, row } = await c.claim(
         {
           projectId: input.projectId,
           recordingId: input.recordingId,
@@ -264,7 +274,13 @@ export function createRecordingSummariesRepo(
         },
       );
 
-      return toRecord(row);
+      const settled = s.one(row === null ? [] : [row], "recording_summaries.persist");
+
+      if (claimed) {
+        await announce();
+      }
+
+      return toRecord(settled);
     },
 
     async findFor(projectId: string, recordingId: string): Promise<RecordingSummaryRecord | null> {
@@ -317,7 +333,13 @@ export function createRecordingSummariesRepo(
         lte(recordingSummaries.actionCount, input.actionCount),
       );
 
-      return row === null ? null : toRecord(row);
+      if (row === null) {
+        return null;
+      }
+
+      await announce();
+
+      return toRecord(row);
     },
 
     async latestStartedAt(projectId: string): Promise<Date | null> {
