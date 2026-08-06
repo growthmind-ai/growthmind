@@ -5,12 +5,13 @@ code, tests, docs, and arguments with our decisions all count.
 
 ## The one rule that outranks code quality
 
-This codebase is built against [docs/product-decisions.md](docs/product-decisions.md).
-**A PR that violates a product decision will be declined regardless of how
-good the code is.** Read it first. It is short, and it is the contract.
-[docs/architecture.md](docs/architecture.md) maps each decision to the
-subsystem that enforces it, and [docs/stack.md](docs/stack.md) explains why
-each dependency was chosen (and which were rejected, so we don't re-litigate).
+This codebase is built against the commitments in [AGENTS.md](AGENTS.md),
+under "The commitments a PR is judged against". **A PR that breaks one will be
+declined regardless of how good the code is.** Read them first. They are short,
+and they are the contract. [docs/architecture.md](docs/architecture.md) maps
+each commitment to the subsystem that enforces it, and
+[docs/stack.md](docs/stack.md) explains why each dependency was chosen (and
+which were rejected, so we don't re-litigate).
 
 If you think a decision is wrong, open an issue and argue with it, that is
 exactly what publishing them is for. Just do it before writing the code, not
@@ -141,9 +142,9 @@ the diff, put it in the body. The log is the only record of _why_.
 - **`page.tsx` files stay server components**; client logic lives in
   separate `"use client"` components.
 - **Plain English in customer-facing strings**. No product jargon, and
-  counts always carry denominators (product decisions §10).
+  counts always carry denominators ([AGENTS.md](AGENTS.md)).
 - **Events discipline mirrors the product's own rules**, deterministic IDs,
-  no PII in streams, internal traffic excluded (§2–§4).
+  no PII in streams, internal traffic excluded.
 
 ## Security issues
 

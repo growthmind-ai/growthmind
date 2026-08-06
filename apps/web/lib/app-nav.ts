@@ -23,7 +23,7 @@ const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
 // Same connection as Recordings, one level up: sessions grouped by account.
 const COMPANIES: NavItem = { href: ROUTES.companies, label: "Companies" };
 
-// Slack first: that is where the work arrives (product decisions §10).
+// Slack first: that is where the work arrives, pushed rather than pulled.
 const WORK: NavGroup = {
   label: "Work",
   items: [

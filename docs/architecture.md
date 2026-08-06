@@ -1,15 +1,15 @@
 # Growthmind: Architecture
 
 > How the product on [growthmind.ai](https://growthmind.ai) is put together, and why each
-> structural decision is the one that satisfies
-> [`product-decisions.md`](product-decisions.md) rather than merely working.
+> structural decision is the one that satisfies the commitments in
+> [`AGENTS.md`](../AGENTS.md) rather than merely working.
 >
-> [`product-decisions.md`](product-decisions.md) says **what** must be true (§1–§12).
+> [`AGENTS.md`](../AGENTS.md) says **what** must be true.
 > [`stack.md`](stack.md) says **what we build on**.
 > This document says **what the pieces are, where each commitment is enforced, and which
 > tensions between commitments were resolved which way**. A change here is an
-> architecture decision, not a docs edit, and a design that violates a product
-> decision is declined regardless of elegance.
+> architecture decision, not a docs edit, and a design that breaks a commitment
+> is declined regardless of elegance.
 
 ---
 
@@ -327,20 +327,21 @@ hosted driver for people who want it. Clip rendering degrades the same way: with
 the profile, findings carry a still frame and a text timeline instead of an animated
 preview. Core `docker compose up` stays three services.
 
-### T-8 · The site's six-step loop vs §1–§12's post-launch scope
+### T-8 · The site's six-step loop vs the post-launch commitments
 
-Worth stating plainly: [`product-decisions.md`](product-decisions.md) governs the
-post-launch loop end to end and never mentions simulation, brief interrogation, or
-prediction-vs-actual calibration, all three of which the site sells as the
-differentiator. This architecture covers them, but they are currently specified by
-marketing copy rather than by a commitment.
+This tension is closed. Simulation, brief interrogation and prediction-vs-actual
+calibration were the three things the site sold as the differentiator while no
+commitment named any of them — the architecture covered them, but they were
+specified by marketing copy. [`AGENTS.md`](../AGENTS.md) now names all three: the
+three surfaces Growthmind shows up in, and "it predicts, then marks its own
+homework".
 
-**Resolution: architecture proceeds; the decisions doc needs a §13.** The
+**Resolution: architecture proceeds, and the commitments have caught up.** The
 simulation half is designed here to reuse the post-launch machinery precisely so
-that adding it costs one new subsystem rather than a second product. The commitments
-it should be held to. How a simulated finding is labelled, whether a simulated
-finding may open an experiment, what calibration is allowed to claim, are product
-decisions, not architecture, and are listed in [§15](#15-open-questions).
+that adding it costs one new subsystem rather than a second product. What is still
+open is narrower, and is product rather than architecture: how a simulated finding
+is labelled, whether a simulated finding may open an experiment, and what
+calibration is allowed to claim. Those are listed in [§15](#15-open-questions).
 
 ---
 

@@ -139,6 +139,4 @@ setup problem — break something more obvious and watch again.
 - [`docs/get-started.md`](get-started.md) — the experience this setup is held
   to, beat by beat, and how to point your coding agent at Growthmind over MCP.
 - [`AGENTS.md`](../AGENTS.md) — the contributor guide: stack, commands,
-  conventions, and what a PR is judged against.
-- [`docs/product-decisions.md`](product-decisions.md) — the commitments this
-  codebase is built against.
+  conventions, and the commitments a PR is judged against.

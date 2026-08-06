@@ -9,9 +9,8 @@ request.
 The maintainers, `@growthmind-ai/founders` in
 [.github/CODEOWNERS](.github/CODEOWNERS), have the final call on what ships.
 There is no committee, no vote, and no technical steering group. The people
-who wrote [docs/product-decisions.md](docs/product-decisions.md) are
-accountable for whether the product it describes actually works, so they own
-the decisions it contains.
+who define what Growthmind is are accountable for whether it actually works,
+so they own the commitments in [AGENTS.md](AGENTS.md) that follow from it.
 
 That is a benevolent-dictator model. It is not an accident of a young
 repository that will be corrected later, and it is not a placeholder for a
@@ -39,9 +38,9 @@ Nearly all of the actual work:
 
 ## What is not open
 
-[docs/product-decisions.md](docs/product-decisions.md) (§1–§12) is the
-contract this codebase is built against, and it is the maintainers' call.
-[docs/architecture.md](docs/architecture.md) maps each decision to the
+The commitments in [AGENTS.md](AGENTS.md) are the contract this codebase is
+built against, and the product definition behind them is the maintainers' call.
+[docs/architecture.md](docs/architecture.md) maps each commitment to the
 subsystem that enforces it; [docs/stack.md](docs/stack.md) records which
 dependencies were rejected and why, so those aren't re-litigated either.
 
@@ -69,14 +68,14 @@ public for the next person.
 
 ## What will never be accepted
 
-Anything that violates a published product decision. Concretely, and these are
-the ones people try: a ranked list of twelve findings (§7),
-requiring a tracking plan or an activation definition up front (§1, §3),
-anything that puts PII in the event stream (§5), Growthmind writing code into
-a customer's repository (§1, §8), touching pricing, billing, auth, consent or
-terms (§5), running an experiment it can calculate is underpowered (§8), a
-feature that needs an external SaaS with no self-host path or graceful absence
-(§1 and [CONTRIBUTING.md](CONTRIBUTING.md)), and any product taxonomy the
+Anything that breaks a published commitment. Concretely, and these are
+the ones people try: a ranked list of twelve findings, requiring a tracking
+plan or an activation definition up front, anything that puts PII in the event
+stream, Growthmind writing code into a customer's repository, touching pricing,
+billing, auth, consent or terms, running an experiment it can calculate is
+underpowered, a feature that needs an external SaaS with no self-host path or
+graceful absence ([AGENTS.md](AGENTS.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md)), and any product taxonomy the
 customer has to learn (§10).
 
 None of those are judgements about your code. They are the boundary the

@@ -128,6 +128,6 @@ the reader is told it exists and why it is not shown.
 
 ## Related
 
-- [`product-decisions.md`](product-decisions.md) — the product commitments this standard serves.
+- [`AGENTS.md`](../AGENTS.md) — the product commitments this standard serves.
 - [`architecture.md`](architecture.md) — how the pipeline is built.
 - [`telemetry.md`](telemetry.md) — what is captured, and how it is named.

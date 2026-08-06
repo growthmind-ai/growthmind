@@ -2,9 +2,8 @@
 
 > What the first run must **feel like**, beat by beat — the experiential
 > contract the build is held to. Companion to
-> [`product-decisions.md`](product-decisions.md), which decides what the product
-> commits to; this one describes how those commitments land on a founder's
-> screen. It is extracted from the public `/get-started` page on growthmind.ai,
+> [`AGENTS.md`](../AGENTS.md), which states what the product commits to; this
+> one describes how those commitments land on a founder's screen. It is extracted from the public `/get-started` page on growthmind.ai,
 > where the same
 > script plays as an animated film. The page states publicly that its figures
 > are illustrative and that the push must land while the founder is still on the
@@ -73,7 +72,7 @@ visit), identity stored as a one-way stand-in, no bag of event properties at
 all, and every outbound message checked for leftover personal detail before it
 leaves. Nothing on it is a setting, and there is nothing to switch on.
 
-That is the [§5 PII commitment](product-decisions.md) surfaced during
+That is the [no-PII commitment](../AGENTS.md) surfaced during
 onboarding, and it is the honest version of it: a receipt states what is already
 true and can be proved, where a confirmation implies work this build has not
 done.
@@ -106,7 +105,7 @@ in beat ten. See §5.
 
 ## 4. The finding, canonical copy
 
-This is the legibility budget ([product-decisions §10](product-decisions.md))
+This is the legibility budget ([plain English, with denominators](../AGENTS.md))
 made concrete. The renderer and its tests should be held to this register —
 plain English, counts with denominators, the claim tied to its proof.
 
@@ -311,11 +310,10 @@ things this build must keep true:
    the page does promise is the shape of the moment — the finding lands while
    the founder is still on the screen.
 2. **"Open source and built in the open, so you can hold us to it."** The page
-   invites scrutiny of exactly the commitments in
-   [`product-decisions.md`](product-decisions.md).
+   invites scrutiny of exactly the commitments in [`AGENTS.md`](../AGENTS.md).
 3. **Read-only, stated everywhere.** The repo connection says it, the console
-   banner says it, the MCP subset enforces it. §1's read-only rule is visible
-   copy, not a footnote.
+   banner says it, the MCP subset enforces it. The read-only commitment is
+   visible copy, not a footnote.
 
 ## 8. Done when, experientially
 

@@ -64,16 +64,17 @@ that is a bug, [report it](../SECURITY.md).
 separately: it sends captured events to **your** ingest endpoint, your
 self-hosted instance, and nowhere else. Recordings are masked DOM
 reconstructions, masked at capture, before anything leaves the browser
-(product decisions §5). There is no second destination, and no configuration
-that adds one.
+(the no-PII commitment in [`AGENTS.md`](../AGENTS.md)). There is no second
+destination, and no configuration that adds one.
 
 ## The hosted service is a different thing
 
 If you use the cloud at growthmind.ai, your data reaches our servers, that is
 the entire point of paying someone else to run it, and it is not telemetry.
-What we do with it is governed by the product decisions, in particular §5 on
-PII and §7 on retention and export. This document is about the software in this
-repository, running on your infrastructure.
+What we do with it is governed by the commitments in
+[`AGENTS.md`](../AGENTS.md), in particular the one on PII in the event stream.
+This document is about the software in this repository, running on your
+infrastructure.
 
 ## If this ever changes
 

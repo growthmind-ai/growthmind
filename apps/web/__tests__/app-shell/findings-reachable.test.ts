@@ -65,7 +65,7 @@ describe("the findings page is reachable by every org member (D1, D7)", () => {
       throw new Error(
         `${behindTheGate.join(", ")} is inside the (preview) group, whose layout calls ` +
           `notFound() for anyone off GROWTHMIND_PREVIEW_USER_IDS. A customer would get a 404 ` +
-          `on the findings record product-decisions §10 requires the web app carry.`,
+          `on the findings record AGENTS.md's delivery commitment requires the web app carry.`,
       );
     }
 

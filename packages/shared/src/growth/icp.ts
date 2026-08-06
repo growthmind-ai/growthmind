@@ -3,7 +3,7 @@ import { z } from "zod";
 import { STATEMENT_MAX, factProvenanceSchema } from "./provenance";
 
 // What session analysis says about one person's visit. A website cannot answer any of these,
-// which is why they no longer appear in settings — see docs/product-decisions.md §6.
+// which is why they no longer appear in settings — see the evidence commitments in AGENTS.md.
 export const ICP_BELIEF_KINDS = [
   "who_it_is_for",
   "what_they_expected",

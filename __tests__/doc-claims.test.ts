@@ -12,7 +12,6 @@ const SCANNED = [
   "REVIEW.md",
   "SECURITY.md",
   "docs/architecture.md",
-  "docs/product-decisions.md",
   "docs/stack.md",
   "docs/get-started.md",
   "docs/telemetry.md",

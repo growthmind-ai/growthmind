@@ -12,9 +12,10 @@ body:
     attributes:
       label: Which decision?
       description: >-
-        Point at the section — e.g. "product decisions §7, hard rate limit on
-        findings" or "architecture D-4, backpressure is a scheduler".
-      placeholder: product decisions §…, or architecture D-… / T-…
+        Point at the commitment or the section — e.g. "AGENTS.md, nothing the
+        customer has to remember to check" or "architecture D-4, backpressure
+        is a scheduler".
+      placeholder: AGENTS.md commitment, or architecture D-… / T-…
     validations:
       required: true
 

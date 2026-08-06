@@ -1,7 +1,7 @@
 # Copilot instructions
 
 The contributor guide is [AGENTS.md](../AGENTS.md) at the repository root — the
-stack, the commands, the conventions, the product decisions a PR is judged
+stack, the commands, the conventions, the commitments a PR is judged
 against, and a section addressed to coding agents specifically. Read it before
 changing anything here.
 
