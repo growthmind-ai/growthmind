@@ -47,11 +47,14 @@ function fakeLedgerFor(
       const decision = decisions.get(signature);
 
       if (decision === "throw") {
-        return Promise.reject(new Error(`fakeLedgerFor: consultSignature refused for ${signature}`));
+        return Promise.reject(
+          new Error(`fakeLedgerFor: consultSignature refused for ${signature}`),
+        );
       }
 
       return Promise.resolve(
-        decision ?? ({ decision: "deliver", reason: "not_seen_before" } satisfies SuppressionDecision),
+        decision ??
+          ({ decision: "deliver", reason: "not_seen_before" } satisfies SuppressionDecision),
       );
     },
     markSignatureDelivered: refusesHere("markSignatureDelivered"),
@@ -156,7 +159,11 @@ test("a finding whose persisted text is held never becomes a delivery candidate,
     });
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({
+      db,
+      logger,
+      ledgerFor: permissiveLedgerFor(),
+    }).listDueLanes(NOW);
 
     const candidateIds = (lane?.candidates ?? []).map((candidate) => candidate.findingId);
     expect(candidateIds).not.toContain(held.findingId);
@@ -211,7 +218,11 @@ test("held findings spend no consideration slot, so a project with a lane's wort
     }
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({
+      db,
+      logger,
+      ledgerFor: permissiveLedgerFor(),
+    }).listDueLanes(NOW);
 
     expect((lane?.candidates ?? []).map((candidate) => candidate.findingId)).toContain(
       deliverable.findingId,
@@ -256,7 +267,11 @@ test("a funnel_dropoff and an observed_struggle finding with the same count arit
     });
 
     const logger = createRecordingDeliveryLogger();
-    const [lane] = await createDeliveryLaneSource({ db, logger, ledgerFor: permissiveLedgerFor() }).listDueLanes(NOW);
+    const [lane] = await createDeliveryLaneSource({
+      db,
+      logger,
+      ledgerFor: permissiveLedgerFor(),
+    }).listDueLanes(NOW);
 
     const labelsFor = (findingId: string): readonly string[] | undefined =>
       (lane?.candidates ?? [])

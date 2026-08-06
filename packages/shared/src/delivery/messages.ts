@@ -98,8 +98,7 @@ export const FIX_QUEUED_ACKNOWLEDGEMENT =
 export const FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT =
   "Already queued. Ask your coding agent to work on your open fixes.";
 
-export const DISMISSAL_ACKNOWLEDGEMENT =
-  "Right — nobody on this team will see this one again.";
+export const DISMISSAL_ACKNOWLEDGEMENT = "Right — nobody on this team will see this one again.";
 
 // Said on a second press, mirroring FIX_ALREADY_QUEUED_ACKNOWLEDGEMENT's split.
 export const DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT =

@@ -203,7 +203,9 @@ const inlineSentences = (files: readonly ScannedFile[]): readonly string[] =>
       .map((line, index) => ({ line, number: index + 1 }))
       .filter(
         ({ line }) =>
-          !MODULE_SPECIFIER.test(line) && !PINNED_SHARED_CONSTANT.test(line) && PROSE_RUN.test(line),
+          !MODULE_SPECIFIER.test(line) &&
+          !PINNED_SHARED_CONSTANT.test(line) &&
+          PROSE_RUN.test(line),
       )
       .map(({ line, number }) => `${scanned.file}:${number} → ${line.trim()}`),
   );

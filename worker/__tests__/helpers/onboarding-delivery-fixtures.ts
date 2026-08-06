@@ -69,7 +69,9 @@ export function tableUnderConstruction(name: string, ownedBy: string): AnyTable 
 export function permissiveLedgerFor(): (ctx: TenantContext) => SignatureLedgerService {
   return () => ({
     recordSignature: () => {
-      throw new Error("permissiveLedgerFor: recordSignature should not be called by the delivery lane");
+      throw new Error(
+        "permissiveLedgerFor: recordSignature should not be called by the delivery lane",
+      );
     },
     consultSignature: () => Promise.resolve({ decision: "deliver", reason: "not_seen_before" }),
     markSignatureDelivered: () => {
@@ -78,10 +80,14 @@ export function permissiveLedgerFor(): (ctx: TenantContext) => SignatureLedgerSe
       );
     },
     recordDismissal: () => {
-      throw new Error("permissiveLedgerFor: recordDismissal should not be called by the delivery lane");
+      throw new Error(
+        "permissiveLedgerFor: recordDismissal should not be called by the delivery lane",
+      );
     },
     recordAncestry: () => {
-      throw new Error("permissiveLedgerFor: recordAncestry should not be called by the delivery lane");
+      throw new Error(
+        "permissiveLedgerFor: recordAncestry should not be called by the delivery lane",
+      );
     },
   });
 }

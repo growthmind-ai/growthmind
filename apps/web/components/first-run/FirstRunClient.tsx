@@ -384,9 +384,7 @@ export function FirstRunClient(props: FirstRunClientProps) {
               findingWithheld={findingWithheld}
               delivery={current.deliveryState}
               deliveryReason={current.deliveryFailureReason ?? null}
-              onDismiss={
-                current.findingId === null ? undefined : dismissFinding(current.findingId)
-              }
+              onDismiss={current.findingId === null ? undefined : dismissFinding(current.findingId)}
             />
           ) : (
             <SetupStage

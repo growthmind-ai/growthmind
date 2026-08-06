@@ -561,13 +561,11 @@ export const FINDING_DISMISS_LABEL = "Not useful";
 
 export const FINDING_DISMISS_PENDING_LABEL = "Dismissing…";
 
-export const FINDING_DISMISS_CAPTION =
-  "Removes it for the whole team — it won't come back.";
+export const FINDING_DISMISS_CAPTION = "Removes it for the whole team — it won't come back.";
 
 export const FINDING_DISMISS_CONFIRMED_LINE = "Dismissed. Nobody on this team will see it again.";
 
-export const FINDING_DISMISS_ERROR_LINE =
-  "That didn't go through — this finding is still here.";
+export const FINDING_DISMISS_ERROR_LINE = "That didn't go through — this finding is still here.";
 
 export const ONBOARDING_MESSAGES = {
   setUpCta: SET_UP_CTA_LABEL,
