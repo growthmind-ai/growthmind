@@ -1012,7 +1012,10 @@ describe("recording summaries repository", () => {
     });
 
     it("should publish when a retry settles a pull that read nothing further", async () => {
-      const { org, project } = await seedFailedPull("publish-on-settling-retry", "rec-settled-late");
+      const { org, project } = await seedFailedPull(
+        "publish-on-settling-retry",
+        "rec-settled-late",
+      );
 
       const recorder = recordPublishedTopics(db);
       const refreshed = await transcriptRepo(recorder.db, org.ctx).refreshFailedPull(
