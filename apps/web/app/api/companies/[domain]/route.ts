@@ -14,7 +14,7 @@ import {
 
 import { resolveCompanySessionStory, toCompanySessionDto } from "@/lib/companies/dto";
 import { resolveCompaniesDeps, type CompaniesRouteDeps } from "@/lib/companies/deps";
-import { companiesDetailRefusal } from "@/lib/companies/refusals";
+import { signedOutRefusal } from "@/lib/companies/refusals";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ export async function handle(
 ): Promise<Response> {
   const ctx = await deps.tenant();
   if (ctx === null) {
-    return companiesDetailRefusal("signed_out");
+    return signedOutRefusal("signed_out");
   }
 
   // Free-mail is never an account — refused before any query, same policy as the list.

@@ -3,7 +3,7 @@ import { createSessionsRepo, findFirstProjectForOrg } from "@growthmind/db";
 
 import { toCompanyGroupDto } from "@/lib/companies/dto";
 import { resolveCompaniesDeps, type CompaniesRouteDeps } from "@/lib/companies/deps";
-import { companiesListRefusal } from "@/lib/companies/refusals";
+import { signedOutRefusal } from "@/lib/companies/refusals";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ const GROUPABLE_SESSION_READ_CAP = 500;
 export async function handle(_request: Request, deps: CompaniesRouteDeps): Promise<Response> {
   const ctx = await deps.tenant();
   if (ctx === null) {
-    return companiesListRefusal("signed_out");
+    return signedOutRefusal("signed_out");
   }
 
   let project;
