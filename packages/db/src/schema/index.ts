@@ -8,6 +8,7 @@ export * from "./session-source-poll-runs";
 export * from "./finding-signatures";
 export * from "./dismissals";
 export * from "./signature-ancestry";
+export * from "./divergence-points";
 export { deliveries } from "./deliveries";
 export { apiKeys } from "./api-keys";
 
