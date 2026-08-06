@@ -26,6 +26,7 @@ import {
   MCP_PROTOCOL_LEGACY_FLOOR,
   JSON_RPC_ERROR_CODE,
 } from "../../lib/mcp/wire-constants";
+import { toGrowthContextRecord } from "../../lib/mcp/dto";
 import {
   buildTestTenantContext,
   createTestOrganization,
@@ -204,7 +205,7 @@ describe("a real MCP client against the real exported handler", () => {
     }
   });
 
-  test("WIRE-E2 — should list exactly three tools, each with an input schema its own parser accepted", async () => {
+  test("WIRE-E2 — should list exactly the registry's tools, each with an input schema its own parser accepted", async () => {
     const wire = wireTo(serveReal);
     const client = await openClient(wire, KEY_A);
 
@@ -289,7 +290,7 @@ describe("a real MCP client against the real exported handler", () => {
     }
   });
 
-  test("WIRE-E7 — should let a client pinned to the modern era connect and list the same three tools", async () => {
+  test("WIRE-E7 — should let a client pinned to the modern era connect and list the same tools", async () => {
     const wire = wireTo(serveReal);
 
     const client = await openClient(wire, KEY_A, {
@@ -476,13 +477,30 @@ const SEEDED_DEPS: McpServerDeps = {
         record: findingRecordFor({ findingId: SEEDED_FINDING_ID, fixId: SEEDED_FIX_ID }),
       },
     ],
+    growthContexts: [
+      {
+        organizationId: ORG_A,
+        answer: {
+          outcome: "answered",
+          record: toGrowthContextRecord({
+            projectId: "project-mcpe",
+            surface: null,
+            changeable: null,
+            whatMatters: [],
+            knownProblems: [],
+            declined: [],
+            business: [],
+          }),
+        },
+      },
+    ],
   }).port,
 };
 
 const serveSeeded: Serve = (request) => handleMcpRequest(request, SEEDED_DEPS);
 
 describe("a real MCP client reading real records out of a seeded store", () => {
-  test("WIRE-E10 — should call all three tools through one listing client and have every result accepted", async () => {
+  test("WIRE-E10 — should call every tool through one listing client and have every result accepted", async () => {
     const wire = wireTo(serveSeeded);
     const client = await openClient(wire, KEY_A);
 
@@ -501,14 +519,20 @@ describe("a real MCP client reading real records out of a seeded store", () => {
         name: MCP_TOOL.GET_FINDING,
         arguments: { findingId: SEEDED_FINDING_ID },
       });
+      const context = await client.callTool({
+        name: MCP_TOOL.GET_GROWTH_CONTEXT,
+        arguments: {},
+      });
 
       expect(listed.isError).toBeFalsy();
       expect(fix.isError).toBeFalsy();
       expect(finding.isError).toBeFalsy();
+      expect(context.isError).toBeFalsy();
 
       expect(listed.structuredContent).not.toBeUndefined();
       expect(fix.structuredContent).not.toBeUndefined();
       expect(finding.structuredContent).not.toBeUndefined();
+      expect(context.structuredContent).not.toBeUndefined();
     } finally {
       await closeQuietly(client);
     }
