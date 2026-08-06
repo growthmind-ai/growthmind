@@ -1647,7 +1647,8 @@ const PLAN_SOURCE = path.join(REPO_ROOT, "worker", "src", "analysis", "plan.ts")
 // (ADD trade-off 6); `__tests__/finding-text-reach.test.ts` proves it is used only from tests.
 const WRITE_SCAN_EXEMPT = `${path.sep}testing${path.sep}`;
 
-const WRITE_VERB = /(?:\binsertOrFetch|\.insert|\.update|\.values)\s*\(/g;
+// `claim` is a write verb: it inserts, and reports whether it did (packages/db/src/repositories/crud.ts).
+const WRITE_VERB = /(?:\binsertOrFetch|\bclaim|\.insert|\.update|\.values)\s*\(/g;
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
@@ -1690,12 +1691,19 @@ const PLANTED_WRITER = "await db.insert(findings).values({ headline: row.headlin
 
 const CLEAN_NEIGHBOUR_WRITER = "await db.insert(fixes).values({ specMarkdown: row.spec });";
 
+const PLANTED_CLAIM_WRITER = "await c.claim({ recordingId, headline: row.headline }, options);";
+
+const CLEAN_NEIGHBOUR_CLAIM_WRITER = "await c.claim({ recordingId, specMarkdown: row.spec }, options);";
+
 test("a second write path to the findings table cannot bypass FindingsRepo.persist as the only route to headline and context", () => {
   const files = dbSourceFiles();
   expect(files.length).toBeGreaterThan(10);
 
   expect(writesFindingText(PLANTED_WRITER)).toBe(true);
   expect(writesFindingText(CLEAN_NEIGHBOUR_WRITER)).toBe(false);
+
+  expect(writesFindingText(PLANTED_CLAIM_WRITER)).toBe(true);
+  expect(writesFindingText(CLEAN_NEIGHBOUR_CLAIM_WRITER)).toBe(false);
 
   const writers = files
     .filter((file) => writesFindingText(readFileSync(file, "utf8")))
