@@ -2,7 +2,7 @@ import { FORBIDDEN_REASONS, type ForbiddenReason } from "@growthmind/shared";
 
 // Matched per path segment, by substring, so `upgrade-flow` and `billing-v2` are caught.
 // `auth` is deliberately absent: it is a routing prefix, not a risk, and denying it would
-// take `/auth/signup` — the activation funnel §1 is built around — with it. The mechanics
+// take `/auth/signup` — the activation funnel the first run is built around — with it. The mechanics
 // underneath it are what carry the risk, and they are named individually.
 const FORBIDDEN_SEGMENTS: Readonly<Record<ForbiddenReason, readonly string[]>> = {
   pricing_or_billing: [

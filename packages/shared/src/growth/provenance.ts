@@ -8,7 +8,7 @@ export const factSourceSchema = z.enum(FACT_SOURCES);
 
 export const STATEMENT_MAX = 400;
 
-// §10: a count never travels without the denominator that makes it mean something.
+// A count never travels without the denominator that makes it mean something.
 export const factSeenSchema = z.object({
   sessions: z.number().int().nonnegative(),
   of: z.number().int().positive(),

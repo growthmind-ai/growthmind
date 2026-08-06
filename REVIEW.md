@@ -17,10 +17,10 @@ and the defect is that the green does not mean what it appears to mean.
 
 ## The one that outranks everything
 
-[docs/product-decisions.md](docs/product-decisions.md) is the contract. A PR
-that violates a published decision is declined regardless of code quality, and
-[GOVERNANCE.md](GOVERNANCE.md) lists the ones people try most often. Argue the
-decision in an issue _before_ writing the code — not in the PR that breaks it.
+The commitments in [AGENTS.md](AGENTS.md) are the contract. A PR that breaks
+one is declined regardless of code quality, and [GOVERNANCE.md](GOVERNANCE.md)
+explains who owns them. Argue the commitment in an issue _before_ writing the
+code — not in the PR that breaks it.
 
 ## Tests
 
@@ -153,7 +153,7 @@ stranger still get a working app in one command?
 ## Customer-facing strings
 
 Plain English, no product jargon, and counts always carry denominators
-(product decisions §10). "3 of 47 sessions" is reviewable; "3 sessions" is not.
+([AGENTS.md](AGENTS.md)). "3 of 47 sessions" is reviewable; "3 sessions" is not.
 Never let an upstream vendor's error text reach a customer-visible field
 verbatim — it carries ids, and `z.string()` accepts all of them
 ([packages/adapters/src/slack/errors.ts](packages/adapters/src/slack/errors.ts)).

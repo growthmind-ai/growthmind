@@ -1,165 +1,139 @@
-# Growthmind, Contributor Guide (for humans and their coding agents)
+# Growthmind, contributor guide (humans and coding agents)
 
-Growthmind is an open-source growth engine: evidenced findings in Slack, fix specs
-dispatched to your coding agent, verified keep-or-kill experiments. Read
-[README.md](README.md) for the product and [docs/product-decisions.md](docs/product-decisions.md)
-for the commitments this codebase is built against, **a PR that violates a product
-decision will be declined regardless of code quality**, so check there first.
-[docs/architecture.md](docs/architecture.md) maps each of those commitments to the
-subsystem that enforces it; read it before adding one.
+Growthmind is the product growth loop for people building with a coding assistant: it challenges the brief before the code exists, simulates the audience before you ship, and checks what really happened after. [README.md](README.md) is the product; this file is the contract for changing the code.
 
-This file is the whole guide, and it applies whichever agent you use. It sits at
-`AGENTS.md` because that is the filename coding agents now look for without being
-configured. `CLAUDE.md` and `.github/copilot-instructions.md` are pointers to this
-file, not second copies. If your tool reads some other filename, point that file
-here too. A second copy of these rules drifts from the first within a week.
+It lives at `AGENTS.md` because that is the filename coding agents look for without being configured. [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) import or point here — they are not second copies.
 
-Two files sit one level down from this one, and both are worth the minutes:
+## What Growthmind is
 
-- **[REVIEW.md](REVIEW.md)**, what gets a PR sent back here, distilled from this
-  repo's own history. Every entry is a change that passed typecheck, passed lint,
-  passed its tests, and was still wrong. Read it before you write, not after.
-- **[.agents/skills/](.agents/README.md)**, procedures for the jobs that have a
-  right order: adding a worker task, adding an API route, writing a test that
-  would have caught the bug, verifying a change actually works, sweeping the
-  edge cases. Plain Markdown, no vendor lock-in.
+**The product growth hire you make years early.** It is for anyone building products with a coding assistant who has not hired a product growth person, and needs the judgment they are missing.
 
-## Stack
+It is a **loop, not a tool**, and that distinction decides what belongs in this codebase. Everyone else sells a single link — observation, or diagnosis, or measurement, or a patch — and hands you the job of joining them up. A finding that does not become a build is a report. A build that is not measured is a guess. A measurement that does not feed the next brief is a fact nobody uses. A change that leaves the chain open rather than closing it is the wrong change here, however well it is built.
 
-- **Runtime/tooling**: bun (package manager + scripts). `bun install`, `bun run dev`.
-- **Web**: Next.js 16 (App Router), React 19.2, TypeScript strict, Mantine v9
-- **Data**: Postgres + Drizzle ORM (+ pgvector)
-- **Auth**: Better Auth
-- **Jobs**: Graphile Worker (Postgres-backed; cron with backfill)
-- **Validation**: Zod v4. Single source of truth for shapes
-- **AI**: Vercel AI SDK; analysis via Google Gemini (`gemini-3.5-flash-lite`)
+Growthmind connects once to the customer's repo, coding assistant and analytics, then stays. It holds one living model of their product, the people it is for, and everything that has been tried. It shows up in three places:
+
+1. **At brief time, inside the coding assistant** — pressure-testing what is about to be built against the people it is for, and arming the assistant with the patterns and context to build it well.
+2. **Before ship** — walking a simulated audience of the ICP through the preview and returning a verdict: where they stall, why, and what to change.
+3. **After launch, in the channel the customer already uses** — what real users did against what Growthmind predicted, what is working, what is not, and the fix spec'd and ready for the assistant to pick up.
+
+## The commitments a PR is judged against
+
+These are not style preferences. **A PR that breaks one is declined regardless of how good the code is.** If the task you were given requires breaking one, say so and stop. The route to changing a commitment is an issue, before the code.
+
+- **Growthmind never writes to a customer's repo.** Read access only. It recommends, specs and judges; their assistant builds. Nothing of ours in their commit history.
+- **Nothing the customer has to remember to check.** A dashboard is not a delivery mechanism and neither is a report someone has to open. Findings are pushed to a channel they already use.
+- **It predicts, then marks its own homework.** A forecast is recorded with its criterion set in advance and scored later against what real users actually did, including when it was wrong. A path that produces a claim nobody can score afterwards is unfinished.
+- **Every loop writes back.** What a cycle learned lands in the model, so the next brief starts sharper than the last.
+- **Evidence carries its denominator.** "3 of 47 sessions", never "3 sessions". A claim states what was seen and out of how many.
+- **No PII in the event stream.** Deterministic ids, internal traffic excluded.
+- **Plain English in anything a customer reads.** No product jargon, and never an upstream vendor's error text verbatim — it carries ids.
+- **Self-host is first-class.** Every feature works under `docker compose up` from a clean clone with no external SaaS, or ships a graceful absence path.
+
+The full statement of what Growthmind is lives in the maintainers' company alignment document, which is private. Where this section and that document disagree, that document wins and this section is the bug.
+
+## Read before you write
+
+| File                                                           | What it gives you                                                                                               |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [REVIEW.md](REVIEW.md)                                         | What gets a PR sent back. Every entry passed typecheck, passed lint, passed its own tests, and was still wrong. |
+| [.agents/README.md](.agents/README.md)                         | Procedures for jobs with a right order: worker tasks, API routes, tests, verifying a change, edge sweeps.       |
+| [docs/architecture.md](docs/architecture.md)                   | Which subsystem enforces which commitment above. Read it before adding one.                                     |
+| [docs/reliability-checklist.md](docs/reliability-checklist.md) | How this kind of system actually breaks in production.                                                          |
+
+`.agents/skills/*/SKILL.md` are plain Markdown with no vendor lock-in, and no tool loads them automatically. Open the one that matches the job before you start it.
 
 ## Commands
 
 ```bash
 docker compose up    # full stack from a clean clone: postgres + web + worker
-bun install          # deps
+bun install          # deps; also wires .githooks via core.hooksPath
 bun run dev          # Next.js dev server (:3000)
 bun run dev:worker   # Graphile Worker, second terminal
-bun run typecheck    # tsc --noEmit, every package
+bun run typecheck    # tsc --noEmit, every workspace plus scripts/
 bun run lint         # oxlint
-bun test             # unit tests (bun test runner — never Jest/Vitest)
+bun test             # bun's test runner — never Jest, never Vitest
 bun run build        # production build
-bun run check        # all of the above + format check — must pass before any PR
-bun run db:generate  # drizzle migration from schema changes
+bun run check        # typecheck + lint + format:check + test + build
+bun run db:generate  # drizzle migration from a schema change
 bun run db:migrate   # apply migrations
 ```
 
-A `pre-push` hook ([.githooks/pre-push](.githooks/pre-push), wired to
-`core.hooksPath` by `bun install`) runs `typecheck + lint + format:check` before
-every push, about nine seconds. `bun test` and `bun run build` are minutes, so
-they stay in CI, which is why the hook narrows CI's Build gate rather than
-replacing it — `bun run check` is still the gate a change has to pass. Skip the
-hook with `git push --no-verify` when you want CI to be the judge.
+**bun, everywhere.** `npm`, `yarn`, `pnpm` and `npx` write a second lockfile that CI's `bun install --frozen-lockfile` rejects. Run `bun run typecheck`, not a bare `tsc` — the script covers every workspace, a direct `tsc` covers one and reports a green CI will not reproduce.
 
-No.env needed locally, development defaults cover everything; `.env.example`
-documents each variable. Auth schema changes: edit `apps/web/lib/auth.ts`, then
-`bun run db:generate:auth && bun run db:generate` (never hand-edit
-`packages/db/src/schema/auth.ts`).
+No `.env` is needed locally: every variable required to boot has a development default, and `docker-compose.yml` bakes in the same ones. [.env.example](.env.example) documents each variable and what happens when it is absent.
 
-## Conventions
+Auth schema changes: edit `apps/web/lib/auth.ts`, then run `bun run db:generate:auth` followed by `bun run db:generate`.
 
-- **Self-host is first-class**: every feature must work under `docker compose up`
-  with no external SaaS dependency. If your change needs a cloud service, it needs
-  a self-host path or a graceful absence.
-- **Pure functions get unit tests**. Extractors, scorers, resolvers, diff utilities.
-  No shipping without tests for pure logic.
-- **Events/analytics discipline mirrors the product's own rules** (§2–§4 of the
-  product decisions): deterministic IDs, no PII in streams, internal traffic excluded.
-- **Plain English in customer-facing strings**. See the language rules in the
-  product decisions (§10). No product jargon, counts always carry denominators.
-- Keep `page.tsx` files as server components; client logic lives in separate
-  `"use client"` components.
+## Before you open a PR
+
+`bun run check` is the gate, and it is not skippable. Do not report a change as working on the strength of a typecheck.
+
+CI runs three gates `bun run check` does not:
+
+- **`bun run db:generate` must leave the tree clean.** A schema edit with no generated migration typechecks, lints, and passes every test — the code and the migrations only disagree at runtime, against a real database.
+- **`__tests__/undeclared-dependencies.test.ts`.** An import of a package the workspace does not declare resolves fine against a laptop's accumulated `node_modules` and fails here.
+- **`docker compose up` from a clean clone, then a probe of `/api/health`.** A green local `check` and a red CI means you skipped the compose question.
+
+A `pre-push` hook ([.githooks/pre-push](.githooks/pre-push)) runs typecheck + lint + format:check, about nine seconds. `bun test` and `bun run build` are minutes, so they stay in CI. Bypass with `git push --no-verify` when you want CI to be the judge.
+
+Then run [.agents/skills/verify-a-change](.agents/skills/verify-a-change/SKILL.md). Passing tests do not prove your edit reached the running process, and in this repo that gap has produced a worker that crashed on boot and an env loader that failed in silence.
+
+## Stack
+
+- **Runtime**: bun (package manager and script runner), Node ≥ 22
+- **Web**: Next.js 16 App Router, React 19, TypeScript strict, Mantine v9
+- **Data**: Postgres 17 + Drizzle ORM; pgvector enabled from migration 0000
+- **Auth**: Better Auth
+- **Jobs**: Graphile Worker (Postgres-backed; cron with backfill)
+- **Validation**: Zod v4, schemas in `packages/shared` — the single source of truth for shapes
+- **AI**: Vercel AI SDK; analysis via Google Gemini (default `gemini-3.5-flash-lite`, configurable)
+
+Exact versions live in the workspace `package.json` files. Read them there rather than trusting a number in this file.
 
 ## Repo layout
 
 ```
-apps/web/          # Next.js app (findings, settings, billing)
-packages/sdk-js/   # the event package — capture, masking, exclusions
-packages/db/       # Drizzle schema + migrations (+ generated auth schema)
-packages/shared/   # Zod schemas, shared types (env validation lives here)
-worker/            # Graphile Worker process (analysis pipeline, batch polling)
-docs/              # product decisions, architecture, stack — shipped contracts
-.agents/skills/    # procedures for the jobs that have a right order (any agent)
+apps/web/           # Next.js app (findings, settings, billing) and API routes
+packages/core/      # detectors, scoring, analysis logic
+packages/adapters/  # Slack, model provider, session sources
+packages/db/        # Drizzle schema, migrations, repositories, generated auth schema
+packages/shared/    # Zod schemas, shared types, env validation
+packages/sdk-js/    # the event package — capture, masking, exclusions
+worker/             # Graphile Worker process (analysis pipeline, batch polling)
+docs/               # shipped documentation: architecture, evidence standard, telemetry
+.agents/skills/     # procedures for jobs with a right order (any agent)
 ```
+
+## Conventions
+
+- **Pure logic ships with a test.** Extractors, scorers, resolvers, diff utilities. Tests live in `__tests__/` beside the code they cover.
+- **Name a test after the invariant it protects**, not the function it calls: `no-direct-zod`, `cross-tenant-real-keys`, `wire-constants`. When one fails, the name says which architectural promise broke.
+- **Never hand-edit a generated file.** `packages/db/src/schema/auth.ts` comes from `apps/web/lib/auth.ts` via `bun run db:generate:auth`; migrations under `packages/db/drizzle/` come from `bun run db:generate`; `bun.lock` comes from `bun install`. A hand-edit succeeds, passes, and is reverted by the next person who runs the generator.
+- **Worker task names are exported constants** in `worker/src/task-names.ts`, never raw strings. The registry test enforces it.
+- **Keep `page.tsx` files server components.** Client logic lives in separate `"use client"` components.
 
 ## Comments
 
-Comments here explain **why**, not what. The bar is: state the reasoning the
-next reader could not recover from the code alone. Why a check sits before the
-thing it protects, which two states may never collapse into one, what a
-plausible-looking simplification would break.
+Comments here explain **why**, not what: the reasoning the next reader could not recover from the code alone. Why a check sits before the thing it protects, which two states may never collapse into one, what a plausible-looking simplification would break.
 
-Keep them short and keep them in plain prose:
-
-- No section banners, ASCII rules, or box-drawing.
+- Short, plain prose. No section banners, ASCII rules, or box-drawing.
 - No shouting. Emphasis is the sentence, not capital letters.
-- No shorthand a reader outside the project cannot resolve. Cite a file, a test,
-  or a doc under `docs/` instead.
-- Long-form design rationale belongs in `docs/`, where it gets reviewed and
-  versioned as documentation. A comment links to it rather than restating it.
-
-[docs/reliability-checklist.md](docs/reliability-checklist.md) is the list of
-ways this kind of system actually breaks in production. It is worth a pass
-before you call a change done, and it is where a comment should point when it is
-guarding against one of those cases.
-
-Unit tests live in `__tests__/` directories next to the code they cover.
-Worker task names are exported constants in `worker/src/task-names.ts`, never
-raw strings, the registry test enforces it.
+- No shorthand a reader outside the project cannot resolve. Cite a file, a test, or a doc under `docs/` instead.
+- Long-form design rationale belongs in `docs/`, where it gets reviewed and versioned. A comment links to it rather than restating it.
 
 ## If you are a coding agent
 
-Everything above applies to you. These five are addressed to you specifically,
-because they are the ways an agent's work goes wrong here while looking fine.
+Everything above applies to you. These two are addressed to you specifically, because they are how agent work goes wrong here while looking fine.
 
-1. **The product contract can require you to refuse.**
-   [docs/product-decisions.md](docs/product-decisions.md) §1–§12 is not a style
-   guide, a change that violates a published decision is declined regardless of
-   how good the code is, and [GOVERNANCE.md](GOVERNANCE.md) lists the ones people
-   try most (a ranked list, PII in the event stream, writing into a
-   customer's repo, an external SaaS with no self-host path). If the task you were
-   given requires one of those, **say so and stop** rather than building it well.
-   The route to changing a decision is an issue, before the code.
-
-2. **`bun run check` is not optional and not skippable.** It is
-   `typecheck + lint + format:check + bun test + build`, and it is what CI runs.
-   Do not report a change as working on the strength of a typecheck. Then run
-   [.agents/skills/verify-a-change](.agents/skills/verify-a-change/SKILL.md) —
-   passing tests do not prove your edit reached the running process, and in this
-   repo that gap has produced a worker that crashed on boot and an env loader that
-   failed in silence.
-
-3. **Never hand-edit a generated file.** `packages/db/src/schema/auth.ts` comes
-   from `apps/web/lib/auth.ts` via `bun run db:generate:auth`; migrations under
-   `packages/db/drizzle/` come from `bun run db:generate`; `bun.lock` comes from
-   `bun install`. A hand-edit there succeeds, passes, and is reverted by the next
-   person who runs the generator.
-
-4. **bun, everywhere.** `npm`, `yarn`, `pnpm`, and `npx` write a second lockfile
-   that CI's `bun install --frozen-lockfile` will reject. `bun run typecheck`, not
-   a bare `tsc`, the script covers every workspace, a direct `tsc` covers one and
-   reports a green CI will not reproduce.
-
-5. **Say what you did not verify.** A change you could not drive, no credential,
-   no Slack workspace, no data. Is a change to flag, not to describe as done.
-   Overclaiming is the single most expensive thing an agent does in this
-   repository, because the human stops checking.
-
-Disclose that you were used: see the AI-assisted contributions section of
-[CONTRIBUTING.md](CONTRIBUTING.md). The person opening the PR owns everything in
-it either way.
+1. **Say what you did not verify.** A change you could not drive — no credential, no Slack workspace, no data — is a change to flag, not to describe as done. Overclaiming is the single most expensive thing an agent does in this repository, because the human stops checking.
+2. **Disclose that you were used.** See the AI-assisted contributions section of [CONTRIBUTING.md](CONTRIBUTING.md). The person opening the PR owns everything in it either way.
 
 ## Local working directories
 
-`.claude/`, `.ai/`, and `local/` are local working directories and are
-gitignored, don't commit them or reference their contents in code. `local/`
-is where a maintainer or contributor keeps private notes and drafts beside
-the code without any risk of publishing them. If the agent you use keeps its
-own working directory, put it under `local/` or add it to `.gitignore`, no
-contributor's tooling belongs in this repo's history.
+`.claude/`, `.ai/` and `local/` are gitignored. Do not commit them or reference their contents in code. `local/` is where a maintainer or contributor keeps private notes and drafts beside the code without any risk of publishing them. If the agent you use keeps its own working directory, put it under `local/` or add it to `.gitignore` — no contributor's tooling belongs in this repo's history.
+
+## Pointing your tool at this file
+
+If your tool reads some other filename, add a pointer file rather than a copy. A second copy of these rules drifts from the first within a week.
+
+For rules that apply to one part of the tree only, add a nested `AGENTS.md` in that directory instead of growing this one. Agents read the nearest file in the directory tree, so the closest one wins.

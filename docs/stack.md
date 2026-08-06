@@ -3,8 +3,8 @@
 > What we are building Growthmind on, why each piece is locked, and the order we
 > land it in. This is a plan, not a survey: every row below has an owner-facing
 > definition of done. Product commitments live in
-> [docs/product-decisions.md](product-decisions.md); this document is the
-> technical substrate those commitments run on.
+> [AGENTS.md](../AGENTS.md); this document is the technical substrate those
+> commitments run on.
 
 ## The constraint every choice is made against
 

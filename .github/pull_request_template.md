@@ -1,9 +1,9 @@
 <!--
-Thanks for contributing. Two documents outrank code quality here:
-docs/product-decisions.md (the product contract) and docs/architecture.md
-(which subsystem enforces what). A PR that violates a product decision will
-be declined regardless of how good the code is. GOVERNANCE.md explains who
-decides, and how to argue a decision down before you write the code.
+Thanks for contributing. Two documents outrank code quality here: AGENTS.md
+("The commitments a PR is judged against") and docs/architecture.md (which
+subsystem enforces what). A PR that breaks a commitment will be declined
+regardless of how good the code is. GOVERNANCE.md explains who decides, and
+how to argue a commitment down before you write the code.
 -->
 
 ## What & why
@@ -35,7 +35,7 @@ if you wrote it all by hand. -->
 
 - [ ] `bun run check` passes locally (typecheck + lint + format + test + build)
 - [ ] I ran the change, not just the tests (.agents/skills/verify-a-change)
-- [ ] No product decision in docs/product-decisions.md is violated
+- [ ] No commitment in AGENTS.md is broken
 - [ ] Customer-facing strings are plain English; counts carry denominators
 - [ ] New dependencies had their LICENSE read (docs/stack.md, standing rules)
 - [ ] Edge cases swept for the surfaces this touches (.agents/skills/edge-sweep);

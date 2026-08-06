@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://growthmind.ai">growthmind.ai</a> ·
   <a href="https://growthmind.ai/pricing">pricing</a> ·
-  <a href="docs/product-decisions.md">product decisions</a> ·
+  <a href="AGENTS.md">commitments</a> ·
   <a href="docs/architecture.md">architecture</a> ·
   <a href="docs/reliability-checklist.md">reliability checklist</a>
 </p>
@@ -72,7 +72,7 @@ No ranked list of twelve things. No new vocabulary to learn. One message, fully 
 
 ## What makes it different
 
-These are commitments from the [product decisions](docs/product-decisions.md). The document this codebase is built against:
+These are commitments from [AGENTS.md](AGENTS.md), the contract this codebase is built against:
 
 - **A real finding within 24 hours of install.** A number we hold ourselves to.
 - **No tracking plan, no taxonomy, no activation definition up front.** Events are auto-derived from your codebase, tied to a line of code, and re-derived on every merge, so drift is impossible by construction, not by discipline.
@@ -136,19 +136,19 @@ bun run dev:worker         # worker, second terminal
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), and point your coding agent at
 [AGENTS.md](AGENTS.md), the same conventions, written for the thing writing
 the code. The short version: the
-[product decisions](docs/product-decisions.md) are the contract this codebase
-is built against, `bun run check` is the local gate, and if you think a
-decision is wrong there is an issue template specifically for arguing with
-it. [GOVERNANCE.md](GOVERNANCE.md) covers who decides, why there is no CLA,
-and how to take a product decision apart. Security reports go through
+[commitments in AGENTS.md](AGENTS.md) are the contract this codebase is built
+against, `bun run check` is the local gate, and if you think a commitment is
+wrong there is an issue template specifically for arguing with it.
+[GOVERNANCE.md](GOVERNANCE.md) covers who decides, why there is no CLA, and
+how to take a commitment apart. Security reports go through
 [SECURITY.md](SECURITY.md), never a public issue.
 
 ## Status
 
 **Early. Pre-release.** This repository is where the platform is being built in
-the open. The [product decisions](docs/product-decisions.md), the
+the open. The [commitments](AGENTS.md), the
 [architecture](docs/architecture.md) that enforces them, and the
-[stack rationale](docs/stack.md) are settled and published in [`docs/`](docs/).
+[stack rationale](docs/stack.md) are settled and published.
 The full machine-surface contract is still a draft and graduates to `docs/` as
 it is implemented. The implementation is landing now. The status note at the top
 lists what runs and what does not, in both directions. Watch or star the repo to

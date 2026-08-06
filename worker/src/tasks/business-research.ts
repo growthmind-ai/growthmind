@@ -101,7 +101,7 @@ function factsFrom(
     ];
   });
 
-  // §5's segments-not-individuals guard and the O-021 PII seam, applied before anything is
+  // The segments-not-individuals guard and the O-021 PII seam, applied before anything is
   // persisted — not before it is displayed, which would leave the row in the table.
   return admitBusinessFacts(rows).slice(0, BUSINESS_FACT_LIMIT);
 }
