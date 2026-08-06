@@ -331,3 +331,37 @@ describe("a sentence keyed by a lane state asserts only what that state establis
     expect(NO_RATE_SENTENCE.toLowerCase()).toContain("set aside");
   });
 });
+
+describe("the dismissal acknowledgement sentences — O-019, ADD 'Slack dismiss handler' section", () => {
+  test("carries every registered message including the two new dismissal acknowledgements", () => {
+    // DISMISSAL_ACKNOWLEDGEMENT / DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT do not exist in
+    // production yet (Wave 1 task 1.2). Read through a widened view of the namespace so this
+    // Wave 0 red is a real assertion failure (the constant is missing) rather than a TS2305
+    // "no exported member" compile error on an import that cannot resolve.
+    const namespace = messagesModule as unknown as Record<string, unknown>;
+    const acknowledgement = namespace.DISMISSAL_ACKNOWLEDGEMENT;
+    const alreadyRecorded = namespace.DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT;
+
+    expect(typeof acknowledgement).toBe("string");
+    expect(typeof alreadyRecorded).toBe("string");
+
+    const first = typeof acknowledgement === "string" ? acknowledgement : "";
+    const second = typeof alreadyRecorded === "string" ? alreadyRecorded : "";
+
+    expect(ALL_DELIVERY_MESSAGES.includes(first)).toBe(true);
+    expect(ALL_DELIVERY_MESSAGES.includes(second)).toBe(true);
+
+    for (const message of [first, second]) {
+      const lower = message.toLowerCase();
+
+      expect(lower.includes("permanent")).toBe(false);
+      expect(lower.includes("org-wide")).toBe(false);
+
+      // This file's existing plain-English registry assertions (see "every customer-facing
+      // delivery message is a whole sentence", above).
+      expect(message.trim().length).toBeGreaterThan(20);
+      expect(message.trim().endsWith(".")).toBe(true);
+      expect(message).toBe(message.trim());
+    }
+  });
+});
