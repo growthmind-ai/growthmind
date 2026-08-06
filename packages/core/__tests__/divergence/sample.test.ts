@@ -43,7 +43,7 @@ function expectedOrder(sessions: readonly SessionTimeline[], limit: number): rea
 describe("sampleSessionIds", () => {
   test("samples session ids deterministically, earliest-started-first, capped at the limit", () => {
     const cohort = buildCohort();
-    const shuffled = [...cohort].reverse();
+    const shuffled = cohort.toReversed();
 
     const sampled = sampleSessionIds(shuffled, LIMIT);
 

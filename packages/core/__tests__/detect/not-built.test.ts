@@ -444,6 +444,7 @@ describe("the analysis modules contain no barred click proxy", () => {
     expect(DETECT_MODULES.map((mod) => mod.module)).toEqual([
       "analysed.ts",
       "error-event.ts",
+      "funnel-dropoff-cohorts.ts",
       "funnel-dropoff.ts",
       "not-built.ts",
       "observed.ts",

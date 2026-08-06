@@ -608,10 +608,10 @@ describe("detector purity and coverage", () => {
       expect(scanned.source).not.toMatch(/^(?:export\s+)?const\s+\w+[^\n]*=>/m);
     }
 
-    const funnelRegions = collectFunctionRegions(
-      detectorModules.find((module) => module.path === "detect/funnel-dropoff.ts")?.source ?? "",
+    const cohortsRegions = collectFunctionRegions(
+      modules.find((module) => module.path === "detect/funnel-dropoff-cohorts.ts")?.source ?? "",
     );
-    expect(funnelRegions.find((region) => region.owner === "detectFunnelDropoff")?.text).toContain(
+    expect(cohortsRegions.find((region) => region.owner === "funnelDropoffCohorts")?.text).toContain(
       "funnelMinSessionsAtOrigin",
     );
 
