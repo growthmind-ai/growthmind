@@ -2,8 +2,10 @@ import type { ConnectionState, ConnectionSummary } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
 
 import { detectFunnelDropoff } from "../../src/detect/funnel-dropoff";
-// This import is the Wave 0 red: funnel-dropoff-cohorts.ts does not exist yet (ADD Decision 2).
-import { funnelDropoffCohorts } from "../../src/detect/funnel-dropoff-cohorts";
+import {
+  funnelDropoffCohorts,
+  type FunnelDropoffCohort,
+} from "../../src/detect/funnel-dropoff-cohorts";
 import type {
   DetectorCorpus,
   DetectorCoverage,
@@ -126,15 +128,6 @@ function coverageOf(sessions: readonly SessionTimeline[]): DetectorCoverage {
   }
   return { truncated: false, eventsWithoutUrlPath };
 }
-
-// Placeholder mirroring ADD Decision 2's contract for packages/core/src/detect/funnel-dropoff-cohorts.ts
-// (not built yet — this Wave 0 test's import below is expected to fail to resolve). Typing the
-// call site with this shape keeps the rest of the test from cascading into `any`-inference noise.
-type FunnelDropoffCohort = {
-  readonly origin: string;
-  readonly succeeded: readonly SessionTimeline[];
-  readonly failed: readonly SessionTimeline[];
-};
 
 function firingCorpus(): DetectorCorpus {
   const sessions: readonly SessionTimeline[] = [

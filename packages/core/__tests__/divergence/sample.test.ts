@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SessionTimeline } from "../../src/detect/types";
-// TODO(O-043 Wave 1): packages/core/src/divergence/sample.ts does not exist yet.
 import { sampleSessionIds } from "../../src/divergence/sample";
 import { sessionOf } from "../spine/fixtures";
 

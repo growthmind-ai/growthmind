@@ -1,11 +1,10 @@
 import type { SessionTimeline } from "../detect/types";
+import { comparePathsAscending } from "../spine/walk";
 
 function compareSessionsAscending(left: SessionTimeline, right: SessionTimeline): number {
   const byStartedAt = left.startedAt.getTime() - right.startedAt.getTime();
   if (byStartedAt !== 0) return byStartedAt;
-  if (left.sessionId < right.sessionId) return -1;
-  if (left.sessionId > right.sessionId) return 1;
-  return 0;
+  return comparePathsAscending(left.sessionId, right.sessionId);
 }
 
 export function sampleSessionIds(
