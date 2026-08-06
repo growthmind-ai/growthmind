@@ -4,6 +4,7 @@ import {
   createDeliveriesRepo,
   resolveDeliveryForInteraction,
   type ClaimDeliveryInput,
+  type InteractionPrincipal,
 } from "../../src/repositories/deliveries.repo";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -18,6 +19,12 @@ import {
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;
 }
+
+// TODO(ADD o-019-dismissal-wired Decision 1): production InteractionPrincipal gains
+// `readonly signature: SignatureHex`, read straight off deliveries.signature — one field
+// added to resolveDeliveryForInteraction's existing select projection, no join, no second
+// query (packages/db/src/repositories/deliveries.repo.ts).
+type InteractionPrincipalWithSignature = InteractionPrincipal & { readonly signature: SignatureHex };
 
 const CHANNEL = "C0FINDINGS";
 const OTHER_CHANNEL = "C0ENGINEERING";
@@ -566,6 +573,38 @@ describe("deliveries repository", () => {
     expect(fromB?.findingId).toBe("finding-shared-channel-b");
     expect(fromB?.projectId).toBe(projectB.id);
     expect(fromB?.deliveryId).toBe(claimedB.delivery?.id);
+  });
+
+  it("resolveDeliveryForInteraction returns the delivery's signature on its principal", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: "acme-principal-signature",
+      userName: "Owner Principal Signature",
+      email: "owner-principal-signature@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: "checkout-principal-signature",
+    });
+    const repo = createDeliveriesRepo(db, org.ctx);
+    const signature = testSignature("f".repeat(64));
+    const messageRef = "1785481299.555555";
+
+    await repo.claimForPost(
+      makeClaimInput(project.id, { findingId: "finding-principal-signature", signature }),
+    );
+    await repo.markPosted({
+      findingId: "finding-principal-signature",
+      channelId: CHANNEL,
+      postedAt: new Date("2026-07-31T10:00:00.000Z"),
+      messageRef,
+    });
+
+    const principal = (await resolveDeliveryForInteraction(db, {
+      channelId: CHANNEL,
+      messageRef,
+    })) as InteractionPrincipalWithSignature | null;
+
+    expect(principal?.signature).toBe(signature);
   });
 
   it("resolves no delivery for a message Growthmind did not write", async () => {

@@ -12,6 +12,8 @@ import {
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import {
   createFindingsRepo,
+  type FindingRecord,
+  type FindingsRepo,
   type MeasuredCountRow,
   type PersistFindingInput,
 } from "../../src/repositories/findings.repo";
@@ -106,6 +108,14 @@ function makePersistInput(
     tokensOut: 180,
     ...overrides,
   };
+}
+
+// TODO(ADD o-019-dismissal-wired Decision 2 part A): findById is a new method on
+// FindingsRepo, implemented via orgCrud's existing c.maybe(eq(findings.id, id)) — the same
+// org-scoping every other method on this repo already gets for free from orgCrud's
+// s.owned() filter (packages/db/src/repositories/findings.repo.ts).
+interface FindingsRepoWithFindById extends FindingsRepo {
+  findById(id: string): Promise<FindingRecord | null>;
 }
 
 describe("findings repository", () => {
@@ -256,6 +266,37 @@ describe("findings repository", () => {
     expect(zeroReadBack?.surfaceNormalisationVersion).not.toBe(
       readBack?.surfaceNormalisationVersion,
     );
+  });
+
+  it("findById returns a finding scoped to the caller's organization, and null for another org's id", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: "acme-findbyid-a",
+      userName: "Owner FindById A",
+      email: "owner-findbyid-a@acme.example",
+    });
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: "acme-findbyid-b",
+      userName: "Owner FindById B",
+      email: "owner-findbyid-b@acme.example",
+    });
+    const project = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "checkout-findbyid",
+    });
+    const run = await seedAnalysisRun(db, { ctx: orgA.ctx, projectId: project.id });
+
+    const repoA = createFindingsRepo(db, orgA.ctx) as FindingsRepoWithFindById;
+    const repoB = createFindingsRepo(db, orgB.ctx) as FindingsRepoWithFindById;
+
+    const written = await repoA.persist(
+      makePersistInput(project.id, run.id, { signature: signatureFor("findbyid") }),
+    );
+
+    const found = await repoA.findById(written.id);
+    expect(found?.id).toBe(written.id);
+
+    const crossOrg = await repoB.findById(written.id);
+    expect(crossOrg).toBeNull();
   });
 
   // R-1 lets a fix reference its finding instead of copying it, and that is only safe while
