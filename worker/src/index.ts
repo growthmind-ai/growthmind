@@ -138,37 +138,50 @@ type AnalysisComposition = {
   lanes: AnalysisLaneSource;
 };
 
-function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
-  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (apiKey === undefined) {
+// Both-or-neither, in one place: a Bedrock key is scoped to the region it was minted
+// for, so a token without a region cannot be called and a region without a token
+// configures nothing. Either way the caller reports "no model configured".
+function resolveColdstartModel(
+  env: WorkerEnv,
+): { model: ReturnType<typeof createColdstartModel>; resolvedModelId: string } | null {
+  const apiKey = env.AWS_BEARER_TOKEN_BEDROCK;
+  const region = env.AWS_REGION;
+  if (apiKey === undefined || region === undefined) {
     return null;
   }
 
   const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
 
+  return { model: createColdstartModel({ apiKey, region, resolvedModelId }), resolvedModelId };
+}
+
+function resolveSummariser(env: WorkerEnv): ConfiguredSummariser | null {
+  const coldstart = resolveColdstartModel(env);
+  if (coldstart === null) {
+    return null;
+  }
+
   return {
     port: createSessionSummariser({
-      model: createColdstartModel({ apiKey, resolvedModelId }),
-      resolvedModelId,
+      model: coldstart.model,
+      resolvedModelId: coldstart.resolvedModelId,
       outputSchema: modelSummaryOutputSchema,
     }),
-    resolvedModelId,
+    resolvedModelId: coldstart.resolvedModelId,
   };
 }
 
 // Absent key, absent researcher: the task records "no model configured" rather than
 // leaving a person watching a spinner that will never resolve.
 function resolveBusinessResearcher(env: WorkerEnv): BusinessResearcherPort | null {
-  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (apiKey === undefined) {
+  const coldstart = resolveColdstartModel(env);
+  if (coldstart === null) {
     return null;
   }
 
-  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
-
   return createBusinessResearcher({
-    model: createColdstartModel({ apiKey, resolvedModelId }),
-    resolvedModelId,
+    model: coldstart.model,
+    resolvedModelId: coldstart.resolvedModelId,
     bindingSchema: bindingReadOutputSchema,
     shapingSchema: shapingReadOutputSchema,
     audienceSchema: audienceReductionOutputSchema,
@@ -176,20 +189,18 @@ function resolveBusinessResearcher(env: WorkerEnv): BusinessResearcherPort | nul
 }
 
 function resolveNarrator(env: WorkerEnv): ConfiguredNarrator | null {
-  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (apiKey === undefined) {
+  const coldstart = resolveColdstartModel(env);
+  if (coldstart === null) {
     return null;
   }
 
-  const resolvedModelId = env.GROWTHMIND_COLDSTART_MODEL ?? DEFAULT_COLDSTART_MODEL;
-
   return {
     port: createRecordingNarrator({
-      model: createColdstartModel({ apiKey, resolvedModelId }),
-      resolvedModelId,
+      model: coldstart.model,
+      resolvedModelId: coldstart.resolvedModelId,
       outputSchema: narrationOutputSchema,
     }),
-    resolvedModelId,
+    resolvedModelId: coldstart.resolvedModelId,
   };
 }
 

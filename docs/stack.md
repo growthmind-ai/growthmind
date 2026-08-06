@@ -28,18 +28,18 @@ outright). Details in [Considered and rejected](#considered-and-rejected).
 
 ## The stack we are implementing
 
-| Layer                     | Choice                                                        | Licence          |
-| ------------------------- | ------------------------------------------------------------- | ---------------- |
-| Runtime / package manager | **bun**                                                       | MIT              |
-| Framework                 | **Next.js 16** (App Router)                                   | MIT              |
-| Auth                      | **Better Auth** + organization plugin                         | MIT              |
-| Database                  | **Postgres + Drizzle** (+ pgvector)                           | PostgreSQL / MIT |
-| Jobs                      | **Graphile Worker**                                           | MIT              |
-| UI                        | **Mantine v9**                                                | MIT              |
-| Validation                | **Zod v4**                                                    | MIT              |
-| AI                        | **Vercel AI SDK**; Google Gemini for session analysis         | Apache-2.0       |
-| Analytics store           | **Postgres now**; ClickHouse only when event volume forces it | —                |
-| Our licence               | **MIT**                                                       | —                |
+| Layer                     | Choice                                                           | Licence          |
+| ------------------------- | ---------------------------------------------------------------- | ---------------- |
+| Runtime / package manager | **bun**                                                          | MIT              |
+| Framework                 | **Next.js 16** (App Router)                                      | MIT              |
+| Auth                      | **Better Auth** + organization plugin                            | MIT              |
+| Database                  | **Postgres + Drizzle** (+ pgvector)                              | PostgreSQL / MIT |
+| Jobs                      | **Graphile Worker**                                              | MIT              |
+| UI                        | **Mantine v9**                                                   | MIT              |
+| Validation                | **Zod v4**                                                       | MIT              |
+| AI                        | **Vercel AI SDK**; Claude on Amazon Bedrock for session analysis | Apache-2.0       |
+| Analytics store           | **Postgres now**; ClickHouse only when event volume forces it    | —                |
+| Our licence               | **MIT**                                                          | —                |
 
 Everything on that list is MIT or equivalent, installs as a package or runs as a
 single container, and needs no account to run locally. That property is the point
