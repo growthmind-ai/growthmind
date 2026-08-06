@@ -80,8 +80,7 @@ function containsAny(statement: string, words: readonly string[]): boolean {
 }
 
 export type CauseGuardVerdict =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly offences: readonly string[] };
+  { readonly ok: true } | { readonly ok: false; readonly offences: readonly string[] };
 
 export function guardCauseText(
   claims: readonly { readonly statement: string }[],

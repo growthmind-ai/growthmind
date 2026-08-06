@@ -9,7 +9,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createRecordingSummariesRepo } from "@growthmind/db";
-import { createTestDb, scannedTextFor, seedConnection, seedSession, type TestDb } from "@growthmind/db/testing";
+import {
+  createTestDb,
+  scannedTextFor,
+  seedConnection,
+  seedSession,
+  type TestDb,
+} from "@growthmind/db/testing";
 import type { BeatView } from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscript";
@@ -128,7 +134,14 @@ describe("UX row 1 — a finding that cleared the citation gate", () => {
 
   test("a claim with a resolved citesHref renders as a real, focusable control — never click-only text", () => {
     const beats: readonly BeatView[] = [
-      { index: 0, at: "01:04", kind: "input", text: "left the email field blank", notable: true, attempt: null },
+      {
+        index: 0,
+        at: "01:04",
+        kind: "input",
+        text: "left the email field blank",
+        notable: true,
+        attempt: null,
+      },
     ];
     const claims: readonly ClaimViewWithHref[] = [
       {

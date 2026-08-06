@@ -165,7 +165,11 @@ describe("beatsFromActions", () => {
     const beats = beatsFromActions(actions);
 
     expect(beats.map((beat: ExpectedCauseBeat) => beat.index)).toEqual([0, 1, 2]);
-    expect(beats.map((beat: ExpectedCauseBeat) => beat.kind)).toEqual(["click", "navigate", "exit"]);
+    expect(beats.map((beat: ExpectedCauseBeat) => beat.kind)).toEqual([
+      "click",
+      "navigate",
+      "exit",
+    ]);
   });
 });
 

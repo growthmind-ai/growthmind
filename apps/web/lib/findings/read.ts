@@ -8,7 +8,13 @@ import {
 } from "@growthmind/db";
 import { coverageSentences } from "@growthmind/shared";
 import type { TenantContext } from "@growthmind/shared";
-import type { BeatView, ClaimView, FindingGroup, FindingRow, OverviewView } from "@growthmind/shared";
+import type {
+  BeatView,
+  ClaimView,
+  FindingGroup,
+  FindingRow,
+  OverviewView,
+} from "@growthmind/shared";
 
 import { buildEvidenceView } from "./evidence";
 
@@ -109,7 +115,9 @@ export async function readLiveOverview(
     records.map((record) => record.id),
   );
 
-  const rows = records.map((record) => rowFrom(record, causeClaimsByFinding.get(record.id) ?? null));
+  const rows = records.map((record) =>
+    rowFrom(record, causeClaimsByFinding.get(record.id) ?? null),
+  );
 
   return {
     window: windowLabelOf(records),

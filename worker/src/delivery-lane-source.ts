@@ -371,10 +371,7 @@ export function createDeliveryLaneSource(deps: DeliveryLaneSourceDeps): Delivery
       const findings = createFindingsRepo(deps.db, ctx);
       const deliveries = createDeliveriesRepo(deps.db, ctx);
       const causeClaimsRepo = createCauseClaimsRepo(deps.db, ctx);
-      const recordingSummaries: RecordingSummariesRepo = createRecordingSummariesRepo(
-        deps.db,
-        ctx,
-      );
+      const recordingSummaries: RecordingSummariesRepo = createRecordingSummariesRepo(deps.db, ctx);
 
       // Read once per lane, not per finding, and read fresh every tick: a correction to
       // what a surface is worth reorders this queue on the next tick rather than from the

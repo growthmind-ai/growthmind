@@ -14,8 +14,22 @@ import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscri
 import type { ClaimViewWithHref } from "./helpers/wave0-types";
 
 const BEATS: readonly BeatView[] = [
-  { index: 0, at: "01:04", kind: "input", text: "left the email field blank", notable: true, attempt: null },
-  { index: 1, at: "01:11", kind: "click", text: 'clicked button "Submit"', notable: false, attempt: null },
+  {
+    index: 0,
+    at: "01:04",
+    kind: "input",
+    text: "left the email field blank",
+    notable: true,
+    attempt: null,
+  },
+  {
+    index: 1,
+    at: "01:11",
+    kind: "click",
+    text: 'clicked button "Submit"',
+    notable: false,
+    attempt: null,
+  },
 ];
 
 const CITED_HREF = "/replays/o44-citation-recording?t=64000";

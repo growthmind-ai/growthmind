@@ -8,7 +8,11 @@ import { createDivergencePointsRepo } from "@growthmind/db";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { readFindingDetailPageSource, readLiveFindingWave0, seedModelRenderedFinding } from "./helpers/wave0-types";
+import {
+  readFindingDetailPageSource,
+  readLiveFindingWave0,
+  seedModelRenderedFinding,
+} from "./helpers/wave0-types";
 
 const WINDOW_START = new Date("2026-08-01T00:00:00.000Z");
 const WINDOW_END = new Date("2026-08-08T00:00:00.000Z");
@@ -70,7 +74,9 @@ describe("UX row 6 — a finding that never diverged", () => {
     // The old unconditional placeholder line must be gone — FR-12 requires groupOf() (and this
     // page's copy) to stop asserting causation is categorically unbuilt. The source stores the
     // apostrophe as a JSX entity, so both spellings are matched.
-    expect(source).not.toMatch(/We can(?:'|&apos;)t yet say why — that stage isn(?:'|&apos;)t built/);
+    expect(source).not.toMatch(
+      /We can(?:'|&apos;)t yet say why — that stage isn(?:'|&apos;)t built/,
+    );
     // The arm-3/arm-4 split this row exists to prove: the page must branch on evidence, not
     // render AnnotatedTranscript unconditionally for every non-withheld finding.
     expect(source).toMatch(/evidence/);

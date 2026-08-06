@@ -20,7 +20,8 @@ import {
 
 // Wave 0 contract shapes (ADD tasks/o-044-cause-stage-citation-gate/add.md, Decision 3).
 // Production types arrive with packages/db/src/repositories/cause-claims.repo.ts (Wave 1+).
-const OWNER = "backend-execution-agent, Wave 1+ (packages/db/src/repositories/cause-claims.repo.ts, ADD Decision 3)";
+const OWNER =
+  "backend-execution-agent, Wave 1+ (packages/db/src/repositories/cause-claims.repo.ts, ADD Decision 3)";
 
 interface CauseClaimStatement {
   readonly statement: string;

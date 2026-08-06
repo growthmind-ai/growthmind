@@ -32,7 +32,9 @@ export const analysisModelCalls = pgTable(
     // ADD Decision 2: additive, DEFAULT 'render' is a statement of historical fact (every
     // row that exists before this column shipped is a render-stage claim), not a guess a
     // backfill would need to correct.
-    stage: text("stage", { enum: ["render", "cause"] }).notNull().default("render"),
+    stage: text("stage", { enum: ["render", "cause"] })
+      .notNull()
+      .default("render"),
   },
   (table) => [
     // Widens the old 3-column (org, project, signature) index to 4 columns so the render

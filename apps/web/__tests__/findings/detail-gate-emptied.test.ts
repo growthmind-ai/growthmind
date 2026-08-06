@@ -19,7 +19,11 @@ import {
   seedAnalysisRun,
   type TestDb,
 } from "@growthmind/db/testing";
-import { EVIDENCE_CLAIM_DROPPED, summarySourceSchema, type TenantContext } from "@growthmind/shared";
+import {
+  EVIDENCE_CLAIM_DROPPED,
+  summarySourceSchema,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "../../components/findings/AnnotatedTranscript";
 import { readMarkup } from "../first-run/helpers/rendered-markup";

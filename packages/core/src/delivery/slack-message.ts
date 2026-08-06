@@ -91,8 +91,16 @@ export type DeliveredCauseClaim = {
 // emptied every claim (droppedClaims > 0) — a finding with no cause_claims row at all never
 // reaches this type, its DeliveredExplanation simply omits `cause`.
 export type DeliveredCause =
-  | { readonly grade: "explained"; readonly claims: readonly DeliveredCauseClaim[]; readonly droppedClaims: number }
-  | { readonly grade: "described"; readonly claims: readonly DeliveredCauseClaim[]; readonly droppedClaims: number };
+  | {
+      readonly grade: "explained";
+      readonly claims: readonly DeliveredCauseClaim[];
+      readonly droppedClaims: number;
+    }
+  | {
+      readonly grade: "described";
+      readonly claims: readonly DeliveredCauseClaim[];
+      readonly droppedClaims: number;
+    };
 
 export type DeliveredExplanation =
   | {

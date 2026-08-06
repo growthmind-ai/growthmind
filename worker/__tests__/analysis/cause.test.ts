@@ -25,7 +25,12 @@ import {
   loadUnderConstruction,
   underConstructionSpecifier,
 } from "../../../packages/shared/__tests__/onboarding/module-under-construction";
-import type { AnalysisLane, AnalysisLaneDeps, AnalysisLogger, CandidateIdentity } from "../../src/analysis/types";
+import type {
+  AnalysisLane,
+  AnalysisLaneDeps,
+  AnalysisLogger,
+  CandidateIdentity,
+} from "../../src/analysis/types";
 import { tenantContextFor } from "../../src/analysis/types";
 
 // Wave 0 contract shapes (ADD tasks/o-044-cause-stage-citation-gate/add.md, Decisions 2, 3, 4,
@@ -33,7 +38,8 @@ import { tenantContextFor } from "../../src/analysis/types";
 // (packages/db/src/repositories/cause-claims.repo.ts, packages/core/src/replay/beats.ts,
 // packages/core/src/cause/{guard,citation-gate}.ts, packages/adapters/src/model/cause.ts) —
 // Wave 1+. Every symbol below is a stand-in that mirrors the ADD's own stated shape.
-const CAUSE_STAGE_OWNER = "backend-execution-agent, Wave 1+ (worker/src/analysis/cause.ts, ADD Decision 7)";
+const CAUSE_STAGE_OWNER =
+  "backend-execution-agent, Wave 1+ (worker/src/analysis/cause.ts, ADD Decision 7)";
 
 type ModelCallStage = "render" | "cause";
 
@@ -451,7 +457,12 @@ function createFakeExplainer(behaviour: CauseBehaviour): FakeExplainer {
 }
 
 function causeOk(claims: readonly CauseClaimStatement[]): CauseRenderResult {
-  return { ok: true, claims, resolvedModelId: MODEL_ID, usage: { inputTokens: 300, outputTokens: 60 } };
+  return {
+    ok: true,
+    claims,
+    resolvedModelId: MODEL_ID,
+    usage: { inputTokens: 300, outputTokens: 60 },
+  };
 }
 
 function recordingLogger(sink: string[]): AnalysisLogger {
@@ -472,10 +483,7 @@ interface Harness {
   logs: () => readonly string[];
 }
 
-function harness(options: {
-  explainerBehaviour?: CauseBehaviour | null;
-  cap?: number;
-}): Harness {
+function harness(options: { explainerBehaviour?: CauseBehaviour | null; cap?: number }): Harness {
   const runs = createFakeRuns();
   const causeClaims = createFakeCauseClaims();
   const divergencePoints = createFakeDivergencePoints();
@@ -483,7 +491,8 @@ function harness(options: {
   const sink: string[] = [];
 
   const behaviour = options.explainerBehaviour;
-  const explainer = behaviour === null ? null : createFakeExplainer(behaviour ?? (() => causeOk([])));
+  const explainer =
+    behaviour === null ? null : createFakeExplainer(behaviour ?? (() => causeOk([])));
 
   return {
     runs,
@@ -502,7 +511,8 @@ function harness(options: {
       organizationCap: CAP_WIDE_ENOUGH_TO_NEVER_REFUSE,
       now: () => TICK_AT,
       logger: recordingLogger(sink),
-      causeExplainer: explainer === null ? null : { port: explainer.port, resolvedModelId: MODEL_ID },
+      causeExplainer:
+        explainer === null ? null : { port: explainer.port, resolvedModelId: MODEL_ID },
       causeClaimsFor: causeClaims.repoFor,
       divergencePointsFor: divergencePoints.repoFor,
       recordingSummariesFor: recordingSummaries.repoFor,
@@ -575,12 +585,20 @@ describe("planCause", () => {
     const h = harness({
       explainerBehaviour: () =>
         causeOk([
-          { statement: "The record stalled here because the field was left blank.", citesBeats: [0] },
+          {
+            statement: "The record stalled here because the field was left blank.",
+            citesBeats: [0],
+          },
         ]),
     });
     h.divergencePoints.seed(
       divergenceRow({
-        failedSessionIdsSample: ["session-bad-1", "session-bad-2", "session-bad-3", "session-bad-4"],
+        failedSessionIdsSample: [
+          "session-bad-1",
+          "session-bad-2",
+          "session-bad-3",
+          "session-bad-4",
+        ],
       }),
     );
     h.recordingSummaries.seed(unreadableCitation("session-bad-1"));
@@ -599,7 +617,9 @@ describe("planCause", () => {
       TICK_AT,
     );
 
-    expect(h.recordingSummaries.calls()).toEqual([["session-bad-1", "session-bad-2", "session-bad-3"]]);
+    expect(h.recordingSummaries.calls()).toEqual([
+      ["session-bad-1", "session-bad-2", "session-bad-3"],
+    ]);
 
     const row = h.causeClaims.rowFor(FINDING_ID);
     expect(row?.anchorSessionId).toBe("session-bad-3");
@@ -612,7 +632,12 @@ describe("planCause", () => {
     });
     h.divergencePoints.seed(
       divergenceRow({
-        failedSessionIdsSample: ["session-bad-1", "session-bad-2", "session-bad-3", "session-bad-4"],
+        failedSessionIdsSample: [
+          "session-bad-1",
+          "session-bad-2",
+          "session-bad-3",
+          "session-bad-4",
+        ],
       }),
     );
     h.recordingSummaries.seed(unreadableCitation("session-bad-1"));
@@ -667,8 +692,7 @@ describe("planCause", () => {
   test("a §6-prohibited cause response (bare digit) is refused end to end, finding stays described, no row", async () => {
     const planCause = await loadPlanCause();
     const h = harness({
-      explainerBehaviour: () =>
-        causeOk([{ statement: "This happened 3 times.", citesBeats: [0] }]),
+      explainerBehaviour: () => causeOk([{ statement: "This happened 3 times.", citesBeats: [0] }]),
     });
     h.divergencePoints.seed(divergenceRow());
     h.recordingSummaries.seed(readableCitation("session-bad-1"));

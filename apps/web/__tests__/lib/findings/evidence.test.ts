@@ -25,7 +25,8 @@ import {
 // (packages/core/src/replay/beats.ts) don't exist yet — Wave 2/6. Every symbol below is a
 // stand-in that mirrors the ADD's own stated shape, exactly as worker/__tests__/analysis/
 // cause.test.ts already does for planCause.
-const EVIDENCE_BUILDER_OWNER = "frontend-execution-agent, Wave 6 (apps/web/lib/findings/evidence.ts, ADD Decision 8)";
+const EVIDENCE_BUILDER_OWNER =
+  "frontend-execution-agent, Wave 6 (apps/web/lib/findings/evidence.ts, ADD Decision 8)";
 
 interface CauseClaimStatement {
   readonly statement: string;
@@ -90,7 +91,9 @@ const CLEAN_TEXT = scannedTextFor("The checkout step is losing sessions", [
   "Of 28 people who reached checkout, 19 did not finish.",
 ]);
 
-function readableCitation(overrides: Partial<SessionRecordingCitation> = {}): SessionRecordingCitation {
+function readableCitation(
+  overrides: Partial<SessionRecordingCitation> = {},
+): SessionRecordingCitation {
   return {
     sessionId: ANCHOR_SESSION_ID,
     recordingId: "o44-evidence-recording",
@@ -121,7 +124,9 @@ function causeClaimsRecord(
     projectId: finding.projectId,
     findingId: finding.id,
     anchorSessionId: ANCHOR_SESSION_ID,
-    claims: [{ statement: "The field was left blank, so the request never went out.", citesBeats: [0] }],
+    claims: [
+      { statement: "The field was left blank, so the request never went out.", citesBeats: [0] },
+    ],
     droppedClaims: 0,
     resolvedModelId: "claude-sonnet-5",
     tokensIn: 300,

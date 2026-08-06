@@ -20,7 +20,12 @@ import {
   seedProject,
   type TestDb,
 } from "@growthmind/db/testing";
-import { summarySourceSchema, type BeatView, type ClaimView, type TenantContext } from "@growthmind/shared";
+import {
+  summarySourceSchema,
+  type BeatView,
+  type ClaimView,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import { readLiveFinding as readLiveFindingReal } from "../../../lib/findings/read";
 import {
@@ -28,7 +33,14 @@ import {
   underConstructionSpecifier,
 } from "../../../../../packages/shared/__tests__/onboarding/module-under-construction";
 
-const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
+const REPO_ROOT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
 
 export const CAUSE_CLAIMS_REPO_OWNER =
   "backend-execution-agent, Wave 3 (packages/db/src/repositories/cause-claims.repo.ts, ADD Decision 3)";
@@ -114,7 +126,8 @@ export function readFindingDetailPageSource(): string {
   return readFileSync(path.join(REPO_ROOT, FINDING_DETAIL_PAGE_RELATIVE_PATH), "utf8");
 }
 
-export const ANNOTATED_TRANSCRIPT_RELATIVE_PATH = "apps/web/components/findings/AnnotatedTranscript.tsx";
+export const ANNOTATED_TRANSCRIPT_RELATIVE_PATH =
+  "apps/web/components/findings/AnnotatedTranscript.tsx";
 
 export function readAnnotatedTranscriptSource(): string {
   return readFileSync(path.join(REPO_ROOT, ANNOTATED_TRANSCRIPT_RELATIVE_PATH), "utf8");
@@ -122,7 +135,11 @@ export function readAnnotatedTranscriptSource(): string {
 
 // The exact jargon list the UX spec (§4 row 5) and PRD (P-2 job) name as forbidden in a
 // dropped-claims line a non-technical reader must be able to understand honestly.
-export const INTERNAL_JARGON_TERMS: readonly string[] = ["citation gate", "signature", "claim schema"];
+export const INTERNAL_JARGON_TERMS: readonly string[] = [
+  "citation gate",
+  "signature",
+  "claim schema",
+];
 
 export function jargonFoundIn(text: string): readonly string[] {
   const lower = text.toLowerCase();
@@ -144,7 +161,11 @@ export interface SeededFindingWorkspace {
 export async function seedModelRenderedFinding(
   db: TestDb,
   label: string,
-  overrides: { readonly windowStart?: Date; readonly windowEnd?: Date; readonly surface?: string } = {},
+  overrides: {
+    readonly windowStart?: Date;
+    readonly windowEnd?: Date;
+    readonly surface?: string;
+  } = {},
 ): Promise<SeededFindingWorkspace> {
   const org = await seedOrgWithOwner(db, {
     orgName: `acme-cause-detail-${label}`,

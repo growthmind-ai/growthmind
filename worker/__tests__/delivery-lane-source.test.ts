@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { scanResidualPii, type CandidateFinding, type DeliveredExplanation } from "@growthmind/core";
+import {
+  scanResidualPii,
+  type CandidateFinding,
+  type DeliveredExplanation,
+} from "@growthmind/core";
 import { createCauseClaimsRepo, createRecordingSummariesRepo } from "@growthmind/db";
 import type { SignatureHex, SignatureLedgerService } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
@@ -521,7 +525,10 @@ describe("delivery lane source — the causal clause (O-044)", () => {
     const { db, close } = await createTestDb();
 
     try {
-      const workspace = await seedPollableWorkspace(db, { prefix: "o44-lane-explained-", now: NOW });
+      const workspace = await seedPollableWorkspace(db, {
+        prefix: "o44-lane-explained-",
+        now: NOW,
+      });
       const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
 
       await seedSlackConnection(
@@ -594,7 +601,10 @@ describe("delivery lane source — the causal clause (O-044)", () => {
     const { db, close } = await createTestDb();
 
     try {
-      const workspace = await seedPollableWorkspace(db, { prefix: "o44-lane-gate-emptied-", now: NOW });
+      const workspace = await seedPollableWorkspace(db, {
+        prefix: "o44-lane-gate-emptied-",
+        now: NOW,
+      });
       const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
 
       await seedSlackConnection(

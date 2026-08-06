@@ -22,7 +22,11 @@ export interface CauseExplainInput {
   readonly failedCohortSize: number;
   readonly divergedAtRank: number;
 
-  readonly beats: readonly { readonly index: number; readonly kind: string; readonly text: string }[];
+  readonly beats: readonly {
+    readonly index: number;
+    readonly kind: string;
+    readonly text: string;
+  }[];
 }
 
 export interface CauseExplainer {

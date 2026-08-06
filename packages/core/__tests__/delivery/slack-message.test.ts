@@ -1,7 +1,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { EVIDENCE_CLAIM_DROPPED, EXCLUSION_REASON_LABELS, FORBIDDEN_PRODUCT_JARGON } from "@growthmind/shared";
+import {
+  EVIDENCE_CLAIM_DROPPED,
+  EXCLUSION_REASON_LABELS,
+  FORBIDDEN_PRODUCT_JARGON,
+} from "@growthmind/shared";
 import {
   FINDING_BLOCK_ID_PREFIX,
   GET_IT_FIXED_ACTION_ID,
@@ -611,7 +615,11 @@ describe("renderSlackMessage — the causal clause (O-044)", () => {
     // composer — the schema refuses it rather than silently rendering it as "no cause".
     expect(() =>
       renderSlackMessage(
-        deliverWithCause({ grade: "described", claims: [], droppedClaims: 0 } as unknown as DeliveredCause),
+        deliverWithCause({
+          grade: "described",
+          claims: [],
+          droppedClaims: 0,
+        } as unknown as DeliveredCause),
         VOCABULARY,
       ),
     ).toThrow();
@@ -710,7 +718,11 @@ describe("renderSlackMessage — the causal clause (O-044)", () => {
   test("refuses an explained cause with zero claims — the grade and the claims array must agree", () => {
     expect(() =>
       renderSlackMessage(
-        deliverWithCause({ grade: "explained", claims: [], droppedClaims: 0 } as unknown as DeliveredCause),
+        deliverWithCause({
+          grade: "explained",
+          claims: [],
+          droppedClaims: 0,
+        } as unknown as DeliveredCause),
         VOCABULARY,
       ),
     ).toThrow();
