@@ -14,6 +14,18 @@ function slash(value: string): string {
 
 const SELF = "coverage.test.ts";
 
+const COHORT_CUTS_TEST_FILE = "divergence/cohort-cuts.test.ts";
+
+// A barrel specifier whose covering suite is named for the invariant rather than
+// the module. The alias still has to exist and still has to call the function.
+const MIRROR_FILE_ALIASES: Record<string, string> = {
+  "./divergence/cuts": COHORT_CUTS_TEST_FILE,
+};
+
+function mirrorFileFor(specifier: string): string {
+  return MIRROR_FILE_ALIASES[specifier] ?? `${specifier.replace(/^\.\//, "")}.test.ts`;
+}
+
 type TestSuite = {
   readonly files: readonly string[];
 
@@ -110,7 +122,7 @@ describe("export coverage", () => {
 
     const uncovered: string[] = [];
     for (const [name, specifier] of functions) {
-      const mirrorFile = `${specifier.replace(/^\.\//, "")}.test.ts`;
+      const mirrorFile = mirrorFileFor(specifier);
       if (!suite.sources.has(mirrorFile)) {
         uncovered.push(
           `\`${name}\` (exported from "${specifier}") has no test file — expected __tests__/${mirrorFile}`,
@@ -137,6 +149,24 @@ describe("export coverage", () => {
     }
 
     expect(uncovered).toEqual([]);
+  });
+
+  test("should not let cohortCutsOf reach the barrel without a direct test call", async () => {
+    const { valueExports } = await parseBarrel();
+    const suite = await readSuite();
+
+    for (const [specifier, alias] of Object.entries(MIRROR_FILE_ALIASES)) {
+      expect(suite.files).toContain(alias);
+      expect([...valueExports.values()]).toContain(specifier);
+    }
+
+    expect(valueExports.has("cohortCutsOf")).toBe(true);
+    expect(typeof runtimeBarrel.cohortCutsOf).toBe("function");
+
+    const callers = suite.files.filter((file) =>
+      /\bcohortCutsOf\s*\(/.test(suite.sources.get(file) ?? ""),
+    );
+    expect(callers).toContain(COHORT_CUTS_TEST_FILE);
   });
 
   test("should have at least one test whose name states a fail direction for every threshold and predicate", async () => {
