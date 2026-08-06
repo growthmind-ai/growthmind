@@ -65,6 +65,9 @@ function toCount(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const notOurProject = (): Error =>
+  new Error("poll runs: the project named is not this organization's");
+
 export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): PollRunsRepo {
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, sessionSourcePollRuns);
@@ -83,7 +86,13 @@ export function createPollRunsRepo(db: ScopedExecutor, ctx: TenantContext): Poll
   }
 
   return {
+    // The org id is stamped, and the project and connection ids arrive as parameters — so
+    // without this the row is written into this organization against another organization's
+    // project. `insertActive` and `findings.persist` both check; `start` was the one write
+    // in the package that took an id on trust (B-007).
     async start(input: StartPollRunInput): Promise<PollRunRecord> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
       return c.insert({
         projectId: input.projectId,
         connectionId: input.connectionId,
