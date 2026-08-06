@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import type {
   ReplayEventsResult,
   ReplayFailure,
@@ -13,11 +15,12 @@ import type {
 import { REPLAY_FAILURE_MESSAGES } from "@growthmind/shared";
 
 import { scrubSecrets } from "../http/scrub";
-import type { ReplaySource } from "../replay-source";
+import type { ReplayPullOptions, ReplaySource } from "../replay-source";
 import {
   MAX_BLOB_CHUNKS_PER_PULL,
   MAX_BLOB_KEY_SPAN,
   MAX_PAGES_PER_RUN,
+  MAX_PULL_BYTES,
   POSTHOG_REPLAY_SOURCE_KIND,
   RECORDINGS_PAGE_LIMIT,
 } from "./constants";
@@ -37,6 +40,15 @@ type ReplayFailureContext = "recordings" | "snapshots";
 // recordings list means the project id is wrong, a 404 against one recording's
 // snapshots means that recording is gone. Only that distinction has no equivalent on
 // the session-source SourceFailureCode, so it is drawn here rather than in the client.
+// A cursor this source wrote on an earlier pull is a blob key. Anything else is ignored rather
+// than trusted, so a corrupt or foreign value restarts the recording instead of skipping it.
+function resumeBlobKey(resumeFrom: string | null | undefined): number | null {
+  if (resumeFrom === null || resumeFrom === undefined) return null;
+
+  const key = Number(resumeFrom);
+  return Number.isSafeInteger(key) && key >= 0 ? key : null;
+}
+
 function toReplayFailureCode(
   code: SourceFailureCode,
   context: ReplayFailureContext,
@@ -164,13 +176,18 @@ export function createPostHogReplaySource(
       };
     },
 
-    async pullEvents(recordingId: string): Promise<ReplayEventsResult> {
+    async pullEvents(
+      recordingId: string,
+      options?: ReplayPullOptions,
+    ): Promise<ReplayEventsResult> {
       const sourcesResponse = await client.getSnapshotSources(client.snapshotsUrl(recordingId));
       if (!sourcesResponse.ok) {
         return {
           ok: false,
           failure: toReplayFailure(sourcesResponse.failure, "snapshots"),
           partialEvents: [],
+          resumeCursor: null,
+          bytesReceived: 0,
           pagesFetched: 1,
           droppedMalformed: 0,
           eventsReceived: 0,
@@ -188,6 +205,7 @@ export function createPostHogReplaySource(
           events: [],
           stop: "exhausted",
           resumeCursor: null,
+          bytesReceived: 0,
           pagesFetched: 1,
           droppedMalformed: sourcesPage.droppedMalformed,
           eventsReceived: 0,
@@ -196,13 +214,16 @@ export function createPostHogReplaySource(
 
       const events: RrwebEvent[] = [];
       let pagesFetched = 1;
+      let bytesReceived = 0;
       // A gzip failure loses an event exactly like a shape failure does, and the shared
       // result type carries no separate field for it — the caller's signal is just
       // "we did not get everything", so it folds into the same count.
       let droppedMalformed = sourcesPage.droppedMalformed;
 
       const endBlobKey = Number(range.end);
-      let chunkStart = Number(range.start);
+      const resumeAt = resumeBlobKey(options?.resumeFrom);
+      let chunkStart =
+        resumeAt === null ? Number(range.start) : Math.max(Number(range.start), resumeAt);
       let chunksFetched = 0;
 
       while (chunkStart <= endBlobKey) {
@@ -212,6 +233,22 @@ export function createPostHogReplaySource(
             events,
             stop: "page_cap",
             resumeCursor: String(chunkStart),
+            bytesReceived,
+            pagesFetched,
+            droppedMalformed,
+            eventsReceived: events.length,
+          };
+        }
+
+        // Soft by one chunk, bounded above by MAX_RESPONSE_BYTES: a hard cap needs a
+        // streamed body, which readTextBody does not give.
+        if (bytesReceived >= MAX_PULL_BYTES) {
+          return {
+            ok: true,
+            events,
+            stop: "byte_cap",
+            resumeCursor: String(chunkStart),
+            bytesReceived,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
@@ -230,11 +267,15 @@ export function createPostHogReplaySource(
             ok: false,
             failure: toReplayFailure(blobResponse.failure, "snapshots"),
             partialEvents: events,
+            resumeCursor: String(chunkStart),
+            bytesReceived,
             pagesFetched,
             droppedMalformed,
             eventsReceived: events.length,
           };
         }
+
+        bytesReceived += Buffer.byteLength(blobResponse.value, "utf8");
 
         const jsonl = parseSnapshotJsonl(blobResponse.value);
         droppedMalformed += jsonl.droppedMalformed + jsonl.decompressionFailures;
@@ -248,6 +289,7 @@ export function createPostHogReplaySource(
         events,
         stop: "exhausted",
         resumeCursor: null,
+        bytesReceived,
         pagesFetched,
         droppedMalformed,
         eventsReceived: events.length,

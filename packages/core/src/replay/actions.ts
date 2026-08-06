@@ -260,9 +260,22 @@ function fromZero(action: SessionAction, originMs: number): SessionAction {
   return { ...action, atMs: action.atMs - originMs };
 }
 
-export function toActions(events: readonly RrwebEvent[]): readonly SessionAction[] {
+export type ActionWalk = {
+  readonly actions: readonly SessionAction[];
+
+  readonly clockOriginAtMs: number | null;
+};
+
+const NO_WALK: ActionWalk = { actions: [], clockOriginAtMs: null };
+
+// A resumed pull carries the instant its predecessor's clock started, so its beats stamp onto
+// the same timeline rather than restarting at 0:00 a second time.
+export function walkActions(
+  events: readonly RrwebEvent[],
+  clockOriginAtMs: number | null = null,
+): ActionWalk {
   const { facts, firstTsMs, lastTsMs } = readReplayEvents(events);
-  if (firstTsMs === null || lastTsMs === null) return [];
+  if (firstTsMs === null || lastTsMs === null) return NO_WALK;
 
   const segments = indexDomSegments(events);
   const drafts = [
@@ -277,8 +290,16 @@ export function toActions(events: readonly RrwebEvent[]): readonly SessionAction
 
   // The clock starts at the first thing the person did, so a recording that idled for an
   // hour before its first action still reads from 0:00.
-  const originMs = ordered.at(0)?.atMs ?? 0;
+  const originMs =
+    clockOriginAtMs === null ? (ordered.at(0)?.atMs ?? 0) : clockOriginAtMs - firstTsMs;
   const actions = ordered.map((draft) => fromZero(draft.action, originMs));
 
-  return withWaitsAndEnd(actions, lastTsMs - firstTsMs - originMs);
+  return {
+    actions: withWaitsAndEnd(actions, lastTsMs - firstTsMs - originMs),
+    clockOriginAtMs: firstTsMs + originMs,
+  };
+}
+
+export function toActions(events: readonly RrwebEvent[]): readonly SessionAction[] {
+  return walkActions(events).actions;
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { SummarySource } from "@growthmind/shared";
+import type { ReplayEventsStop, ReplaySourceKind, SummarySource } from "@growthmind/shared";
+import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
@@ -14,6 +15,20 @@ const SUMMARY_SOURCES = [
   "floor_model_output_invalid",
   "floor_model_text_rejected",
 ] as const satisfies readonly [SummarySource, ...SummarySource[]];
+
+const REPLAY_PROVIDERS = ["rrweb", "posthog"] as const satisfies readonly [
+  ReplaySourceKind,
+  ...ReplaySourceKind[],
+];
+
+// A pull that failed is a terminal state of the pull, so it sits in the same column as the
+// three the adapter reports rather than in a second nullable flag beside it.
+export type TranscriptPullStop = ReplayEventsStop | "failed";
+
+const PULL_STOPS = ["exhausted", "page_cap", "byte_cap", "failed"] as const satisfies readonly [
+  TranscriptPullStop,
+  ...TranscriptPullStop[],
+];
 
 export const recordingSummaries = pgTable(
   "recording_summaries",
@@ -45,6 +60,33 @@ export const recordingSummaries = pgTable(
 
     startedAt: timestamp("started_at", { withTimezone: true }),
 
+    provider: text("provider", { enum: REPLAY_PROVIDERS }).notNull().default("posthog"),
+
+    // Null carries two meanings, and both are legitimate: a row written before 0021, and a
+    // provider with no session-key mapping. Neither can join, and neither is an error.
+    sessionKey: text("session_key"),
+    sessionGroupingVersion: integer("session_grouping_version"),
+
+    actions: jsonb("actions"),
+    actionsVersion: integer("actions_version"),
+    actionsOmitted: integer("actions_omitted"),
+
+    pullStop: text("pull_stop", { enum: PULL_STOPS }),
+    pullReason: text("pull_reason"),
+    pullWatermarkAt: timestamp("pull_watermark_at", { withTimezone: true }),
+
+    // Where the next pull of this recording starts, in whatever shape the source's own cursor
+    // takes. Null means "read it from the beginning", never "resume at nothing".
+    pullResumeCursor: text("pull_resume_cursor"),
+
+    // The instant the stored transcript's clock counts from, so a resumed half stamps onto the
+    // same timeline as the half already held.
+    pullOriginAt: timestamp("pull_origin_at", { withTimezone: true }),
+
+    // Nullable rather than zero-defaulted: the rrweb source reads parsed JSON and can never
+    // report a byte count, so "not measured" has to stay distinguishable from "measured zero".
+    bytesReceived: integer("bytes_received"),
+
     resolvedModelId: text("resolved_model_id"),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
@@ -60,6 +102,12 @@ export const recordingSummaries = pgTable(
       table.projectId,
       table.recordingId,
     ),
+
+    // One transcript per session. Partial, so keyless rows are exempt; a derivation that stops
+    // being injective raises here instead of letting two transcripts claim one session.
+    uniqueIndex("recording_summaries_org_project_session_key_uidx")
+      .on(table.organizationId, table.projectId, table.sessionKey)
+      .where(sql`${table.sessionKey} is not null`),
 
     index("recording_summaries_organization_id_idx").on(table.organizationId),
 

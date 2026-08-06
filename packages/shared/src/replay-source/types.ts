@@ -47,8 +47,8 @@ export const replayListStopSchema = z.enum(["watermark", "page_cap", "exhausted"
 export type ReplayListStop = z.infer<typeof replayListStopSchema>;
 
 // No watermark stop here: pullEvents walks one recording's event pages, it has
-// no sinceAt to compare against, so only the cap and natural end are reachable.
-export const replayEventsStopSchema = z.enum(["page_cap", "exhausted"]);
+// no sinceAt to compare against, so only the caps and natural end are reachable.
+export const replayEventsStopSchema = z.enum(["page_cap", "byte_cap", "exhausted"]);
 export type ReplayEventsStop = z.infer<typeof replayEventsStopSchema>;
 
 const replayTelemetry = {
@@ -77,12 +77,15 @@ export const replayListResultSchema = z.discriminatedUnion("ok", [
 ]);
 export type ReplayListResult = z.infer<typeof replayListResultSchema>;
 
+// bytesReceived sits on these two arms rather than in replayTelemetry: listRecordings
+// reads parsed JSON bodies and has no byte count, so a shared field would be invented there.
 export const replayEventsResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     events: z.array(rrwebEventSchema),
     stop: replayEventsStopSchema,
     resumeCursor: z.string().nullable(),
+    bytesReceived: z.number().int().nonnegative(),
     ...replayTelemetry,
   }),
   z.object({
@@ -90,6 +93,8 @@ export const replayEventsResultSchema = z.discriminatedUnion("ok", [
     failure: replayFailureSchema,
 
     partialEvents: z.array(rrwebEventSchema),
+    resumeCursor: z.string().nullable(),
+    bytesReceived: z.number().int().nonnegative(),
     ...replayTelemetry,
   }),
 ]);

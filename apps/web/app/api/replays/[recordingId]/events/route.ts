@@ -50,7 +50,10 @@ export async function handle(
     });
   }
 
-  return Response.json({ events: result.events, truncated: result.stop === "page_cap" });
+  return Response.json({
+    events: result.events,
+    truncated: result.stop === "page_cap" || result.stop === "byte_cap",
+  });
 }
 
 export async function GET(

@@ -25,6 +25,10 @@ const TELEMETRY = { pagesFetched: 1, droppedMalformed: 0, eventsReceived: 4 };
 
 const FAILURE = { code: "unreachable", message: "The recording source could not be reached." };
 
+// pullEvents reports what arrived and where to resume on both arms (ADD §7), so every
+// events fixture carries them and each "rejects" case still fails for its own reason.
+const EVENTS_TELEMETRY = { ...TELEMETRY, bytesReceived: 8192, resumeCursor: null };
+
 describe("rrwebEventSchema", () => {
   test("accepts a well-formed rrweb event", () => {
     expect(rrwebEventSchema.safeParse(VALID_EVENT).success).toBe(true);
@@ -200,9 +204,9 @@ describe("replayListResultSchema", () => {
 });
 
 describe("replayEventsStopSchema", () => {
-  test("its options are exactly page_cap and exhausted, no watermark", () => {
+  test("its options are exactly page_cap, byte_cap and exhausted, no watermark", () => {
     expect(replayEventsStopSchema.options.toSorted()).toEqual(
-      (["page_cap", "exhausted"] as const).toSorted(),
+      (["page_cap", "byte_cap", "exhausted"] as const).toSorted(),
     );
   });
 
@@ -217,8 +221,7 @@ describe("replayEventsResultSchema", () => {
       ok: true,
       events: [VALID_EVENT],
       stop: "exhausted",
-      resumeCursor: null,
-      ...TELEMETRY,
+      ...EVENTS_TELEMETRY,
     };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
@@ -228,24 +231,29 @@ describe("replayEventsResultSchema", () => {
       ok: true,
       events: [],
       stop: "page_cap",
+      ...EVENTS_TELEMETRY,
       resumeCursor: "cursor-123",
-      ...TELEMETRY,
     };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
   test("accepts an ok result with zero events", () => {
-    const result = { ok: true, events: [], stop: "exhausted", resumeCursor: null, ...TELEMETRY };
+    const result = { ok: true, events: [], stop: "exhausted", ...EVENTS_TELEMETRY };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
   test("accepts a failure result carrying partial events and telemetry", () => {
-    const result = { ok: false, failure: FAILURE, partialEvents: [VALID_EVENT], ...TELEMETRY };
+    const result = {
+      ok: false,
+      failure: FAILURE,
+      partialEvents: [VALID_EVENT],
+      ...EVENTS_TELEMETRY,
+    };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(true);
   });
 
   test("rejects an ok result missing its stop field", () => {
-    const result = { ok: true, events: [], resumeCursor: null, ...TELEMETRY };
+    const result = { ok: true, events: [], ...EVENTS_TELEMETRY };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
   });
 
@@ -254,8 +262,7 @@ describe("replayEventsResultSchema", () => {
       ok: true,
       events: [],
       stop: "watermark",
-      resumeCursor: null,
-      ...TELEMETRY,
+      ...EVENTS_TELEMETRY,
     };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
   });
@@ -265,8 +272,7 @@ describe("replayEventsResultSchema", () => {
       ok: true,
       events: [],
       stop: "exhausted",
-      resumeCursor: null,
-      ...TELEMETRY,
+      ...EVENTS_TELEMETRY,
       eventsReceived: -1,
     };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
@@ -277,15 +283,69 @@ describe("replayEventsResultSchema", () => {
       ok: true,
       events: [{ ...VALID_EVENT, type: -1 }],
       stop: "exhausted",
-      resumeCursor: null,
-      ...TELEMETRY,
+      ...EVENTS_TELEMETRY,
     };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
   });
 
   test("rejects a failure result missing its partialEvents field", () => {
-    const result = { ok: false, failure: FAILURE, ...TELEMETRY };
+    const result = { ok: false, failure: FAILURE, ...EVENTS_TELEMETRY };
     expect(replayEventsResultSchema.safeParse(result).success).toBe(false);
+  });
+});
+
+describe("the pull's byte bound reaches the shared contract (ADD §7)", () => {
+  test("should accept byte_cap as a pullEvents stop reason", () => {
+    expect(replayEventsStopSchema.safeParse("byte_cap").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("page_cap").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("exhausted").success).toBe(true);
+    expect(replayEventsStopSchema.safeParse("watermark").success).toBe(false);
+  });
+
+  test("should require bytesReceived on both arms of replayEventsResultSchema", () => {
+    const okArmWithoutBytes = {
+      ok: true,
+      events: [],
+      stop: "exhausted",
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+    const failureArmWithoutBytes = {
+      ok: false,
+      failure: FAILURE,
+      partialEvents: [],
+      resumeCursor: null,
+      ...TELEMETRY,
+    };
+
+    expect(replayEventsResultSchema.safeParse(okArmWithoutBytes).success).toBe(false);
+    expect(replayEventsResultSchema.safeParse(failureArmWithoutBytes).success).toBe(false);
+
+    expect(
+      replayEventsResultSchema.safeParse({ ...okArmWithoutBytes, bytesReceived: 4096 }).success,
+    ).toBe(true);
+    expect(
+      replayEventsResultSchema.safeParse({ ...failureArmWithoutBytes, bytesReceived: 4096 })
+        .success,
+    ).toBe(true);
+  });
+
+  test("should require a resumeCursor on the failure arm so a throttled pull can resume", () => {
+    const failureArm = {
+      ok: false,
+      failure: FAILURE,
+      partialEvents: [],
+      bytesReceived: 4096,
+      ...TELEMETRY,
+    };
+
+    expect(replayEventsResultSchema.safeParse(failureArm).success).toBe(false);
+    expect(replayEventsResultSchema.safeParse({ ...failureArm, resumeCursor: "21" }).success).toBe(
+      true,
+    );
+    expect(replayEventsResultSchema.safeParse({ ...failureArm, resumeCursor: null }).success).toBe(
+      true,
+    );
   });
 });
 

@@ -98,10 +98,44 @@ describe("describeElement", () => {
     );
   });
 
-  test("should collapse whitespace inside an attribute value so one action stays one line", () => {
-    const node = element(4, "BUTTON", { "aria-label": " Save   your\n key " });
+  test("should collapse whitespace inside an id so one action stays one line", () => {
+    const node = element(4, "BUTTON", { id: " save   your\n key " });
 
-    expect(describeElement(identityOf(node, 4))).toBe("button[aria-label=Save your key]");
+    expect(describeElement(identityOf(node, 4))).toBe("button#save your key");
+  });
+
+  test("should withhold an attribute value carrying an email address rather than store it (B-052)", () => {
+    const node = element(4, "INPUT", { placeholder: "you@company.com" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("input");
+  });
+
+  test("should withhold a multi-word label on shape alone, not on detecting a name in it", () => {
+    const node = element(4, "BUTTON", { "aria-label": "Delete invoice for Jane Cooper" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("button");
+  });
+
+  // B-052's residual, named rather than hidden: there is no name detector, so a single-word
+  // value that happens to be a name passes the shape check and isCleanForDelivery both.
+  test("should NOT withhold a single-word name — no name detector exists (B-052 residual)", () => {
+    const node = element(4, "BUTTON", { "aria-label": "JaneCooper" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("button[aria-label=JaneCooper]");
+  });
+
+  test("should withhold a token-shaped value the delivery scan refuses", () => {
+    const card = element(4, "A", { href: "/invoices/4111111111111111" });
+    const credential = element(5, "A", { href: "/reset?token=sk-liveABCDEFGHIJKLMNOP" });
+
+    expect(describeElement(identityOf(card, 4))).toBe("a");
+    expect(describeElement(identityOf(credential, 5))).toBe("a");
+  });
+
+  test("should keep describing an element by the next attribute once a value is withheld", () => {
+    const node = element(4, "BUTTON", { "aria-label": "Pay ada@acme.com", type: "submit" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("button[type=submit]");
   });
 
   test("should mark an unresolvable node rather than describing a tag it never saw", () => {

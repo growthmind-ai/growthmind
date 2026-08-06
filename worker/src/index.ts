@@ -46,7 +46,7 @@ import { createAnalysisLaneSource } from "./analysis-lane-source";
 import { createDeliveryLaneSource } from "./delivery-lane-source";
 import { createGrowthContextLaneSource } from "./growth-context-lane-source";
 import { createReplayLaneSource, makeReplaySourceFor } from "./replay-lane-source";
-import { RECORDINGS_NARRATED_PER_TICK } from "./analysis-cap";
+import { RECORDINGS_NARRATED_PER_LANE, RECORDINGS_PULLED_PER_TICK_CEILING } from "./analysis-cap";
 import { runReplayNarrationTick } from "./tasks/replay-narration-tick";
 import type { ConfiguredNarrator } from "./tasks/narrator-deps";
 
@@ -398,7 +398,8 @@ export const taskList: TaskList = {
       summariesFor: (ctx) => createRecordingSummariesRepo(db, ctx),
       contextFor: (lane) => systemContextFor(SYSTEM_ACTOR.REPLAY_NARRATION_TICK, lane),
       narrator: resolveNarrator(env),
-      perProjectCap: RECORDINGS_NARRATED_PER_TICK,
+      perProjectCap: RECORDINGS_NARRATED_PER_LANE,
+      perTickCap: RECORDINGS_PULLED_PER_TICK_CEILING,
       listPages: 2,
       logger: helpers.logger,
     });

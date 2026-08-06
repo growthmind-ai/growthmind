@@ -14,7 +14,9 @@ import {
 } from "@growthmind/shared";
 import { z } from "zod";
 
+import { rehydratePersistedActions, type PersistedSessionAction } from "./persisted-transcript";
 import { renderTranscript } from "./render";
+import { tallyActions } from "./transcript";
 import type { SessionAction, SessionActionKind, SessionTranscript } from "./types";
 
 export const narrationOutputSchema = z.strictObject({
@@ -90,6 +92,52 @@ export function compactTranscript(
     counts: transcript.counts,
     droppedEvents: transcript.droppedEvents,
   };
+}
+
+export type HeldTranscript = {
+  readonly actions: readonly PersistedSessionAction[];
+  readonly omitted: number;
+  readonly pages: readonly string[];
+  readonly durationMs: number;
+  readonly droppedEvents: number;
+  readonly clockOriginAtMs: number | null;
+};
+
+export type ResumedTranscript = {
+  readonly walk: SessionTranscript;
+  readonly digest: TranscriptDigest;
+};
+
+function withoutTrailingEnd(actions: readonly SessionAction[]): readonly SessionAction[] {
+  return actions.at(-1)?.kind === "ended" ? actions.slice(0, -1) : actions;
+}
+
+// The held half is what the row already carries, and the pulled half continues it on the same
+// clock. `omitted` carries across because those beats are gone from the row, not from the
+// recording — dropping the count would let a resumed row report fewer actions than it read.
+// A continuation that read zero events reports no clock origin of its own — a rate-limited
+// retry does this often — and falling back to the pulled side alone would forget the origin
+// the held half was already measured from, landing its beats at atMs 0 instead of their true
+// offset. The held origin is preserved whenever the pull has none to offer.
+export function resumeDigest(held: HeldTranscript, pulled: SessionTranscript): ResumedTranscript {
+  const actions = [
+    ...withoutTrailingEnd(rehydratePersistedActions(held.actions)),
+    ...pulled.actions,
+  ];
+
+  const walk: SessionTranscript = {
+    actions,
+    startedAt: pulled.startedAt,
+    clockOriginAtMs: pulled.clockOriginAtMs ?? held.clockOriginAtMs,
+    durationMs: Math.max(held.durationMs, pulled.durationMs),
+    pages: [...new Set([...held.pages, ...pulled.pages])],
+    counts: tallyActions(actions),
+    droppedEvents: held.droppedEvents + pulled.droppedEvents,
+  };
+
+  const compacted = compactTranscript(walk);
+
+  return { walk, digest: { ...compacted, omitted: compacted.omitted + held.omitted } };
 }
 
 const MS_PER_SECOND = 1_000;
@@ -173,6 +221,7 @@ export function renderDigest(digest: TranscriptDigest): string {
   const transcript: SessionTranscript = {
     actions: digest.actions,
     startedAt: null,
+    clockOriginAtMs: null,
     durationMs: digest.durationMs,
     pages: digest.pages,
     counts: digest.counts,

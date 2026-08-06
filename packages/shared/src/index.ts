@@ -193,6 +193,7 @@ export {
 } from "./replay-source/types";
 export {
   REPLAY_FAILURE_MESSAGES,
+  REPLAY_PULL_STOP_MESSAGES,
   ALL_REPLAY_SOURCE_MESSAGES,
   REPLAY_NO_CONNECTION,
   REPLAY_NONE_YET,
@@ -247,6 +248,7 @@ export {
 
 export {
   deriveSessionKey,
+  recordingSessionKey,
   SESSION_GROUPING_VERSION,
   SESSION_BUCKET_MS,
   type SessionKeyInput,

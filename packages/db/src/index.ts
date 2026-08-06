@@ -88,6 +88,7 @@ export {
 
 export {
   createDetectorCorpusService,
+  type DetectorCorpusRead,
   type DetectorCorpusService,
 } from "./services/detector-corpus.service";
 
@@ -210,10 +211,17 @@ export {
 export {
   createRecordingSummariesRepo,
   RECORDING_SUMMARY_CONFLICT_TARGET,
+  RETRYABLE_PULL_STOP,
   type RecordingSummariesRepo,
   type RecordingSummaryRecord,
   type PersistRecordingSummaryInput,
+  type RefreshFailedPullInput,
+  type SessionRecordingCitation,
+  type StoredTranscript,
+  type StoredTranscriptAction,
 } from "./repositories/recording-summaries.repo";
+
+export type { TranscriptPullStop } from "./schema/recording-summaries";
 
 export {
   createAnalysisRunsRepo,
