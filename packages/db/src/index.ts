@@ -315,3 +315,16 @@ export {
   type ObserveSurfacesInput,
 } from "./services/surface-observations.service";
 export { enqueueJob } from "./jobs/enqueue";
+
+export {
+  createDivergencePointsRepo,
+  type DivergencePointsRepo,
+  type DivergencePointRecord,
+  type RecordDivergenceInput,
+} from "./repositories/divergence-points.repo";
+export {
+  createDivergenceService,
+  type DivergenceService,
+  type RecordDivergenceServiceInput,
+  type RecordDivergenceServiceResult,
+} from "./services/divergence.service";
