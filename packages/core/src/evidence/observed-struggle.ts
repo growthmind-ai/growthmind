@@ -1,4 +1,4 @@
-import { normaliseUrlPath } from "@growthmind/shared";
+import { isNormalisedUrlPath, normaliseUrlPath } from "@growthmind/shared";
 
 import { measuredCount } from "../counts/measured-count";
 import { analysedSessions } from "../detect/analysed";
@@ -167,6 +167,9 @@ function thresholdOf(ruleSet: ThresholdRuleSet, subkind: ObservedStruggleSubkind
 
 // Each action belongs to the surface named by the most recent preceding page action; one
 // that no page action precedes, or whose href does not normalise, is dropped (D-11).
+// normaliseUrlPath is not a fixed point on every href, so its output is re-checked rather
+// than assumed: an unnormalised surface throws in assembleCandidates, taking every other
+// detector's candidates in the tick with it.
 function tallySession(
   transcript: SessionTranscript,
   surfaces: Map<string, SurfaceAccumulator>,
@@ -176,7 +179,8 @@ function tallySession(
 
   for (const action of transcript.actions) {
     if (action.kind === "page") {
-      current = normaliseUrlPath(null, action.href);
+      const normalised = normaliseUrlPath(null, action.href);
+      current = normalised !== null && isNormalisedUrlPath(normalised) ? normalised : null;
       if (current !== null) tallyFor(visited, current);
       continue;
     }
