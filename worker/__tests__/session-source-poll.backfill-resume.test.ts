@@ -279,3 +279,57 @@ test("/: a connect-time first pull that hits its own tiny page cap is completed 
   const runs = await pollRunsFor(seeded.connectionId);
   expect(runs.some((run) => run.watermarkAdvancedTo !== null)).toBe(true);
 });
+
+test("a drained backward walk with nothing new forward clears the cursor instead of re-walking the same slice every tick", async () => {
+  // B-005: the walk stops for `exhausted` rather than `page_cap`, so `contiguous` stays true
+  // and `resumeBefore` is null — and with the forward pass seeing nothing, `newestObservedAt`
+  // is null too, so neither the advance branch nor the hold branch wrote anything. The DB kept
+  // the cursor the walk had just finished with, and every later tick re-fetched from it.
+  const env = testServerEnv();
+
+  const drainedAt = new Date(NOW.getTime() - 30 * 60_000);
+  const eventTimes = [drainedAt];
+
+  const fixedSourceProjectId = `${PREFIX}src-b005-drained`;
+  const staleCursor = nextCursorUrl({
+    sourceProjectId: fixedSourceProjectId,
+    before: new Date(NOW.getTime() - 20 * 60_000),
+  });
+
+  const seeded = await seedPollableWorkspace(db, {
+    prefix: PREFIX,
+    now: NOW,
+    sourceProjectId: fixedSourceProjectId,
+    credentialFor: (ids) => encryptTestCredential({ env, ...ids }),
+
+    // Everything forward of the watermark has already been ingested, so the forward pass has
+    // nothing to report and the backward walk is all that is left to do.
+    watermarkAt: NOW,
+    backfillBefore: staleCursor,
+  });
+
+  const posthog = createFakePostHog({
+    events: positionalBacklog({ sourceProjectId: seeded.sourceProjectId, eventTimes }),
+  });
+  const clock = createFakeClock(NOW);
+
+  await runSessionSourcePoll(createPollDeps({ db, fetch: posthog.fetch, clock }));
+
+  const afterFirst = await connectionRow(seeded.connectionId);
+  expect(afterFirst?.backfillBefore).toBeNull();
+
+  const callsAfterFirst = posthog.eventsCalls().length;
+  expect(callsAfterFirst).toBeLessThan(EXPECTED_PAGE_CAP);
+
+  // The tick that proves it: with the cursor cleared there is no backward walk left to make,
+  // so the second tick spends fewer requests than the first rather than repeating it.
+  clock.advance(60_000);
+  await runSessionSourcePoll(createPollDeps({ db, fetch: posthog.fetch, clock }));
+
+  const afterSecond = await connectionRow(seeded.connectionId);
+  expect(afterSecond?.backfillBefore).toBeNull();
+  expect(posthog.eventsCalls().length - callsAfterFirst).toBeLessThan(callsAfterFirst);
+
+  const runs = await pollRunsFor(seeded.connectionId);
+  expect(runs.every((run) => run.status === "completed")).toBe(true);
+});
