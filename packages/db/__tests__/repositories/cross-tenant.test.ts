@@ -322,6 +322,40 @@ describe("cross-tenant boundary on the tables", () => {
     expect(counter.kept).toBe(0);
     expect(counter.droppedUnreadable).toBe(0);
   });
+
+  it("returns { sessions: [], truncated: false } from listGroupableSessions and listSessionsForDomain to org B for org A's project", async () => {
+    const fx = await seedMatrix(db, "groupable-cross-tenant");
+    const sessionsB = createSessionsRepo(db, fx.foreignCtx);
+
+    expect(await sessionsB.listGroupableSessions(fx.projectId, { limit: 50 })).toEqual({
+      sessions: [],
+      truncated: false,
+    });
+    expect(
+      await sessionsB.listSessionsForDomain(fx.projectId, "acme.example", { limit: 50 }),
+    ).toEqual({ sessions: [], truncated: false });
+  });
+
+  it("lets org A's non-owner teammate see the identical listGroupableSessions rows as the owner", async () => {
+    const fx = await seedMatrix(db, "groupable-teammate-parity");
+    expect(fx.teammateCtx.role).toBe("member");
+    expect(fx.teammateCtx.userId).not.toBe(fx.ownerCtx.userId);
+
+    const ownerResult = await createSessionsRepo(db, fx.ownerCtx).listGroupableSessions(
+      fx.projectId,
+      { limit: 50 },
+    );
+    const teammateResult = await createSessionsRepo(db, fx.teammateCtx).listGroupableSessions(
+      fx.projectId,
+      { limit: 50 },
+    );
+
+    expect(ownerResult.sessions.length).toBeGreaterThan(0);
+    expect(teammateResult.truncated).toBe(ownerResult.truncated);
+    expect(teammateResult.sessions.map((session) => session.id)).toEqual(
+      ownerResult.sessions.map((session) => session.id),
+    );
+  });
 });
 
 const CORPUS_NAMES = laneNames("dc");

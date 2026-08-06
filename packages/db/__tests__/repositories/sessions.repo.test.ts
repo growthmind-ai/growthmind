@@ -5,7 +5,7 @@ import type { IdentityResolution, TenantContext } from "@growthmind/shared";
 import { createSessionsRepo, type SessionUpsertRow } from "../../src/repositories/sessions.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { seedConnection, seedOrgWithOwner, seedProject, seedSession } from "../../src/testing";
 
 const NAMES = laneNames("se");
 
@@ -181,5 +181,126 @@ describe("sessions repository", () => {
     await repo.upsertMany([makeUpsertRow({ projectId, connectionId, sessionKey })]);
 
     expect(await repo.findByKey(otherProject.id, sessionKey)).toBeNull();
+  });
+
+  describe("listGroupableSessions and listSessionsForDomain", () => {
+    it("excludes sessions with a null identityEmailDomain", async () => {
+      const { ctx, projectId, connectionId } = await setUp(db, "groupable-null-domain");
+      const repo = createSessionsRepo(db, ctx);
+
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-groupable-with-domain",
+        identityEmailDomain: "acme.example",
+        startedAt: MIDDLE,
+      });
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-groupable-no-domain",
+        identityEmailDomain: null,
+        startedAt: LATE,
+      });
+
+      const result = await repo.listGroupableSessions(projectId, { limit: 50 });
+
+      expect(result.sessions.map((session) => session.sessionKey)).toEqual([
+        "ph:db-se-groupable-with-domain",
+      ]);
+      expect(result.truncated).toBe(false);
+    });
+
+    it("orders by startedAt descending and sets truncated:true when a seeded limit+1 rows exceeds the cap", async () => {
+      const { ctx, projectId, connectionId } = await setUp(db, "groupable-truncate");
+      const repo = createSessionsRepo(db, ctx);
+      const limit = 3;
+      const times = [
+        EARLY,
+        MIDDLE,
+        LATE,
+        new Date("2026-07-30T12:00:00.000Z"),
+      ];
+
+      for (const [index, startedAt] of times.entries()) {
+        await seedSession(db, {
+          organizationId: ctx.organizationId,
+          projectId,
+          connectionId,
+          sessionKey: `ph:db-se-groupable-truncate-${String(index)}`,
+          identityEmailDomain: "acme.example",
+          startedAt,
+        });
+      }
+
+      const result = await repo.listGroupableSessions(projectId, { limit });
+
+      expect(result.sessions).toHaveLength(limit);
+      expect(result.truncated).toBe(true);
+      const startedAts = result.sessions.map((session) => session.startedAt.getTime());
+      expect(startedAts).toEqual([...startedAts].toSorted((a, b) => b - a));
+    });
+
+    it("listSessionsForDomain returns only sessions matching the exact domain, most recent first, when two domains are seeded in the same project", async () => {
+      const { ctx, projectId, connectionId } = await setUp(db, "domain-filter");
+      const repo = createSessionsRepo(db, ctx);
+
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-domain-a-1",
+        identityEmailDomain: "acme.example",
+        startedAt: EARLY,
+      });
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-domain-a-2",
+        identityEmailDomain: "acme.example",
+        startedAt: LATE,
+      });
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-domain-b-1",
+        identityEmailDomain: "other.example",
+        startedAt: MIDDLE,
+      });
+
+      const result = await repo.listSessionsForDomain(projectId, "acme.example", { limit: 50 });
+
+      expect(result.sessions.map((session) => session.sessionKey)).toEqual([
+        "ph:db-se-domain-a-2",
+        "ph:db-se-domain-a-1",
+      ]);
+      expect(result.truncated).toBe(false);
+    });
+
+    it("listSessionsForDomain sets truncated:true when one domain's session count exceeds cap", async () => {
+      const { ctx, projectId, connectionId } = await setUp(db, "domain-truncate");
+      const repo = createSessionsRepo(db, ctx);
+      const limit = 2;
+
+      for (const [index, startedAt] of [EARLY, MIDDLE, LATE].entries()) {
+        await seedSession(db, {
+          organizationId: ctx.organizationId,
+          projectId,
+          connectionId,
+          sessionKey: `ph:db-se-domain-truncate-${String(index)}`,
+          identityEmailDomain: "acme.example",
+          startedAt,
+        });
+      }
+
+      const result = await repo.listSessionsForDomain(projectId, "acme.example", { limit });
+
+      expect(result.sessions).toHaveLength(limit);
+      expect(result.truncated).toBe(true);
+    });
   });
 });
