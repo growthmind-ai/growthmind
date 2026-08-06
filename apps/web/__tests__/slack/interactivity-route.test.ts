@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { serialiseFixSpecInput } from "@growthmind/core";
 import {
+  createDismissalsRepo,
   createFindingPayloadsRepo,
   createFindingsRepo,
   createFixesService,
@@ -28,6 +29,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 
 import {
   loadModuleUnderConstruction,
+  loadValueUnderConstruction,
   underConstructionSpecifier,
 } from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
 import { candidateFor } from "../mcp/helpers/mcp-fixture";
@@ -46,6 +48,44 @@ const SIGNATURE_VERSION = "v0";
 const ROUTE_SPECIFIER = underConstructionSpecifier("apps/web/app/api/slack/interactivity/route.ts");
 
 const OWNED_BY = "ADD Wave 6 (Decision R-7), apps/web/app/api/slack/interactivity/route.ts";
+
+// o-019-dismissal-wired: the Slack dismiss handler section. Loaded off the real module
+// rather than duplicated as a literal, so these tests track whatever value production
+// picks instead of drifting from a guessed constant.
+const DISMISS_OWNED_BY =
+  "ADD o-019-dismissal-wired (Slack dismiss handler section), packages/shared/src/delivery/interaction-ids.ts + messages.ts";
+
+const INTERACTION_IDS_SPECIFIER = underConstructionSpecifier(
+  "packages/shared/src/delivery/interaction-ids.ts",
+);
+
+const DELIVERY_MESSAGES_SPECIFIER = underConstructionSpecifier(
+  "packages/shared/src/delivery/messages.ts",
+);
+
+function notUsefulActionId(): Promise<string> {
+  return loadValueUnderConstruction<string>({
+    modulePath: INTERACTION_IDS_SPECIFIER,
+    exportName: "NOT_USEFUL_ACTION_ID",
+    ownedBy: DISMISS_OWNED_BY,
+  });
+}
+
+function dismissalAcknowledgement(): Promise<string> {
+  return loadValueUnderConstruction<string>({
+    modulePath: DELIVERY_MESSAGES_SPECIFIER,
+    exportName: "DISMISSAL_ACKNOWLEDGEMENT",
+    ownedBy: DISMISS_OWNED_BY,
+  });
+}
+
+function dismissalAlreadyRecordedAcknowledgement(): Promise<string> {
+  return loadValueUnderConstruction<string>({
+    modulePath: DELIVERY_MESSAGES_SPECIFIER,
+    exportName: "DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT",
+    ownedBy: DISMISS_OWNED_BY,
+  });
+}
 
 type RouteHandler = (request: Request) => Promise<Response>;
 
@@ -560,5 +600,86 @@ describe("POST /api/slack/interactivity", () => {
       globalForDb.__growthmindDb = handle.db;
       process.env.SLACK_SIGNING_SECRET = SIGNING_SECRET;
     }
+  });
+
+  test("records a dismissal from a signed Slack press, resolved through resolveDeliveryForInteraction's tenant context, never interaction.user.id", async () => {
+    const POST = await loadRoute();
+    const org = await freshOrg();
+    const actionId = await notUsefulActionId();
+
+    const response = await POST(
+      signedRequest({ payloadText: blockActionsPayload({ org, actionId }) }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const dismissal = await createDismissalsRepo(handle.db, org.ctx).findFor(
+      org.finding.id,
+      "not_useful",
+    );
+
+    expect(dismissal).not.toBeNull();
+    expect(dismissal?.projectId).toBe(org.projectId);
+    // Never the presser's Slack id: the row is attributed to the system actor, the
+    // same as "Get it fixed"'s `openedBy` (SLACK_INTERACTION_ACTOR), per the ADD's
+    // cross-cutting decision — no Slack-user-to-org-member mapping exists.
+    expect(dismissal?.dismissedByUserId).toBeNull();
+    expect(dismissal?.dismissedByUserId).not.toBe("U0SLACKPRESSER");
+  });
+
+  test("posts the acknowledgement sentence on first dismissal and the already-recorded sentence on a second distinct press", async () => {
+    const POST = await loadRoute();
+    const org = await freshOrg();
+    const actionId = await notUsefulActionId();
+    const acknowledgement = await dismissalAcknowledgement();
+    const alreadyRecorded = await dismissalAlreadyRecordedAcknowledgement();
+
+    const first = await POST(
+      signedRequest({ payloadText: blockActionsPayload({ org, actionId }) }),
+    );
+    expect(first.status).toBe(200);
+
+    expect(acknowledgements).toHaveLength(1);
+    expect(acknowledgements[0]?.body).toEqual({
+      response_type: "in_channel",
+      text: acknowledgement,
+    });
+
+    // A different presser, so the payload's identity hash differs from the first
+    // press and this is not the redelivery/duplicate-payload path (that is a
+    // separate test below).
+    const second = await POST(
+      signedRequest({
+        payloadText: blockActionsPayload({ org, actionId, userId: "U0SLACKPRESSER2" }),
+      }),
+    );
+    expect(second.status).toBe(200);
+
+    expect(acknowledgements).toHaveLength(2);
+    expect(acknowledgements[1]?.body).toEqual({
+      response_type: "in_channel",
+      text: alreadyRecorded,
+    });
+  });
+
+  test("treats a duplicate Slack interactivity payload as a no-op for the dismiss action, same as open_fix", async () => {
+    const POST = await loadRoute();
+    const org = await freshOrg();
+    const actionId = await notUsefulActionId();
+
+    const payloadText = blockActionsPayload({ org, actionId });
+    const first = await POST(signedRequest({ payloadText }));
+    const second = await POST(signedRequest({ payloadText }));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const dismissal = await createDismissalsRepo(handle.db, org.ctx).findFor(
+      org.finding.id,
+      "not_useful",
+    );
+    expect(dismissal).not.toBeNull();
+
+    expect(acknowledgements).toHaveLength(1);
   });
 });

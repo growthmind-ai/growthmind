@@ -16,7 +16,7 @@ import {
   reviewFindingText,
   scanResidualPii,
 } from "@growthmind/core";
-import type { CandidateFinding, MeasuredCount, TraceEntry } from "@growthmind/core";
+import type { CandidateFinding, MeasuredCount, SuppressionDecision, TraceEntry } from "@growthmind/core";
 import { computeFindingSignature, signatureHex } from "@growthmind/db";
 import type {
   AnalysisRunRecord,
@@ -31,11 +31,12 @@ import type {
   PersistFindingInput,
   RecordSignatureResult,
   ScannedText,
+  SignatureHex,
   SignatureLedgerService,
   UpsertFindingPayloadInput,
 } from "@growthmind/db";
 import type { SessionSummariser, SummariseInput } from "@growthmind/adapters";
-import type { SummaryRenderResult, TenantContext } from "@growthmind/shared";
+import type { SummaryRenderResult, SuppressionReasonCode, TenantContext } from "@growthmind/shared";
 import { tenantContextSchema } from "@growthmind/shared";
 import { expect, test } from "bun:test";
 
@@ -51,8 +52,15 @@ import type {
   AnalysisLogger,
   AnalysisTickDeps,
   AnalysisTickSummary,
+  LaneTally,
 } from "../../src/tasks/analysis-tick";
 import { runAnalysisLane, runAnalysisTick } from "../../src/tasks/analysis-tick";
+
+// ADD o-019-dismissal-wired Decision 5: `RunTally`/`LaneTally` gain a `suppressed`
+// counter, in-memory/log-only (never persisted — the PRD's Data Requirements are
+// explicit: no new columns). Not on the type yet, so declared locally as a TODO for
+// production rather than imported.
+type LaneTallyWithSuppressed = LaneTally & { readonly suppressed: number };
 
 const TICK_AT = new Date("2026-08-01T09:00:00.000Z");
 const WINDOW = {
@@ -410,6 +418,13 @@ function createFakeRuns(): FakeRuns {
 interface FakeLedger {
   serviceFor: (ctx: TenantContext) => SignatureLedgerService;
   recorded: () => readonly string[];
+
+  // ADD o-019-dismissal-wired Decision 5/3: a real, controllable `consultSignature`
+  // replacing the old "must never be called" guard — the analysis lane now consults
+  // it for every candidate. Un-named signatures deliver (the permissive default), so
+  // existing tests that never call these two setters see no behaviour change.
+  suppressSignature: (signature: string, reason?: SuppressionReasonCode) => void;
+  throwOnConsult: (signature: string) => void;
 }
 
 function notThisLane(name: string): () => never {
@@ -420,8 +435,17 @@ function notThisLane(name: string): () => never {
 
 function createFakeLedger(): FakeLedger {
   const recorded: string[] = [];
+  const suppressed = new Map<string, SuppressionReasonCode>();
+  const consultThrows = new Set<string>();
+
   return {
     recorded: () => [...recorded],
+    suppressSignature: (signature, reason = "dismissed") => {
+      suppressed.set(signature, reason);
+    },
+    throwOnConsult: (signature) => {
+      consultThrows.add(signature);
+    },
     serviceFor: (ctx) => ({
       recordSignature(projectId: string, subject: CandidateFinding): Promise<RecordSignatureResult> {
         recorded.push(subject.surface);
@@ -445,7 +469,25 @@ function createFakeLedger(): FakeLedger {
         } as unknown as FindingSignatureRecord;
         return Promise.resolve({ signature, record });
       },
-      consultSignature: notThisLane("consultSignature"),
+      consultSignature(
+        _projectId: string,
+        input: CandidateFinding | SignatureHex,
+      ): Promise<SuppressionDecision> {
+        const signature = typeof input === "string" ? input : signatureOf(input);
+
+        if (consultThrows.has(signature)) {
+          return Promise.reject(
+            new Error(`createFakeLedger: consultSignature refused for ${signature}`),
+          );
+        }
+
+        const reason = suppressed.get(signature);
+        if (reason !== undefined) {
+          return Promise.resolve({ decision: "suppress", reason });
+        }
+
+        return Promise.resolve({ decision: "deliver", reason: "not_seen_before" });
+      },
       markSignatureDelivered: notThisLane("markSignatureDelivered"),
       recordDismissal: notThisLane("recordDismissal"),
       recordAncestry: notThisLane("recordAncestry"),
@@ -1380,6 +1422,45 @@ test("runAnalysisLane returns its tally rather than mutating a shared summary", 
 
   expect(held.runs.rows()).toHaveLength(1);
   expect(held.runs.rows()[0]?.status).toBe("running");
+});
+
+test("runAnalysisLane does not write up a candidate whose signature the ledger resolves as dismissed", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({ summariser });
+  h.ledger.suppressSignature(signatureOf(CANDIDATE_A));
+
+  const { lanes: _tickOnlySource, ...laneOnlyDeps } = h.deps;
+  const deps: AnalysisLaneDeps = laneOnlyDeps;
+
+  const result = await runAnalysisLane(deps, lane(), TICK_AT);
+
+  expect(result.outcome).toBe("completed");
+  expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeUndefined();
+  expect(result.tally.findingsPersisted).toBe(0);
+  expect((result.tally as LaneTallyWithSuppressed).suppressed).toBe(1);
+
+  // Cost containment: a dismissed candidate never reaches the model.
+  expect(summariser.calls()).toBe(0);
+});
+
+test("does not write up a candidate when consultSignature throws", async () => {
+  const summariser = cleanSummariser();
+  const h = harness({ summariser });
+  h.ledger.throwOnConsult(signatureOf(CANDIDATE_A));
+
+  const { lanes: _tickOnlySource, ...laneOnlyDeps } = h.deps;
+  const deps: AnalysisLaneDeps = laneOnlyDeps;
+
+  const result = await runAnalysisLane(deps, lane(), TICK_AT);
+
+  expect(result.outcome).toBe("completed");
+  expect(h.findings.rowFor(signatureOf(CANDIDATE_A))).toBeUndefined();
+
+  // A thrown consult is not a resolved suppress decision (ADD Decision 3/5) — it lands
+  // in the existing `refused` bucket, the same shape as `identityFor`'s own failure
+  // mode, never the new `suppressed` counter.
+  expect(result.tally.refused).toBe(1);
+  expect((result.tally as LaneTallyWithSuppressed).suppressed ?? 0).toBe(0);
 });
 
 const PLANTED_CREDENTIAL = "sk-plantedbyatestneverarealkey";

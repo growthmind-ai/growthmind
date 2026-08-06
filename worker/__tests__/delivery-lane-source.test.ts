@@ -2,15 +2,18 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { scanResidualPii } from "@growthmind/core";
+import { COUNT_ROLES, scanResidualPii, type CandidateFinding, type CountRole } from "@growthmind/core";
+import type { SignatureHex, SignatureLedgerService } from "@growthmind/db";
 import { SYSTEM_ACTOR_ROLE } from "@growthmind/db/system";
 import { createTestDb } from "@growthmind/db/testing";
 import { tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import type { SuppressionDecision } from "@growthmind/core";
 import { describe, expect, test } from "bun:test";
 
 import {
   FINDINGS_CONSIDERED_PER_LANE,
   createDeliveryLaneSource,
+  type DeliveryLaneSourceDeps,
 } from "../src/delivery-lane-source";
 import { DELIVERY_ACTOR_ID } from "../src/tasks/delivery-tick";
 import {
@@ -19,6 +22,55 @@ import {
   seedSlackConnection,
 } from "./helpers/onboarding-delivery-fixtures";
 import { seedPollableWorkspace } from "./helpers/wire-fixtures";
+
+// ADD o-019-dismissal-wired Decision 4: `DeliveryLaneSourceDeps` gains a `ledgerFor`
+// dependency, mirroring `AnalysisLaneDeps.ledgerFor` exactly. Not on the deps type yet,
+// so declared locally here (a TODO for production) rather than imported — see the ADD's
+// own note that the two aliases are structurally interchangeable regardless.
+type SignatureLedgerFor = (ctx: TenantContext) => SignatureLedgerService;
+
+type DeliveryLaneSourceDepsWithLedger = DeliveryLaneSourceDeps & {
+  readonly ledgerFor: SignatureLedgerFor;
+};
+
+function refusesHere(name: string): () => never {
+  return () => {
+    throw new Error(`delivery-lane-source test: ${name} should not be called in this test`);
+  };
+}
+
+// A permissive-by-default fake: any signature not named in `decisions` delivers, so a
+// test only has to name the signatures it cares about suppressing or throwing on.
+function fakeLedgerFor(
+  decisions: ReadonlyMap<string, SuppressionDecision | "throw">,
+): SignatureLedgerFor {
+  return () => ({
+    recordSignature: refusesHere("recordSignature"),
+    consultSignature: (_projectId: string, input: CandidateFinding | SignatureHex) => {
+      const signature = typeof input === "string" ? input : "";
+      const decision = decisions.get(signature);
+
+      if (decision === "throw") {
+        return Promise.reject(new Error(`fakeLedgerFor: consultSignature refused for ${signature}`));
+      }
+
+      return Promise.resolve(
+        decision ?? ({ decision: "deliver", reason: "not_seen_before" } satisfies SuppressionDecision),
+      );
+    },
+    markSignatureDelivered: refusesHere("markSignatureDelivered"),
+    recordDismissal: refusesHere("recordDismissal"),
+    recordAncestry: refusesHere("recordAncestry"),
+  });
+}
+
+function laneSourceWithLedger(
+  deps: DeliveryLaneSourceDeps,
+  ledgerFor: SignatureLedgerFor,
+): ReturnType<typeof createDeliveryLaneSource> {
+  const withLedger = { ...deps, ledgerFor } as DeliveryLaneSourceDepsWithLedger;
+  return createDeliveryLaneSource(withLedger);
+}
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -222,3 +274,162 @@ test("a funnel_dropoff and an observed_struggle finding with the same count arit
     await close();
   }
 });
+
+test("laneFor excludes a candidate whose signature the ledger resolves as dismissed, even when every other filter would have let it through", async () => {
+  const { db, close } = await createTestDb();
+
+  try {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o19-dismiss-", now: NOW });
+    const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+    await seedSlackConnection(
+      db,
+      { organizationId: workspace.organizationId, channelId: CHANNEL },
+      OWNER_SCHEMA,
+    );
+
+    const dismissed = await seedFinding(db, ctx, {
+      projectId: workspace.projectId,
+      surface: "/checkout/payment",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const deliverable = await seedFinding(db, ctx, {
+      projectId: workspace.projectId,
+      surface: "/checkout/review",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const decisions = new Map<string, SuppressionDecision | "throw">([
+      [dismissed.signature, { decision: "suppress", reason: "dismissed" }],
+    ]);
+
+    const logger = createRecordingDeliveryLogger();
+    const source = laneSourceWithLedger({ db, logger }, fakeLedgerFor(decisions));
+    const [lane] = await source.listDueLanes(NOW);
+
+    const candidateIds = (lane?.candidates ?? []).map((candidate) => candidate.findingId);
+    expect(candidateIds).not.toContain(dismissed.findingId);
+    // Control — without it, an accidentally-empty `candidates` array would pass the
+    // row above too.
+    expect(candidateIds).toContain(deliverable.findingId);
+  } finally {
+    await close();
+  }
+});
+
+test("holds a candidate back, and only that candidate, when consultSignature throws", async () => {
+  const { db, close } = await createTestDb();
+
+  try {
+    const laneA = await seedPollableWorkspace(db, { prefix: "o19-throw-a-", now: NOW });
+    const ctxA = deliveryContextFor(laneA.organizationId, laneA.organizationName);
+    await seedSlackConnection(
+      db,
+      { organizationId: laneA.organizationId, channelId: `${CHANNEL}A` },
+      OWNER_SCHEMA,
+    );
+
+    const throwing = await seedFinding(db, ctxA, {
+      projectId: laneA.projectId,
+      surface: "/checkout/payment",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+    const sibling = await seedFinding(db, ctxA, {
+      projectId: laneA.projectId,
+      surface: "/checkout/review",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const laneB = await seedPollableWorkspace(db, { prefix: "o19-throw-b-", now: NOW });
+    const ctxB = deliveryContextFor(laneB.organizationId, laneB.organizationName);
+    await seedSlackConnection(
+      db,
+      { organizationId: laneB.organizationId, channelId: `${CHANNEL}B` },
+      OWNER_SCHEMA,
+    );
+    const unrelated = await seedFinding(db, ctxB, {
+      projectId: laneB.projectId,
+      surface: "/checkout/payment",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const decisions = new Map<string, SuppressionDecision | "throw">([
+      [throwing.signature, "throw"],
+    ]);
+
+    const logger = createRecordingDeliveryLogger();
+    const source = laneSourceWithLedger({ db, logger }, fakeLedgerFor(decisions));
+    const lanes = await source.listDueLanes(NOW);
+
+    const foundA = lanes.find((entry) => entry.organizationId === laneA.organizationId);
+    const foundB = lanes.find((entry) => entry.organizationId === laneB.organizationId);
+
+    const idsA = (foundA?.candidates ?? []).map((candidate) => candidate.findingId);
+    expect(idsA).not.toContain(throwing.findingId);
+    expect(idsA).toContain(sibling.findingId);
+
+    const idsB = (foundB?.candidates ?? []).map((candidate) => candidate.findingId);
+    expect(idsB).toContain(unrelated.findingId);
+  } finally {
+    await close();
+  }
+});
+
+test("does not spend a considered slot on a dismissed finding", async () => {
+  const { db, close } = await createTestDb();
+
+  try {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o19-slot-", now: NOW });
+    const ctx = deliveryContextFor(workspace.organizationId, workspace.organizationName);
+
+    await seedSlackConnection(
+      db,
+      { organizationId: workspace.organizationId, channelId: CHANNEL },
+      OWNER_SCHEMA,
+    );
+
+    // Oldest first, so it sits past the consideration budget once the dismissed rows
+    // are in front of it — the exact arrangement the `text.held` sibling test above
+    // uses, mirrored here for a dismissed signature instead of a held one.
+    const deliverable = await seedFinding(db, ctx, {
+      projectId: workspace.projectId,
+      surface: "/checkout/review",
+      context: CLEAN_CONTEXT,
+      at: NOW,
+    });
+
+    const dismissedSignatures: string[] = [];
+    for (let index = 0; index < FINDINGS_CONSIDERED_PER_LANE; index += 1) {
+      const seeded = await seedFinding(db, ctx, {
+        projectId: workspace.projectId,
+        surface: "/checkout/payment",
+        context: CLEAN_CONTEXT,
+        at: NOW,
+      });
+      dismissedSignatures.push(seeded.signature);
+    }
+
+    const decisions = new Map<string, SuppressionDecision | "throw">(
+      dismissedSignatures.map((signature) => [
+        signature,
+        { decision: "suppress", reason: "dismissed" } as SuppressionDecision,
+      ]),
+    );
+
+    const logger = createRecordingDeliveryLogger();
+    const source = laneSourceWithLedger({ db, logger }, fakeLedgerFor(decisions));
+    const [lane] = await source.listDueLanes(NOW);
+
+    expect((lane?.candidates ?? []).map((candidate) => candidate.findingId)).toContain(
+      deliverable.findingId,
+    );
+  } finally {
+    await close();
+  }
+}, 60_000);
