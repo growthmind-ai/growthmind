@@ -1,8 +1,9 @@
-import { Anchor, Badge, Box, Group, Paper, Stack, Text, VisuallyHidden } from "@mantine/core";
-import Link from "next/link";
+import { Badge, Box, Group, Paper, Stack, Text, VisuallyHidden } from "@mantine/core";
 
 import { beatsAreCited, claimRows, FINDINGS_MESSAGES } from "@growthmind/shared";
 import type { BeatView, ClaimView } from "@growthmind/shared";
+
+import { AnchorLink } from "@/components/ui/Links";
 
 import classes from "./findings.module.css";
 
@@ -81,8 +82,7 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
                 {claim.citesLabel}
               </Text>
             ) : (
-              <Anchor
-                component={Link}
+              <AnchorLink
                 href={claim.citesHref}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -92,7 +92,7 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
               >
                 {claim.citesLabel}
                 <VisuallyHidden> (opens the recording in a new tab)</VisuallyHidden>
-              </Anchor>
+              </AnchorLink>
             )}
           </Paper>
         </Box>
