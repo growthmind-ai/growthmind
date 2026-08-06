@@ -290,6 +290,7 @@ describe("the analysis lane's tenant boundary (DB3)", () => {
         projectCap: 5,
         organizationCap: 5,
         at: TICK_AT,
+        stage: "render",
       });
     } catch {
       // A refusal is acceptable; the read-back below is what decides.
@@ -317,6 +318,7 @@ describe("the analysis lane's tenant boundary (DB3)", () => {
         projectCap: 5,
         organizationCap: 5,
         at: TICK_AT,
+        stage: "render",
       }),
     ).toEqual({ claimed: true });
 

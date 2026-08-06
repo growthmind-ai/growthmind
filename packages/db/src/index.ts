@@ -328,3 +328,11 @@ export {
   type RecordDivergenceServiceInput,
   type RecordDivergenceServiceResult,
 } from "./services/divergence.service";
+
+export {
+  createCauseClaimsRepo,
+  type CauseClaimsRepo,
+  type CauseClaimRecord,
+  type CauseClaimStatement,
+  type PersistCauseClaimsInput,
+} from "./repositories/cause-claims.repo";

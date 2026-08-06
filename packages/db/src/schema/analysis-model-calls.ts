@@ -28,12 +28,20 @@ export const analysisModelCalls = pgTable(
 
     signatureVersion: integer("signature_version").notNull(),
     attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow().notNull(),
+
+    // ADD Decision 2: additive, DEFAULT 'render' is a statement of historical fact (every
+    // row that exists before this column shipped is a render-stage claim), not a guess a
+    // backfill would need to correct.
+    stage: text("stage", { enum: ["render", "cause"] }).notNull().default("render"),
   },
   (table) => [
-    uniqueIndex("analysis_model_calls_org_project_signature_key").on(
+    // Widens the old 3-column (org, project, signature) index to 4 columns so the render
+    // stage and the cause stage claim independently for the same signature (ADD Decision 2).
+    uniqueIndex("analysis_model_calls_org_project_signature_stage_key").on(
       table.organizationId,
       table.projectId,
       table.signature,
+      table.stage,
     ),
 
     index("analysis_model_calls_organization_id_idx").on(table.organizationId),
