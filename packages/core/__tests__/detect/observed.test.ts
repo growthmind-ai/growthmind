@@ -49,32 +49,10 @@ async function loadDetectObservedStruggle(): Promise<DetectObservedStruggle> {
   return detector as DetectObservedStruggle;
 }
 
-// TODO(O-041 D-9): both members land on ThresholdRuleSet in the rules wave; the ADD §4
-// ratified values below are the fallback until they do, and become unreachable after.
-type ObservedThresholdMembers = {
-  readonly struggleScrollBackMin?: number;
-  readonly struggleObservedMinSessions?: number;
-};
-
-const RATIFIED_SCROLL_BACK_MIN = 3;
-const RATIFIED_OBSERVED_MIN_SESSIONS = 5;
-
 function ruleSetV1(): ThresholdRuleSet {
   const rules = THRESHOLD_RULE_SETS.get(1);
   if (!rules) throw new Error("rule set version 1 must remain resolvable forever");
   return rules;
-}
-
-function observedFloors(ruleSet: ThresholdRuleSet): {
-  readonly scrollBackMin: number;
-  readonly minSessions: number;
-} {
-  const declared: ThresholdRuleSet & ObservedThresholdMembers = ruleSet;
-
-  return {
-    scrollBackMin: declared.struggleScrollBackMin ?? RATIFIED_SCROLL_BACK_MIN,
-    minSessions: declared.struggleObservedMinSessions ?? RATIFIED_OBSERVED_MIN_SESSIONS,
-  };
 }
 
 const T3OBS_WINDOW: AnalysisWindow = {
@@ -210,9 +188,9 @@ function t3obsBasis(keptCount: number): CountBasis {
 }
 
 function t3obsCorpus(): ObservedCorpus {
-  const floors = observedFloors(ruleSetV1());
-  const keptCount = floors.minSessions + 1;
-  const scrollBacksPerSession = floors.scrollBackMin + 1;
+  const rules = ruleSetV1();
+  const keptCount = rules.struggleObservedMinSessions + 1;
+  const scrollBacksPerSession = rules.struggleScrollBackMin + 1;
 
   const keptSlots: readonly number[] = Array.from({ length: keptCount }, (_unused, slot) => slot);
 

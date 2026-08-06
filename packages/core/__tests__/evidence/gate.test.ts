@@ -581,28 +581,6 @@ async function signalsFrom(
   return candidates.flatMap((candidate) => [...candidate.signals]);
 }
 
-// TODO(O-041 D-9): both members land on ThresholdRuleSet in the rules wave; the ADD §4
-// ratified values below are the fallback until they do, and become unreachable after.
-type ObservedThresholdMembers = {
-  readonly struggleRageClickMin?: number;
-  readonly struggleObservedMinSessions?: number;
-};
-
-const RATIFIED_RAGE_CLICK_MIN = 4;
-const RATIFIED_OBSERVED_MIN_SESSIONS = 5;
-
-function observedFloors(ruleSet: ThresholdRuleSet): {
-  readonly rageClickMin: number;
-  readonly minSessions: number;
-} {
-  const declared: ThresholdRuleSet & ObservedThresholdMembers = ruleSet;
-
-  return {
-    rageClickMin: declared.struggleRageClickMin ?? RATIFIED_RAGE_CLICK_MIN,
-    minSessions: declared.struggleObservedMinSessions ?? RATIFIED_OBSERVED_MIN_SESSIONS,
-  };
-}
-
 const O041_PROJECT_ID = "t041-gate-project";
 const O041_SURFACE = "/t041-gate/checkout";
 const O041_HREF = `https://t041-gate.example.invalid${O041_SURFACE}`;
@@ -691,7 +669,7 @@ function o041Basis(kept: number): CountBasis {
 }
 
 function o041Corpus(clicksPerSession: number, ruleSet: ThresholdRuleSet): ReplayCorpus {
-  const { minSessions } = observedFloors(ruleSet);
+  const minSessions = ruleSet.struggleObservedMinSessions;
   const slots: readonly number[] = Array.from({ length: minSessions }, (_unused, slot) => slot);
 
   return {
@@ -709,11 +687,11 @@ function o041Corpus(clicksPerSession: number, ruleSet: ThresholdRuleSet): Replay
 }
 
 function belowThresholdCorpus(ruleSet: ThresholdRuleSet): ReplayCorpus {
-  return o041Corpus(observedFloors(ruleSet).rageClickMin - 1, ruleSet);
+  return o041Corpus(ruleSet.struggleRageClickMin - 1, ruleSet);
 }
 
 function clearingCorpus(ruleSet: ThresholdRuleSet): ReplayCorpus {
-  return o041Corpus(observedFloors(ruleSet).rageClickMin, ruleSet);
+  return o041Corpus(ruleSet.struggleRageClickMin, ruleSet);
 }
 
 async function rageClickClear(ruleSet: ThresholdRuleSet): Promise<EvidenceSignal> {

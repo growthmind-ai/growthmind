@@ -206,32 +206,10 @@ async function loadDetectObservedStruggle(): Promise<DetectObservedStruggle> {
   return detector as DetectObservedStruggle;
 }
 
-// TODO(O-041 D-9): both members land on ThresholdRuleSet in the rules wave; the ADD §4
-// ratified values below are the fallback until they do, and become unreachable after.
-type ObservedThresholdMembers = {
-  readonly struggleRageClickMin?: number;
-  readonly struggleObservedMinSessions?: number;
-};
-
-const RATIFIED_RAGE_CLICK_MIN = 4;
-const RATIFIED_OBSERVED_MIN_SESSIONS = 5;
-
-function observedFloors(rules: ThresholdRuleSet): {
-  readonly rageClickMin: number;
-  readonly minSessions: number;
-} {
-  const declared: ThresholdRuleSet & ObservedThresholdMembers = rules;
-
-  return {
-    rageClickMin: declared.struggleRageClickMin ?? RATIFIED_RAGE_CLICK_MIN,
-    minSessions: declared.struggleObservedMinSessions ?? RATIFIED_OBSERVED_MIN_SESSIONS,
-  };
-}
-
 // Distinct from the observed cohort by construction, so a candidate that read the other
 // producer's count fails the double-count test instead of passing by coincidence.
 function funnelStrugglerCount(rules: ThresholdRuleSet): number {
-  return observedFloors(rules).minSessions + rules.struggleMinStrugglingSessions;
+  return rules.struggleObservedMinSessions + rules.struggleMinStrugglingSessions;
 }
 
 const OBSERVED_HREF = `https://o041.example.invalid${ORIGIN}`;
@@ -288,7 +266,6 @@ function struggleSessionId(index: number): string {
 
 function dualProducerCorpus(): ObservedCorpus {
   const rules = ruleSet();
-  const floors = observedFloors(rules);
 
   const corpus = funnelCorpus({
     strugglers: funnelStrugglerCount(rules),
@@ -297,9 +274,9 @@ function dualProducerCorpus(): ObservedCorpus {
 
   return {
     ...corpus,
-    replays: Array.from({ length: floors.minSessions }, (_unused, index) => ({
+    replays: Array.from({ length: rules.struggleObservedMinSessions }, (_unused, index) => ({
       sessionId: struggleSessionId(index),
-      transcript: rageTranscript(floors.rageClickMin),
+      transcript: rageTranscript(rules.struggleRageClickMin),
     })),
   };
 }
@@ -622,7 +599,7 @@ describe("assembleCandidates with two producers on one surface", () => {
     );
 
     const funnelSessions = funnelStrugglerCount(rules);
-    const observedSessions = observedFloors(rules).minSessions;
+    const observedSessions = rules.struggleObservedMinSessions;
     expect(funnelSessions).not.toBe(observedSessions);
 
     expect(
