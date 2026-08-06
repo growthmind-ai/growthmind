@@ -35,7 +35,9 @@ export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): Di
 
   return {
     async record(input: RecordDismissalRowInput): Promise<DismissalRecord> {
-      const row = await c.insertOrFetch(
+      // `claim`, not `insertOrFetch`: a Slack retry or a double-press re-presents the same
+      // dismissal, and the row it fetches is the one already there (D3, D4).
+      const claimed = await c.claim(
         {
           projectId: input.projectId,
           findingId: input.findingId,
@@ -50,10 +52,18 @@ export function createDismissalsRepo(db: ScopedExecutor, ctx: TenantContext): Di
         },
       );
 
+      if (claimed.row === null) {
+        throw new Error("dismissals: the row this call conflicted with could not be read back");
+      }
+
+      const row = claimed.row;
+
       // A dismissal folds the finding out of both surfaces, and it can arrive from Slack —
       // a press nobody's browser made (D1).
-      await publishLive(db, { organizationId: ctx.organizationId, topic: "findings" });
-      await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+      if (claimed.claimed) {
+        await publishLive(db, { organizationId: ctx.organizationId, topic: "findings" });
+        await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+      }
 
       return row;
     },

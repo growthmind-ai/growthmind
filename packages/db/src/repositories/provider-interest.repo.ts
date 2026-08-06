@@ -35,7 +35,11 @@ export function createProviderInterestRepo(
         },
       );
 
-      await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+      // Only a first note changes anything; a repeat leaves the row untouched, and waking
+      // every open page for it is the no-op fan-out O-047 shipped a fix for (D3).
+      if (result.claimed) {
+        await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+      }
 
       return { claimed: result.claimed };
     },
