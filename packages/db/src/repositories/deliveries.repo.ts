@@ -9,7 +9,7 @@ import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 import { organization } from "../schema/auth";
 import { deliveries } from "../schema/deliveries";
 import { orgCrud } from "./crud";
-import type { SignatureHex } from "../signatures/hex";
+import { signatureHex, type SignatureHex } from "../signatures/hex";
 import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type DeliveryRecord = typeof deliveries.$inferSelect;
@@ -193,6 +193,7 @@ export interface InteractionPrincipal {
   readonly findingId: string;
   readonly projectId: string;
   readonly deliveryId: string;
+  readonly signature: SignatureHex;
 }
 
 // The pair is a value Growthmind wrote, under a globally unique partial index, so it
@@ -212,6 +213,7 @@ export async function resolveDeliveryForInteraction(
       projectId: deliveries.projectId,
       organizationId: deliveries.organizationId,
       organizationName: organization.name,
+      signature: deliveries.signature,
     })
     .from(deliveries)
     .innerJoin(organization, eq(deliveries.organizationId, organization.id))
@@ -234,5 +236,6 @@ export async function resolveDeliveryForInteraction(
     findingId: row.findingId,
     projectId: row.projectId,
     deliveryId: row.deliveryId,
+    signature: signatureHex(row.signature),
   };
 }
