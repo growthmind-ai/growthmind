@@ -51,7 +51,7 @@ function fourthDescriptor(overrides: Partial<FilterDescriptor> = {}): FilterDesc
       { value: "slate", label: "slate", description: null, sessionCount: 1, replayCount: 0 },
     ],
     value: null,
-    summarise: (value: string) => `Shade: ${value}`,
+    axis: "Shade",
     clearLabel: "Clear the shade filter",
     ...overrides,
   };

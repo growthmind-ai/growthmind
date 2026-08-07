@@ -41,7 +41,7 @@ const COMPANY: FilterDescriptor = {
     },
   ],
   value: null,
-  summarise: (value: string) => `Company: ${value}`,
+  axis: "Company",
   clearLabel: "Clear the company filter",
 };
 
@@ -76,7 +76,7 @@ const WHO_AT_BASELINE: FilterDescriptor = {
     },
   ],
   value: null,
-  summarise: (value: string) => `Who counts: ${value}`,
+  axis: "Who counts",
   clearLabel: "Show real people again",
 };
 

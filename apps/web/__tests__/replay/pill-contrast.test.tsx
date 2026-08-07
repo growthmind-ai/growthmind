@@ -31,7 +31,7 @@ const APPLIED_COMPANY: FilterDescriptor = {
     },
   ],
   value: "acme.com",
-  summarise: (value: string) => `Company: ${value}`,
+  axis: "Company",
   clearLabel: "Clear the company filter",
 };
 

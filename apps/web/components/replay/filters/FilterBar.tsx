@@ -89,7 +89,7 @@ function FilterControl({
       >
         {applied ? (
           <span id={axisId} className={classes.hiddenLabel}>
-            {descriptor.summarise("")}
+            {`${descriptor.axis}:`}
           </span>
         ) : null}
         <span id={labelId} className={classes.label}>

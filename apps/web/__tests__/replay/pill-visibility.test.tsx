@@ -24,7 +24,7 @@ const ONE_COMPANY: FilterDescriptor = {
   footNote: "Personal addresses (gmail, yahoo) aren't companies, so they're not listed.",
   options: [option("acme.com")],
   value: null,
-  summarise: (value: string) => `Company: ${value}`,
+  axis: "Company",
   clearLabel: "Clear the company filter",
 };
 
@@ -37,7 +37,7 @@ const ENTRY: FilterDescriptor = {
   footNote: "The page someone landed on first, not every page they saw.",
   options: [option("/pricing", 4, 2), option("/docs", 3, 1)],
   value: null,
-  summarise: (value: string) => `Entry page: ${value}`,
+  axis: "Entry page",
   clearLabel: "Clear the page filter",
 };
 
@@ -72,7 +72,7 @@ const WHO: FilterDescriptor = {
     },
   ],
   value: null,
-  summarise: (value: string) => `Who counts: ${value}`,
+  axis: "Who counts",
   clearLabel: "Show real people again",
 };
 

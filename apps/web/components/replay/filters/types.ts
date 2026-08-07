@@ -33,9 +33,10 @@ export interface FilterDescriptor {
 
   readonly value: string | null;
 
-  // The applied pill's accessible name, and — called with no value — the axis name the panel
-  // heads itself with.
-  readonly summarise: (value: string) => string;
+  // The axis name the panel heads itself with, and the first half of an applied pill's accessible
+  // name. A string, never a formatter: this descriptor is built on the server and read on the
+  // client, and a function cannot cross that boundary.
+  readonly axis: string;
 
   readonly clearLabel: string;
 }

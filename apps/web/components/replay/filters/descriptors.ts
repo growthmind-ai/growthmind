@@ -24,12 +24,6 @@ import type { ReplayFacets } from "@/lib/replay/read";
 
 import type { FilterDescriptor, FilterOption } from "./types";
 
-// Called with no value at all, `summarise` yields the axis name the panel heads itself with, so
-// the descriptor owns every word the surface says about it.
-function summariseWith(axis: string): (value: string) => string {
-  return (value) => `${axis}: ${value}`.trimEnd();
-}
-
 function optionsOf(facet: readonly FacetOption[]): readonly FilterOption[] {
   return facet.map((option) => ({
     value: option.value,
@@ -68,7 +62,7 @@ export function replayDescriptors(
       footNote: REPLAY_COMPANY_PANEL_FOOT,
       options: optionsOf(facets.company),
       value: filters.company,
-      summarise: summariseWith(REPLAY_COMPANY_AXIS),
+      axis: REPLAY_COMPANY_AXIS,
       clearLabel: REPLAY_CLEAR_COMPANY_ACTION,
     },
     {
@@ -82,7 +76,7 @@ export function replayDescriptors(
       footNote: REPLAY_ENTRY_PANEL_FOOT,
       options: optionsOf(facets.entry),
       value: filters.entry,
-      summarise: summariseWith(REPLAY_ENTRY_AXIS),
+      axis: REPLAY_ENTRY_AXIS,
       clearLabel: REPLAY_CLEAR_ENTRY_ACTION,
     },
     {
@@ -96,7 +90,7 @@ export function replayDescriptors(
       // The baseline is never an applied filter, so at rest this descriptor carries no value and
       // its pill takes no accent and no clear control (UX T10).
       value: filters.lane === REPLAY_DEFAULT_LANE ? null : filters.lane,
-      summarise: summariseWith(REPLAY_WHO_AXIS),
+      axis: REPLAY_WHO_AXIS,
       clearLabel: REPLAY_SHOW_REAL_PEOPLE_AGAIN_ACTION,
     },
   ];

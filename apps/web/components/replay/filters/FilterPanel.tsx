@@ -64,7 +64,7 @@ export function FilterPanel({ id, descriptor, onPick, onDismiss, onClear }: Filt
   const optionNames = useId();
 
   const [panelWidth, panelHeight] = descriptor.panelSize;
-  const axis = descriptor.summarise("").replace(/[\s:]+$/u, "");
+  const { axis } = descriptor;
 
   const needle = query.trim().toLowerCase();
   const matching = descriptor.options.filter((option) =>
