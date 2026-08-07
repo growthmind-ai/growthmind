@@ -17,6 +17,7 @@ import { replayDescriptors } from "../../components/replay/filters/descriptors";
 import { ReplayListBody } from "../../components/replay/ReplayListBody";
 import { readReplayScreen } from "../../lib/replay/read";
 import { readMarkup } from "../first-run/helpers/rendered-markup";
+import { accentedPillNames } from "./helpers/names";
 import {
   replayDeps,
   screenOf,
@@ -50,11 +51,6 @@ function filtersFromUrl(url: string): ReplayFilters {
   return replayFiltersOf(paramsOf(url));
 }
 
-function pillTags(markup: string): readonly string[] {
-  return [...markup.matchAll(/<button[^>]*>/g)]
-    .map((match) => match[0] ?? "")
-    .filter((tag) => tag.includes('aria-haspopup="dialog"'));
-}
 
 function barMarkup(screen: ReplayScreenView, filters: ReplayFilters): string {
   const { container } = render(
@@ -162,12 +158,14 @@ describe("a filtered /replays URL, loaded cold", () => {
       cleanup();
       const filters = filtersFromUrl(one.url);
       const markup = barMarkup(await screenFor(filters), filters);
-      const accented = pillTags(markup).filter((tag) => tag.includes('data-variant="filled"'));
+      // The accented pill names the value it applied through its own text nodes, never an
+      // attribute (B-049), so both are read off the element rather than off its open tag.
+      const accented = accentedPillNames(markup);
 
       rendered.push({
         url: one.url,
         accented: accented.length,
-        named: one.values.every((value) => accented.some((tag) => tag.includes(value))),
+        named: one.values.every((value) => accented.some((name) => name.includes(value))),
       });
     }
 
@@ -187,12 +185,10 @@ describe("a filtered /replays URL, loaded cold", () => {
 
     cleanup();
 
-    const accented = pillTags(barMarkup(screen, filters)).filter((tag) =>
-      tag.includes('data-variant="filled"'),
-    );
+    const accented = accentedPillNames(barMarkup(screen, filters));
 
-    expect(accented.some((tag) => tag.includes("acme.com"))).toBe(true);
-    expect(accented.some((tag) => tag.includes("/pricing"))).toBe(true);
+    expect(accented.some((name) => name.includes("acme.com"))).toBe(true);
+    expect(accented.some((name) => name.includes("/pricing"))).toBe(true);
 
     // One parse: the page reads the URL exactly once and hands the result to both halves.
     expect(pageSource().match(/replayFiltersOf\(/g) ?? []).toHaveLength(1);

@@ -43,9 +43,10 @@ function FilterControl({
   const pill = useRef<HTMLButtonElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const panelId = useId();
+  const axisId = useId();
+  const labelId = useId();
 
   const applied = descriptor.value !== null;
-  const name = applied ? descriptor.summarise(descriptor.value ?? "") : descriptor.restLabel;
 
   function dismiss(): void {
     pill.current?.focus();
@@ -65,11 +66,13 @@ function FilterControl({
       <button
         type="button"
         ref={pill}
-        aria-label={name}
+        // Named by its own text nodes rather than by an aria-label or a title: session replay
+        // masks text and cannot mask an attribute, and an applied value is the customer's own
+        // (B-049). The axis carries the colon, so the two read as one sentence.
+        aria-labelledby={applied ? `${axisId} ${labelId}` : labelId}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={panelId}
-        title={name}
         data-variant={applied ? "filled" : "default"}
         className={classes.pill}
         style={applied ? accented : undefined}
@@ -84,7 +87,14 @@ function FilterControl({
           if (event.key === "Escape" && open) dismiss();
         }}
       >
-        <span className={classes.label}>{applied ? descriptor.value : descriptor.restLabel}</span>
+        {applied ? (
+          <span id={axisId} className={classes.hiddenLabel}>
+            {descriptor.summarise("")}
+          </span>
+        ) : null}
+        <span id={labelId} className={classes.label}>
+          {applied ? descriptor.value : descriptor.restLabel}
+        </span>
         <span className={classes.chevron} aria-hidden="true">
           ▾
         </span>

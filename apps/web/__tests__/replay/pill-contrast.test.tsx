@@ -9,6 +9,7 @@ import { theme as themeOverride } from "@/lib/theme";
 
 import { FilterBar } from "../../components/replay/filters/FilterBar";
 import type { FilterDescriptor } from "../../components/replay/filters/types";
+import { domOf, nameOf, pillsOf } from "./helpers/names";
 
 const theme = mergeMantineTheme(DEFAULT_THEME, themeOverride);
 
@@ -70,8 +71,10 @@ function accentedPillStyle(): string {
     ),
   );
 
-  const pill = /<button[^>]*aria-label="Company: acme\.com[^"]*"[^>]*>/.exec(markup)?.[0] ?? "";
-  return /style="([^"]*)"/.exec(pill)?.[1] ?? "";
+  const host = domOf(markup);
+  const pill = pillsOf(host).find((one) => nameOf(host, one).startsWith("Company: acme.com"));
+
+  return pill?.getAttribute("style") ?? "";
 }
 
 describe("the accented pill", () => {

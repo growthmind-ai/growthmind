@@ -11,6 +11,7 @@ import { createElement } from "react";
 import { FilterBar } from "../../components/replay/filters/FilterBar";
 import { FilterPanel } from "../../components/replay/filters/FilterPanel";
 import type { FilterDescriptor } from "../../components/replay/filters/types";
+import { nameOf } from "./helpers/names";
 
 const STYLESHEET = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -179,7 +180,7 @@ describe("the filter panel", () => {
     // In the tab order, and its accessible name carries the counts a screen reader needs.
     expect(row.getAttribute("tabindex")).not.toBe("-1");
     expect(row.getAttribute("aria-disabled")).not.toBe("true");
-    expect(row.getAttribute("aria-label") ?? row.textContent ?? "").toMatch(/0 sessions?/);
+    expect(nameOf(document.body, row)).toBe("northwind.co, 0 sessions, 0 replays");
 
     // Pickable is not a styling claim: taking the row applies it.
     await userEvent.click(row);
@@ -262,7 +263,7 @@ describe("the filter panel", () => {
     const pill = container.querySelector('button[aria-haspopup="dialog"]');
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("aria-expanded")).toBe("false");
-    expect(pill?.getAttribute("aria-label") ?? "").toContain("Company: acme.com");
+    expect(nameOf(container, pill as Element)).toContain("Company: acme.com");
     expect(pill).not.toBe(clear);
   });
 
@@ -279,6 +280,6 @@ describe("the filter panel", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(pill);
     expect(applied).toEqual([]);
-    expect(pill.getAttribute("aria-label") ?? "").toContain("Company: acme.com");
+    expect(nameOf(container, pill)).toContain("Company: acme.com");
   });
 });

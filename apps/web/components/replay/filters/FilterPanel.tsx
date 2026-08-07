@@ -7,7 +7,7 @@
 /* oxlint-disable jsx-a11y/no-noninteractive-element-interactions */
 
 import { Button, Radio, Stack, Text, TextInput } from "@mantine/core";
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 
 import {
   REPLAY_CLEAR_SEARCH_ACTION,
@@ -25,7 +25,9 @@ import classes from "./filter-bar.module.css";
 import type { FilterDescriptor, FilterOption } from "./types";
 
 // UX §9.1 puts both counts in the option's accessible name, because R-2 refuses to encode "this
-// would give you nothing" in opacity and a screen reader never sees a colour.
+// would give you nothing" in opacity and a screen reader never sees a colour. It is delivered as
+// a text node, never an attribute: session replay masks text and cannot mask an attribute, and an
+// option's label is the customer's own data (B-049).
 
 interface FilterPanelProps {
   readonly id?: string;
@@ -59,6 +61,7 @@ function accessibleName(option: FilterOption): string {
 
 export function FilterPanel({ id, descriptor, onPick, onDismiss, onClear }: FilterPanelProps) {
   const [query, setQuery] = useState("");
+  const optionNames = useId();
 
   const [panelWidth, panelHeight] = descriptor.panelSize;
   const axis = descriptor.summarise("").replace(/[\s:]+$/u, "");
@@ -153,12 +156,13 @@ export function FilterPanel({ id, descriptor, onPick, onDismiss, onClear }: Filt
             </Stack>
           ) : (
             <ul role="listbox" aria-label={axis} className={classes.options}>
-              {matching.map((option) => (
+              {matching.map((option, index) => (
                 <li
                   key={option.value}
                   role="option"
                   aria-selected={option.value === descriptor.value}
-                  aria-label={accessibleName(option)}
+                  // Indexed, never the option's own value: an id is an attribute too.
+                  aria-labelledby={`${optionNames}-${String(index)}`}
                   data-empty={option.sessionCount === 0 ? "true" : undefined}
                   tabIndex={0}
                   className={classes.optionRow}
@@ -169,6 +173,9 @@ export function FilterPanel({ id, descriptor, onPick, onDismiss, onClear }: Filt
                     pickOnEnter(event, option.value);
                   }}
                 >
+                  <span id={`${optionNames}-${String(index)}`} className={classes.hiddenLabel}>
+                    {accessibleName(option)}
+                  </span>
                   <Text size="sm" truncate="end">
                     {option.label}
                   </Text>

@@ -7,6 +7,7 @@ import { theme } from "@/lib/theme";
 
 import { FilterBar } from "../../components/replay/filters/FilterBar";
 import type { FilterDescriptor, FilterOption } from "../../components/replay/filters/types";
+import { domOf, nameOf, pillsOf } from "./helpers/names";
 
 function option(value: string, sessionCount = 5, replayCount = 3): FilterOption {
   return { value, label: value, description: null, sessionCount, replayCount };
@@ -86,13 +87,16 @@ function barMarkup(descriptors: readonly FilterDescriptor[]): string {
 }
 
 function pillLabels(markup: string): readonly string[] {
-  const found: string[] = [];
+  const host = domOf(markup);
+  return pillsOf(host).map((pill) => nameOf(host, pill));
+}
 
-  for (const match of markup.matchAll(/<button[^>]*aria-haspopup="dialog"[^>]*>/g)) {
-    found.push(/aria-label="([^"]*)"/.exec(match[0] ?? "")?.[1] ?? "");
-  }
+function accentedLabels(markup: string): readonly string[] {
+  const host = domOf(markup);
 
-  return found;
+  return pillsOf(host)
+    .filter((pill) => pill.getAttribute("data-variant") === "filled")
+    .map((pill) => nameOf(host, pill));
 }
 
 describe("which pills render", () => {
@@ -113,9 +117,7 @@ describe("which pills render", () => {
       pillLabels(markup).filter((label) => label.startsWith("Company: acme.com")),
     ).toHaveLength(1);
     // Accented: the applied pill is the filled variant, never the resting one.
-    expect(markup).toMatch(
-      /<button[^>]*aria-label="Company: acme\.com[^"]*"[^>]*data-variant="filled"/,
-    );
+    expect(accentedLabels(markup)).toEqual(["Company: acme.com"]);
     // And escapable: its own button, its own tab stop.
     expect(markup).toMatch(/<button[^>]*aria-label="Clear the company filter"/);
   });
