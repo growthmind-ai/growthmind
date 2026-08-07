@@ -3,15 +3,14 @@ import { Stack, Text } from "@mantine/core";
 import { createGrowthContextRepo, ensureProject } from "@growthmind/db";
 import type { LiveTopic } from "@growthmind/shared";
 
+import { BeliefCardList, FactRowList } from "@/components/audience/AudienceLists";
 import {
   AudienceEmpty,
   AudienceReadFailed,
   AudienceReading,
   AudienceResearchFailed,
 } from "@/components/audience/AudienceStates";
-import { BeliefCard } from "@/components/audience/BeliefCard";
 import { DoubtRow } from "@/components/audience/DoubtRow";
-import { FactRow } from "@/components/audience/FactRow";
 import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ClosingNote, PageHeader, SectionHeading } from "@/components/ui/Page";
@@ -103,39 +102,22 @@ function PopulatedAudience({ view }: { readonly view: PopulatedAudienceView }) {
         </Text>
       )}
 
-      {view.cards.length === 0 ? null : (
-        <>
-          <SectionHeading title="What we believe about them" />
-          <Stack gap="sm">
-            {view.cards.map((card, index) => (
-              <div
-                key={`${card.factKind}:${card.claim}`}
-                className={classes.rowIn}
-                style={{ animationDelay: `${index * CASCADE_STEP_MS}ms` }}
-              >
-                <BeliefCard card={card} />
-              </div>
-            ))}
-          </Stack>
-        </>
-      )}
+      {/* Both lists own their own heading: a dropped statement leaves the server's read
+          immediately, and a heading gated on the remaining count would take the tombstone —
+          and its Undo — down with it. */}
+      <BeliefCardList
+        views={view.cards}
+        heading={<SectionHeading title="What we believe about them" />}
+        rowClassName={classes.rowIn}
+        stepMs={CASCADE_STEP_MS}
+      />
 
-      {view.rows.length === 0 ? null : (
-        <>
-          <SectionHeading title="How they decide, and what they arrive with" />
-          <Stack gap={0}>
-            {view.rows.map((row, index) => (
-              <div
-                key={`${row.factKind}:${row.claim}`}
-                className={classes.rowIn}
-                style={{ animationDelay: `${index * CASCADE_STEP_MS}ms` }}
-              >
-                <FactRow view={row} />
-              </div>
-            ))}
-          </Stack>
-        </>
-      )}
+      <FactRowList
+        views={view.rows}
+        heading={<SectionHeading title="How they decide, and what they arrive with" />}
+        rowClassName={classes.rowIn}
+        stepMs={CASCADE_STEP_MS}
+      />
 
       {view.latestCorrection === null ? null : <ChangedSection changed={view.latestCorrection} />}
 

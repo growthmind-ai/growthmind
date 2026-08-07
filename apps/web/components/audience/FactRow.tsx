@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Group, Stack, Text, Textarea } from "@mantine/core";
+import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import posthog from "posthog-js";
@@ -12,13 +12,11 @@ import { RuledRow } from "@/components/ui/Page";
 import type { FactRowView } from "@/lib/audience/read";
 
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
+import { DroppedNote } from "./DroppedNote";
+import { FactChips } from "./FactChips";
 import styles from "./FactRow.module.css";
 import { MorphSurface, type MorphControls } from "./MorphSurface";
 import morphStyles from "./MorphSurface.module.css";
-
-// The confirm route is this sprint's one new sibling (AD-3); a shared constant is due once
-// the concurrent descriptor wave lands.
-const CONFIRM_ROUTE = "/api/settings/business/confirm";
 
 const TOOLBAR_SIZE = { width: 176, height: 42 } as const;
 const PANEL_SIZE = { width: 344, height: 258 } as const;
@@ -28,7 +26,6 @@ const CORRECT_PANEL_LABEL = "Correct this";
 const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
 const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
 const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
-const DROPPED_NOTE = "Dropped — you said this is wrong.";
 
 // Plain-English descriptions of what happened, fired on the fact, not the attempt.
 const CONFIRMED_EVENT = "Confirmed a belief on the audience page";
@@ -42,27 +39,99 @@ function instrument(event: string): void {
   if (posthog.__loaded) posthog.capture(event);
 }
 
-function chipProps(chip: string): { readonly variant: string; readonly color?: string } {
-  if (chip === "assumed") return { variant: "outline" };
-  if (chip.startsWith("confirmed")) return { variant: "light", color: "green" };
-  if (chip === "observed" || chip.startsWith("corrected")) return { variant: "light" };
-  return { variant: "default" };
-}
-
-type Pending = "confirm" | "save" | "drop" | "undo" | null;
+type Pending = "confirm" | "save" | "drop" | null;
 
 export interface FactRowProps {
   readonly view: FactRowView;
+
+  // The tombstone is owned by the list, not by this row: the drop's own push refreshes the
+  // page out from under it, and a row that held its own Undo lost it 250 ms later.
+  readonly onDropped: () => void;
+}
+
+// The hidden label sits outside the strike: inside it, the announcement itself would be
+// struck through for the only reader who needs the words.
+function RowBody({ view }: { readonly view: FactRowView }) {
+  return (
+    <RuledRow lead={<Eyebrow>{view.label}</Eyebrow>} leadWidth={170}>
+      <Stack gap={4}>
+        <Group gap="xs" align="center" wrap="wrap">
+          <Text size="sm">
+            {view.prior === null ? null : (
+              <>
+                <span className={morphStyles.srOnly}>previously believed: </span>
+                <s className={styles.prior}>{view.prior}</s>
+              </>
+            )}
+            {view.claim}
+          </Text>
+          <FactChips chips={view.chips} />
+        </Group>
+        <Text size="xs" c="dimmed">
+          {view.evidence}
+        </Text>
+      </Stack>
+    </RuledRow>
+  );
+}
+
+export interface DroppedFactRowProps {
+  readonly view: FactRowView;
+  readonly onRestored: () => void;
+  readonly onDismiss: () => void;
+}
+
+// Undo restores the sentence as the person's own statement: the tombstoned row took its
+// research provenance with it, and re-minting one would fabricate a receipt (AD-3).
+export function DroppedFactRow({ view, onRestored, onDismiss }: DroppedFactRowProps) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  async function undo(): Promise<void> {
+    if (pending) return;
+    setPending(true);
+    setFailed(null);
+
+    const answer = await postJson(SETTINGS_API.businessFact, {
+      kind: view.factKind,
+      was: null,
+      statement: view.claim,
+    });
+
+    setPending(false);
+
+    if (answer === null || !answer.ok) {
+      setFailed(readRefusal(answer?.body)?.message ?? PAGES_SAVE_FAILED);
+      return;
+    }
+
+    onRestored();
+    router.refresh();
+  }
+
+  return (
+    <div>
+      <div className={styles.droppedBody}>
+        <RowBody view={view} />
+      </div>
+      <DroppedNote
+        pending={pending}
+        failed={failed}
+        onUndo={() => void undo()}
+        onDismiss={onDismiss}
+      />
+    </div>
+  );
 }
 
 // The arrive-with descriptor over the morph engine: Confirm and Correct only, provenance
 // inline in the row, Drop living inside the correct panel (UX §2 object-type matrix).
-export function FactRow({ view }: FactRowProps) {
+export function FactRow({ view, onDropped }: FactRowProps) {
   const router = useRouter();
   const [pending, setPending] = useState<Pending>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [rowNotice, setRowNotice] = useState<string | null>(null);
-  const [dropped, setDropped] = useState(false);
   const [draft, setDraft] = useState(view.claim);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const panelHeadId = useId();
@@ -71,7 +140,7 @@ export function FactRow({ view }: FactRowProps) {
     setPending("confirm");
     setRowNotice(null);
 
-    const answer = await postJson(CONFIRM_ROUTE, {
+    const answer = await postJson(SETTINGS_API.businessConfirm, {
       kind: view.factKind,
       statement: view.claim,
     });
@@ -154,8 +223,11 @@ export function FactRow({ view }: FactRowProps) {
 
     if (answer !== null && answer.ok) {
       instrument(DROPPED_EVENT);
-      setDropped(true);
       controls.dismiss();
+      onDropped();
+      // Safe to re-read now: the tombstone lives above this row, so the refresh replaces
+      // the row without taking Undo with it.
+      router.refresh();
       return;
     }
 
@@ -165,52 +237,7 @@ export function FactRow({ view }: FactRowProps) {
     );
   }
 
-  async function undo(): Promise<void> {
-    setPending("undo");
-    setRowNotice(null);
-
-    const answer = await postJson(SETTINGS_API.businessFact, {
-      kind: view.factKind,
-      was: null,
-      statement: view.claim,
-    });
-
-    setPending(null);
-
-    if (answer !== null && answer.ok) {
-      setDropped(false);
-      router.refresh();
-      return;
-    }
-
-    setRowNotice(readRefusal(answer?.body)?.message ?? PAGES_SAVE_FAILED);
-  }
-
-  const body = (
-    <RuledRow lead={<Eyebrow>{view.label}</Eyebrow>} leadWidth={170}>
-      <Stack gap={4}>
-        <Group gap="xs" align="center" wrap="wrap">
-          <Text size="sm">
-            {view.prior === null ? null : (
-              <>
-                <span className={morphStyles.srOnly}>previously believed: </span>
-                <s className={styles.prior}>{view.prior}</s>
-              </>
-            )}
-            {view.claim}
-          </Text>
-          {view.chips.map((chip) => (
-            <Badge key={chip} {...chipProps(chip)} radius="sm" size="sm">
-              {chip}
-            </Badge>
-          ))}
-        </Group>
-        <Text size="xs" c="dimmed">
-          {view.evidence}
-        </Text>
-      </Stack>
-    </RuledRow>
-  );
+  const body = <RowBody view={view} />;
 
   const failure =
     rowNotice === null ? null : (
@@ -218,29 +245,6 @@ export function FactRow({ view }: FactRowProps) {
         {rowNotice}
       </Text>
     );
-
-  if (dropped) {
-    return (
-      <div>
-        <div className={styles.droppedBody}>{body}</div>
-        <Group gap="xs" align="center">
-          <Text size="xs" c="dimmed">
-            {DROPPED_NOTE}
-          </Text>
-          <Button
-            size="compact-xs"
-            variant="subtle"
-            className={styles.tap}
-            loading={pending === "undo"}
-            onClick={() => void undo()}
-          >
-            Undo
-          </Button>
-        </Group>
-        {failure}
-      </div>
-    );
-  }
 
   return (
     <MorphSurface
@@ -260,7 +264,7 @@ export function FactRow({ view }: FactRowProps) {
           >
             ✓ Confirm
           </Button>
-          <span className={morphStyles.sep} />
+          <span className={morphStyles.sep} aria-hidden="true" />
           <Button
             size="compact-sm"
             variant="subtle"

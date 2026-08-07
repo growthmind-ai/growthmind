@@ -75,6 +75,17 @@ export interface SourcePanelView {
   readonly lines: readonly string[];
 }
 
+// The chip's wording and its tone are decided together here. Two components reading the
+// tone back off the label's opening word had already drifted apart, so the discriminant
+// travels with the sentence instead.
+export type FactChipTone =
+  "confirmed" | "corrected" | "observed" | "stated" | "research" | "assumed";
+
+export interface FactChipView {
+  readonly label: string;
+  readonly tone: FactChipTone;
+}
+
 export interface BeliefCardView {
   readonly factKind: BindingFactKind;
   readonly label: string;
@@ -84,7 +95,7 @@ export interface BeliefCardView {
   // corrected.
   readonly prior: string | null;
 
-  readonly chips: readonly string[];
+  readonly chips: readonly FactChipView[];
   readonly evidence: string;
   readonly changed: string;
   readonly settledBy: string | null;
@@ -96,7 +107,7 @@ export interface FactRowView {
   readonly label: string;
   readonly claim: string;
   readonly prior: string | null;
-  readonly chips: readonly string[];
+  readonly chips: readonly FactChipView[];
   readonly evidence: string;
 }
 
@@ -169,11 +180,22 @@ export function buildAudienceView(
   const facts = research.businessContext.facts;
 
   if (facts.length === 0) {
-    if (research.siteDomain === null || research.researchStatus === "never_run") {
+    if (research.siteDomain === null) {
       return noWebsite();
     }
 
     const hostname = hostnameOf(research.siteDomain);
+
+    // Naming a website writes never_run; only the worker ever writes running. Folding
+    // never_run into the empty state told someone who had just named their site to go and
+    // name it. No time is promised here, because nothing here knows one.
+    if (research.researchStatus === "never_run") {
+      return {
+        kind: "reading",
+        hostname,
+        message: `Queued to read ${hostname} — beliefs appear here as we find them, each carrying the page it came from.`,
+      };
+    }
 
     if (research.researchStatus === "running") {
       return {
@@ -302,27 +324,37 @@ function byWord(actor: string | null, viewerId: string): string {
   return actor !== null && actor === viewerId ? "you" : "your team";
 }
 
-function chipsOf(fact: BusinessFact, viewerId: string): readonly string[] {
-  const chips: string[] = [];
+function chipsOf(fact: BusinessFact, viewerId: string): readonly FactChipView[] {
+  const chips: FactChipView[] = [];
 
   if (fact.correctedFrom !== null) {
-    chips.push(`corrected by ${byWord(fact.provenance.statedBy, viewerId)}`);
+    chips.push({
+      label: `corrected by ${byWord(fact.provenance.statedBy, viewerId)}`,
+      tone: "corrected",
+    });
   } else {
     chips.push(sourceChip(fact.provenance));
   }
 
   if (fact.confirmation !== null) {
-    chips.push(`confirmed by ${byWord(fact.confirmation.by, viewerId)}`);
+    chips.push({
+      label: `confirmed by ${byWord(fact.confirmation.by, viewerId)}`,
+      tone: "confirmed",
+    });
   }
 
   return chips;
 }
 
 // A site fact with no citation is assumed — never worded as a person's statement (FR-3).
-function sourceChip(provenance: FactProvenance): string {
-  if (provenance.source === "sessions") return "observed";
-  if (provenance.source === "stated_by_customer") return "you said this";
-  return provenance.citation !== null ? "research" : "assumed";
+function sourceChip(provenance: FactProvenance): FactChipView {
+  if (provenance.source === "sessions") return { label: "observed", tone: "observed" };
+  if (provenance.source === "stated_by_customer") {
+    return { label: "you said this", tone: "stated" };
+  }
+  return provenance.citation !== null
+    ? { label: "research", tone: "research" }
+    : { label: "assumed", tone: "assumed" };
 }
 
 function isAssumed(provenance: FactProvenance): boolean {

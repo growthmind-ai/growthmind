@@ -201,7 +201,10 @@
     transform: translateY(-100%);
   }
 
+  /* The 1.4 s here is a dwell, not motion: collapsing it to one frame ended the animation
+     before the live region could be read out, so reduced motion got no confirmation at all.
+     The duration stays; `steps` is what removes the fade. */
   .saved.show {
-    animation-duration: 0.01ms;
+    animation: saved-hold 1.8s steps(1, end) forwards;
   }
 }

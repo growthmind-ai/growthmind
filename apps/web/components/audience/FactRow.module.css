@@ -8,12 +8,15 @@
   margin-right: 6px;
 }
 
+/* The panel box is a fixed height; a refusal running to three lines has to scroll rather
+   than fall off the bottom edge unread. */
 .panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   height: 100%;
   padding: 10px 12px;
+  overflow-y: auto;
   text-align: left;
 }
 
@@ -28,11 +31,6 @@
   flex: 1;
   min-height: 0;
   resize: none;
-}
-
-.tap {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
 }
 
 @media (pointer: coarse) {

@@ -40,6 +40,7 @@ export const SETTINGS_API = {
   pageRole: "/api/settings/pages/role",
   site: "/api/settings/site",
   businessFact: "/api/settings/business/fact",
+  businessConfirm: "/api/settings/business/confirm",
   businessAudience: "/api/settings/business/audience",
 } as const;
 

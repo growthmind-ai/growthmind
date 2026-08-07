@@ -1,23 +1,21 @@
 "use client";
 
-import { Anchor, Badge, Button, Text, Textarea } from "@mantine/core";
+import { Anchor, Button, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type RefObject } from "react";
 import posthog from "posthog-js";
 
 import { PAGES_SAVE_FAILED } from "@growthmind/shared";
 
+import { tapTargetStyle } from "@/components/ui/tap-target";
 import type { BeliefCardView } from "@/lib/audience/read";
 
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
 import styles from "./BeliefCard.module.css";
+import { DroppedNote } from "./DroppedNote";
+import { FactChips } from "./FactChips";
 import { MorphSurface, type MorphControls, type MorphPanelDescriptor } from "./MorphSurface";
 import surface from "./MorphSurface.module.css";
-
-// The confirm route has no entry in SETTINGS_API yet; adding one there mid-wave would
-// collide with the sibling agents editing beside this file, so the path lives here until
-// a quieter moment folds it into the shared table.
-const CONFIRM_API = "/api/settings/business/confirm";
 
 type BeliefPanel = "correct" | "source";
 
@@ -35,7 +33,6 @@ const SAVED_CONFIRM = "Confirmed — we'll treat this as checked ✓";
 const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
 const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
 const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
-const DROP_NOTE = "Dropped — you said this is wrong.";
 
 // Plain-English descriptions of what happened, fired on the fact, not the attempt.
 const CONFIRMED_EVENT = "Confirmed a belief on the audience page";
@@ -51,6 +48,10 @@ function instrument(event: string): void {
 
 export interface BeliefCardProps {
   readonly card: BeliefCardView;
+
+  // The tombstone is owned by the list, not by this card: the drop's own push refreshes the
+  // page out from under it, and a card that held its own Undo lost it 250 ms later.
+  readonly onDropped: () => void;
 }
 
 // Confirm carries no text, so a moved row cannot be retried into existence: the honest
@@ -71,7 +72,7 @@ function ConfirmVerb({
     setPending(true);
     onFailed("", false);
 
-    const answer = await postJson(CONFIRM_API, {
+    const answer = await postJson(SETTINGS_API.businessConfirm, {
       kind: card.factKind,
       statement: card.claim,
     });
@@ -172,6 +173,9 @@ function CorrectEditor({
       instrument(DROPPED_EVENT);
       controls.dismiss();
       onDropped();
+      // Safe to re-read now: the tombstone lives above this card, so the refresh replaces
+      // the row without taking Undo with it.
+      router.refresh();
     }
   }
 
@@ -246,7 +250,14 @@ function SourcePanel({
         </Button>
       </div>
       {href === null ? null : (
-        <Anchor href={href} target="_blank" rel="noreferrer" size="sm" className={styles.cite}>
+        <Anchor
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          size="sm"
+          className={styles.cite}
+          style={tapTargetStyle}
+        >
           {href.replace(/^https?:\/\//, "")}
         </Anchor>
       )}
@@ -267,20 +278,18 @@ function CardBody({ card }: { readonly card: BeliefCardView }) {
         {card.label}
       </Text>
       <div className={styles.claimLine}>
+        {/* The hidden label sits outside the strike: inside it, the announcement itself was
+            struck through, so the only reader who needs the words got them crossed out. */}
         {card.prior === null ? null : (
-          <Text component="s" c="dimmed">
+          <Text component="span" c="dimmed">
             <span className={surface.srOnly}>previously believed: </span>
-            {card.prior}
+            <s>{card.prior}</s>
           </Text>
         )}
         <Text component="span" fw={600}>
           {card.claim}
         </Text>
-        {card.chips.map((chip) => (
-          <Badge key={chip} variant="light" size="sm" color={chipColor(chip)}>
-            {chip}
-          </Badge>
-        ))}
+        <FactChips chips={card.chips} />
       </div>
       <Text size="sm" c="dimmed">
         {card.evidence}
@@ -307,22 +316,13 @@ function CardBody({ card }: { readonly card: BeliefCardView }) {
   );
 }
 
-// The chips are render-ready sentences; only their tone is decided here, keyed on the
-// stable opening word each wording rule guarantees (read.ts chipsOf). "band" is the
-// theme's primary palette (lib/theme.ts), the accent the storyboard gives a correction.
-function chipColor(chip: string): string {
-  if (chip.startsWith("confirmed")) return "green";
-  if (chip.startsWith("corrected")) return "band";
-  return "gray";
+export interface DroppedBeliefCardProps {
+  readonly card: BeliefCardView;
+  readonly onRestored: () => void;
+  readonly onDismiss: () => void;
 }
 
-function DroppedCard({
-  card,
-  original,
-}: {
-  readonly card: BeliefCardView;
-  readonly original: string;
-}) {
+export function DroppedBeliefCard({ card, onRestored, onDismiss }: DroppedBeliefCardProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -338,7 +338,7 @@ function DroppedCard({
     const answer = await postJson(SETTINGS_API.businessFact, {
       kind: card.factKind,
       was: null,
-      statement: original,
+      statement: card.claim,
     });
 
     setPending(false);
@@ -348,6 +348,7 @@ function DroppedCard({
       return;
     }
 
+    onRestored();
     router.refresh();
   }
 
@@ -356,32 +357,21 @@ function DroppedCard({
       <div className={styles.dimmed}>
         <CardBody card={card} />
       </div>
-      <Text size="sm" c="dimmed" className={styles.dropNote}>
-        {DROP_NOTE}{" "}
-        <Anchor component="button" type="button" onClick={() => void undo()} disabled={pending}>
-          Undo
-        </Anchor>
-      </Text>
-      {failed === null ? null : (
-        <Text size="xs" c="red" component="output">
-          {failed}
-        </Text>
-      )}
+      <DroppedNote
+        className={styles.dropNote}
+        pending={pending}
+        failed={failed}
+        onUndo={() => void undo()}
+        onDismiss={onDismiss}
+      />
     </div>
   );
 }
 
-export function BeliefCard({ card }: BeliefCardProps) {
+export function BeliefCard({ card, onDropped }: BeliefCardProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [dropped, setDropped] = useState<string | null>(null);
   const [confirmFailed, setConfirmFailed] = useState<string | null>(null);
   const router = useRouter();
-
-  // The dropped body keeps its Undo on screen instead of vanishing under an immediate
-  // re-render; the next navigation or push reconciles from the DB either way.
-  if (dropped !== null) {
-    return <DroppedCard card={card} original={dropped} />;
-  }
 
   const hasSource = card.source.lines.length > 0;
 
@@ -396,7 +386,7 @@ export function BeliefCard({ card }: BeliefCardProps) {
           card={card}
           controls={controls}
           textareaRef={textareaRef}
-          onDropped={() => setDropped(card.claim)}
+          onDropped={onDropped}
         />
       ),
     },
@@ -419,7 +409,7 @@ export function BeliefCard({ card }: BeliefCardProps) {
           if (refresh) router.refresh();
         }}
       />
-      <span className={surface.sep} />
+      <span className={surface.sep} aria-hidden="true" />
       <Button
         size="compact-sm"
         variant="subtle"
@@ -430,7 +420,7 @@ export function BeliefCard({ card }: BeliefCardProps) {
       </Button>
       {hasSource ? (
         <>
-          <span className={surface.sep} />
+          <span className={surface.sep} aria-hidden="true" />
           <Button
             size="compact-sm"
             variant="subtle"

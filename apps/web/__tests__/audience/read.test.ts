@@ -203,8 +203,8 @@ describe("a thin model says so with real numbers (UX §5 thin)", () => {
 
     expect(kindOf(thin)).toBe("populated");
     expect(Boolean((thin as { thin?: unknown }).thin)).toBe(true);
-    expect(textOf(thin)).toContain("of 12 kinds");
-    expect(textOf(thin)).toContain("3");
+    // The whole sentence, counts included: a bare "3" matched the day in a rendered date.
+    expect(textOf(thin)).toContain("3 beliefs across 2 of 12 kinds");
 
     const rich = await builtView(
       researchRow({
@@ -358,21 +358,20 @@ describe("a correction keeps its history and its rank (FR-8, FR-9, FR-10)", () =
   const NEW_CLAIM = "Their buyers renew annually on procurement cycles";
   const SITE_CLAIM = "Their site says buyers self-serve";
 
+  const corrected = fact({
+    kind: "regime",
+    statement: NEW_CLAIM,
+    correctedFrom: OLD_CLAIM,
+    provenance: statedProvenance(),
+  });
+  const fromSite = fact({ kind: "regime", statement: SITE_CLAIM });
+
+  function contextOrderedAs(facts: readonly BusinessFact[]): ResearchRowFixture {
+    return researchRow({ businessContext: { facts, removed: [] } });
+  }
+
   function correctedContext(): ResearchRowFixture {
-    return researchRow({
-      businessContext: {
-        facts: [
-          fact({
-            kind: "regime",
-            statement: NEW_CLAIM,
-            correctedFrom: OLD_CLAIM,
-            provenance: statedProvenance(),
-          }),
-          fact({ kind: "regime", statement: SITE_CLAIM }),
-        ],
-        removed: [],
-      },
-    });
+    return contextOrderedAs([corrected, fromSite]);
   }
 
   test("should carry struck-through prior text for a corrected fact", async () => {
@@ -391,12 +390,23 @@ describe("a correction keeps its history and its rank (FR-8, FR-9, FR-10)", () =
     expect(holder).toBeDefined();
   });
 
-  test("should lead each kind with corrected and stated facts after a correction", async () => {
-    const text = textOf(await builtView(correctedContext()));
+  // The rerank itself is `capFactsPerKind`'s, upstream of this module; what read.ts owns is
+  // rendering the persisted order faithfully, because any re-sort here would silently undo
+  // it. One fixture alone cannot show that — a person-first fixture passes under an impl
+  // that always sorts stated facts to the front, and a site-first fixture passes under one
+  // that reverses. Both together admit only an order-preserving impl.
+  test("should render each kind in the persisted order, whichever fact leads it", async () => {
+    const personFirst = textOf(await builtView(correctedContext()));
 
-    expect(text.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf(NEW_CLAIM)).toBeLessThan(text.indexOf(SITE_CLAIM));
+    expect(personFirst.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(personFirst.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(personFirst.indexOf(NEW_CLAIM)).toBeLessThan(personFirst.indexOf(SITE_CLAIM));
+
+    const siteFirst = textOf(await builtView(contextOrderedAs([fromSite, corrected])));
+
+    expect(siteFirst.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(siteFirst.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(siteFirst.indexOf(SITE_CLAIM)).toBeLessThan(siteFirst.indexOf(NEW_CLAIM));
   });
 });
 
