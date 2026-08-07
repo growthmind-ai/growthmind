@@ -58,7 +58,7 @@ const BOUND_VERSIONS: readonly { readonly label: string; readonly stamp: string 
     stamp: `exclusion rules v${String(EXCLUSION_RULE_SET_VERSION)}`,
   },
   {
-    label: "What a recording keeps",
+    label: "What a replay keeps",
     stamp: `page address rules v${String(URL_PATH_NORMALISATION_VERSION)}`,
   },
 ];

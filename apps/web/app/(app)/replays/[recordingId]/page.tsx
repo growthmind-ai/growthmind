@@ -20,8 +20,8 @@ export default async function ReplayDetailPage({
     <Stack gap="lg">
       <LiveRefresh topics={["recordings"]} />
 
-      <PageHeader title="Recording">
-        <AnchorLink href={ROUTES.replays}>Back to all recordings</AnchorLink>
+      <PageHeader title="Replay">
+        <AnchorLink href={ROUTES.replays}>Back to all replays</AnchorLink>
       </PageHeader>
 
       <RecordingSummary recordingId={recordingId} />

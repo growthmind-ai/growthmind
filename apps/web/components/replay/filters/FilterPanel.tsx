@@ -16,6 +16,8 @@ import {
   REPLAY_OPTION_COUNT_TEMPLATE,
   REPLAY_PANEL_CLEAR_LABEL,
   REPLAY_SEARCH_NO_MATCH_BODY,
+  REPLAY_SESSION_NOUN_MANY,
+  REPLAY_SESSION_NOUN_ONE,
 } from "@growthmind/shared";
 
 import { fill } from "../copy";
@@ -23,10 +25,7 @@ import classes from "./filter-bar.module.css";
 import type { FilterDescriptor, FilterOption } from "./types";
 
 // UX §9.1 puts both counts in the option's accessible name, because R-2 refuses to encode "this
-// would give you nothing" in opacity and a screen reader never sees a colour. packages/shared
-// carries the replay noun and no session noun; see the wave report.
-const SESSION_NOUN_ONE = "session";
-const SESSION_NOUN_MANY = "sessions";
+// would give you nothing" in opacity and a screen reader never sees a colour.
 
 interface FilterPanelProps {
   readonly id?: string;
@@ -52,7 +51,7 @@ function countText(option: FilterOption): string | null {
 function accessibleName(option: FilterOption): string {
   if (option.sessionCount === null || option.replayCount === null) return option.label;
 
-  const sessions = plural(option.sessionCount, SESSION_NOUN_ONE, SESSION_NOUN_MANY);
+  const sessions = plural(option.sessionCount, REPLAY_SESSION_NOUN_ONE, REPLAY_SESSION_NOUN_MANY);
   const replays = plural(option.replayCount, REPLAY_NOUN_ONE, REPLAY_NOUN_MANY);
 
   return `${option.label}, ${sessions}, ${replays}`;

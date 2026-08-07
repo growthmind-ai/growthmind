@@ -179,7 +179,7 @@ export async function readReplayScreen(
 ): Promise<ReplayScreen> {
   if (ctx === null) return { kind: "signed_out" };
 
-  // Reading must not provision: findFirstProjectForOrg, never ensureProject.
+  // Reading must not provision: this looks the org's first project up and never creates one.
   const project = await findFirstProjectForOrg(deps.db, ctx);
   if (project === undefined) return { kind: "not_connected" };
 

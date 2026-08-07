@@ -157,6 +157,22 @@ export const REPLAY_PANEL_CLEAR_LABEL = "Clear";
 
 export const REPLAY_OPTION_COUNT_TEMPLATE = "{sessions} · {replays} replays";
 
+// The axis names each descriptor heads its panel and summarises its pill with, and the bar's own
+// group label. They live here rather than beside the descriptors so the rename sweep covers them.
+export const REPLAY_COMPANY_AXIS = "Company";
+
+export const REPLAY_ENTRY_AXIS = "Entry page";
+
+export const REPLAY_WHO_AXIS = "Who counts";
+
+export const REPLAY_FILTER_BAR_LABEL = "Filter replays";
+
+// The denominator's noun in an option's accessible name, which a screen reader hears whatever
+// lane is showing — so it is the plain noun rather than REPLAY_LANE_PHRASE_ONE's lane wording.
+export const REPLAY_SESSION_NOUN_ONE = "session";
+
+export const REPLAY_SESSION_NOUN_MANY = "sessions";
+
 export const REPLAY_LANE_TITLES: Record<ReplayLane, string> = {
   real: "Real people",
   simulated: "Simulated",
@@ -171,21 +187,14 @@ export const REPLAY_LANE_DESCRIPTIONS: Record<ReplayLane, string> = {
 
 export const REPLAY_SIMULATED_BADGE = "simulated";
 
-// The three below are the pre-filter surface's single-sentence forms, composed from the
+// The two below are the single-recording surface's single-sentence forms, composed from the
 // terminal-state copy above so the two cannot drift. They retire with their callers.
 export const REPLAY_NO_CONNECTION = `${REPLAY_NOT_CONNECTED_TITLE}. ${REPLAY_NOT_CONNECTED_BODY}`;
-
-export const REPLAY_NONE_YET = `${REPLAY_NONE_YET_TITLE}. ${REPLAY_NONE_YET_BODY}`;
 
 export const REPLAY_LIST_UNREADABLE = `${REPLAY_FAILED_TITLE}. ${REPLAY_FAILED_BODY}`;
 
 export const REPLAY_EMPTY_RECORDING =
   "This replay arrived empty, so there is nothing to play. That usually means the session ended before anything was captured.";
-
-// Counts nothing, so it states no floor. The counted surface uses
-// REPLAY_COUNTS_ARE_A_FLOOR_NOTICE instead.
-export const REPLAY_LIST_TRUNCATED =
-  "These are your most recent replays. Older ones are still in your analytics — we read one page at a time so this screen stays quick.";
 
 export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   ...Object.values(REPLAY_FAILURE_MESSAGES),
@@ -240,12 +249,16 @@ export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   REPLAY_ENTRY_PANEL_FOOT,
   REPLAY_PANEL_CLEAR_LABEL,
   REPLAY_OPTION_COUNT_TEMPLATE,
+  REPLAY_COMPANY_AXIS,
+  REPLAY_ENTRY_AXIS,
+  REPLAY_WHO_AXIS,
+  REPLAY_FILTER_BAR_LABEL,
+  REPLAY_SESSION_NOUN_ONE,
+  REPLAY_SESSION_NOUN_MANY,
   ...Object.values(REPLAY_LANE_TITLES),
   ...Object.values(REPLAY_LANE_DESCRIPTIONS),
   REPLAY_SIMULATED_BADGE,
   REPLAY_NO_CONNECTION,
-  REPLAY_NONE_YET,
   REPLAY_LIST_UNREADABLE,
   REPLAY_EMPTY_RECORDING,
-  REPLAY_LIST_TRUNCATED,
 ];
