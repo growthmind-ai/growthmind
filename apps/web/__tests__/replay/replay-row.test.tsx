@@ -63,6 +63,16 @@ describe("ReplayRow", () => {
     expect(card.text).toContain("3 errors");
   });
 
+  test("the whole row is a single link to the recording, not just the label", () => {
+    const markup = renderToStaticMarkup(
+      createElement(MantineProvider, null, createElement(ReplayRow, { recording: PROBE })),
+    );
+
+    expect(markup).toContain(`href="/replays/${PROBE.recordingId}"`);
+    // One anchor wrapping the card — a second one nested inside it would be invalid HTML.
+    expect(markup.match(/<a[\s>]/g)?.length).toBe(1);
+  });
+
   test("no attribute on the row carries the url, because rrweb cannot mask one", () => {
     const messy = {
       ...PROBE,
