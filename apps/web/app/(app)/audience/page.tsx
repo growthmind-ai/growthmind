@@ -19,7 +19,7 @@ import {
   AUDIENCE_AFFORDANCE,
   AUDIENCE_LEDE,
   CLOSING_NOTE,
-  buildAudienceView,
+  audienceViewFrom,
   type AudienceDoubtView,
   type AudienceView,
   type ChangedSectionView,
@@ -65,11 +65,7 @@ export default async function AudiencePage() {
           copy without an entry there. */}
       <PageHeader title="Who we think this is for">{AUDIENCE_LEDE}</PageHeader>
 
-      {read.ok ? (
-        <AudienceBody view={buildAudienceView(read.value, { userId: ctx.userId }, new Date())} />
-      ) : (
-        <AudienceReadFailed />
-      )}
+      <AudienceBody view={audienceViewFrom(read, { userId: ctx.userId }, new Date())} />
     </Stack>
   );
 }
@@ -80,6 +76,8 @@ function AudienceBody({ view }: { readonly view: AudienceView }) {
       return <AudienceEmpty view={view} />;
     case "reading":
       return <AudienceReading view={view} />;
+    case "read-failed":
+      return <AudienceReadFailed />;
     case "read-failed-research":
       return <AudienceResearchFailed view={view} />;
     case "populated":

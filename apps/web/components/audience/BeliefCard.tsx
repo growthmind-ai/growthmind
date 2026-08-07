@@ -12,6 +12,7 @@ import type { BeliefCardView } from "@/lib/audience/read";
 
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
 import styles from "./BeliefCard.module.css";
+import { focusAtEnd } from "./caret";
 import { DroppedNote } from "./DroppedNote";
 import { FactChips } from "./FactChips";
 import { MorphSurface, type MorphControls, type MorphPanelDescriptor } from "./MorphSurface";
@@ -379,7 +380,7 @@ export function BeliefCard({ card, onDropped }: BeliefCardProps) {
     correct: {
       size: CORRECT_SIZE,
       label: CORRECT_HEADER,
-      onOpened: () => textareaRef.current?.focus(),
+      onOpened: () => focusAtEnd(textareaRef.current),
       render: (controls) => (
         <CorrectEditor
           key={card.claim}

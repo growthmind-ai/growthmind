@@ -25,7 +25,9 @@ const READ_AT = new Date("2026-08-01T09:00:00.000Z");
 
 type BuildAudienceView = (research: unknown, viewer: { readonly userId: string }) => unknown;
 
-async function loadBuildAudienceView(): Promise<BuildAudienceView> {
+type AudienceViewFrom = (read: unknown, viewer: { readonly userId: string }) => unknown;
+
+async function loadAudienceRead(name: string): Promise<(...args: never[]) => unknown> {
   if (!existsSync(SOURCE_PATH)) {
     throw new Error(
       "apps/web/lib/audience/read.ts does not exist yet, so nothing turns a BusinessResearchRow " +
@@ -34,12 +36,20 @@ async function loadBuildAudienceView(): Promise<BuildAudienceView> {
   }
 
   const loaded = (await import(pathToFileURL(SOURCE_PATH).href)) as Record<string, unknown>;
-  const candidate = loaded["buildAudienceView"];
+  const candidate = loaded[name];
   if (typeof candidate !== "function") {
-    throw new Error("apps/web/lib/audience/read.ts exports no buildAudienceView yet.");
+    throw new Error(`apps/web/lib/audience/read.ts exports no ${name} yet.`);
   }
 
-  return candidate as BuildAudienceView;
+  return candidate as (...args: never[]) => unknown;
+}
+
+async function loadBuildAudienceView(): Promise<BuildAudienceView> {
+  return (await loadAudienceRead("buildAudienceView")) as BuildAudienceView;
+}
+
+async function loadAudienceViewFrom(): Promise<AudienceViewFrom> {
+  return (await loadAudienceRead("audienceViewFrom")) as AudienceViewFrom;
 }
 
 interface ResearchRowFixture {
@@ -161,6 +171,37 @@ describe("the empty page is honest before it is helpful (FR-11)", () => {
   });
 });
 
+describe("a read that failed is not a workspace that is empty (O-035's class)", () => {
+  test("a thrown read renders the read-failed state and never the empty one", async () => {
+    const from = await loadAudienceViewFrom();
+    const failed = from({ ok: false }, { userId: VIEWER });
+    const text = textOf(failed);
+
+    expect(kindOf(failed)).toBe("read-failed");
+    expect(kindOf(failed)).not.toBe("no-website");
+
+    // Every sentence and every control the empty state owns: a page that could not look
+    // must not tell a workspace with a named site to go and name one.
+    expect(text).not.toContain("No model yet");
+    expect(text).not.toContain("Name your website in Settings");
+    expect(stringsIn(failed)).not.toContain(`${ROUTES.settings}#business`);
+  });
+
+  test("CONTROL: a read that succeeded still reaches the state its row deserves", async () => {
+    const from = await loadAudienceViewFrom();
+
+    expect(kindOf(from({ ok: true, value: null }, { userId: VIEWER }))).toBe("no-website");
+    expect(
+      kindOf(
+        from(
+          { ok: true, value: researchRow({ researchStatus: "running", researchedAt: null }) },
+          { userId: VIEWER },
+        ),
+      ),
+    ).toBe("reading");
+  });
+});
+
 describe("the two waiting states say what is happening, in plain words (UX §5, FR-13)", () => {
   test("should render reading while research runs with no facts", async () => {
     const view = await builtView(researchRow({ researchStatus: "running", researchedAt: null }));
@@ -224,7 +265,46 @@ describe("a thin model says so with real numbers (UX §5 thin)", () => {
 
     expect(kindOf(rich)).toBe("populated");
     expect(Boolean((rich as { thin?: unknown }).thin)).toBe(false);
-    expect(textOf(rich)).not.toContain("of 12 kinds");
+
+    // The thin note is where the coverage denominator used to live alone, so a model with
+    // no note carried no coverage figure anywhere. The strip states it in every populated
+    // view (UX §4.3), thin or not.
+    expect(textOf(rich)).toContain("5 of 12 kinds have at least one belief");
+    expect(textOf(thin)).toContain("2 of 12 kinds have at least one belief");
+  });
+
+  test("every count in the strip says out of how many", async () => {
+    const view = await builtView(
+      researchRow({
+        businessContext: {
+          facts: [
+            fact({ kind: "regime", statement: "They sell into regulated healthcare" }),
+            fact({
+              kind: "forbidden_move",
+              statement: "Never auto-email their patients",
+              provenance: siteProvenance(null),
+            }),
+            fact({
+              kind: "conversion",
+              statement: "A booked demo counts as a win",
+              provenance: statedProvenance(),
+            }),
+            fact({
+              kind: "who_counts",
+              statement: "Buyers arrive from procurement portals",
+              provenance: sessionsProvenance(3, 47),
+            }),
+          ],
+          removed: [],
+        },
+      }),
+    );
+
+    const strip = (view as { strip?: { builtOn?: unknown } }).strip;
+    expect(strip?.builtOn).toBe(
+      "1 of 4 read from your site · 1 of 4 observed in sessions · 1 of 4 you told us · " +
+        "1 of 4 assumed · 4 of 12 kinds have at least one belief",
+    );
   });
 });
 
@@ -317,6 +397,32 @@ describe("doubts derive from what actually gates the numbers (UX §4.5)", () => 
     expect(allDoubtText).not.toContain("staleness");
     expect(allDoubtText).not.toContain("how fresh");
   });
+
+  // What a one-tap answer persists becomes a belief card, and the same string is what
+  // `get_growth_context` hands a coding assistant as binding. "No — count them all" is an
+  // answer to a question nobody can see afterwards, not a claim (P-2).
+  test("a one-tap answer carries a claim to persist, never the words on the button", async () => {
+    const view = await builtView(researchRow());
+    const doubts = (view as { doubts: readonly Record<string, unknown>[] }).doubts;
+
+    const options = doubts.flatMap((doubt) => {
+      const option = doubt["oneTap"];
+      return option === null || option === undefined ? [] : [option as Record<string, string>];
+    });
+
+    expect(options.length).toBeGreaterThan(0);
+
+    for (const option of options) {
+      expect(typeof option["label"]).toBe("string");
+      expect(typeof option["claim"]).toBe("string");
+      expect(option["claim"]).not.toBe(option["label"]);
+
+      // Short enough to tap, long enough to stand alone as a sentence.
+      expect(option["label"]?.length).toBeLessThanOrEqual(40);
+      expect(option["claim"]?.startsWith("No —")).toBe(false);
+      expect(option["claim"]?.endsWith(".")).toBe(true);
+    }
+  });
 });
 
 describe("what a person deleted stays deleted on screen (UX §4.1)", () => {
@@ -390,23 +496,41 @@ describe("a correction keeps its history and its rank (FR-8, FR-9, FR-10)", () =
     expect(holder).toBeDefined();
   });
 
-  // The rerank itself is `capFactsPerKind`'s, upstream of this module; what read.ts owns is
-  // rendering the persisted order faithfully, because any re-sort here would silently undo
-  // it. One fixture alone cannot show that — a person-first fixture passes under an impl
-  // that always sorts stated facts to the front, and a site-first fixture passes under one
-  // that reverses. Both together admit only an order-preserving impl.
-  test("should render each kind in the persisted order, whichever fact leads it", async () => {
-    const personFirst = textOf(await builtView(correctedContext()));
-
-    expect(personFirst.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
-    expect(personFirst.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
-    expect(personFirst.indexOf(NEW_CLAIM)).toBeLessThan(personFirst.indexOf(SITE_CLAIM));
-
+  // The rerank is this module's, and nothing upstream does it: `capFactsPerKind` is a
+  // filter with a per-kind counter and preserves whatever order it was handed. The
+  // site-first fixture is the load-bearing one — persisted order put the correction
+  // second, and it has to lead anyway, or FR-9's "corrections visibly rerank" is a
+  // sentence with no code behind it.
+  test("a corrected fact leads its kind however it was persisted", async () => {
     const siteFirst = textOf(await builtView(contextOrderedAs([fromSite, corrected])));
 
-    expect(siteFirst.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
     expect(siteFirst.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
-    expect(siteFirst.indexOf(SITE_CLAIM)).toBeLessThan(siteFirst.indexOf(NEW_CLAIM));
+    expect(siteFirst.indexOf(SITE_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(siteFirst.indexOf(NEW_CLAIM)).toBeLessThan(siteFirst.indexOf(SITE_CLAIM));
+
+    const personFirst = textOf(await builtView(correctedContext()));
+
+    expect(personFirst.indexOf(NEW_CLAIM)).toBeLessThan(personFirst.indexOf(SITE_CLAIM));
+  });
+
+  test("a confirmed fact leads the ones nobody has touched, and trails a correction", async () => {
+    const CONFIRMED_CLAIM = "Their buyers pass every purchase through procurement";
+    const confirmed = {
+      ...fact({ kind: "regime", statement: CONFIRMED_CLAIM }),
+      confirmation: { at: READ_AT, by: VIEWER },
+    };
+
+    const overSite = textOf(await builtView(contextOrderedAs([fromSite, confirmed])));
+
+    expect(overSite.indexOf(CONFIRMED_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(overSite.indexOf(CONFIRMED_CLAIM)).toBeLessThan(overSite.indexOf(SITE_CLAIM));
+
+    const underCorrection = textOf(await builtView(contextOrderedAs([confirmed, corrected])));
+
+    expect(underCorrection.indexOf(NEW_CLAIM)).toBeGreaterThanOrEqual(0);
+    expect(underCorrection.indexOf(NEW_CLAIM)).toBeLessThan(
+      underCorrection.indexOf(CONFIRMED_CLAIM),
+    );
   });
 });
 

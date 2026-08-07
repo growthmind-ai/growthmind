@@ -17,6 +17,8 @@ export const KIND_LABELS: Record<BusinessFactKind, string> = {
   staleness_tolerance: "How fresh things must be",
 };
 
+export const KIND_COUNT = Object.keys(KIND_LABELS).length;
+
 // Typed over the binding kinds only: a shaping row cannot be handed a Changed line by
 // accident, and a new binding kind cannot ship without one (FR-9).
 export const CHANGED_LINES: Record<BindingFactKind, string> = {
@@ -53,11 +55,20 @@ export const STATED_ONLY_DOUBT_KINDS = [
 
 export type StatedOnlyDoubtKind = (typeof STATED_ONLY_DOUBT_KINDS)[number];
 
+// A button label is not a claim. `label` is what the button says; `claim` is the sentence
+// that becomes the belief — the one that renders on a card forever and that
+// `get_growth_context` hands a coding assistant as binding. Persisting the label put
+// "No — count them all" on screen under "What does not count as a win".
+export interface StatedOnlyDoubtOption {
+  readonly label: string;
+  readonly claim: string;
+}
+
 export interface StatedOnlyDoubtCopy {
   readonly doubt: string;
 
   // The one-tap "no" answer, persisted as a stated fact. Null where only free text can answer.
-  readonly oneTap: string | null;
+  readonly oneTap: StatedOnlyDoubtOption | null;
 
   readonly freeTextPrompt: string;
 }
@@ -70,17 +81,26 @@ export const STATED_ONLY_DOUBTS: Record<StatedOnlyDoubtKind, StatedOnlyDoubtCopy
   },
   conversion_disqualifier: {
     doubt: "Is there a kind of win we should not count?",
-    oneTap: "No — count them all",
+    oneTap: {
+      label: "No — count them all",
+      claim: "There is no kind of win we should throw out — every one of them counts.",
+    },
     freeTextPrompt: "What should never count as a win?",
   },
   load_bearing_friction: {
     doubt: "Is there a step that looks like friction but has to stay?",
-    oneTap: "No — nothing like that",
+    oneTap: {
+      label: "No — nothing like that",
+      claim: "No step here has to stay — every piece of friction in the way is fair to remove.",
+    },
     freeTextPrompt: "Which step must stay, and why?",
   },
   invalidating_period: {
     doubt: "Are there times when your numbers lie — a sale, a season, a launch?",
-    oneTap: "No — the numbers hold year-round",
+    oneTap: {
+      label: "No — the numbers hold year-round",
+      claim: "The numbers hold year-round — no season, sale or launch makes them lie.",
+    },
     freeTextPrompt: "When do the numbers lie?",
   },
 };

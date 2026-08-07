@@ -10,15 +10,18 @@ import {
   type ShapingFactKind,
 } from "@growthmind/shared";
 
+import type { Read } from "@/lib/read-or-fallback";
 import { ROUTES } from "@/lib/routes";
 
 import {
   CHANGED_LINES,
+  KIND_COUNT,
   KIND_LABELS,
   SETTLED_BY_LINES,
   STATED_ONLY_DOUBTS,
   STATED_ONLY_DOUBT_KINDS,
   type StatedOnlyDoubtKind,
+  type StatedOnlyDoubtOption,
 } from "./kinds";
 
 export const AUDIENCE_LEDE =
@@ -27,8 +30,9 @@ export const AUDIENCE_LEDE =
 // Every verb on this page is revealed by hover, focus or a tap, so a reader who never
 // hovers takes the page for a wall of text. The mechanism is said out loud instead.
 export const AUDIENCE_AFFORDANCE =
-  "Nothing here is fixed. Hover a line to confirm it, correct it, or see where it came " +
-  "from — on a phone, tap the line once and the buttons appear.";
+  "Nothing here is fixed. Hover any line — a belief, or a question we are unsure about — to " +
+  "confirm it, correct it, answer it, or see where it came from. On a phone, tap the line " +
+  "once and the buttons appear.";
 
 export const CLOSING_NOTE =
   "We would rather show you a thin model you can argue with than a confident one you cannot check. If a belief here is wrong, say so — it changes what we rank next.";
@@ -61,6 +65,12 @@ export interface ReadingView {
   readonly kind: "reading";
   readonly hostname: string;
   readonly message: string;
+}
+
+// The model could not be read at all. `null` is also the shape of a workspace with no
+// website named, so the two may never share a state.
+export interface ReadFailedView {
+  readonly kind: "read-failed";
 }
 
 export interface ReadFailedResearchView {
@@ -139,7 +149,7 @@ export type AudienceDoubtView =
       readonly factKind: StatedOnlyDoubtKind;
       readonly label: string;
       readonly text: string;
-      readonly oneTap: string | null;
+      readonly oneTap: StatedOnlyDoubtOption | null;
       readonly freeTextPrompt: string;
     };
 
@@ -155,7 +165,7 @@ export interface PopulatedAudienceView {
 }
 
 export type AudienceView =
-  NoWebsiteView | ReadingView | ReadFailedResearchView | PopulatedAudienceView;
+  NoWebsiteView | ReadingView | ReadFailedView | ReadFailedResearchView | PopulatedAudienceView;
 
 // UTC and a fixed locale, so the date a server component paints is the date every reader
 // sees, whatever their machine says.
@@ -167,6 +177,16 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
 });
 
 const DAY_MS = 86_400_000;
+
+// The page's whole branch, so the failed read cannot be told apart from the empty one only
+// by whoever remembers to write the ternary.
+export function audienceViewFrom(
+  read: Read<BusinessResearchRow | null>,
+  viewer: { readonly userId: string },
+  now: Date = new Date(),
+): AudienceView {
+  return read.ok ? buildAudienceView(read.value, viewer, now) : { kind: "read-failed" };
+}
 
 export function buildAudienceView(
   research: BusinessResearchRow | null,
@@ -246,7 +266,7 @@ function populated(
     kind: "populated",
     thin,
     thinNote: thin ? thinNoteOf(facts.length, kindsCovered) : null,
-    strip: stripOf(research, facts, now),
+    strip: stripOf(research, facts, kindsCovered, now),
     cards: groupedByKind(facts.filter(isBindingFact)).map((fact) => toCard(fact, viewerId)),
     rows: groupedByKind(facts.filter(isShapingFact)).map((fact) => toRow(fact, viewerId)),
     latestCorrection: latestCorrectionOf(facts),
@@ -256,7 +276,7 @@ function populated(
 
 function thinNoteOf(factCount: number, kindsCovered: number): string {
   const beliefs = factCount === 1 ? "1 belief" : `${factCount} beliefs`;
-  return `This model is thin — ${beliefs} across ${kindsCovered} of 12 kinds so far. The doubts below are the fastest way to firm it up.`;
+  return `This model is thin — ${beliefs} across ${kindsCovered} of ${KIND_COUNT} kinds so far. The doubts below are the fastest way to firm it up.`;
 }
 
 type BindingFact = BusinessFact & { readonly kind: BindingFactKind };
@@ -271,9 +291,22 @@ function isShapingFact(fact: BusinessFact): fact is ShapingFact {
   return !isBindingKind(fact.kind);
 }
 
-// Facts group under their kind label; within a kind the persisted order is the rendered
-// order — `capFactsPerKind` already leads with what a person said, and re-sorting here
-// would undo the visible rerank a correction earns (FR-9).
+// What a person touched leads its kind, and that ordering is the whole of the visible
+// rerank a correction earns (FR-9, UX §4.4). Nothing upstream does it: `capFactsPerKind`
+// is a filter that preserves input order.
+const PERSON_TOUCHED = 0;
+const CONFIRMED = 1;
+const UNTOUCHED = 2;
+
+function touchBand(fact: BusinessFact): number {
+  if (fact.correctedFrom !== null || fact.provenance.source === "stated_by_customer") {
+    return PERSON_TOUCHED;
+  }
+  return fact.confirmation !== null ? CONFIRMED : UNTOUCHED;
+}
+
+// Facts group under their kind label; within a kind they lead with what a person touched,
+// and sort is stable, so persisted order decides everything inside a band.
 function groupedByKind<F extends BusinessFact>(facts: readonly F[]): readonly F[] {
   const order: BusinessFactKind[] = [];
   const byKind = new Map<BusinessFactKind, F[]>();
@@ -288,7 +321,9 @@ function groupedByKind<F extends BusinessFact>(facts: readonly F[]): readonly F[
     }
   }
 
-  return order.flatMap((kind) => byKind.get(kind) ?? []);
+  return order.flatMap((kind) =>
+    (byKind.get(kind) ?? []).toSorted((left, right) => touchBand(left) - touchBand(right)),
+  );
 }
 
 function toCard(fact: BindingFact, viewerId: string): BeliefCardView {
@@ -422,6 +457,7 @@ function linkableCitation(citation: string | null): string | null {
 function stripOf(
   research: BusinessResearchRow,
   facts: readonly BusinessFact[],
+  kindsCovered: number,
   now: Date,
 ): ProvenanceStripView {
   const site = facts.filter((fact) => fact.provenance.source === "site");
@@ -432,7 +468,11 @@ function stripOf(
 
   return {
     builtFrom: builtFromOf(research.siteDomain, site, cited, stated.length, corrections),
-    builtOn: builtOnOf(cited.length, observed.length, stated.length, site.length - cited.length),
+    builtOn: builtOnOf(
+      { read: cited.length, observed: observed.length, stated: stated.length },
+      site.length - cited.length,
+      kindsCovered,
+    ),
     lastChanged: lastChangedOf(facts, now),
   };
 }
@@ -457,17 +497,27 @@ function builtFromOf(
   return `${hostnameOf(siteDomain)} — nothing read into beliefs yet.`;
 }
 
-// Every term carries its own count and zero terms are omitted, so nothing here ever claims
-// evidence that does not exist.
-function builtOnOf(read: number, observed: number, stated: number, assumed: number): string {
+// Zero terms are omitted, so nothing here claims evidence that does not exist, and every
+// count carries the denominator that makes it mean something — the beliefs it is a share of,
+// and for coverage the twelve kinds there are to cover (UX §4.3).
+function builtOnOf(
+  sourced: { readonly read: number; readonly observed: number; readonly stated: number },
+  assumed: number,
+  kindsCovered: number,
+): string {
+  const total = sourced.read + sourced.observed + sourced.stated + assumed;
+  if (total === 0) return "No beliefs yet.";
+
   const parts: string[] = [];
 
-  if (read > 0) parts.push(`${read} read from your site`);
-  if (observed > 0) parts.push(`${observed} observed in sessions`);
-  if (stated > 0) parts.push(`${stated} you told us`);
-  if (assumed > 0) parts.push(`${assumed} assumed`);
+  if (sourced.read > 0) parts.push(`${sourced.read} of ${total} read from your site`);
+  if (sourced.observed > 0) parts.push(`${sourced.observed} of ${total} observed in sessions`);
+  if (sourced.stated > 0) parts.push(`${sourced.stated} of ${total} you told us`);
+  if (assumed > 0) parts.push(`${assumed} of ${total} assumed`);
 
-  return parts.length > 0 ? parts.join(" · ") : "No beliefs yet.";
+  parts.push(`${kindsCovered} of ${KIND_COUNT} kinds have at least one belief`);
+
+  return parts.join(" · ");
 }
 
 function lastChangedOf(facts: readonly BusinessFact[], now: Date): string {

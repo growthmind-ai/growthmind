@@ -10,6 +10,7 @@ import { FACT_SAVE_ACTION, PAGES_SAVE_FAILED } from "@growthmind/shared";
 import { SETTINGS_API, postJson, readRefusal } from "@/components/first-run/api";
 import type { AudienceDoubtView } from "@/lib/audience/read";
 
+import { focusAtEnd } from "./caret";
 import { MorphSurface, type MorphControls } from "./MorphSurface";
 
 const ANSWER_VERB = "Answer this";
@@ -241,9 +242,11 @@ function StatedOnlyDoubtRow({ doubt }: { doubt: StatedOnlyDoubt }) {
           justify="flex-start"
           loading={pending === "one-tap"}
           disabled={pending !== null}
-          onClick={() => void state(controls, "one-tap", oneTap)}
+          // The claim, never the button's own words: the label is short enough to tap and
+          // the sentence is what a person — and a coding assistant — reads back as a belief.
+          onClick={() => void state(controls, "one-tap", oneTap.claim)}
         >
-          {oneTap}
+          {oneTap.label}
         </Button>
       )}
       <Textarea
@@ -281,7 +284,8 @@ function StatedOnlyDoubtRow({ doubt }: { doubt: StatedOnlyDoubt }) {
         answer: {
           size: FREE_TEXT_PANEL_SIZE,
           label: doubt.freeTextPrompt,
-          onOpened: () => (oneTap !== null ? oneTapRef.current : textareaRef.current)?.focus(),
+          onOpened: () =>
+            oneTap !== null ? oneTapRef.current?.focus() : focusAtEnd(textareaRef.current),
           render: renderAnswer,
         },
       }}

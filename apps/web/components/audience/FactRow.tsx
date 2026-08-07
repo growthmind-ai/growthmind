@@ -12,6 +12,7 @@ import { RuledRow } from "@/components/ui/Page";
 import type { FactRowView } from "@/lib/audience/read";
 
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
+import { focusAtEnd } from "./caret";
 import { DroppedNote } from "./DroppedNote";
 import { FactChips } from "./FactChips";
 import styles from "./FactRow.module.css";
@@ -283,7 +284,7 @@ export function FactRow({ view, onDropped }: FactRowProps) {
         correct: {
           size: PANEL_SIZE,
           label: CORRECT_PANEL_LABEL,
-          onOpened: () => editorRef.current?.focus(),
+          onOpened: () => focusAtEnd(editorRef.current),
           // Same render-prop contract as the toolbar above.
           // oxlint-disable-next-line react/no-unstable-nested-components
           render: (controls) => (
