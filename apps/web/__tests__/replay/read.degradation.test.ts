@@ -7,12 +7,14 @@ import { setLogSink, type LogRecord } from "@growthmind/shared";
 import { readReplayScreen } from "../../lib/replay/read";
 import {
   failingSessionRead,
+  failingSummaryRead,
   filtersOf,
   replayDeps,
   screenOf,
   seedOrgWithoutProject,
   seedReplayWorkspace,
   seedSessions,
+  seedSummaries,
 } from "./helpers/screen";
 
 describe("readReplayScreen — failure isolation", () => {
@@ -125,6 +127,54 @@ describe("readReplayScreen — failure isolation", () => {
 
     // Still enough to debug with: which of the two reads failed, and how it failed.
     expect(logged[0]?.fields).toEqual({ lane: "real", code: "DrizzleQueryError" });
+  });
+
+  // The narration is what a row says happened, and it is decoration on a list that renders
+  // without it. Losing it must cost the headlines and nothing else (D8).
+  test("should keep the list when the narration read fails", async () => {
+    const workspace = await seedReplayWorkspace(db, "summary-read-fails");
+
+    await seedSessions(db, workspace, [
+      { key: "ph:story-degrade-1", company: "acme.example", entry: "/pricing" },
+    ]);
+    await seedSummaries(db, workspace, [
+      { recordingId: "story-degrade-1", headline: "They stalled", pages: ["/pricing"] },
+    ]);
+
+    const { deps } = replayDeps(failingSummaryRead(db).db, workspace.ctx);
+
+    const screen = screenOf(await readReplayScreen(deps, workspace.ctx, filtersOf()));
+
+    expect(screen.rows).toHaveLength(1);
+    expect(screen.stories.size).toBe(0);
+    expect(screen.provenance).toEqual({ replays: 1, sessions: 1 });
+  });
+
+  // The bound params of this read are recording ids, and a DrizzleQueryError carries them in its
+  // message and stack — the same hazard the session read was closed for.
+  test("should log a failed narration read without the query's bound params", async () => {
+    const workspace = await seedReplayWorkspace(db, "summary-failure-log");
+
+    await seedSessions(db, workspace, [
+      { key: "ph:story-log-1", company: "acme.example", entry: "/pricing" },
+    ]);
+
+    const { deps } = replayDeps(failingSummaryRead(db).db, workspace.ctx);
+
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
+
+    try {
+      await readReplayScreen(deps, workspace.ctx, filtersOf());
+    } finally {
+      restore();
+    }
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.fields).toEqual({ code: "DrizzleQueryError" });
+    expect(JSON.stringify(logged)).not.toContain("story-log-1");
   });
 
   test("should return the not-connected outcome without provisioning a project", async () => {

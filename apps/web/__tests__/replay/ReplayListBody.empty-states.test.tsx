@@ -54,6 +54,7 @@ function screen(overrides: Partial<ScreenArm> = {}): ReplayScreen {
   return {
     kind: "screen",
     rows: [],
+    stories: new Map(),
     provenance: { replays: 0, sessions: 0 },
     tailNote: null,
     facets: NO_FACETS,

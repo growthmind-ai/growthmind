@@ -157,6 +157,12 @@ export const REPLAY_PANEL_CLEAR_LABEL = "Clear";
 
 export const REPLAY_OPTION_COUNT_TEMPLATE = "{sessions} · {replays} replays";
 
+export const REPLAY_ROW_MORE_PAGES_TEMPLATE = "+{count} more";
+
+// A row whose recording was never narrated still lists where the person landed, and this says
+// which of the two a reader is looking at without spending a badge on it.
+export const REPLAY_ROW_UNNARRATED_HINT = "No write-up yet";
+
 // The axis names each descriptor heads its panel and summarises its pill with, and the bar's own
 // group label. They live here rather than beside the descriptors so the rename sweep covers them.
 export const REPLAY_COMPANY_AXIS = "Company";
@@ -249,6 +255,8 @@ export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   REPLAY_ENTRY_PANEL_FOOT,
   REPLAY_PANEL_CLEAR_LABEL,
   REPLAY_OPTION_COUNT_TEMPLATE,
+  REPLAY_ROW_MORE_PAGES_TEMPLATE,
+  REPLAY_ROW_UNNARRATED_HINT,
   REPLAY_COMPANY_AXIS,
   REPLAY_ENTRY_AXIS,
   REPLAY_WHO_AXIS,

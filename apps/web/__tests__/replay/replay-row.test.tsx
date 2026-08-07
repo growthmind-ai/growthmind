@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MantineProvider } from "@mantine/core";
-import type { ReplayListRow } from "@growthmind/core";
+import { replayRowStory, type ReplayListRow, type ReplayRowSummary } from "@growthmind/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -25,14 +25,18 @@ const PROBE: ReplayListRow = {
 
 const ATTRIBUTE = /\s[a-z-]+="([^"]*)"/g;
 
-function markupOf(row: ReplayListRow): string {
+function markupOf(row: ReplayListRow, summary: ReplayRowSummary | null = null): string {
   return renderToStaticMarkup(
-    createElement(MantineProvider, null, createElement(ReplayRow, { row })),
+    createElement(
+      MantineProvider,
+      null,
+      createElement(ReplayRow, { row, story: replayRowStory(row, summary) }),
+    ),
   );
 }
 
-function render(row: ReplayListRow): RenderedCard {
-  return readMarkup(markupOf(row));
+function render(row: ReplayListRow, summary: ReplayRowSummary | null = null): RenderedCard {
+  return readMarkup(markupOf(row, summary));
 }
 
 function attributeValues(markup: string): readonly string[] {
@@ -76,6 +80,41 @@ describe("ReplayRow", () => {
   test("no attribute on the row carries the entry path, because rrweb cannot mask one", () => {
     const token = "68cd04168ebcf5211a79c43a263a90a1b89779a66b807820c1aba461e7640a85";
     const markup = markupOf({ ...PROBE, entryUrlPath: `/share/${token}` });
+
+    expect(markup).not.toContain("title=");
+    for (const value of attributeValues(markup)) expect(value).not.toContain(token);
+  });
+
+  test("titles the row with the write-up, and lists every page beneath it", () => {
+    const card = render(PROBE, {
+      headline: "They read the deck examples and left without opening a template",
+      pages: ["/blog/best-pitch-deck-examples", "/templates", "/pricing"],
+    });
+
+    expect(card.text).toContain("They read the deck examples and left without opening a template");
+    expect(card.text).toContain("/templates");
+    expect(card.text).toContain("/pricing");
+  });
+
+  // The fallback is ~45% of production rows, so it has to read as a state rather than as a row
+  // that failed to load.
+  test("says a row has no write-up rather than leaving the path unexplained", () => {
+    const card = render(PROBE);
+
+    expect(card.text).toContain("/blog/best-pitch-deck-examples");
+    expect(card.text).toContain("No write-up yet");
+  });
+
+  test("does not claim a write-up exists when the narration was held", () => {
+    const card = render(PROBE, { headline: null, pages: ["/pricing"] });
+
+    expect(card.text).toContain("No write-up yet");
+    expect(card.text).toContain("/pricing");
+  });
+
+  test("no attribute carries a page path either, not just the entry path", () => {
+    const token = "68cd04168ebcf5211a79c43a263a90a1b89779a66b807820c1aba461e7640a85";
+    const markup = markupOf(PROBE, { headline: "They shared a link", pages: [`/share/${token}`] });
 
     expect(markup).not.toContain("title=");
     for (const value of attributeValues(markup)) expect(value).not.toContain(token);

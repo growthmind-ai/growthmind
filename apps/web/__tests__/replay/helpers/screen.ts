@@ -154,6 +154,42 @@ export async function seedSessionCohort(
   await db.insert(schema.sessions).values(rows);
 }
 
+export interface SummarySpec {
+  readonly recordingId: string;
+  readonly headline: string;
+  readonly pages: readonly string[];
+  // Left null by default on purpose: 26 of the 64 summaries in production carry no session key,
+  // and the list's join must not depend on one.
+  readonly sessionKey?: string | null;
+}
+
+export async function seedSummaries(
+  db: TestDb,
+  workspace: Workspace,
+  specs: readonly SummarySpec[],
+): Promise<void> {
+  await db.insert(schema.recordingSummaries).values(
+    specs.map((spec) => ({
+      id: randomUUID(),
+      organizationId: workspace.ctx.organizationId,
+      projectId: workspace.projectId,
+      recordingId: spec.recordingId,
+      summarySource: "model_rendered" as const,
+      headline: spec.headline,
+      context: [],
+      transcript: "",
+      pages: spec.pages,
+      durationMs: 0,
+      actionCount: 0,
+      notableCount: 0,
+      droppedEvents: 0,
+      startedAt: null,
+      sessionKey: spec.sessionKey ?? null,
+      resolvedModelId: null,
+    })),
+  );
+}
+
 export function filtersOf(overrides: Partial<ReplayFilters> = {}): ReplayFilters {
   return { company: null, entry: null, lane: REPLAY_DEFAULT_LANE, ...overrides };
 }
@@ -215,6 +251,23 @@ export function failingSessionRead(
   // Overridable so a caller can fail the read the way drizzle actually fails it, message and all.
   fail: (nth: number) => Error = (n) => new Error(`replay session read ${String(n)} failed`),
 ): ReadProbe {
+  return failingTableRead(db, schema.sessions, nth, fail);
+}
+
+export function failingSummaryRead(db: TestDb, nth = 1): ReadProbe {
+  return failingTableRead(db, schema.recordingSummaries, nth, (n) => {
+    const error = new Error(`replay summary read ${String(n)} failed`);
+    error.name = "DrizzleQueryError";
+    return error;
+  });
+}
+
+function failingTableRead(
+  db: TestDb,
+  wanted: unknown,
+  nth: number,
+  fail: (nth: number) => Error,
+): ReadProbe {
   let reads = 0;
 
   const proxied = new Proxy(db as object, {
@@ -235,7 +288,7 @@ export function failingSessionRead(
             const from = bind(builder, builderProperty) as (table: unknown) => unknown;
 
             return (table: unknown): unknown => {
-              if (table === schema.sessions) {
+              if (table === wanted) {
                 reads += 1;
                 if (reads === nth) {
                   throw fail(nth);
