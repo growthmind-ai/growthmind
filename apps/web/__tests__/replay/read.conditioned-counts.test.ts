@@ -56,7 +56,10 @@ describe("readReplayScreen — conditioned counts", () => {
     ]);
   });
 
-  test("should still return a valid screen when that zero option is applied", async () => {
+  // Both values match real options and both filters restore results when relaxed alone, so
+  // this is the two-dead-filters branch — not E5 (a value matching nothing) and not E7 (a
+  // selection with sessions but no replays). over-filtered.test.ts asserts the isomorphic case.
+  test("should offer clear all when the applied zero option leaves two dead filters", async () => {
     const workspace = await seedTwoCompanies(db, "zero-applied");
     const { deps } = replayDeps(db, workspace.ctx);
 
@@ -69,9 +72,7 @@ describe("readReplayScreen — conditioned counts", () => {
     );
 
     expect(screen.rows).toHaveLength(0);
-    expect(["value_matches_nothing", "zero_replays_for_selection"]).toContain(
-      outcomeName(screen.outcome),
-    );
+    expect(outcomeName(screen.outcome)).toBe("clear_all");
   });
 
   test("should keep the company facet's option count unchanged as the entry filter changes", async () => {
