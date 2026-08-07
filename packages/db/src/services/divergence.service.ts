@@ -9,7 +9,7 @@ import {
   type DivergenceResult,
   type SessionTimeline,
 } from "@growthmind/core";
-import type { TenantContext } from "@growthmind/shared";
+import type { CohortCut, TenantContext } from "@growthmind/shared";
 
 import {
   createDivergencePointsRepo,
@@ -21,6 +21,7 @@ import type { ScopedDb } from "../repositories/types";
 export interface RecordDivergenceServiceInput {
   readonly projectId: string;
   readonly surface: string;
+  readonly cohortCut: CohortCut;
   readonly window: AnalysisWindow;
   readonly succeeded: readonly SessionTimeline[];
   readonly failed: readonly SessionTimeline[];
@@ -64,6 +65,7 @@ export function createDivergenceService(db: ScopedDb, ctx: TenantContext): Diver
         ...toRepoOutcome(result),
         projectId: input.projectId,
         surface: input.surface,
+        cohortCut: input.cohortCut,
         surfaceNormalisationVersion: surfaceNormalisationVersionOf(allSessions, input.surface),
         spineVersion: STEP_SPINE_VERSION,
         cohortMatchVersion: DIVERGENCE_COHORT_MATCH_VERSION,

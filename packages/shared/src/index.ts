@@ -263,6 +263,38 @@ export {
 } from "./exclusions/classify";
 
 export {
+  classifyBrowserFamily,
+  BROWSER_FAMILIES,
+  EDGE_TOKENS,
+  LONG_TAIL_BROWSER_TOKENS,
+  CHROME_TOKENS,
+  FIREFOX_TOKENS,
+  SAFARI_TOKENS,
+  type BrowserFamily,
+} from "./cohort-cuts/browsers";
+export {
+  classifyDeviceType,
+  DEVICE_TYPES,
+  TABLET_TOKENS,
+  ANDROID_TOKENS,
+  MOBILE_MARKER_TOKENS,
+  MOBILE_TOKENS,
+  DESKTOP_TOKENS,
+  type DeviceType,
+} from "./cohort-cuts/devices";
+export {
+  cohortCutsOfUserAgent,
+  browserCut,
+  deviceCut,
+  SURFACE_COHORT_CUT,
+  COHORT_CUTS,
+  type CohortCut,
+  type BrowserCohortCut,
+  type DeviceCohortCut,
+  type SessionCohortCuts,
+} from "./cohort-cuts/cuts";
+
+export {
   deriveSessionKey,
   recordingSessionKey,
   recordingIdFromSessionKey,

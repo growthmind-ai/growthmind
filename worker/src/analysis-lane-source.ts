@@ -1,5 +1,6 @@
 import {
   assembleCandidates,
+  cohortCutsOf,
   detectErrorEvent,
   detectFunnelDropoff,
   detectObservedStruggle,
@@ -92,19 +93,22 @@ export function createAnalysisLaneSource(deps: AnalysisLaneSourceDeps): Analysis
       const divergenceService = divergenceServiceFor(ctx);
 
       for (const cohort of funnelDropoffCohorts(corpus, rules)) {
-        try {
-          await divergenceService.recordDivergence({
-            projectId: project.projectId,
-            surface: cohort.origin,
-            window,
-            succeeded: cohort.succeeded,
-            failed: cohort.failed,
-          });
-        } catch (error) {
-          deps.logger.error(
-            `analysis lane source: divergence computation failed for ${cohort.origin} on project ` +
-              `${project.projectId}: ${describeDriverError(error)}`,
-          );
+        for (const cut of cohortCutsOf(cohort)) {
+          try {
+            await divergenceService.recordDivergence({
+              projectId: project.projectId,
+              surface: cohort.origin,
+              cohortCut: cut.cut,
+              window,
+              succeeded: cut.succeeded,
+              failed: cut.failed,
+            });
+          } catch (error) {
+            deps.logger.error(
+              `analysis lane source: divergence computation failed for ${cohort.origin} ` +
+                `(${cut.cut}) on project ${project.projectId}: ${describeDriverError(error)}`,
+            );
+          }
         }
       }
 
