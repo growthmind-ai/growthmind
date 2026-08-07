@@ -78,7 +78,7 @@ const getFindingTool: McpToolDescriptor = {
   title: "Evidence behind a problem",
   description:
     "Gives you the evidence behind one problem, by its id: what happened, how many sessions ran " +
-    "into it out of how many were measured, over what dates, and links to the recordings and " +
+    "into it out of how many were measured, over what dates, and links to the replays and " +
     "requests that show it. Call this when you want to understand a problem before working on " +
     "it, or when you need to explain to a person why the work is worth doing. Everything here is " +
     "something we observed, never something we inferred.",

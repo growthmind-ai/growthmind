@@ -17,7 +17,7 @@ export const COMPANY_DETAIL_NOT_FOUND =
   "We could not find that company. It may not have any sessions right now, or the address may be out of date.";
 
 export const COMPANY_SESSION_NO_RECORDING =
-  "There's no recording linked to this session, so there's nothing to describe.";
+  "There's no replay linked to this session, so there's nothing to describe.";
 
 export const ALL_COMPANIES_MESSAGES: readonly string[] = [
   COMPANY_LIST_NONE_YET,
