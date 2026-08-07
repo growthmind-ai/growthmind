@@ -24,13 +24,19 @@ export function deliveryClaimsExpireBefore(at: Date): Date {
   return new Date(at.getTime() - DELIVERY_CLAIM_TTL_MS);
 }
 
-// How many ticks a lane has gone without reaching a decision. A worker that throws records
+// How long a lane has gone without reaching a decision. A worker that throws records
 // `lane_errored`; a worker that stops records nothing at all, and this is the only thing that
-// separates it from a genuinely quiet lane. Deliberately a count and not a verdict: how many
-// missed ticks are too many is a product call, not one to settle here.
+// separates it from a genuinely quiet lane. Clamped at zero because worker and web clocks
+// disagree by seconds, and a negative silence reads as fresher than any threshold.
+export function deliverySilenceMs(lastDecidedAt: Date, now: Date): number {
+  return Math.max(0, now.getTime() - lastDecidedAt.getTime());
+}
+
+// The same silence counted in ticks, for copy that names the schedule. Express a staleness
+// threshold as a duration and compare it with `deliverySilenceMs` — a threshold held as a
+// tick count is silently redefined the day the cadence changes.
 export function deliveryTicksSince(lastDecidedAt: Date, now: Date): number {
-  const elapsed = now.getTime() - lastDecidedAt.getTime();
-  return elapsed <= 0 ? 0 : Math.floor(elapsed / DELIVERY_TICK_INTERVAL_MS);
+  return Math.floor(deliverySilenceMs(lastDecidedAt, now) / DELIVERY_TICK_INTERVAL_MS);
 }
 
 export type DeliveryCandidate = {

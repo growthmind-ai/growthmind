@@ -9,6 +9,7 @@ import {
   compareDeliveryCandidates,
   decideDelivery,
   deliveryClaimsExpireBefore,
+  deliverySilenceMs,
   deliveryTicksSince,
   isDeliverable,
 } from "../../src/delivery/schedule";
@@ -628,5 +629,22 @@ describe("silence is only readable against the cadence that produces it", () => 
     // Worker and web can disagree by seconds. Clamping at zero keeps a skewed clock from
     // reporting a lane as fresher or staler than any threshold a reader applies.
     expect(deliveryTicksSince(new Date(AT.getTime() + 60_000), AT)).toBe(0);
+    expect(deliverySilenceMs(new Date(AT.getTime() + 60_000), AT)).toBe(0);
+  });
+
+  test("a threshold held as a duration survives a change of cadence, one held as ticks does not", () => {
+    // The bug this pair exists to prevent: "3 ticks" meant three hours against an assumed
+    // hourly cadence and forty-five minutes against the real one. A window stated in minutes
+    // means the same thing whatever the schedule does.
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
+    const silence = deliverySilenceMs(AT, new Date(AT.getTime() + TWO_HOURS_MS));
+
+    expect(silence).toBe(TWO_HOURS_MS);
+    expect(silence >= TWO_HOURS_MS).toBe(true);
+
+    // The same window, counted against today's cadence, for copy that names the schedule.
+    expect(deliveryTicksSince(AT, new Date(AT.getTime() + TWO_HOURS_MS))).toBe(
+      TWO_HOURS_MS / DELIVERY_TICK_INTERVAL_MS,
+    );
   });
 });

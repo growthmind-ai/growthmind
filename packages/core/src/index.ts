@@ -210,6 +210,7 @@ export {
   DELIVERY_CLAIM_TTL_MS,
   DELIVERY_TICK_INTERVAL_MS,
   deliveryClaimsExpireBefore,
+  deliverySilenceMs,
   deliveryTicksSince,
   isDeliverable,
   compareDeliveryCandidates,
