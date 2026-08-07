@@ -29,18 +29,8 @@
   // report it as a red row about something else entirely.
   "include": ["scripts/**/*.ts", "__tests__/**/*.ts"],
 
-  // TWO PRE-EXISTING SCRIPTS ARE EXCLUDED, LOUDLY AND TEMPORARILY.
-  // Both predate this config and both fail `exactOptionalPropertyTypes` in the
-  // same trivial way — an object literal assigning `x: string | undefined` to
-  // an optional property that a conditional spread should set instead
-  // (orchestrator.ts:480/539/1939, validate-runtime.ts:311/321/331/339). Seven
-  // errors, none in this sprint's diff, none in the credential path. They are
-  // excluded rather than fixed here so this config can land without an
-  // unrelated refactor riding along in a credential commit; fixing them and
-  // deleting this block is a standalone change and should happen soon, because
-  // an excluded file is exactly the hole this config exists to close.
-  //
-  // The default is INCLUSION: a new script under `scripts/` is typechecked
-  // from the moment it is written, without anyone remembering to add it.
-  "exclude": ["scripts/orchestrator.ts", "scripts/validate-runtime.ts"]
+  // validate-runtime.ts fails `exactOptionalPropertyTypes` at 311/321/331/339
+  // and is excluded until those four are fixed. Every other script under
+  // `scripts/` is typechecked from the moment it is written.
+  "exclude": ["scripts/validate-runtime.ts"]
 }
