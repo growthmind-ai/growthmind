@@ -1,18 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { DELIVERY_TICK_INTERVAL_MS } from "@growthmind/core";
+import { DELIVERY_SILENCE_BEFORE_ALARM_MS, DELIVERY_TICK_INTERVAL_MS } from "@growthmind/core";
 import {
   DELIVERY_LANE_DECISIONS,
   DELIVERY_LANE_DECISION_MESSAGES,
   NOTHING_TODAY_REASON_MESSAGES,
 } from "@growthmind/shared";
 
-import {
-  SILENCE_BEFORE_ALARM_MS,
-  laneHistory,
-  laneLine,
-  type LaneRunFacts,
-} from "../../components/channel/lane";
+import { laneHistory, laneLine, type LaneRunFacts } from "../../components/channel/lane";
 
 const NOW = new Date("2026-08-05T09:26:00.000Z");
 
@@ -52,7 +47,7 @@ describe("a worker that stops writes nothing, so staleness is the only heartbeat
 
   test("a run one minute short of the window still reads as quiet", () => {
     const line = laneLine(
-      run({ lastDecidedAt: silentFor(SILENCE_BEFORE_ALARM_MS - A_MINUTE) }),
+      run({ lastDecidedAt: silentFor(DELIVERY_SILENCE_BEFORE_ALARM_MS - A_MINUTE) }),
       NOW,
     );
 
@@ -60,7 +55,7 @@ describe("a worker that stops writes nothing, so staleness is the only heartbeat
   });
 
   test("silence past the window outranks whatever the run last said", () => {
-    const dead = run({ lastDecidedAt: silentFor(SILENCE_BEFORE_ALARM_MS) });
+    const dead = run({ lastDecidedAt: silentFor(DELIVERY_SILENCE_BEFORE_ALARM_MS) });
     const line = laneLine(dead, NOW);
 
     expect(line?.tone).toBe("alarm");

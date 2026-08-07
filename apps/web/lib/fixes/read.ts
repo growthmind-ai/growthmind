@@ -22,8 +22,9 @@ import {
 } from "./view";
 
 // A finding is delivered at most three times a week and a fix only exists once someone
-// presses the button in Slack, so this is a safety rail rather than a page size. The list
-// says out of how many whenever it bites.
+// presses the button in Slack, so this is a safety rail rather than a page size. `totalOpen`
+// travels beside the rows, so the list says out of how many whenever it bites.
+// Ratified 2026-08-07, see .ai/decisions/0022-record-page-display-limits.md
 export const FIX_LIST_LIMIT = 25;
 
 // Keyed on the fix's own id, not its finding's: `readFix(fixId)` is the only read that can

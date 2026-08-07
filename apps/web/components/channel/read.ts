@@ -23,8 +23,12 @@ import {
 
 // The weekly ceiling is three findings, so this is roughly four months of record. The
 // counting sentence is stated over exactly the rows below it, and says so when it is cut off.
+// Ratified 2026-08-07, .ai/decisions/0022. The health sentence counts over this, so the
+// page states the cut when it truncates rather than reporting a capped total as a whole one.
 const RECORD_LIMIT = 50;
 
+// Ratified 2026-08-07, .ai/decisions/0022. Runs, not ticks, so this is a count of answers
+// and not a window of time; the panel states no number over it.
 const LANE_HISTORY_LIMIT = 6;
 
 export interface ReadChannelViewInput {

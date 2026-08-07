@@ -211,6 +211,7 @@ export {
   DELIVERY_TICK_INTERVAL_MS,
   deliveryClaimsExpireBefore,
   deliverySilenceMs,
+  DELIVERY_SILENCE_BEFORE_ALARM_MS,
   deliveryTicksSince,
   isDeliverable,
   compareDeliveryCandidates,

@@ -1,4 +1,9 @@
-import { DELIVERY_TICK_INTERVAL_MS, deliverySilenceMs, deliveryTicksSince } from "@growthmind/core";
+import {
+  DELIVERY_SILENCE_BEFORE_ALARM_MS,
+  DELIVERY_TICK_INTERVAL_MS,
+  deliverySilenceMs,
+  deliveryTicksSince,
+} from "@growthmind/core";
 import {
   ALL_DELIVERY_MESSAGES,
   DELIVERY_LANE_DECISION_MESSAGES,
@@ -45,16 +50,6 @@ const ALARM_HEAD: Partial<Record<DeliveryLaneDecision, string>> = {
   lane_errored: "Our last run did not finish.",
 };
 
-// A worker that throws records `lane_errored`; a worker that dies records nothing and just
-// stops extending the open run, so staleness is the only heartbeat there is.
-//
-// Stated as a duration and compared with one. Held as a tick count it would be silently
-// re-scaled the day the cadence moves — which already happened once: "3 ticks" was written
-// against an assumed hourly cadence and meant 45 minutes against the real one.
-// See .ai/decisions/0021-delivery-staleness-window.md — the two hours is PROPOSED, not
-// ratified, and moves into @growthmind/core beside the cadence once it is.
-export const SILENCE_BEFORE_ALARM_MS = 2 * 60 * 60 * 1_000;
-
 const TICK_MINUTES = Math.round(DELIVERY_TICK_INTERVAL_MS / 60_000);
 
 export const NEVER_CHECKED: LaneLine = {
@@ -81,7 +76,7 @@ export function laneLine(run: LaneRunFacts | null, now: Date): LaneLine | null {
 
   // Duration against duration. The tick count below is only for copy that names the
   // schedule, which is the one thing it is safe to derive.
-  if (deliverySilenceMs(run.lastDecidedAt, now) >= SILENCE_BEFORE_ALARM_MS) {
+  if (deliverySilenceMs(run.lastDecidedAt, now) >= DELIVERY_SILENCE_BEFORE_ALARM_MS) {
     const missed = deliveryTicksSince(run.lastDecidedAt, now);
     return {
       tone: "alarm",

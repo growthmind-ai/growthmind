@@ -39,6 +39,15 @@ export function deliveryTicksSince(lastDecidedAt: Date, now: Date): number {
   return Math.floor(deliverySilenceMs(lastDecidedAt, now) / DELIVERY_TICK_INTERVAL_MS);
 }
 
+// Past this, a lane is reported as not being checked rather than as quiet. A duration and
+// not a tick count, deliberately: written as ticks against an assumed cadence it once meant
+// forty-five minutes where hours were intended. Ratified 2026-08-07, and the asymmetry is
+// the reason for the size — a red line that occasionally lies is one a founder learns to
+// skip, after which the real outage is invisible, while being slow costs almost nothing
+// against a product that already caps itself at one finding a week.
+// see .ai/decisions/0021-delivery-staleness-window.md
+export const DELIVERY_SILENCE_BEFORE_ALARM_MS = 2 * 60 * 60 * 1_000;
+
 export type DeliveryCandidate = {
   readonly findingId: string;
   readonly confidenceBasis: ConfidenceBasis;
