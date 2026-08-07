@@ -577,6 +577,11 @@ describe("attribution is honest and never leaks an id (AD-4, FR-13)", () => {
     expect(text).toMatch(/corrected by you\b/);
     expect(text).toContain("corrected by your team");
 
+    // The evidence sentence agrees with the chip above it: a teammate's statement is never
+    // read back to the viewer as something they said.
+    expect(text).toContain("You told us this on");
+    expect(text).toContain("Your team told us this on");
+
     expect(text).not.toContain(VIEWER);
     expect(text).not.toContain(TEAMMATE);
   });

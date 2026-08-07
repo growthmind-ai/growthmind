@@ -3,14 +3,15 @@
 import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
-import posthog from "posthog-js";
 
-import { FACT_SAVE_ACTION, PAGES_SAVE_FAILED } from "@growthmind/shared";
+import { FACT_SAVE_ACTION, PAGES_SAVE_FAILED, STATEMENT_MAX } from "@growthmind/shared";
 
 import { SETTINGS_API, postJson, readRefusal } from "@/components/first-run/api";
 import type { AudienceDoubtView } from "@/lib/audience/read";
 
 import { focusAtEnd } from "./caret";
+import { ANSWERED_EVENT } from "./copy";
+import { instrument } from "./instrument";
 import { MorphSurface, type MorphControls } from "./MorphSurface";
 
 const ANSWER_VERB = "Answer this";
@@ -20,15 +21,6 @@ const SAVED_NOTE = "Saved — this reranks what we look at next ✓";
 // Nothing is written for this one, so it may not say saved — but a panel that closes in
 // silence is indistinguishable from a tap that missed.
 const LEFT_OPEN_NOTE = "Left open — we'll keep asking.";
-
-// A plain-English description of what happened, fired on the answer, not the attempt.
-const ANSWERED_EVENT = "Answered a doubt on the audience page";
-
-// Self-hosted installs run without an analytics key; an uninitialised capture would log a
-// vendor warning on every click instead of staying quiet.
-function instrument(event: string): void {
-  if (posthog.__loaded) posthog.capture(event);
-}
 
 const TOOLBAR_SIZE = { width: 120, height: 42 } as const;
 
@@ -255,6 +247,7 @@ function StatedOnlyDoubtRow({ doubt }: { doubt: StatedOnlyDoubt }) {
         // A static literal, not a binding: the replay-attribute register counts interpolated
         // placeholder values, and this one must stay provably our copy.
         placeholder="Say what's actually true — about the group, never a named person."
+        maxLength={STATEMENT_MAX}
         autosize
         minRows={2}
         value={draft}

@@ -3,9 +3,8 @@
 import { Anchor, Button, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type RefObject } from "react";
-import posthog from "posthog-js";
 
-import { PAGES_SAVE_FAILED } from "@growthmind/shared";
+import { PAGES_SAVE_FAILED, STATEMENT_MAX } from "@growthmind/shared";
 
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import type { BeliefCardView } from "@/lib/audience/read";
@@ -13,8 +12,18 @@ import type { BeliefCardView } from "@/lib/audience/read";
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
 import styles from "./BeliefCard.module.css";
 import { focusAtEnd } from "./caret";
+import {
+  CONFIRMED_EVENT,
+  CORRECTED_EVENT,
+  DROPPED_EVENT,
+  EMPTY_CORRECTION,
+  REFUSED_EVENT,
+  UNCHANGED_CORRECTION,
+  WRITE_FAILED,
+} from "./copy";
 import { DroppedNote } from "./DroppedNote";
 import { FactChips } from "./FactChips";
+import { instrument } from "./instrument";
 import { MorphSurface, type MorphControls, type MorphPanelDescriptor } from "./MorphSurface";
 import surface from "./MorphSurface.module.css";
 
@@ -31,21 +40,6 @@ const SAVED_CARD = "Saved — corrections outrank what we read ✓";
 // Confirming changed nothing about the claim, so it may not report a correction: what it
 // bought is that we now hold this as checked.
 const SAVED_CONFIRM = "Confirmed — we'll treat this as checked ✓";
-const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
-const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
-const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
-
-// Plain-English descriptions of what happened, fired on the fact, not the attempt.
-const CONFIRMED_EVENT = "Confirmed a belief on the audience page";
-const CORRECTED_EVENT = "Corrected a belief on the audience page";
-const DROPPED_EVENT = "Dropped a belief on the audience page";
-const REFUSED_EVENT = "A correction was refused before saving";
-
-// Self-hosted installs run without an analytics key; an uninitialised capture would log a
-// vendor warning on every click instead of staying quiet.
-function instrument(event: string): void {
-  if (posthog.__loaded) posthog.capture(event);
-}
 
 export interface BeliefCardProps {
   readonly card: BeliefCardView;
@@ -196,17 +190,13 @@ function CorrectEditor({
         value={draft}
         aria-labelledby={headerId}
         placeholder="Say what's actually true — about the group, never a named person."
-        classNames={{ input: invalid === null ? undefined : styles.warnInput }}
+        maxLength={STATEMENT_MAX}
+        error={invalid}
         onChange={(event) => {
           setDraft(event.currentTarget.value);
           setInvalid(null);
         }}
       />
-      {invalid === null ? null : (
-        <Text size="xs" c="orange">
-          {invalid}
-        </Text>
-      )}
       <div className={styles.actions}>
         <Button size="compact-sm" disabled={pending !== null} onClick={() => void save()}>
           {pending === "save" ? "Saving…" : "Save correction"}

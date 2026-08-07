@@ -3,7 +3,6 @@
 import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
-import posthog from "posthog-js";
 
 import { PAGES_SAVE_FAILED, STATEMENT_MAX } from "@growthmind/shared";
 
@@ -13,9 +12,19 @@ import type { FactRowView } from "@/lib/audience/read";
 
 import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
 import { focusAtEnd } from "./caret";
+import {
+  CONFIRMED_EVENT,
+  CORRECTED_EVENT,
+  DROPPED_EVENT,
+  EMPTY_CORRECTION,
+  REFUSED_EVENT,
+  UNCHANGED_CORRECTION,
+  WRITE_FAILED,
+} from "./copy";
 import { DroppedNote } from "./DroppedNote";
 import { FactChips } from "./FactChips";
 import styles from "./FactRow.module.css";
+import { instrument } from "./instrument";
 import { MorphSurface, type MorphControls } from "./MorphSurface";
 import morphStyles from "./MorphSurface.module.css";
 
@@ -24,21 +33,6 @@ const PANEL_SIZE = { width: 344, height: 258 } as const;
 
 const ROW_SAVED = "Saved ✓";
 const CORRECT_PANEL_LABEL = "Correct this";
-const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
-const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
-const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
-
-// Plain-English descriptions of what happened, fired on the fact, not the attempt.
-const CONFIRMED_EVENT = "Confirmed a belief on the audience page";
-const CORRECTED_EVENT = "Corrected a belief on the audience page";
-const DROPPED_EVENT = "Dropped a belief on the audience page";
-const REFUSED_EVENT = "A correction was refused before saving";
-
-// Self-hosted installs run without an analytics key; an uninitialised capture would log a
-// vendor warning on every click instead of staying quiet.
-function instrument(event: string): void {
-  if (posthog.__loaded) posthog.capture(event);
-}
 
 type Pending = "confirm" | "save" | "drop" | null;
 
@@ -174,7 +168,8 @@ export function FactRow({ view, onDropped }: FactRowProps) {
       setNotice(EMPTY_CORRECTION);
       return;
     }
-    if (trimmed === view.claim) {
+    // Trimmed on both sides: adding a trailing space is not a correction.
+    if (trimmed === view.claim.trim()) {
       setNotice(UNCHANGED_CORRECTION);
       return;
     }

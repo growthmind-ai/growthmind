@@ -335,10 +335,10 @@ function toCard(fact: BindingFact, viewerId: string): BeliefCardView {
     claim: fact.statement,
     prior: fact.correctedFrom,
     chips: chipsOf(fact, viewerId),
-    evidence: evidenceOf(fact),
+    evidence: evidenceOf(fact, viewerId),
     changed: CHANGED_LINES[fact.kind],
     settledBy,
-    source: sourcePanelOf(fact, settledBy),
+    source: sourcePanelOf(fact, settledBy, viewerId),
   };
 }
 
@@ -349,7 +349,7 @@ function toRow(fact: ShapingFact, viewerId: string): FactRowView {
     claim: fact.statement,
     prior: fact.correctedFrom,
     chips: chipsOf(fact, viewerId),
-    evidence: evidenceOf(fact),
+    evidence: evidenceOf(fact, viewerId),
   };
 }
 
@@ -396,7 +396,14 @@ function isAssumed(provenance: FactProvenance): boolean {
   return provenance.source === "site" && provenance.citation === null;
 }
 
-function evidenceOf(fact: BusinessFact): string {
+// The sentence has to agree with the chip a line above it: a teammate's statement told the
+// reader "You told us this" about something they never said (AD-4).
+function toldUsSentence(provenance: FactProvenance, viewerId: string): string {
+  const who = byWord(provenance.statedBy, viewerId) === "you" ? "You" : "Your team";
+  return `${who} told us this on ${DATE.format(provenance.at)}.`;
+}
+
+function evidenceOf(fact: BusinessFact, viewerId: string): string {
   const provenance = fact.provenance;
 
   if (provenance.seen !== null) return `${renderSeenSentence(provenance.seen)}.`;
@@ -406,13 +413,17 @@ function evidenceOf(fact: BusinessFact): string {
   }
 
   if (provenance.source === "stated_by_customer") {
-    return `You told us this on ${DATE.format(provenance.at)}.`;
+    return toldUsSentence(provenance, viewerId);
   }
 
   return "No evidence yet — this is assumed.";
 }
 
-function sourcePanelOf(fact: BusinessFact, settledBy: string | null): SourcePanelView {
+function sourcePanelOf(
+  fact: BusinessFact,
+  settledBy: string | null,
+  viewerId: string,
+): SourcePanelView {
   const provenance = fact.provenance;
   const lines: string[] = [];
 
@@ -423,7 +434,7 @@ function sourcePanelOf(fact: BusinessFact, settledBy: string | null): SourcePane
   }
 
   if (provenance.source === "stated_by_customer") {
-    lines.push(`You told us this on ${DATE.format(provenance.at)}.`);
+    lines.push(toldUsSentence(provenance, viewerId));
   }
 
   if (isAssumed(provenance)) {
