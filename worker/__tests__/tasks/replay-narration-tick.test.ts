@@ -360,6 +360,60 @@ describe("a backlog is drained, not stranded below the watermark", () => {
     expect(third.summarised).toBe(0);
   });
 
+  test("should recover a recording that shares its started_at with the last one read", async () => {
+    // The residual B-053 left open: oldest-first draining makes the watermark safe only when
+    // the budget boundary falls between two DISTINCT instants. Two recordings sharing one
+    // `started_at`, split by the budget, advanced the watermark onto the shared instant with
+    // one still unread — and the adapter's `<=` filter then dropped it on every later tick.
+    const TIED_AT = "2026-08-05T09:00:00.000Z";
+    const tied = [
+      recording("rec-tied-a", TIED_AT),
+      recording("rec-tied-b", TIED_AT),
+      recording("rec-later", "2026-08-05T10:00:00.000Z"),
+    ];
+
+    const store = fakeRepo();
+    const pulled: string[] = [];
+
+    // Strictly-before, matching the adapter after this fix. With `>=` here the second tick
+    // lists nothing and the twin is stranded, which is the defect.
+    const source = fakeSource({
+      listRecordings: (request) =>
+        Promise.resolve(
+          listOk(
+            tied.filter(
+              (candidate) =>
+                request.sinceAt === null ||
+                candidate.startedAt === null ||
+                candidate.startedAt.getTime() >= request.sinceAt.getTime(),
+            ),
+          ),
+        ),
+      pullEvents: (recordingId: string) => {
+        pulled.push(recordingId);
+        return Promise.resolve(eventsOk(eventsFor()));
+      },
+    });
+
+    const { deps } = depsFor(store, {
+      perProjectCap: 1,
+      sourceFor: () => Promise.resolve({ ok: true, source }),
+    });
+
+    await runReplayNarrationTick(deps);
+    expect(pulled).toHaveLength(1);
+
+    const watermark = await store.repo.latestStartedAt(LANE.projectId);
+    expect(watermark?.toISOString()).toBe(TIED_AT);
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+
+    expect(new Set(store.rows.map((row) => row.recordingId))).toEqual(
+      new Set(tied.map((candidate) => candidate.recordingId)),
+    );
+  });
+
   test("should read the oldest recordings first, so the watermark never passes an unread one", async () => {
     const store = fakeRepo();
     const pulled: string[] = [];
