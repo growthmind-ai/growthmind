@@ -1,7 +1,6 @@
-import { Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { Button, Stack, Text } from "@mantine/core";
 
 import { provenanceSentence, wayOutAction, wayOutBody } from "@growthmind/core";
-import type { ReplayListRow } from "@growthmind/core";
 import {
   REPLAY_CLEAR_ALL_ACTION,
   REPLAY_CLEAR_COMPANY_ACTION,
@@ -20,7 +19,6 @@ import {
   REPLAY_OVER_FILTERED_TITLE,
   REPLAY_SHOW_ALL_COMPANIES_ACTION,
   REPLAY_SHOW_REAL_PEOPLE_ACTION,
-  REPLAY_SIMULATED_BADGE,
   REPLAY_SIMULATED_ZERO_BODY,
   REPLAY_SIMULATED_ZERO_TITLE,
   REPLAY_TRY_AGAIN_ACTION,
@@ -32,14 +30,13 @@ import {
 } from "@growthmind/shared";
 import type { ReplayFilters } from "@growthmind/shared";
 
-import { AnchorLink, ButtonLink } from "@/components/ui/Links";
+import { ButtonLink } from "@/components/ui/Links";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { timeOnPage } from "@/lib/replay/label";
 import type { ReplayScreen } from "@/lib/replay/read";
 import { ROUTES } from "@/lib/routes";
 
 import { fill } from "./copy";
+import { ReplayRow } from "./ReplayRow";
 import { clearedReplayUrl, nextReplayUrl, replayUrlOf } from "./filters/filter-url";
 
 type ScreenArm = Extract<ReplayScreen, { readonly kind: "screen" }>;
@@ -160,50 +157,6 @@ function terminalOf(screen: ScreenArm, filters: ReplayFilters): Terminal | null 
   };
 }
 
-function ReplayCard({ row }: { readonly row: ReplayListRow }) {
-  const time = timeOnPage(row);
-
-  return (
-    <SurfaceCard style={row.lane === "real" ? undefined : { borderStyle: "dashed" }}>
-      <Group justify="space-between" gap="md" wrap="wrap" align="flex-start">
-        <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-          <AnchorLink
-            href={`${ROUTES.replays}/${row.recordingId}`}
-            fw={600}
-            truncate="end"
-            underline="never"
-          >
-            {row.entryUrlPath ?? row.recordingId}
-          </AnchorLink>
-
-          <Text size="xs" c="dimmed">
-            {new Date(row.startedAt).toLocaleString()}
-            {row.companyDomain === null ? null : ` · ${row.companyDomain}`}
-          </Text>
-        </Stack>
-
-        <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-          {time === null ? null : (
-            <Badge variant="light" color="gray">
-              {time.badge}
-            </Badge>
-          )}
-          {row.lane === "simulated" ? (
-            <Badge variant="light" color="gray">
-              {REPLAY_SIMULATED_BADGE}
-            </Badge>
-          ) : null}
-          {row.exclusionLabel === null ? null : (
-            <Badge variant="light" color="gray">
-              {row.exclusionLabel}
-            </Badge>
-          )}
-        </Group>
-      </Group>
-    </SurfaceCard>
-  );
-}
-
 export function ReplayListBody({ screen, filters }: ReplayListBodyProps) {
   // The app shell resolves the session before this renders; the arm exists so the reader's union
   // stays total.
@@ -248,7 +201,7 @@ export function ReplayListBody({ screen, filters }: ReplayListBodyProps) {
       {terminal === null ? (
         <Stack gap="sm">
           {screen.rows.map((row) => (
-            <ReplayCard key={row.sessionKey} row={row} />
+            <ReplayRow key={row.sessionKey} row={row} />
           ))}
         </Stack>
       ) : (
