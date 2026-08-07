@@ -1,5 +1,5 @@
 {
-  "id": "f3bdd440-162f-469c-908e-2cbe30e7e718",
+  "id": "b45e9ea9-f758-40a2-875d-31b4d1456ca0",
   "prevId": "cf1c062c-5ec1-414a-b54e-89993da4066b",
   "version": "7",
   "dialect": "postgresql",
@@ -401,6 +401,12 @@
         },
         "decision": {
           "name": "decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason_code": {
+          "name": "reason_code",
           "type": "text",
           "primaryKey": false,
           "notNull": true

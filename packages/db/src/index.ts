@@ -152,6 +152,7 @@ export {
   type DeliveryDecisionsRepo,
   type DeliveryDecisionRecord,
   type RecordDeliveryDecisionInput,
+  type RecordedDeliveryDecision,
 } from "./repositories/delivery-decisions.repo";
 
 export {

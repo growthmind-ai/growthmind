@@ -456,6 +456,22 @@ export {
   deliveryFailureSentence,
 } from "./delivery/messages";
 export {
+  deliveryReasonCodeSchema,
+  DELIVERY_REASON_CODES,
+  DELIVERY_REASON_SENTENCES,
+  LANE_DECISION_REASON_CODES,
+  NOTHING_TODAY_REASON_CODES,
+  RESIDUAL_PII_REASON_CODES,
+  POST_FAILURE_REASON_CODES,
+  NOT_DELIVERED_REASON_CODE,
+  deliveryReasonSentence,
+  laneDecisionReasonCode,
+  nothingTodayReasonCode,
+  residualPiiReasonCode,
+  postFailureReasonCode,
+  type DeliveryReasonCode,
+} from "./delivery/reason-code";
+export {
   GET_IT_FIXED_ACTION_ID,
   GET_IT_FIXED_LABEL,
   NOT_USEFUL_ACTION_ID,

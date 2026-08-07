@@ -17,6 +17,7 @@ import type {
   MarkFailedInput,
   MarkPostedInput,
   RecordDeliveryDecisionInput,
+  RecordedDeliveryDecision,
   SignatureHex,
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
@@ -31,10 +32,12 @@ import {
   ALL_DELIVERY_MESSAGES,
   DELIVERY_LANE_DECISIONS,
   DELIVERY_LANE_DECISION_MESSAGES,
+  DELIVERY_REASON_CODES,
   GET_IT_FIXED_ACTION_ID,
   NOTHING_TODAY_REASON_MESSAGES,
   RESIDUAL_PII_KIND_MESSAGES,
   deliveryFailureSentence,
+  deliveryReasonSentence,
   parseRenderedMessage,
 } from "@growthmind/shared";
 
@@ -336,7 +339,7 @@ function createFakeDecisions(): FakeDecisions {
       broken = true;
     },
     repoFor: (ctx) => ({
-      record(input: RecordDeliveryDecisionInput): Promise<DeliveryDecisionRecord> {
+      record(input: RecordDeliveryDecisionInput): Promise<RecordedDeliveryDecision> {
         if (broken) throw new Error("the decision ledger is unavailable");
 
         const open = rows.find(
@@ -346,11 +349,15 @@ function createFakeDecisions(): FakeDecisions {
             row.endedAt === null,
         );
 
-        if (open && open.decision === input.decision && open.reason === input.reason) {
-          open.lastDecidedAt = input.decidedAt;
-          open.findingId = input.findingId;
-          open.channelId = input.channelId;
-          return Promise.resolve(open);
+        // Keyed on the code, never the sentence, exactly as the real repository is: a test
+        // asserting "one run" must be asserting the rule that survives a copy pass.
+        if (open && open.decision === input.decision && open.reasonCode === input.reasonCode) {
+          if (open.lastDecidedAt.getTime() <= input.decidedAt.getTime()) {
+            open.lastDecidedAt = input.decidedAt;
+            open.findingId = input.findingId;
+            open.channelId = input.channelId;
+          }
+          return Promise.resolve({ run: open, recorded: true });
         }
 
         if (open) {
@@ -362,6 +369,7 @@ function createFakeDecisions(): FakeDecisions {
           organizationId: ctx.organizationId,
           projectId: input.projectId,
           decision: input.decision,
+          reasonCode: input.reasonCode,
           reason: input.reason,
           findingId: input.findingId,
           channelId: input.channelId,
@@ -372,7 +380,7 @@ function createFakeDecisions(): FakeDecisions {
         };
         nextId += 1;
         rows.push(row);
-        return Promise.resolve(row);
+        return Promise.resolve({ run: row, recorded: true });
       },
 
       listRecentForProject(projectId: string, limit: number): Promise<DeliveryDecisionRecord[]> {
@@ -1123,6 +1131,57 @@ test("a decision that cannot be recorded never costs the lane its delivery", asy
   expect(summary.posted).toBe(1);
   expect(scene.ledger.rowFor("finding-1")?.status).toBe("posted");
   expect(scene.logs.error.some((line) => line.includes("could not be recorded"))).toBe(true);
+});
+
+// D12/D11. The stored pair is what a copy pass can break: if the tick picked the code from
+// one switch and the sentence from another, a reworded constant would leave rows whose code
+// and sentence disagree, and the run key would be built on the half that moves.
+test("every decision row's sentence is the one its own reason code names", async () => {
+  const scenes = [
+    harness({ lanes: [lane()] }),
+    harness({ lanes: [lane({ candidates: [] })] }),
+    harness({ lanes: [lane({ deliveredThisWeek: 3 })] }),
+    harness({ lanes: [lane()], connectedOrgIds: [] }),
+    harness({ lanes: [lane({ candidates: [finding("finding-pii", { surfacePath: DIRTY_SURFACE })] })] }),
+    harness({
+      lanes: [lane()],
+      answer: () => ({ ok: false as const, code: "channel_unavailable" as const, message: "ignored" }),
+    }),
+  ];
+
+  const seen = new Set<string>();
+
+  for (const scene of scenes) {
+    await scene.run();
+
+    for (const row of scene.decisions.rows()) {
+      seen.add(row.reasonCode);
+
+      expect(DELIVERY_REASON_CODES).toContain(row.reasonCode);
+      expect({ code: row.reasonCode, reason: row.reason }).toEqual({
+        code: row.reasonCode,
+        reason: deliveryReasonSentence(row.reasonCode),
+      });
+    }
+  }
+
+  // A lane that recorded one code everywhere would satisfy the equality above while proving
+  // nothing, so the scenes have to have reached more than one branch of the switch.
+  expect(seen.size).toBeGreaterThan(3);
+});
+
+test("a lane that errors twice extends one run rather than restarting the quiet clock", async () => {
+  const broken = createFakeLedger();
+  broken.breakProject(PROJECT);
+
+  const scene = harness({ lanes: [lane()], ledger: broken });
+  await scene.run();
+  await scene.run();
+
+  const rows = scene.decisions.rows();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.reasonCode).toBe("lane_errored");
+  expect(rows[0]?.firstDecidedAt).toEqual(NOW);
 });
 
 test("no decision reason carries anything but a sentence Growthmind wrote", async () => {

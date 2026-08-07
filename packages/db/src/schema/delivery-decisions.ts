@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { DeliveryLaneDecision } from "@growthmind/shared";
+import { DELIVERY_REASON_CODES, type DeliveryLaneDecision } from "@growthmind/shared";
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
@@ -36,8 +36,14 @@ export const deliveryDecisions = pgTable(
 
     decision: text("decision", { enum: DELIVERY_LANE_DECISIONS }).notNull(),
 
+    // What decides whether a run continues, alongside `decision`. A code, because the
+    // sentence beside it is editable display copy: rewording it must not fork the key and
+    // reset every lane's "quiet since" (D12).
+    reasonCode: text("reason_code", { enum: DELIVERY_REASON_CODES }).notNull(),
+
     // Plain English, always a constant from @growthmind/shared — never an exception message
-    // and never a vendor response body.
+    // and never a vendor response body. The sentence the run opened with, kept as the record
+    // of what was said at the time and never read as identity.
     reason: text("reason").notNull(),
 
     findingId: text("finding_id"),

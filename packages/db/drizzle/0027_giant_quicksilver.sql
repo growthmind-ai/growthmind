@@ -3,6 +3,7 @@ CREATE TABLE "delivery_decisions" (
 	"organization_id" text NOT NULL,
 	"project_id" text NOT NULL,
 	"decision" text NOT NULL,
+	"reason_code" text NOT NULL,
 	"reason" text NOT NULL,
 	"finding_id" text,
 	"channel_id" text,
