@@ -55,6 +55,15 @@ export const sessions = pgTable(
 
     exclusionReason: text("exclusion_reason", { enum: EXCLUSION_REASONS }).notNull(),
 
+    // Both time columns are seconds as the source measured them, and nullable with no default
+    // because a row we never stamped must not assert a measurement of zero.
+    // See .ai/decisions/0020-o-050-recording-meta-on-the-session-row.md.
+    recordingDurationSeconds: integer("recording_duration_seconds"),
+    recordingActiveSeconds: integer("recording_active_seconds"),
+    recordingClickCount: integer("recording_click_count"),
+    recordingKeypressCount: integer("recording_keypress_count"),
+    recordingConsoleErrorCount: integer("recording_console_error_count"),
+
     internalDomainAtStamp: text("internal_domain_at_stamp"),
     exclusionRuleSetVersion: integer("exclusion_rule_set_version").notNull(),
     groupingVersion: integer("grouping_version").notNull(),
