@@ -184,6 +184,33 @@ describe("cross-tenant boundary on the tables", () => {
     expect(aggregate.lastSuccessfulFinishedAt).toBeNull();
   });
 
+  it("refuses to start a poll run against a project that belongs to another organization", async () => {
+    const fx = await seedMatrix(db, "poll-run-start");
+    const runsB = createPollRunsRepo(db, fx.foreignCtx);
+
+    // The org id is stamped from the context, so an unchecked write would land org B's row
+    // against org A's project — the one id-only mutation left in the package (B-007).
+    await expect(
+      runsB.start({
+        projectId: fx.projectId,
+        connectionId: fx.connectionId,
+        startedAt: new Date("2026-07-30T12:00:00.000Z"),
+      }),
+    ).rejects.toThrow(/organization/i);
+
+    // Nothing was written, and org A's own start still works — the check refuses the foreign
+    // project, not every project.
+    const runsA = createPollRunsRepo(db, fx.ownerCtx);
+    const started = await runsA.start({
+      projectId: fx.projectId,
+      connectionId: fx.connectionId,
+      startedAt: new Date("2026-07-30T12:00:00.000Z"),
+    });
+
+    expect(started.projectId).toBe(fx.projectId);
+    expect(await runsB.aggregateFor(fx.connectionId)).toMatchObject({ runsCompleted: 0 });
+  });
+
   it("mutates none of org A's connection state from org B, and leaves the row untouched", async () => {
     const fx = await seedMatrix(db, "mutate-connection");
     const repoB = createProjectConnectionsRepo(db, fx.foreignCtx);
