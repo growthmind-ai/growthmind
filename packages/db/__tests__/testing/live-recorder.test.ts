@@ -46,6 +46,37 @@ describe("recordPublishedTopics", () => {
     expect(recorder.published).toEqual([]);
   });
 
+  // The O-051 emit seams publish through the transaction executor the caller hands them,
+  // never through the outer handle — a recorder that only wrapped the handle would report
+  // every one of those publishes as a correct zero.
+  test("records a payload published inside a transaction the wrapped handle opened", async () => {
+    const recorder = recordPublishedTopics(db);
+
+    const answer = await recorder.db.transaction(async (tx) => {
+      await publishLive(tx, { organizationId: "org-tx", topic: "notifications" });
+      return "committed";
+    });
+
+    expect(answer).toBe("committed");
+    expect(recorder.published).toEqual([{ organizationId: "org-tx", topic: "notifications" }]);
+  });
+
+  test("a transaction that rolls back still ran its statements through the recorder", async () => {
+    const recorder = recordPublishedTopics(db);
+
+    await expect(
+      recorder.db.transaction(async (tx) => {
+        await publishLive(tx, { organizationId: "org-rollback", topic: "notifications" });
+        throw new Error("deliberate rollback");
+      }),
+    ).rejects.toThrow("deliberate rollback");
+
+    // The recorder sees statements, not commits: asserting "published after the tx
+    // resolved" is the caller's job, which is why wire tests assert only after awaiting
+    // the repository call.
+    expect(recorder.published).toEqual([{ organizationId: "org-rollback", topic: "notifications" }]);
+  });
+
   // A trap that returns a member unbound from its target leaves drizzle reading its own
   // internal state off the proxy and observing nothing, so this is where `.bind(target)` fails.
   test("passes ordinary statements through unchanged", async () => {

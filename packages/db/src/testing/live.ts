@@ -66,23 +66,42 @@ export function recordPublishedTopics(realDb: TestDb): LiveRecorder {
     }
   }
 
-  const db = new Proxy(realDb, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
+  return { db: followingStatements(realDb, record), published, malformed };
+}
 
-      if (prop !== "execute") {
-        return typeof value === "function"
-          ? (value as (...args: unknown[]) => unknown).bind(target)
-          : value;
+// Recursive on purpose: a repository that wraps its write and its publish in one
+// transaction issues the NOTIFY through the tx executor, not through the handle this
+// recorder wrapped — so the callback's executor is wrapped too, or every in-transaction
+// publish would read as a correct zero-publish (the O-051 emit seams are that shape).
+function followingStatements<T extends object>(
+  target: T,
+  record: (statement: unknown) => void,
+): T {
+  return new Proxy(target, {
+    get(inner, prop, receiver) {
+      const value = Reflect.get(inner, prop, receiver);
+
+      if (prop === "execute" && typeof value === "function") {
+        return (...args: unknown[]) => {
+          const result = (value as (...args: unknown[]) => unknown).apply(inner, args);
+          record(args[0]);
+          return result;
+        };
       }
 
-      return (...args: unknown[]) => {
-        const result = (value as (...args: unknown[]) => unknown).apply(target, args);
-        record(args[0]);
-        return result;
-      };
+      if (prop === "transaction" && typeof value === "function") {
+        return (...args: unknown[]) => {
+          const [callback, ...rest] = args as [(tx: object) => unknown, ...unknown[]];
+          return (value as (...args: unknown[]) => unknown).apply(inner, [
+            (tx: object) => callback(followingStatements(tx, record)),
+            ...rest,
+          ]);
+        };
+      }
+
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(inner)
+        : value;
     },
   });
-
-  return { db, published, malformed };
 }

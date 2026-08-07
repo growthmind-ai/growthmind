@@ -15,6 +15,7 @@ export class BellErrorBoundary extends Component<
   }
 
   override componentDidCatch(error: unknown): void {
+    // oxlint-disable-next-line no-console -- client boundary: the browser console is the only sink here
     console.error("bell: render failed, hiding the bell", error);
   }
 
