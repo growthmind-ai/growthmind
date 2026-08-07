@@ -32,6 +32,7 @@ import {
   seedOrgWithOwner,
   seedProject,
 } from "../../src/testing";
+import { failTableReads } from "../helpers/fail-table-reads";
 import { readRawRows } from "../helpers/onboarding-contract";
 import {
   type CreateFirstRunRepo,
@@ -685,42 +686,8 @@ describe("planted-offender control — proving row 6 bites", () => {
   });
 });
 
-// B-042: B-040 made `findingUnavailable` terminal, which stops the poll — and the flag
-// was raised for a caught driver error too. One pool timeout mid-watch therefore ended
-// the watch for good, because only a poll could ever have cleared it. Generalised to a
-// target table (rather than hard-coded to `findings`) so ADD o-019-dismissal-wired
-// Decision 3's ledger-outage test can fault-inject `signatureAncestry` the same way.
-const failTableReads = (realDb: TestDb, table: unknown, thrown: Error): TestDb =>
-  new Proxy(realDb, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (prop !== "select") {
-        return typeof value === "function"
-          ? (value as (...args: unknown[]) => unknown).bind(target)
-          : value;
-      }
-      return (...args: unknown[]) => {
-        const builder = (value as (...a: unknown[]) => unknown).apply(target, args) as Record<
-          string,
-          unknown
-        >;
-        return new Proxy(builder, {
-          get(bt, bp, br) {
-            const member = Reflect.get(bt, bp, br);
-            if (bp !== "from") {
-              return typeof member === "function"
-                ? (member as (...a: unknown[]) => unknown).bind(bt)
-                : member;
-            }
-            return (t: unknown) => {
-              if (t === table) throw thrown;
-              return (member as (t: unknown) => unknown).call(bt, t);
-            };
-          },
-        });
-      };
-    },
-  });
+// B-042's injector lives in ../helpers/fail-table-reads so O-051's close-cannot-throw
+// case shares it rather than minting a second one (.ai/PATTERNS.md).
 
 describe("a driver failure does not end the watch", () => {
   let db: TestDb;

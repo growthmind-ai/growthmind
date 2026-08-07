@@ -683,3 +683,85 @@ describe("analysis runs repository", () => {
     expect(stillFirstVerdict.failureReason).toBeNull();
   });
 });
+
+// O-051 job 2 (ADD §4.3): the read the analysis_failing detector decides on. A run still
+// in flight is not evidence either way, so `running` is excluded. RED in Wave 0: the
+// method throws.
+describe("recentTerminalStatuses reads the last N terminal runs for this org's project only", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  async function seedTerminalRun(
+    organizationId: string,
+    projectId: string,
+    status: "completed" | "failed" | "running",
+    startedAt: Date,
+  ): Promise<void> {
+    await db.insert(analysisRuns).values({
+      id: randomUUID(),
+      organizationId,
+      projectId,
+      status,
+      startedAt,
+      ...(status === "running"
+        ? {}
+        : {
+            outcome: "no_candidates_passed_gate" as const,
+            stopReason: status === "failed" ? ("fatal_error" as const) : ("ran_to_completion" as const),
+            finishedAt: new Date(startedAt.getTime() + 60_000),
+          }),
+    });
+  }
+
+  it("orders startedAt desc, excludes running, honours the limit, and answers nothing across the tenant boundary", async () => {
+    const orgA = await seedOrgWithOwner(db, {
+      orgName: "o051-terminal-org-a",
+      userName: "o051-terminal-user-a",
+      email: "o051-terminal-a@example.com",
+    });
+    const project = await seedProject(db, {
+      organizationId: orgA.organizationId,
+      name: "o051-terminal-project",
+    });
+
+    const base = new Date("2026-08-01T09:00:00.000Z");
+    const minutesAfter = (minutes: number) => new Date(base.getTime() + minutes * 60_000);
+
+    await seedTerminalRun(orgA.organizationId, project.id, "failed", minutesAfter(0));
+    await seedTerminalRun(orgA.organizationId, project.id, "completed", minutesAfter(10));
+    await seedTerminalRun(orgA.organizationId, project.id, "failed", minutesAfter(20));
+    await seedTerminalRun(orgA.organizationId, project.id, "completed", minutesAfter(30));
+    await seedTerminalRun(orgA.organizationId, project.id, "running", minutesAfter(40));
+
+    const repo = createAnalysisRunsRepo(db, orgA.ctx);
+
+    expect(await repo.recentTerminalStatuses(project.id, 3)).toEqual([
+      "completed",
+      "failed",
+      "completed",
+    ]);
+    expect(await repo.recentTerminalStatuses(project.id, 10)).toEqual([
+      "completed",
+      "failed",
+      "completed",
+      "failed",
+    ]);
+
+    const orgB = await seedOrgWithOwner(db, {
+      orgName: "o051-terminal-org-b",
+      userName: "o051-terminal-user-b",
+      email: "o051-terminal-b@example.com",
+    });
+    expect(
+      await createAnalysisRunsRepo(db, orgB.ctx).recentTerminalStatuses(project.id, 10),
+    ).toEqual([]);
+  });
+});

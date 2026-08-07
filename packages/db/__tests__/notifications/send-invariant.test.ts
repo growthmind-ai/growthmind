@@ -1,40 +1,31 @@
-// The class invariant (ADD §3, spec ruling): every actionable-class notification carries a
-// Slack send row — sent, failed, or quiet with a stated reason. Proven BY CLASS: each job-1
-// type's real emitter fixture is driven through every arm it can take (quiet at commit,
-// queued → dispatch → sent, enqueue fault → failed), so the invariant has no unwitnessed
-// arm. Per-test databases on purpose: the enqueue-fault arm NEEDS the default fixture (no
-// graphile_worker schema), which an installed stub would silently turn into the queued path.
-import { afterAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+// The class invariant, rewritten total (ADD D-7, AC-17/AC-24): every notification type
+// carries a Slack receipt, proven by a drive table `satisfies Record<NotificationType,
+// Drive>` — an unmapped type is a typecheck failure, never a silently uncovered one. Each
+// drive is the REAL emitter seam for its type. Per-test databases: the drives claim
+// connections and queue jobs, and must not see each other.
+import { randomUUID } from "node:crypto";
+
+import { afterAll, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 
 import {
-  ACTIONABLE_CLASSES,
-  buildFindingDeliveredDedupKey,
-  credentialAad,
-  encryptSecret,
-  keyIdOf,
   NOTIFICATION_CLASS_BY_TYPE,
-  NOTIFICATION_DISPATCH_TASK,
-  NOTIFICATION_SEND_NO_TARGET,
   NOTIFICATION_TYPES,
   RENDERED_MESSAGE_VERSION,
-  type CredentialKey,
-  type DeliveryPoster,
-  type PostRequest,
-  type PostResult,
+  type NotificationType,
   type RenderedMessage,
-  type TenantContext,
 } from "@growthmind/shared";
 
-import {
-  loadUnderConstruction,
-  underConstructionSpecifier,
-} from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createApiKeysRepo, stampApiKeyUse } from "../../src/repositories/api-keys.repo";
 import {
   createDeliveriesRepo,
   type ClaimDeliveryInput,
 } from "../../src/repositories/deliveries.repo";
+import {
+  ANALYSIS_RUN_LEASE_MS,
+  createAnalysisRunsRepo,
+  type CloseRunInput,
+} from "../../src/repositories/analysis-runs.repo";
 import { createSlackConnectionsRepo } from "../../src/repositories/slack-connections.repo";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { notifications, notificationSends } from "../../src/schema/notifications";
@@ -49,18 +40,33 @@ import {
   type TestDb,
   type TestDbHandle,
 } from "../../src/testing";
+import {
+  connectSlackChannel,
+  dispatchJobsOf,
+  dispatchPayloadOf,
+  drainBackfillCursor,
+  loadDigest,
+  loudPoster,
+  recordHealthOf,
+  runAllDispatchJobs,
+  silentLogger,
+} from "../helpers/o051-contracts";
 
 const NAMES = laneNames("send-invariant");
 
 const CHANNEL = "C0INVARIANT";
-const KEY: CredentialKey = { bytes: Uint8Array.from({ length: 32 }, (_, index) => index) };
-const DISPATCH_OWNER = "O-051 tasks 0.3/2.3 (worker/src/tasks/notification-dispatch.ts)";
+
+// 2026-08-10 is a Monday, so an org with no settings row is due by default (ADD D-6/D-8).
+const DIGEST_MONDAY = new Date("2026-08-10T12:00:00.000Z");
+
+const POLL_NOW = new Date("2026-08-06T18:00:00.000Z");
 
 const handles: TestDbHandle[] = [];
 
 async function openDb(): Promise<TestDb> {
   const handle = await createTestDb();
   handles.push(handle);
+  await stubGraphileAddJob(handle.db);
   return handle.db;
 }
 
@@ -76,31 +82,17 @@ async function seedOrg(db: TestDb, label: string): Promise<SeededOrgWithOwner> {
   });
 }
 
-async function connectSlack(db: TestDb, org: SeededOrgWithOwner): Promise<void> {
-  await createSlackConnectionsRepo(db, org.ctx).insertActive({
-    channelId: CHANNEL,
-    workspaceName: "Fixture workspace",
-    credentialCiphertext: encryptSecret(
-      "xoxb-fixture-only-never-a-real-token",
-      KEY,
-      credentialAad(org.organizationId, "slack"),
-    ),
-    credentialKeyId: keyIdOf(KEY),
-    connectedAt: new Date("2026-08-01T09:00:00.000Z"),
-  });
+interface DriveBed {
+  readonly db: TestDb;
+  readonly org: SeededOrgWithOwner;
 }
 
-// The emitter fixtures — each drives the REAL repository write for its type.
-async function driveKeysRevoked(db: TestDb, org: SeededOrgWithOwner): Promise<void> {
-  const repo = createApiKeysRepo(db, org.ctx);
-  await repo.mint({ name: "invariant agent" });
-  expect(await repo.revokeEveryLive()).toBe(true);
-}
+type DriveFn = (bed: DriveBed) => Promise<void>;
 
-async function driveAgentFirstContact(db: TestDb, org: SeededOrgWithOwner): Promise<void> {
-  const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "invariant agent" });
-  await stampApiKeyUse(db, minted.key.id);
-}
+type Drive =
+  | { readonly arm: "copied"; readonly drive: DriveFn }
+  | { readonly arm: "owed"; readonly drive: DriveFn }
+  | { readonly arm: "quiet_digest"; readonly drive: DriveFn };
 
 const RENDERED: RenderedMessage = {
   version: RENDERED_MESSAGE_VERSION,
@@ -109,7 +101,7 @@ const RENDERED: RenderedMessage = {
   legibility: { characters: 43, lines: 2 },
 };
 
-async function driveFindingDelivered(db: TestDb, org: SeededOrgWithOwner): Promise<void> {
+async function driveFindingDelivered({ db, org }: DriveBed): Promise<void> {
   const project = await seedProject(db, {
     organizationId: org.organizationId,
     name: NAMES.projectName("copied"),
@@ -133,8 +125,112 @@ async function driveFindingDelivered(db: TestDb, org: SeededOrgWithOwner): Promi
   });
 }
 
-async function notificationRowsFor(db: TestDb, organizationId: string) {
-  return db.select().from(notifications).where(eq(notifications.organizationId, organizationId));
+async function driveKeysRevoked({ db, org }: DriveBed): Promise<void> {
+  const repo = createApiKeysRepo(db, org.ctx);
+  await repo.mint({ name: "invariant agent" });
+  expect(await repo.revokeEveryLive()).toBe(true);
+}
+
+async function driveAgentFirstContact({ db, org }: DriveBed): Promise<void> {
+  const minted = await createApiKeysRepo(db, org.ctx).mint({ name: "invariant agent" });
+  await stampApiKeyUse(db, minted.key.id);
+}
+
+async function driveKeyCreated({ db, org }: DriveBed): Promise<void> {
+  await createApiKeysRepo(db, org.ctx).mint({ name: "invariant agent" });
+}
+
+async function driveSlackDisconnected({ db, org }: DriveBed): Promise<void> {
+  const recordHealth = recordHealthOf(createSlackConnectionsRepo(db, org.ctx));
+  await recordHealth({
+    health: "failing",
+    reasonCode: "call_failed",
+    reasonMessage: null,
+    checkedAt: new Date(),
+  });
+}
+
+async function driveAnalysisFailing({ db, org }: DriveBed): Promise<void> {
+  const project = await seedProject(db, {
+    organizationId: org.organizationId,
+    name: NAMES.projectName("analysis"),
+  });
+  const repo = createAnalysisRunsRepo(db, org.ctx);
+  const base = new Date("2026-08-01T09:00:00.000Z");
+
+  for (const step of [0, 1, 2]) {
+    const tickAt = new Date(base.getTime() + step * ANALYSIS_RUN_LEASE_MS);
+    const { run } = await repo.open({ projectId: project.id, tickAt });
+    const input: CloseRunInput = {
+      runId: run.id,
+      projectId: project.id,
+      status: "failed",
+      outcome: "no_candidates_passed_gate",
+      stopReason: "fatal_error",
+      finishedAt: new Date(tickAt.getTime() + 60_000),
+      modelCallsAttempted: 0,
+      candidatesUnrenderable: 0,
+      candidatesRefused: 0,
+      resolvedModelId: null,
+      tokensIn: null,
+      tokensOut: null,
+      failureReason: "the analysis run could not finish",
+    };
+    await repo.close(input);
+  }
+}
+
+async function driveDigest({ db, org }: DriveBed): Promise<void> {
+  // One gathered fact inside the window, dated relative to the digest instant so the
+  // drive stays deterministic on any wall-clock day.
+  const [gathered] = await db
+    .insert(notifications)
+    .values({
+      organizationId: org.organizationId,
+      type: "backfill_complete",
+      audience: "org",
+      subjectKind: "source_connection",
+      subjectId: randomUUID(),
+      actorUserId: null,
+      payload: { type: "backfill_complete", v: 1, sessionsTouched: 3, eventsPersisted: 12 },
+      dedupKey: `backfill_complete:${randomUUID()}`,
+      createdAt: new Date(DIGEST_MONDAY.getTime() - 24 * 60 * 60 * 1_000),
+    })
+    .returning();
+  if (!gathered) throw new Error("seeding the gathered row returned no row");
+  await db.insert(notificationSends).values({
+    organizationId: org.organizationId,
+    notificationId: gathered.id,
+    channel: "slack",
+    target: "none",
+    status: "quiet",
+    quietReason: "digest",
+  });
+
+  const digest = await loadDigest();
+  await digest({ db, now: () => DIGEST_MONDAY, logger: silentLogger });
+}
+
+async function driveBackfillComplete({ db, org }: DriveBed): Promise<void> {
+  await drainBackfillCursor(db, org, POLL_NOW);
+}
+
+const EMITTER_DRIVES = {
+  finding_delivered: { arm: "copied", drive: driveFindingDelivered },
+  keys_revoked: { arm: "owed", drive: driveKeysRevoked },
+  agent_first_contact: { arm: "owed", drive: driveAgentFirstContact },
+  key_created: { arm: "owed", drive: driveKeyCreated },
+  backfill_complete: { arm: "quiet_digest", drive: driveBackfillComplete },
+  slack_disconnected: { arm: "owed", drive: driveSlackDisconnected },
+  analysis_failing: { arm: "owed", drive: driveAnalysisFailing },
+  digest: { arm: "owed", drive: driveDigest },
+} as const satisfies Record<NotificationType, Drive>;
+
+async function rowsOfType(db: TestDb, organizationId: string, type: NotificationType) {
+  return db
+    .select()
+    .from(notifications)
+    .where(and(eq(notifications.organizationId, organizationId), eq(notifications.type, type)));
 }
 
 async function sendRowsFor(db: TestDb, notificationId: string) {
@@ -144,9 +240,12 @@ async function sendRowsFor(db: TestDb, notificationId: string) {
     .where(eq(notificationSends.notificationId, notificationId));
 }
 
-// The invariant itself. Vacuous over zero rows, so every arm first asserts its emit landed.
+// Vacuous over zero rows, so every arm asserts its emit landed before calling this.
 async function expectNoBareNotification(db: TestDb, organizationId: string): Promise<void> {
-  const rows = await notificationRowsFor(db, organizationId);
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.organizationId, organizationId));
   for (const row of rows) {
     const sends = await sendRowsFor(db, row.id);
     const slackSends = sends.filter((send) => send.channel === "slack");
@@ -156,144 +255,99 @@ async function expectNoBareNotification(db: TestDb, organizationId: string): Pro
   }
 }
 
-interface LoudPoster {
-  readonly poster: DeliveryPoster;
-  readonly posted: PostRequest[];
-}
+test("the drive table is total over the enum — the runtime belt behind the satisfies", () => {
+  expect(Object.keys(EMITTER_DRIVES).toSorted()).toEqual([...NOTIFICATION_TYPES].toSorted());
+});
 
-function loudPoster(): LoudPoster {
-  const posted: PostRequest[] = [];
-  return {
-    posted,
-    poster: {
-      post(request: PostRequest): Promise<PostResult> {
-        posted.push(request);
-        return Promise.resolve({ ok: true, messageRef: `invariant-ref-${String(posted.length)}` });
-      },
-    },
-  };
-}
-
-interface MirrorNotificationDispatchDeps {
-  readonly db: TestDb;
-  readonly posterFor: (ctx: TenantContext) => Promise<DeliveryPoster | null>;
-  readonly logger: {
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
-  };
-}
-
-type MirrorRunNotificationDispatch = (
-  payload: unknown,
-  deps: MirrorNotificationDispatchDeps,
-) => Promise<void>;
-
-const loadDispatch = (): Promise<MirrorRunNotificationDispatch> =>
-  loadUnderConstruction<MirrorRunNotificationDispatch>({
-    modulePath: underConstructionSpecifier("worker/src/tasks/notification-dispatch"),
-    exportName: "runNotificationDispatch",
-    ownedBy: DISPATCH_OWNER,
-  });
-
-const silentLogger = { info: () => undefined, warn: () => undefined, error: () => undefined };
-
-test("every job-1 type is actionable — the invariant applies to the whole enum", () => {
-  const actionable: readonly string[] = ACTIONABLE_CLASSES;
+test("only a record goes into the digest, and the digest is the one record that does not", () => {
   for (const type of NOTIFICATION_TYPES) {
-    expect(actionable).toContain(NOTIFICATION_CLASS_BY_TYPE[type]);
+    const arm = EMITTER_DRIVES[type].arm;
+    const klass = NOTIFICATION_CLASS_BY_TYPE[type];
+
+    if (arm === "quiet_digest") {
+      expect(`${type} in the digest is class ${klass}`).toBe(`${type} in the digest is class record`);
+    }
+    if (klass !== "record") {
+      expect(`${type} (${klass}) takes the ${arm} arm`).not.toBe(
+        `${type} (${klass}) takes the quiet_digest arm`,
+      );
+    }
+    if (klass === "record") {
+      expect(arm === "quiet_digest" || type === "digest").toBe(true);
+    }
   }
+
+  // The one named exception: the digest is the vehicle, not the cargo — record class for
+  // the mute semantics, live owed arm because a summary that waited for a summary would
+  // never arrive (D-7).
+  expect(NOTIFICATION_CLASS_BY_TYPE.digest).toBe("record");
+  expect(EMITTER_DRIVES.digest.arm).toBe("owed");
 });
 
-describe("finding_delivered: the copied arm is the receipt", () => {
-  test("markPosted leaves a sent receipt beside the fact — no arm exists without one", async () => {
-    const db = await openDb();
-    const org = await seedOrg(db, "copied");
-    await stubGraphileAddJob(db);
+for (const type of NOTIFICATION_TYPES) {
+  const entry: Drive = EMITTER_DRIVES[type];
 
-    await driveFindingDelivered(db, org);
-
-    const rows = await notificationRowsFor(db, org.organizationId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.dedupKey).toBe(buildFindingDeliveredDedupKey("finding-invariant", CHANNEL));
-    expect((await sendRowsFor(db, rows[0]?.id ?? "")).map((send) => send.status)).toEqual(["sent"]);
-
-    await expectNoBareNotification(db, org.organizationId);
-    expect(await capturedJobs(db)).toEqual([]);
-  });
-});
-
-const OWED_EMITTERS = [
-  { type: "keys_revoked", drive: driveKeysRevoked },
-  { type: "agent_first_contact", drive: driveAgentFirstContact },
-] as const;
-
-for (const { type, drive } of OWED_EMITTERS) {
-  describe(`${type}: every owed arm leaves a receipt`, () => {
-    test("no Slack connection → the quiet no_channel receipt lands in the same commit", async () => {
+  if (entry.arm === "copied") {
+    test(`${type}: the copied arm records the post that already happened, in the same commit`, async () => {
       const db = await openDb();
-      const org = await seedOrg(db, `${type}-quiet`);
-      await stubGraphileAddJob(db);
+      const org = await seedOrg(db, `${type}-copied`);
 
-      await drive(db, org);
+      await entry.drive({ db, org });
 
-      const rows = await notificationRowsFor(db, org.organizationId);
+      const rows = await rowsOfType(db, org.organizationId, type);
       expect(rows).toHaveLength(1);
-      const sends = await sendRowsFor(db, rows[0]?.id ?? "");
-      expect(sends.map((send) => [send.status, send.quietReason, send.target])).toEqual([
-        ["quiet", "no_channel", NOTIFICATION_SEND_NO_TARGET],
+      expect((await sendRowsFor(db, rows[0]?.id ?? "")).map((send) => send.status)).toEqual([
+        "sent",
       ]);
 
+      expect(dispatchJobsOf(await capturedJobs(db))).toHaveLength(0);
       await expectNoBareNotification(db, org.organizationId);
-      expect(await capturedJobs(db)).toEqual([]);
     });
+  }
 
-    test("a connection → the queued job, and the dispatch handler writes the sent receipt", async () => {
+  if (entry.arm === "owed") {
+    test(`${type}: the owed arm queues one dispatch job and the handler writes the sent receipt`, async () => {
       const db = await openDb();
-      const org = await seedOrg(db, `${type}-queued`);
-      await connectSlack(db, org);
-      await stubGraphileAddJob(db);
+      const org = await seedOrg(db, `${type}-owed`);
+      await connectSlackChannel(db, org, CHANNEL);
 
-      await drive(db, org);
+      await entry.drive({ db, org });
 
-      const rows = await notificationRowsFor(db, org.organizationId);
+      const rows = await rowsOfType(db, org.organizationId, type);
       expect(rows).toHaveLength(1);
+      const row = rows[0];
+      if (!row) throw new Error("unreachable: length was asserted above");
 
-      const jobs = await capturedJobs(db);
-      expect(jobs.map((job) => job.task)).toEqual([NOTIFICATION_DISPATCH_TASK]);
+      const jobsForRow = dispatchJobsOf(await capturedJobs(db)).filter(
+        (job) => dispatchPayloadOf(job).notificationId === row.id,
+      );
+      expect(jobsForRow).toHaveLength(1);
 
-      const run = await loadDispatch();
-      const loud = loudPoster();
-      await run(jobs[0]?.payload, {
-        db,
-        posterFor: () => Promise.resolve(loud.poster),
-        logger: silentLogger,
-      });
+      // Every queued job runs, not only this type's: a drive that mints a key also owes
+      // that key's own notification a receipt before the bare-row sweep below.
+      await runAllDispatchJobs(db, loudPoster().poster);
 
-      expect(loud.posted).toHaveLength(1);
-      const sends = await sendRowsFor(db, rows[0]?.id ?? "");
-      expect(sends.map((send) => send.status)).toEqual(["sent"]);
-
+      expect((await sendRowsFor(db, row.id)).map((send) => send.status)).toEqual(["sent"]);
       await expectNoBareNotification(db, org.organizationId);
     });
+  }
 
-    test("an enqueue fault → the failed queue_unavailable receipt, never a bare notification", async () => {
-      // No stubGraphileAddJob: the embedded database has no graphile_worker schema, which
-      // is exactly the fresh-clone web boot the fault arm exists for (D-1 amendment 2).
+  if (entry.arm === "quiet_digest") {
+    test(`${type}: the quiet_digest arm records its deferral even though a channel exists`, async () => {
       const db = await openDb();
-      const org = await seedOrg(db, `${type}-fault`);
-      await connectSlack(db, org);
+      const org = await seedOrg(db, `${type}-deferred`);
+      await connectSlackChannel(db, org, CHANNEL);
 
-      await drive(db, org);
+      await entry.drive({ db, org });
 
-      const rows = await notificationRowsFor(db, org.organizationId);
+      const rows = await rowsOfType(db, org.organizationId, type);
       expect(rows).toHaveLength(1);
-      const sends = await sendRowsFor(db, rows[0]?.id ?? "");
-      expect(sends.map((send) => [send.status, send.failureReason])).toEqual([
-        ["failed", "queue_unavailable"],
-      ]);
+      expect(
+        (await sendRowsFor(db, rows[0]?.id ?? "")).map((send) => [send.status, send.quietReason]),
+      ).toEqual([["quiet", "digest"]]);
 
+      expect(dispatchJobsOf(await capturedJobs(db))).toHaveLength(0);
       await expectNoBareNotification(db, org.organizationId);
     });
-  });
+  }
 }

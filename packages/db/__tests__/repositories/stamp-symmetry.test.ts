@@ -21,7 +21,14 @@ import {
 import * as schema from "../../src/schema";
 import { createTestDb, type TestDb } from "../../src/testing";
 import { laneNames, scannedTextFor } from "../../src/testing";
-import { seedConnection, seedOrgWithOwner, seedProject } from "../../src/testing";
+import {
+  makeTenantContext,
+  seedConnection,
+  seedMember,
+  seedOrgWithOwner,
+  seedProject,
+  seedUser,
+} from "../../src/testing";
 import {
   SESSION_GROUPING_VERSION,
   recordingSessionKey,
@@ -34,6 +41,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { buildFindingDeliveredDedupKey, buildKeysRevokedDedupKey } from "@growthmind/shared";
 
 import { emitNotification } from "../../src/notifications/emit";
+import { createNotificationMutesRepo } from "../../src/repositories/notification-mutes.repo";
+import { createNotificationSettingsRepo } from "../../src/repositories/notification-settings.repo";
 import { createNotificationsRepo } from "../../src/repositories/notifications.repo";
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
 import { createFindingSignaturesRepo } from "../../src/repositories/finding-signatures.repo";
@@ -566,5 +575,74 @@ describe("stamp/filter symmetry — the notification tables", () => {
 
     const [after] = await repo.listRecentWithReadState(LIST);
     expect(after?.unread).toBe(false);
+  });
+});
+
+// O-051 job 2: both new config tables enrol — the write stamps organization_id and the
+// scoped read filters on it — rather than being exempted (ADD D-6). RED in Wave 0
+// against the throwing repo stubs.
+describe("stamp/filter symmetry — the notification config tables", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  async function seedConfigOrg(label: string) {
+    return seedOrgWithOwner(db, {
+      orgName: NAMES.orgName(label),
+      userName: NAMES.userName(label),
+      email: NAMES.email(label),
+    });
+  }
+
+  it("returns the digest settings the save stamped from the scoped read, and defaults across the boundary", async () => {
+    const orgA = await seedConfigOrg("config-settings-a");
+    const orgB = await seedConfigOrg("config-settings-b");
+
+    await createNotificationSettingsRepo(db, orgA.ctx).save({ cadence: "weekly", day: "friday" });
+
+    const stamped = await db
+      .select({ organizationId: schema.notificationSettings.organizationId })
+      .from(schema.notificationSettings)
+      .where(eq(schema.notificationSettings.organizationId, orgA.organizationId));
+    expect(stamped).toHaveLength(1);
+
+    expect((await createNotificationSettingsRepo(db, orgA.ctx).read()).digestDay).toBe("friday");
+    expect((await createNotificationSettingsRepo(db, orgB.ctx).read()).digestDay).toBe("monday");
+  });
+
+  it("returns the mute the viewer's own write stamped, and nothing for the org's other members", async () => {
+    const org = await seedConfigOrg("config-mutes");
+    const mate = await seedUser(db, {
+      name: NAMES.userName("config-mutes-mate"),
+      email: NAMES.email("config-mutes-mate"),
+    });
+    await seedMember(db, { organizationId: org.organizationId, userId: mate.id, role: "member" });
+    const mateCtx = makeTenantContext({
+      userId: mate.id,
+      organizationId: org.organizationId,
+      organizationName: org.organizationName,
+      role: "member",
+    });
+
+    await createNotificationMutesRepo(db, org.ctx).mute("record");
+
+    const stamped = await db
+      .select({
+        organizationId: schema.notificationMutes.organizationId,
+        userId: schema.notificationMutes.userId,
+      })
+      .from(schema.notificationMutes)
+      .where(eq(schema.notificationMutes.organizationId, org.organizationId));
+    expect(stamped).toEqual([{ organizationId: org.organizationId, userId: org.userId }]);
+
+    expect(await createNotificationMutesRepo(db, org.ctx).listMutedClasses()).toEqual(["record"]);
+    expect(await createNotificationMutesRepo(db, mateCtx).listMutedClasses()).toEqual([]);
   });
 });

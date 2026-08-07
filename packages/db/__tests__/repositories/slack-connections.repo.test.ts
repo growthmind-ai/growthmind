@@ -5,18 +5,26 @@ import {
   decryptSecret,
   encryptSecret,
   keyIdOf,
+  notificationRescuePayloadSchema,
   type CredentialKey,
 } from "@growthmind/shared";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
   loadUnderConstruction,
   readSourceUnderConstruction,
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
-import { createTestDb, type TestDb } from "../../src/testing";
+import { notifications } from "../../src/schema/notifications";
+import { capturedJobs, createTestDb, stubGraphileAddJob, type TestDb } from "../../src/testing";
 import { laneNames } from "../../src/testing";
 import { makeTenantContext, seedMember, seedOrgWithOwner, seedUser } from "../../src/testing";
+import {
+  recordHealthOf,
+  rescueJobKeyFor,
+  rescueJobsFor,
+  type RecordSlackHealth,
+} from "../helpers/o051-contracts";
 import {
   captureRejection,
   readPgFailure,
@@ -780,5 +788,294 @@ describe("planted-offender control — proving the one-door check bites", () => 
 
     expect(names.has("updateCredential")).toBe(true);
     expect([...names].filter(isCredentialDoor).toSorted()).toEqual(["openCredentialForProject"]);
+  });
+});
+
+// O-051 job 2 (ADD D-3): both health edges live in one conditional update whose returned
+// row is the gate. RED in Wave 0: recordHealth does not exist yet.
+describe("recordHealth — the transition gate, the cooldown backstop, and the deliberate disconnect", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+    await stubGraphileAddJob(db);
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  interface HealthBed {
+    readonly org: OrgWithTeammate;
+    readonly connectionId: string;
+    readonly recordHealth: RecordSlackHealth;
+  }
+
+  async function seedFailableConnection(label: string): Promise<HealthBed> {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, label);
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const inserted = await repo.insertActive({
+      channelId: CHANNEL_ID,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+
+    return { org, connectionId: inserted.id, recordHealth: recordHealthOf(repo) };
+  }
+
+  async function slackDisconnectedRows(organizationId: string) {
+    return db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.organizationId, organizationId),
+          eq(notifications.type, "slack_disconnected"),
+        ),
+      );
+  }
+
+  function failingAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
+    return { health: "failing", reasonCode: "call_failed", reasonMessage: null, checkedAt };
+  }
+
+  function healthyAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
+    return { health: "healthy", reasonCode: null, reasonMessage: null, checkedAt };
+  }
+
+  // Moves the emit cooldown's own evidence back in time, since nothing else may mock the
+  // clock: the guard reads notifications.created_at, so aging the row is aging the window.
+  async function ageSlackDisconnectedRows(organizationId: string): Promise<void> {
+    await db.execute(sql`
+      update notifications
+         set created_at = now() - interval '7 hours'
+       where organization_id = ${organizationId} and type = 'slack_disconnected'
+    `);
+  }
+
+  test("entering the failing state emits one notification and staying there emits none", async () => {
+    const bed = await seedFailableConnection("health-enter");
+
+    expect(await bed.recordHealth(failingAt(new Date("2026-08-05T10:00:00.000Z")))).toBe(
+      "entered_failing",
+    );
+    expect(await slackDisconnectedRows(bed.org.organizationId)).toHaveLength(1);
+
+    const lastCheckedAt = new Date("2026-08-05T10:03:00.000Z");
+    for (const at of ["10:01", "10:02"]) {
+      expect(await bed.recordHealth(failingAt(new Date(`2026-08-05T${at}:00.000Z`)))).toBe("none");
+    }
+    expect(await bed.recordHealth(failingAt(lastCheckedAt))).toBe("none");
+
+    expect(await slackDisconnectedRows(bed.org.organizationId)).toHaveLength(1);
+
+    // The badge stays truthful even when nobody is told: the no-op arm still refreshes
+    // the checked-at stamp.
+    const stored = await readRawScalar(
+      db,
+      sql`select health_checked_at from slack_connections where id = ${bed.connectionId}`,
+    );
+    expect(new Date(String(stored)).toISOString()).toBe(lastCheckedAt.toISOString());
+    expect(
+      await readRawScalar(
+        db,
+        sql`select health from slack_connections where id = ${bed.connectionId}`,
+      ),
+    ).toBe("failing");
+  });
+
+  test("a recovery re-arms the detector and enqueues the rescue", async () => {
+    const bed = await seedFailableConnection("health-recover");
+
+    await bed.recordHealth(failingAt(new Date("2026-08-05T10:00:00.000Z")));
+    expect(await slackDisconnectedRows(bed.org.organizationId)).toHaveLength(1);
+
+    expect(await bed.recordHealth(healthyAt(new Date("2026-08-05T10:10:00.000Z")))).toBe(
+      "recovered",
+    );
+
+    expect(
+      await readRawScalar(
+        db,
+        sql`select health from slack_connections where id = ${bed.connectionId}`,
+      ),
+    ).toBe("healthy");
+    expect(
+      await readRawScalar(
+        db,
+        sql`select health_reason_code from slack_connections where id = ${bed.connectionId}`,
+      ),
+    ).toBeNull();
+
+    const rescueJobs = rescueJobsFor(await capturedJobs(db), bed.org.organizationId);
+    expect(rescueJobs).toHaveLength(1);
+    expect(rescueJobs[0]?.jobKey).toBe(rescueJobKeyFor(bed.org.organizationId));
+
+    // Past the cooldown, a fresh failure is a fresh fact.
+    await ageSlackDisconnectedRows(bed.org.organizationId);
+    expect(await bed.recordHealth(failingAt(new Date("2026-08-05T17:20:00.000Z")))).toBe(
+      "entered_failing",
+    );
+    expect(await slackDisconnectedRows(bed.org.organizationId)).toHaveLength(2);
+  });
+
+  test("a flapping connection is capped by the cooldown", async () => {
+    const bed = await seedFailableConnection("health-flap");
+
+    expect(await bed.recordHealth(failingAt(new Date("2026-08-05T10:00:00.000Z")))).toBe(
+      "entered_failing",
+    );
+    await bed.recordHealth(healthyAt(new Date("2026-08-05T10:01:00.000Z")));
+
+    // The second failure is a genuine edge — the transition gate alone cannot cap it, and
+    // the six-hour cooldown is what keeps it to one notification.
+    expect(await bed.recordHealth(failingAt(new Date("2026-08-05T10:02:00.000Z")))).toBe(
+      "entered_failing",
+    );
+
+    expect(await slackDisconnectedRows(bed.org.organizationId)).toHaveLength(1);
+    expect(
+      await readRawScalar(
+        db,
+        sql`select health from slack_connections where id = ${bed.connectionId}`,
+      ),
+    ).toBe("failing");
+  });
+
+  test("a deliberate disconnect emits nothing and is invisible to recordHealth", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+    const org = await seedOrgWithTeammate(db, "health-disconnect");
+    const repo = createSlackConnectionsRepo(db, org.owner);
+
+    const inserted = await repo.insertActive({
+      channelId: CHANNEL_ID,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(org.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: org.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    await repo.deactivate(inserted.id);
+
+    expect(
+      await readRawScalar(db, sql`select health from slack_connections where id = ${inserted.id}`),
+    ).toBe("disconnected");
+
+    const recordHealth = recordHealthOf(repo);
+    expect(await recordHealth(failingAt(new Date("2026-08-05T11:00:00.000Z")))).toBe("none");
+
+    // The exclusion is the isActive filter, not a special case on the health enum: the
+    // deactivated row keeps saying "disconnected", and nobody is alerted about a thing
+    // they switched off themselves.
+    expect(
+      await readRawScalar(db, sql`select health from slack_connections where id = ${inserted.id}`),
+    ).toBe("disconnected");
+    expect(
+      await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.organizationId, org.organizationId)),
+    ).toHaveLength(0);
+  });
+});
+
+// O-051 job 2 (ADD D-4, producer 1): the rescue is queued by the repository write itself,
+// so every future caller of the write inherits it. RED in Wave 0: no write enqueues yet.
+describe("the rescue producers live inside the connection writes", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+    await stubGraphileAddJob(db);
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  async function resetCapturedJobs(): Promise<void> {
+    await db.execute(sql`delete from graphile_worker.captured_jobs`);
+  }
+
+  test("connecting a channel enqueues one rescue job from the repository write", async () => {
+    const createSlackConnectionsRepo = await loadCreateRepo();
+
+    // A workspace with no address is not yet a delivery target, so the write queues no
+    // rescue — there is still nothing to deliver through.
+    const orgA = await seedOrgWithTeammate(db, "rescue-attach");
+    const repoA = createSlackConnectionsRepo(db, orgA.owner);
+    await repoA.insertActive({
+      channelId: null,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(orgA.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: orgA.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    expect(rescueJobsFor(await capturedJobs(db), orgA.organizationId)).toHaveLength(0);
+
+    expect(await repoA.attachChannel(PICKED_CHANNEL, PICKED_CHANNEL_NAME)).not.toBeNull();
+
+    const attachJobs = rescueJobsFor(await capturedJobs(db), orgA.organizationId);
+    expect(attachJobs).toHaveLength(1);
+    expect(attachJobs[0]?.jobKey).toBe(rescueJobKeyFor(orgA.organizationId));
+    expect(notificationRescuePayloadSchema.parse(attachJobs[0]?.payload)).toEqual({
+      organizationId: orgA.organizationId,
+    });
+
+    // insertActive that already carries a channel is the pasted-token path — a delivery
+    // target from its first instant, and the same producer.
+    const orgB = await seedOrgWithTeammate(db, "rescue-insert");
+    const repoB = createSlackConnectionsRepo(db, orgB.owner);
+    await repoB.insertActive({
+      channelId: CHANNEL_ID,
+      workspaceName: WORKSPACE_NAME,
+      credentialCiphertext: slackEnvelopeFor(orgB.organizationId),
+      credentialKeyId: keyIdOf(KEY),
+      connectedByUserId: orgB.ownerUserId,
+      connectedAt: CONNECTED_AT,
+    });
+    expect(rescueJobsFor(await capturedJobs(db), orgB.organizationId)).toHaveLength(1);
+
+    await resetCapturedJobs();
+
+    const moved = await repoB.repointChannel({
+      channelId: MOVED_CHANNEL,
+      channelName: "moved",
+      cutoverAt: new Date("2026-08-03T10:00:00.000Z"),
+    });
+    expect(moved).not.toBeNull();
+
+    const repointJobs = rescueJobsFor(await capturedJobs(db), orgB.organizationId);
+    expect(repointJobs).toHaveLength(1);
+    expect(repointJobs[0]?.jobKey).toBe(rescueJobKeyFor(orgB.organizationId));
+
+    // A write that matched no row queued nothing: the same-channel repoint and an attach
+    // with no connection at all both leave the queue untouched.
+    await resetCapturedJobs();
+    expect(
+      await repoB.repointChannel({
+        channelId: MOVED_CHANNEL,
+        channelName: "moved",
+        cutoverAt: new Date("2026-08-03T11:00:00.000Z"),
+      }),
+    ).toBeNull();
+    expect(rescueJobsFor(await capturedJobs(db), orgB.organizationId)).toHaveLength(0);
+
+    const orgC = await seedOrgWithTeammate(db, "rescue-no-row");
+    expect(
+      await createSlackConnectionsRepo(db, orgC.owner).attachChannel(
+        PICKED_CHANNEL,
+        PICKED_CHANNEL_NAME,
+      ),
+    ).toBeNull();
+    expect(rescueJobsFor(await capturedJobs(db), orgC.organizationId)).toHaveLength(0);
   });
 });
