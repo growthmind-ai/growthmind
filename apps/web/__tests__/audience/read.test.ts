@@ -126,6 +126,40 @@ function stringsIn(value: unknown, acc: string[] = []): string[] {
   return acc;
 }
 
+interface StripStrings {
+  readonly builtFrom: unknown;
+  readonly builtOn: unknown;
+  readonly lastChanged: unknown;
+}
+
+function stripOf(view: unknown): StripStrings {
+  const strip = (view as { strip?: Partial<StripStrings> }).strip;
+  return {
+    builtFrom: strip?.builtFrom,
+    builtOn: strip?.builtOn,
+    lastChanged: strip?.lastChanged,
+  };
+}
+
+// A rendered date is the only place a number may stand alone, so dates come out first and
+// everything left has to be one half of an "N of M" pair (AGENTS.md: every number says out
+// of how many).
+function bareCountsIn(view: unknown): string[] {
+  const strip = stripOf(view);
+  const cells = [
+    strip.builtFrom,
+    strip.builtOn,
+    strip.lastChanged,
+    (view as { thinNote?: unknown }).thinNote,
+  ];
+
+  return cells
+    .filter((cell): cell is string => typeof cell === "string")
+    .filter((cell) =>
+      /\d/.test(cell.replace(/\b\d{1,2} [A-Z][a-z]+ \d{4}\b/g, "").replace(/\b\d+ of \d+\b/g, "")),
+    );
+}
+
 function textOf(view: unknown): string {
   return stringsIn(view).join("\n");
 }
@@ -245,7 +279,9 @@ describe("a thin model says so with real numbers (UX §5 thin)", () => {
     expect(kindOf(thin)).toBe("populated");
     expect(Boolean((thin as { thin?: unknown }).thin)).toBe(true);
     // The whole sentence, counts included: a bare "3" matched the day in a rendered date.
-    expect(textOf(thin)).toContain("3 beliefs across 2 of 12 kinds");
+    // The belief count itself is gone — nothing persists how many beliefs there could have
+    // been, so coverage is the only figure here that can carry a denominator.
+    expect(textOf(thin)).toContain("beliefs in just 2 of 12 kinds so far");
 
     const rich = await builtView(
       researchRow({
@@ -300,11 +336,71 @@ describe("a thin model says so with real numbers (UX §5 thin)", () => {
       }),
     );
 
-    const strip = (view as { strip?: { builtOn?: unknown } }).strip;
-    expect(strip?.builtOn).toBe(
+    const strip = stripOf(view);
+    expect(strip.builtFrom).toBe("acme-example.com — /pricing cited, last read 1 August 2026");
+    expect(strip.builtOn).toBe(
       "1 of 4 read from your site · 1 of 4 observed in sessions · 1 of 4 you told us · " +
         "1 of 4 assumed · 4 of 12 kinds have at least one belief",
     );
+    expect(bareCountsIn(view)).toEqual([]);
+  });
+
+  // The guard above reached only "What it's built on" while "Built from" carried
+  // "3 pages cited · 1 correction from you", so it has to walk every cell of the strip and
+  // the thin note with it.
+  test("no cell of the strip carries a bare count — corrections, pages or beliefs", async () => {
+    const corrected = await builtView(
+      researchRow({
+        businessContext: {
+          facts: [
+            fact({
+              kind: "regime",
+              statement: "They sell into regulated healthcare",
+              correctedFrom: "They sell to anyone",
+            }),
+            fact({
+              kind: "forbidden_move",
+              statement: "Never auto-email their patients",
+              provenance: siteProvenance(`https://${HOSTNAME}/about`),
+            }),
+            fact({
+              kind: "conversion",
+              statement: "A booked demo counts as a win",
+              provenance: siteProvenance(`https://${HOSTNAME}/contact`),
+            }),
+          ],
+          removed: [],
+        },
+      }),
+    );
+
+    expect(stripOf(corrected).builtFrom).toBe(
+      "acme-example.com — /pricing, /about and /contact cited, last read 1 August 2026 · " +
+        "1 of 3 beliefs corrected by you",
+    );
+    expect(bareCountsIn(corrected)).toEqual([]);
+
+    // Past a namable handful the pages stop being listed, and the fallback states the share
+    // of beliefs citing one rather than a page count nothing can put a denominator on.
+    const many = await builtView(
+      researchRow({
+        businessContext: {
+          facts: ["/pricing", "/about", "/contact", "/faq", "/security"].map((page, index) =>
+            fact({
+              kind: index === 0 ? "regime" : "forbidden_move",
+              statement: `Belief read from ${page}`,
+              provenance: siteProvenance(`https://${HOSTNAME}${page}`),
+            }),
+          ),
+          removed: [],
+        },
+      }),
+    );
+
+    expect(stripOf(many).builtFrom).toBe(
+      "acme-example.com — 5 of 5 beliefs cite a page, last read 1 August 2026",
+    );
+    expect(bareCountsIn(many)).toEqual([]);
   });
 });
 

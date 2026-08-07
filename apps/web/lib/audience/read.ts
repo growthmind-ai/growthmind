@@ -265,7 +265,7 @@ function populated(
   return {
     kind: "populated",
     thin,
-    thinNote: thin ? thinNoteOf(facts.length, kindsCovered) : null,
+    thinNote: thin ? thinNoteOf(kindsCovered) : null,
     strip: stripOf(research, facts, kindsCovered, now),
     cards: groupedByKind(facts.filter(isBindingFact)).map((fact) => toCard(fact, viewerId)),
     rows: groupedByKind(facts.filter(isShapingFact)).map((fact) => toRow(fact, viewerId)),
@@ -274,9 +274,10 @@ function populated(
   };
 }
 
-function thinNoteOf(factCount: number, kindsCovered: number): string {
-  const beliefs = factCount === 1 ? "1 belief" : `${factCount} beliefs`;
-  return `This model is thin — ${beliefs} across ${kindsCovered} of ${KIND_COUNT} kinds so far. The doubts below are the fastest way to firm it up.`;
+// The belief count is stated by coverage instead of on its own: how many beliefs there
+// could have been is not a number anything here knows.
+function thinNoteOf(kindsCovered: number): string {
+  return `This model is thin — beliefs in just ${kindsCovered} of ${KIND_COUNT} kinds so far. The doubts below are the fastest way to firm it up.`;
 }
 
 type BindingFact = BusinessFact & { readonly kind: BindingFactKind };
@@ -478,7 +479,10 @@ function stripOf(
   const corrections = facts.filter((fact) => fact.correctedFrom !== null).length;
 
   return {
-    builtFrom: builtFromOf(research.siteDomain, site, cited, stated.length, corrections),
+    builtFrom: builtFromOf(research.siteDomain, site, cited, stated.length, {
+      corrections,
+      beliefs: facts.length,
+    }),
     builtOn: builtOnOf(
       { read: cited.length, observed: observed.length, stated: stated.length },
       site.length - cited.length,
@@ -493,12 +497,12 @@ function builtFromOf(
   site: readonly BusinessFact[],
   cited: readonly BusinessFact[],
   statedCount: number,
-  corrections: number,
+  of: { readonly corrections: number; readonly beliefs: number },
 ): string {
   if (site.length > 0 && siteDomain !== null) {
-    const pages = new Set(cited.map((fact) => fact.provenance.citation)).size;
-    const suffix = corrections > 0 ? ` · ${counted(corrections, "correction")} from you` : "";
-    return `${hostnameOf(siteDomain)} — ${counted(pages, "page")} cited, last read ${DATE.format(latestAt(site))}${suffix}`;
+    const suffix =
+      of.corrections > 0 ? ` · ${of.corrections} of ${of.beliefs} beliefs corrected by you` : "";
+    return `${hostnameOf(siteDomain)} — ${citedPagesOf(cited, of.beliefs)}, last read ${DATE.format(latestAt(site))}${suffix}`;
   }
 
   if (statedCount > 0 || siteDomain === null) {
@@ -506,6 +510,32 @@ function builtFromOf(
   }
 
   return `${hostnameOf(siteDomain)} — nothing read into beliefs yet.`;
+}
+
+// Nothing persists how many pages the read fetched, so "N pages cited" has no denominator
+// available and the count is dropped rather than given an invented one (AGENTS.md: every
+// number says out of how many). A short list is named outright; past that the line falls
+// back to the share of beliefs citing a page, which the row does know.
+const NAMED_PAGES_MAX = 4;
+
+function citedPagesOf(cited: readonly BusinessFact[], beliefs: number): string {
+  const pages = [
+    ...new Set(
+      cited
+        .map((fact) => fact.provenance.citation)
+        .filter((citation): citation is string => citation !== null)
+        .map(citationPath),
+    ),
+  ];
+
+  return pages.length > 0 && pages.length <= NAMED_PAGES_MAX
+    ? `${listOf(pages)} cited`
+    : `${cited.length} of ${beliefs} beliefs cite a page`;
+}
+
+function listOf(items: readonly string[]): string {
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 // Zero terms are omitted, so nothing here claims evidence that does not exist, and every
@@ -603,10 +633,6 @@ function doubtsOf(facts: readonly BusinessFact[]): readonly AudienceDoubtView[] 
   }));
 
   return [...proposals, ...unanswered].slice(0, DOUBT_CAP);
-}
-
-function counted(count: number, noun: string): string {
-  return count === 1 ? `1 ${noun}` : `${count} ${noun}s`;
 }
 
 function hostnameOf(siteDomain: string): string {
