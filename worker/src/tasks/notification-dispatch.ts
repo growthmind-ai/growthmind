@@ -11,7 +11,7 @@ import {
   recordDispatchOutcome,
   type NotificationForDispatch,
 } from "@growthmind/db";
-import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
+import { SYSTEM_ACTOR, systemContextForOrganizationId } from "@growthmind/db/system";
 import {
   describeError,
   notificationDispatchPayloadSchema,
@@ -33,6 +33,7 @@ export interface NotificationDispatchDeps {
 async function sentenceFor(
   db: ScopedDb,
   notification: NotificationForDispatch,
+  organizationName: string,
 ): Promise<string> {
   switch (notification.type) {
     case "keys_revoked": {
@@ -44,7 +45,7 @@ async function sentenceFor(
           : await findUserNameById(db, notification.actorUserId);
 
       return keysRevokedSentence({
-        workspaceName: notification.organizationName,
+        workspaceName: organizationName,
         revokedByName,
       });
     }
@@ -72,10 +73,20 @@ export async function runNotificationDispatch(
   // Before any side effect, so a Graphile retry of a malformed job is safe.
   const { organizationId, notificationId } = notificationDispatchPayloadSchema.parse(payload);
 
-  const notification = await readNotificationForDispatch(deps.db, {
+  const ctx = await systemContextForOrganizationId(
+    deps.db,
+    SYSTEM_ACTOR.NOTIFICATION_DISPATCH,
     organizationId,
-    notificationId,
-  });
+  );
+
+  if (ctx === null) {
+    deps.logger.info(
+      `notification dispatch: organization ${organizationId} is no longer there, so this job is done`,
+    );
+    return;
+  }
+
+  const notification = await readNotificationForDispatch(deps.db, ctx, notificationId);
 
   if (notification === null) {
     deps.logger.info(
@@ -93,9 +104,10 @@ export async function runNotificationDispatch(
 
   const now = new Date();
 
-  if (notification.channelId === null) {
-    await recordDispatchOutcome(deps.db, {
-      organizationId,
+  const poster = notification.channelId === null ? null : await deps.posterFor(ctx);
+
+  if (notification.channelId === null || poster === null) {
+    await recordDispatchOutcome(deps.db, ctx, {
       notificationId,
       outcome: { status: "quiet" },
       now,
@@ -103,24 +115,7 @@ export async function runNotificationDispatch(
     return;
   }
 
-  const ctx = systemContextFor(SYSTEM_ACTOR.NOTIFICATION_DISPATCH, {
-    organizationId,
-    organizationName: notification.organizationName,
-  });
-
-  const poster = await deps.posterFor(ctx);
-
-  if (poster === null) {
-    await recordDispatchOutcome(deps.db, {
-      organizationId,
-      notificationId,
-      outcome: { status: "quiet" },
-      now,
-    });
-    return;
-  }
-
-  const sentence = await sentenceFor(deps.db, notification);
+  const sentence = await sentenceFor(deps.db, notification, ctx.organizationName);
 
   let result: PostResult;
   try {
@@ -130,11 +125,12 @@ export async function runNotificationDispatch(
       fallbackText: sentence,
     });
   } catch (error) {
+    // The Slack HTTP port, never the database — the driver-safe describer is for the writes
+    // around it (worker/__tests__/driver-error-discipline.test.ts).
     deps.logger.error(
       `notification dispatch: ${notificationId} threw while posting — ${describeError(error)}`,
     );
-    await recordDispatchOutcome(deps.db, {
-      organizationId,
+    await recordDispatchOutcome(deps.db, ctx, {
       notificationId,
       outcome: { status: "failed", target: notification.channelId, failureReason: "call_failed" },
       now,
@@ -148,8 +144,7 @@ export async function runNotificationDispatch(
     deps.logger.error(
       `notification dispatch: ${notificationId} was not accepted by the channel — ${result.code}`,
     );
-    await recordDispatchOutcome(deps.db, {
-      organizationId,
+    await recordDispatchOutcome(deps.db, ctx, {
       notificationId,
       outcome: {
         status: "failed",
@@ -161,8 +156,7 @@ export async function runNotificationDispatch(
     return;
   }
 
-  await recordDispatchOutcome(deps.db, {
-    organizationId,
+  await recordDispatchOutcome(deps.db, ctx, {
     notificationId,
     outcome: { status: "sent", target: notification.channelId, messageRef: result.messageRef },
     now,

@@ -162,7 +162,11 @@ describe("the bell itself — frame chrome on every page (UX rows 1 and 3)", () 
   test("a badge already cleared stays cleared even while rows are unread — the two facts never conflate (row 7)", () => {
     const shown = render(
       <Bell
-        bell={vmWith({ badgeCount: 0, badgeLabel: "0", rows: [UNREAD_FINDING_ROW, UNREAD_NET_ROW] })}
+        bell={vmWith({
+          badgeCount: 0,
+          badgeLabel: "0",
+          rows: [UNREAD_FINDING_ROW, UNREAD_NET_ROW],
+        })}
         placement="rail"
       />,
     );
@@ -181,7 +185,9 @@ describe("the popover body — every state a teammate meets (UX rows 2, 4, 5, 8,
     expect(preSetup.text).not.toContain(MARK_ALL_READ_LABEL);
     expect(preSetup.controls.join(" ")).not.toContain("Connect Slack");
 
-    const nothingNew = render(createElement(Body, { bell: vmWith({ emptyVariant: "nothing_new" }) }));
+    const nothingNew = render(
+      createElement(Body, { bell: vmWith({ emptyVariant: "nothing_new" }) }),
+    );
     expect(nothingNew.text).toContain(NOTIFICATION_EMPTY_STATE_MESSAGES.nothing_new);
     expect(nothingNew.text).not.toContain(MARK_ALL_READ_LABEL);
 
@@ -240,7 +246,13 @@ describe("the popover body — every state a teammate meets (UX rows 2, 4, 5, 8,
       createElement(Body, { bell: vmWith({ rows: [UNREAD_NET_ROW, READ_QUIET_ROW] }) }),
     );
 
-    for (const internal of ["call_failed", "not_authorised", "channel_unavailable", "queue_unavailable", "no_channel"]) {
+    for (const internal of [
+      "call_failed",
+      "not_authorised",
+      "channel_unavailable",
+      "queue_unavailable",
+      "no_channel",
+    ]) {
       expect(shown.html).not.toContain(internal);
     }
   });

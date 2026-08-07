@@ -60,7 +60,9 @@ describe("the keys_revoked sentence migrates verbatim", () => {
       revokedByName: REVOKED_BY_NAME,
     });
 
-    expect(sentence).toBe(`${REVOKED_BY_NAME} revoked every key for ${WORKSPACE_NAME}. ${REVOKE_TAIL}`);
+    expect(sentence).toBe(
+      `${REVOKED_BY_NAME} revoked every key for ${WORKSPACE_NAME}. ${REVOKE_TAIL}`,
+    );
   });
 
   test("an unresolved actor falls back to the unknown-revoker phrase, not a blank", () => {
@@ -69,7 +71,9 @@ describe("the keys_revoked sentence migrates verbatim", () => {
       revokedByName: null,
     });
 
-    expect(sentence).toBe(`${UNKNOWN_REVOKER} revoked every key for ${WORKSPACE_NAME}. ${REVOKE_TAIL}`);
+    expect(sentence).toBe(
+      `${UNKNOWN_REVOKER} revoked every key for ${WORKSPACE_NAME}. ${REVOKE_TAIL}`,
+    );
   });
 });
 

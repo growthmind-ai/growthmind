@@ -74,7 +74,9 @@ describe("recordPublishedTopics", () => {
     // The recorder sees statements, not commits: asserting "published after the tx
     // resolved" is the caller's job, which is why wire tests assert only after awaiting
     // the repository call.
-    expect(recorder.published).toEqual([{ organizationId: "org-rollback", topic: "notifications" }]);
+    expect(recorder.published).toEqual([
+      { organizationId: "org-rollback", topic: "notifications" },
+    ]);
   });
 
   // A trap that returns a member unbound from its target leaves drizzle reading its own

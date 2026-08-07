@@ -62,7 +62,9 @@ export interface NotificationsRepo {
 
   markAllRead(): Promise<void>;
 
-  markRead(notificationId: string): Promise<void>;
+  // Reports whether the id names a notification this organization holds: the route turns
+  // a false into a refusal, so a guessed id is answered the same way a deleted one is (D7).
+  markRead(notificationId: string): Promise<boolean>;
 }
 
 const BADGE_COUNT_CAP = 10;
@@ -78,7 +80,9 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
     const userId = memberUserId(ctx);
 
     if (userId === null) {
-      throw new Error(`notifications.${operation}: bell state belongs to people, and this principal is a machine`);
+      throw new Error(
+        `notifications.${operation}: bell state belongs to people, and this principal is a machine`,
+      );
     }
 
     return userId;
@@ -239,7 +243,7 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
         });
     },
 
-    async markRead(notificationId: string): Promise<void> {
+    async markRead(notificationId: string): Promise<boolean> {
       const userId = requirePerson("markRead");
 
       // One statement, insert-from-select: the org filter sits inside the write, so a
@@ -253,6 +257,16 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
         where ${s.org(notifications)} and ${eq(notifications.id, notificationId)}
         on conflict ("notification_id", "user_id") do nothing
       `);
+
+      // Not the insert's row count: a second press writes nothing and is still a read of a
+      // row this org holds. Visibility is the question the caller is asking.
+      const [visible] = await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(s.owned(notifications, eq(notifications.id, notificationId)))
+        .limit(1);
+
+      return visible !== undefined;
     },
   };
 }

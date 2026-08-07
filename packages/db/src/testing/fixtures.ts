@@ -353,7 +353,8 @@ export async function seedNotification(
   params: SeedNotificationParams,
 ): Promise<SeededNotification> {
   const type = params.type ?? "keys_revoked";
-  const subjectKind = params.subjectKind ?? (type === "finding_delivered" ? "finding" : "agent_key");
+  const subjectKind =
+    params.subjectKind ?? (type === "finding_delivered" ? "finding" : "agent_key");
 
   const [row] = await db
     .insert(schema.notifications)
@@ -365,7 +366,10 @@ export async function seedNotification(
       subjectKind,
       subjectId: params.subjectId ?? randomUUID(),
       actorUserId: params.actorUserId ?? null,
-      payload: (params.payload ?? { type, v: 1 }) as (typeof schema.notifications.$inferInsert)["payload"],
+      payload: (params.payload ?? {
+        type,
+        v: 1,
+      }) as (typeof schema.notifications.$inferInsert)["payload"],
       dedupKey: params.dedupKey ?? `seeded:${randomUUID()}`,
       ...(params.createdAt === undefined ? {} : { createdAt: params.createdAt }),
     })

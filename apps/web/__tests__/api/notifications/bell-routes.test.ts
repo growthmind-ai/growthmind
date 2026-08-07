@@ -82,8 +82,7 @@ function depsFor(scope: SeededMemberScope | null): FirstRunRouteDeps {
 
 async function rawRows(query: string): Promise<Record<string, unknown>[]> {
   const result = (await bed.db.execute(query)) as unknown as
-    | { rows?: Record<string, unknown>[] }
-    | Record<string, unknown>[];
+    { rows?: Record<string, unknown>[] } | Record<string, unknown>[];
   return Array.isArray(result) ? result : (result.rows ?? []);
 }
 
@@ -131,7 +130,9 @@ describe("every bell route refuses what must not arrive", () => {
       for (const key of ["organizationId", "userId"]) {
         const verdict = verifyRefusesUnknownKey(schemaUnderTest, route.validBody, key);
         if (!verdict.ok) {
-          throw new Error(`${route.path} does not refuse a client-supplied "${key}": ${verdict.why}`);
+          throw new Error(
+            `${route.path} does not refuse a client-supplied "${key}": ${verdict.why}`,
+          );
         }
       }
     }
@@ -211,7 +212,10 @@ describe("POST /api/notifications/bell/read — one idempotent read (UX row 6, A
     const other = await bed.member("read-cross-b");
     const foreignId = await seedRowFor(other);
 
-    const response = await handle(routeRequest(READ, { notificationId: foreignId }), depsFor(caller));
+    const response = await handle(
+      routeRequest(READ, { notificationId: foreignId }),
+      depsFor(caller),
+    );
 
     expect(response.ok).toBe(false);
     expect(await readsRowsFor(foreignId)).toHaveLength(0);

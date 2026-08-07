@@ -11,8 +11,7 @@ export const notificationPayloadSchema = z.discriminatedUnion("type", [
 export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
 
 export type ParsedNotificationPayload =
-  | { readonly ok: true; readonly payload: NotificationPayload }
-  | { readonly ok: false };
+  { readonly ok: true; readonly payload: NotificationPayload } | { readonly ok: false };
 
 // Tolerant on purpose (D5): a stored row can carry any shape ever written, and an unknown
 // version or shape renders the generic sentence + subject link rather than throwing.

@@ -13,11 +13,7 @@ import {
   type SeededOrgWithOwner,
   type TestDb,
 } from "@growthmind/db/testing";
-import {
-  FAILED_CHIP_LABEL,
-  QUIET_NO_CHANNEL_CHIP_LABEL,
-  sentChipLabel,
-} from "@growthmind/shared";
+import { FAILED_CHIP_LABEL, QUIET_NO_CHANNEL_CHIP_LABEL, sentChipLabel } from "@growthmind/shared";
 
 import { readSourceUnderConstruction } from "../../../../packages/shared/__tests__/onboarding/module-under-construction";
 import {
@@ -65,7 +61,9 @@ function everyLeafIsWireSafe(value: unknown, path: string, offenders: string[]):
   const kind = typeof value;
   if (kind === "string" || kind === "number" || kind === "boolean") return;
   if (Array.isArray(value)) {
-    value.forEach((item, index) => everyLeafIsWireSafe(item, `${path}[${String(index)}]`, offenders));
+    value.forEach((item, index) =>
+      everyLeafIsWireSafe(item, `${path}[${String(index)}]`, offenders),
+    );
     return;
   }
   if (kind === "object") {

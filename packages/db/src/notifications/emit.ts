@@ -94,10 +94,7 @@ async function activeConnectionOf(db: ScopedExecutor, organizationId: string) {
     .select()
     .from(slackConnections)
     .where(
-      and(
-        eq(slackConnections.organizationId, organizationId),
-        eq(slackConnections.isActive, true),
-      ),
+      and(eq(slackConnections.organizationId, organizationId), eq(slackConnections.isActive, true)),
     )
     .limit(1);
 

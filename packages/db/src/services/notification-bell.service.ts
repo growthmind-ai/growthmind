@@ -157,7 +157,11 @@ export async function readBellSnapshot(
     }
   }
 
-  const seams: RenderSeams = { namesById, findingTextRowsById, organizationName: ctx.organizationName };
+  const seams: RenderSeams = {
+    namesById,
+    findingTextRowsById,
+    organizationName: ctx.organizationName,
+  };
 
   const snapshotRows: BellSnapshotRow[] = rows.map((row) => {
     let sentence: string;

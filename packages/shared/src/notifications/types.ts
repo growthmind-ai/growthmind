@@ -25,7 +25,10 @@ export const NOTIFICATION_CLASS_BY_TYPE: Record<NotificationType, NotificationCl
 
 // Every actionable notification carries a Slack send row — sent, failed, or quiet with a
 // stated reason. A bell-only actionable notification is a bug, testable by this list.
-export const ACTIONABLE_CLASSES = ["act_now", "work"] as const satisfies readonly NotificationClass[];
+export const ACTIONABLE_CLASSES = [
+  "act_now",
+  "work",
+] as const satisfies readonly NotificationClass[];
 
 // D1 as a column; v1 always writes "org".
 export const NOTIFICATION_AUDIENCES = ["org", "owner"] as const;
@@ -73,3 +76,13 @@ export type NotificationDispatchPayload = z.infer<typeof notificationDispatchPay
 
 // `notification_sends.target` when no channel existed to send to.
 export const NOTIFICATION_SEND_NO_TARGET = "none";
+
+// The bell-state writes name no ids: which person and which organization comes from the
+// session, so there is nowhere for a caller to put someone else's (D7).
+export const bellOpenedInputSchema = z.strictObject({});
+
+export const bellReadAllInputSchema = z.strictObject({});
+
+export const bellReadInputSchema = z.strictObject({ notificationId: z.string().min(1).max(128) });
+
+export type BellReadInput = z.infer<typeof bellReadInputSchema>;

@@ -150,9 +150,9 @@ async function expectNoBareNotification(db: TestDb, organizationId: string): Pro
   for (const row of rows) {
     const sends = await sendRowsFor(db, row.id);
     const slackSends = sends.filter((send) => send.channel === "slack");
-    expect(
-      `${row.type} carries ${String(slackSends.length)} slack receipt(s)`,
-    ).not.toBe(`${row.type} carries 0 slack receipt(s)`);
+    expect(`${row.type} carries ${String(slackSends.length)} slack receipt(s)`).not.toBe(
+      `${row.type} carries 0 slack receipt(s)`,
+    );
   }
 }
 

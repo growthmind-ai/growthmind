@@ -62,6 +62,11 @@ const ALLOWED: readonly Allowed[] = [
     why: "the Slack HTTP port, not the database",
   },
   {
+    file: "tasks/notification-dispatch.ts",
+    wraps: "poster.post",
+    why: "the Slack HTTP port, not the database — the same site delivery-tick already lists; every write beside it goes through the repository",
+  },
+  {
     file: "tasks/business-research.ts",
     wraps: "deps.fetchSite",
     why: "someone else's web server over HTTP, not the database; the write beside it uses the driver-safe describer",

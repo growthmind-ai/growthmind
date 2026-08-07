@@ -27,3 +27,5 @@ export {
   type SystemActor,
   type SystemScopeSource,
 } from "./system-actor";
+
+export { systemContextForOrganizationId } from "./organization-context";

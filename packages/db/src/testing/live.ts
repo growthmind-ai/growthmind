@@ -73,10 +73,7 @@ export function recordPublishedTopics(realDb: TestDb): LiveRecorder {
 // transaction issues the NOTIFY through the tx executor, not through the handle this
 // recorder wrapped — so the callback's executor is wrapped too, or every in-transaction
 // publish would read as a correct zero-publish (the O-051 emit seams are that shape).
-function followingStatements<T extends object>(
-  target: T,
-  record: (statement: unknown) => void,
-): T {
+function followingStatements<T extends object>(target: T, record: (statement: unknown) => void): T {
   return new Proxy(target, {
     get(inner, prop, receiver) {
       const value = Reflect.get(inner, prop, receiver);

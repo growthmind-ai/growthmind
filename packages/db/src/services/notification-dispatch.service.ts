@@ -2,14 +2,15 @@ import {
   NOTIFICATION_SEND_NO_TARGET,
   type NotificationSendFailureReason,
   type NotificationType,
+  type TenantContext,
 } from "@growthmind/shared";
 import { and, eq } from "drizzle-orm";
 
-import { organization } from "../schema/auth";
-import { notifications, notificationSends } from "../schema/notifications";
-import { slackConnections } from "../schema/slack-connections";
+import { scoped } from "../repositories/scope";
 import { toSlackConnectionSummary } from "../repositories/slack-connections.repo";
 import type { ScopedExecutor } from "../repositories/types";
+import { notifications, notificationSends } from "../schema/notifications";
+import { slackConnections } from "../schema/slack-connections";
 import { isDeliveryTarget } from "./delivery-channel-guard";
 
 export interface NotificationForDispatch {
@@ -17,7 +18,6 @@ export interface NotificationForDispatch {
   readonly type: NotificationType;
   readonly subjectId: string;
   readonly actorUserId: string | null;
-  readonly organizationName: string;
 
   // A receipt already recorded for this channel: the post happened, or was decided against,
   // on an earlier run of this job (D4).
@@ -28,58 +28,52 @@ export interface NotificationForDispatch {
   readonly channelId: string | null;
 }
 
-// The worker's read model for one queued notification. Org-scoped by the payload's own
-// organization id, which the emit wrote — a job for a row in another tenant matches nothing.
+// The worker's read model for one queued notification, scoped by the context the caller
+// built from the payload's organization — a job naming another tenant's row matches nothing.
 export async function readNotificationForDispatch(
   db: ScopedExecutor,
-  input: { readonly organizationId: string; readonly notificationId: string },
+  ctx: TenantContext,
+  notificationId: string,
 ): Promise<NotificationForDispatch | null> {
+  const s = scoped(db, ctx);
+
   const [row] = await db
-    .select({ notification: notifications, organizationName: organization.name })
+    .select()
     .from(notifications)
-    .innerJoin(organization, eq(organization.id, notifications.organizationId))
-    .where(
-      and(
-        eq(notifications.id, input.notificationId),
-        eq(notifications.organizationId, input.organizationId),
-      ),
-    )
+    .where(s.owned(notifications, eq(notifications.id, notificationId)))
     .limit(1);
 
   if (!row) {
     return null;
   }
 
-  const settled = await db
+  const sends = await db
     .select({ status: notificationSends.status })
     .from(notificationSends)
     .where(
-      and(
-        eq(notificationSends.notificationId, input.notificationId),
-        eq(notificationSends.channel, "slack"),
+      s.owned(
+        notificationSends,
+        and(
+          eq(notificationSends.notificationId, notificationId),
+          eq(notificationSends.channel, "slack"),
+        ),
       ),
     );
 
   const [connection] = await db
     .select()
     .from(slackConnections)
-    .where(
-      and(
-        eq(slackConnections.organizationId, input.organizationId),
-        eq(slackConnections.isActive, true),
-      ),
-    )
+    .where(s.owned(slackConnections, eq(slackConnections.isActive, true)))
     .limit(1);
 
   const summary = connection ? toSlackConnectionSummary(connection) : null;
 
   return {
-    id: row.notification.id,
-    type: row.notification.type as NotificationType,
-    subjectId: row.notification.subjectId,
-    actorUserId: row.notification.actorUserId,
-    organizationName: row.organizationName,
-    settled: settled.some((send) => send.status === "sent" || send.status === "quiet"),
+    id: row.id,
+    type: row.type,
+    subjectId: row.subjectId,
+    actorUserId: row.actorUserId,
+    settled: sends.some((send) => send.status === "sent" || send.status === "quiet"),
     channelId: summary !== null && isDeliveryTarget(summary) ? summary.channelId : null,
   };
 }
@@ -97,19 +91,20 @@ export type DispatchOutcome =
 // records nothing twice.
 export async function recordDispatchOutcome(
   db: ScopedExecutor,
+  ctx: TenantContext,
   input: {
-    readonly organizationId: string;
     readonly notificationId: string;
     readonly outcome: DispatchOutcome;
     readonly now: Date;
   },
 ): Promise<void> {
+  const s = scoped(db, ctx);
   const { outcome } = input;
 
   await db
     .insert(notificationSends)
     .values({
-      organizationId: input.organizationId,
+      ...s.stamp,
       notificationId: input.notificationId,
       channel: "slack",
       target: outcome.status === "quiet" ? NOTIFICATION_SEND_NO_TARGET : outcome.target,
