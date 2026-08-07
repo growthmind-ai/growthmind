@@ -42,6 +42,23 @@ export const NOTHING_MEASURED_BODY =
 
 export const NOTHING_MEASURED_ACTION = "Connect your analytics";
 
+export const NOTHING_OPENED_UNCHECKED_HEADING = "Nothing is waiting to be fixed";
+
+export const NOTHING_OPENED_UNCHECKED_BODY =
+  "That much we can see. What we could not check just now is whether anything is being measured yet — so we cannot tell you whether this is a quiet week or a setup that never finished. Your settings page says which.";
+
+export const NOTHING_OPENED_UNCHECKED_ACTION = "See what is connected";
+
+export const LIST_UNAVAILABLE_HEADING = "We could not read your open fixes just now";
+
+export const LIST_UNAVAILABLE_BODY =
+  "This is our end, not yours. Nothing has been closed and nothing has been lost — we could not fetch the list. Reloading in a minute usually brings it back. If it keeps saying this, tell us.";
+
+export const DETAIL_UNAVAILABLE_HEADING = "We could not read this fix just now";
+
+export const DETAIL_UNAVAILABLE_BODY =
+  "This is our end, not yours. Nothing about the fix has changed — we could not fetch it. Reloading in a minute usually brings it back. If it keeps saying this, tell us.";
+
 export const HELD_HEADING = "We cannot read this one back";
 
 export const HELD_BODY =
@@ -207,10 +224,14 @@ export function truncationSentence(shown: number, totalOpen: number): string | n
   return `The ${shown} most worth fixing, out of ${totalOpen} open. The rest are ranked below these and appear as these are answered.`;
 }
 
+// A date nothing can meet is not a missed deadline, and calling it one describes a slip that
+// is not happening. Nothing measures a shipped fix yet — `fixes.status` has only ever been
+// written as `open` — so the sentence names the missing half of the loop and what does work,
+// which is truer as well as calmer.
 export function tailSentence(lateCount: number, shown: number): string {
   if (lateCount === 0) {
     return "Nothing here needs you. When a result is due we say so in the channel you already use.";
   }
 
-  return `${lateCount} of these ${shown} ${lateCount === 1 ? "is" : "are"} past the date we said we would have an answer by. Nothing here needs you — that is us being late, and it says so here rather than going quiet.`;
+  return `${lateCount} of these ${shown} ${lateCount === 1 ? "is" : "are"} past the date we said we would have an answer by. Checking a fix after it ships is not built yet, so nothing writes that answer — no date on this page can be met until it is. The fixes themselves are live, and your coding assistant can read every one of them right now.`;
 }

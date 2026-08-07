@@ -8,8 +8,11 @@ import classes from "./fixes.module.css";
 
 interface EmptyStateProps {
   readonly heading: string;
-  readonly href: string;
-  readonly action: string;
+
+  // Omitted together for a read that failed: the next step there is to wait a minute, which
+  // the body says. A control that repairs a fault we have not established is worse than none.
+  readonly href?: string | undefined;
+  readonly action?: string | undefined;
   readonly children: ReactNode;
 }
 
@@ -22,9 +25,11 @@ export function EmptyState({ heading, href, action, children }: EmptyStateProps)
         <Text size="sm" c="dimmed" ta="center" maw="56ch">
           {children}
         </Text>
-        <ButtonLink href={href} variant="default" size="compact-sm" style={tapTargetStyle}>
-          {action}
-        </ButtonLink>
+        {href === undefined || action === undefined ? null : (
+          <ButtonLink href={href} variant="default" size="compact-sm" style={tapTargetStyle}>
+            {action}
+          </ButtonLink>
+        )}
       </Stack>
     </Paper>
   );

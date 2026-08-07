@@ -9,12 +9,17 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { getDb } from "@/lib/db";
 import { readOpenFixes } from "@/lib/fixes/read";
 import {
+  LIST_UNAVAILABLE_BODY,
+  LIST_UNAVAILABLE_HEADING,
   NOTHING_MEASURED_ACTION,
   NOTHING_MEASURED_BODY,
   NOTHING_MEASURED_HEADING,
   NOTHING_OPENED_ACTION,
   NOTHING_OPENED_BODY,
   NOTHING_OPENED_HEADING,
+  NOTHING_OPENED_UNCHECKED_ACTION,
+  NOTHING_OPENED_UNCHECKED_BODY,
+  NOTHING_OPENED_UNCHECKED_HEADING,
   ORDERING_LEAD,
   ORDERING_SENTENCE,
   tailSentence,
@@ -24,6 +29,42 @@ import { ROUTES } from "@/lib/routes";
 import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
+
+interface EmptyCopy {
+  readonly heading: string;
+  readonly body: string;
+  readonly href?: string;
+  readonly action?: string;
+}
+
+// Four ways this page can hold no rows, and only three of them are a statement about the
+// workspace. The fourth carries no action because it is ours to fix, not the reader's.
+const WITHOUT_ROWS: Readonly<
+  Record<
+    "nothing_opened" | "nothing_measured" | "nothing_opened_unchecked" | "unavailable",
+    EmptyCopy
+  >
+> = {
+  nothing_opened: {
+    heading: NOTHING_OPENED_HEADING,
+    body: NOTHING_OPENED_BODY,
+    href: ROUTES.findings,
+    action: NOTHING_OPENED_ACTION,
+  },
+  nothing_measured: {
+    heading: NOTHING_MEASURED_HEADING,
+    body: NOTHING_MEASURED_BODY,
+    href: ROUTES.settings,
+    action: NOTHING_MEASURED_ACTION,
+  },
+  nothing_opened_unchecked: {
+    heading: NOTHING_OPENED_UNCHECKED_HEADING,
+    body: NOTHING_OPENED_UNCHECKED_BODY,
+    href: ROUTES.settings,
+    action: NOTHING_OPENED_UNCHECKED_ACTION,
+  },
+  unavailable: { heading: LIST_UNAVAILABLE_HEADING, body: LIST_UNAVAILABLE_BODY },
+};
 
 function Header() {
   return (
@@ -42,23 +83,25 @@ export default async function FixesPage() {
   const view = await readOpenFixes(db, ctx, projectId, new Date());
 
   if (view.kind !== "rows") {
-    const measured = view.kind === "nothing_opened";
+    const empty = WITHOUT_ROWS[view.kind];
 
     return (
       <Stack gap="lg">
         <Header />
-        <EmptyState
-          heading={measured ? NOTHING_OPENED_HEADING : NOTHING_MEASURED_HEADING}
-          href={measured ? ROUTES.findings : ROUTES.settings}
-          action={measured ? NOTHING_OPENED_ACTION : NOTHING_MEASURED_ACTION}
-        >
-          {measured ? NOTHING_OPENED_BODY : NOTHING_MEASURED_BODY}
+        <EmptyState heading={empty.heading} href={empty.href} action={empty.action}>
+          {empty.body}
         </EmptyState>
       </Stack>
     );
   }
 
   const truncation = truncationSentence(view.rows.length, view.totalOpen);
+  const tail = tailSentence(view.lateCount, view.rows.length);
+
+  // Once every row is past its date, "no answer" in bold is the whole page and the sentence
+  // that explains why sits in the faintest text under the fold. It moves up to the card the
+  // eye already reads first rather than being softened where it is.
+  const allLate = view.lateCount > 0 && view.lateCount === view.rows.length;
 
   return (
     <Stack gap="lg">
@@ -77,11 +120,12 @@ export default async function FixesPage() {
             {truncation}
           </Text>
         )}
+        {allLate ? <Text mt="sm">{tail}</Text> : null}
       </SurfaceCard>
 
       <FixRows rows={view.rows} />
 
-      <ClosingNote>{tailSentence(view.lateCount, view.rows.length)}</ClosingNote>
+      {allLate ? null : <ClosingNote>{tail}</ClosingNote>}
     </Stack>
   );
 }

@@ -5,94 +5,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { FIX_SPEC_PAYLOAD_VERSION } from "@growthmind/core";
-import {
-  createFindingPayloadsRepo,
-  createFindingsRepo,
-  createFixesService,
-  sha256Hex,
-} from "@growthmind/db";
-import {
-  createTestDb,
-  scannedTextFor,
-  seedAnalysisRun,
-  seedOrgWithOwner,
-  seedProject,
-  type SeededOrgWithOwner,
-  type TestDb,
-} from "@growthmind/db/testing";
-import { summarySourceSchema } from "@growthmind/shared";
+import { createTestDb, type TestDb } from "@growthmind/db/testing";
 
-import {
-  fixSpecPayload,
-  findingCountRow,
-  RENDERABLE_SURFACE,
-} from "../../../../packages/db/__tests__/helpers/fix-spec-payload";
+import { RENDERABLE_SURFACE } from "../../../../packages/db/__tests__/helpers/fix-spec-payload";
 import { readFixDetail } from "../../lib/fixes/read";
-
-const WINDOW_START = new Date("2026-07-24T00:00:00.000Z");
-
-const WINDOW_END = new Date("2026-07-31T00:00:00.000Z");
+import { seedOpenFix } from "./helpers/open-fix";
 
 const NOW = new Date("2026-08-05T00:00:00.000Z");
 
 const NO_SUCH_FIX = "3f2a1b40-0000-4000-8000-000000000000";
-
-const TEXT = scannedTextFor("Two of every three people stop at the last step", [
-  "Of 28 people who reached the last step, 19 did not finish.",
-]);
-
-async function seedOpenFix(
-  db: TestDb,
-  label: string,
-): Promise<{
-  readonly org: SeededOrgWithOwner;
-  readonly fixId: string;
-  readonly findingId: string;
-}> {
-  const org = await seedOrgWithOwner(db, {
-    orgName: `web-fixes-${label}`,
-    userName: `web-fixes-${label}`,
-    email: `web-fixes-${label}@example.com`,
-  });
-  const project = await seedProject(db, {
-    organizationId: org.organizationId,
-    name: `web-fixes-${label}`,
-  });
-  const run = await seedAnalysisRun(db, { ctx: org.ctx, projectId: project.id });
-
-  const finding = await createFindingsRepo(db, org.ctx).persist({
-    projectId: project.id,
-    runId: run.id,
-    signature: sha256Hex(`apps/web fixes detail:${label}`),
-    signatureVersion: 1,
-    detector: "funnel_dropoff",
-    summarySource: summarySourceSchema.enum.model_rendered,
-    headline: TEXT.headline,
-    context: TEXT.context,
-    finalClass: "confusing",
-    surface: RENDERABLE_SURFACE,
-    surfaceNormalisationVersion: 1,
-    counts: [findingCountRow(28, 28), findingCountRow(19, 28)],
-    confidenceBasis: "28 kept sessions in a seven-day window",
-    windowStart: WINDOW_START,
-    windowEnd: WINDOW_END,
-    evidenceShape: `funnel_dropoff:surface=${RENDERABLE_SURFACE}`,
-    evidenceShapeVersion: 1,
-    resolvedModelId: "claude-sonnet-5",
-  });
-
-  await createFindingPayloadsRepo(db, org.ctx).upsertFor({
-    findingId: finding.id,
-    payload: fixSpecPayload({ surface: RENDERABLE_SURFACE }),
-  });
-
-  const opened = await createFixesService(db, org.ctx).openFor(finding.id);
-  if (opened.outcome !== "opened") {
-    throw new Error(`seedOpenFix: expected a fix to open, got ${opened.outcome}`);
-  }
-
-  return { org, fixId: opened.fix.id, findingId: finding.id };
-}
 
 // A payload written under a version this build cannot read back: the production shape of
 // "we hold this fix and cannot put it into words", reached without deleting anything.

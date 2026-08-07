@@ -16,6 +16,7 @@ import {
   countReceipt,
   DATA_GROUPS,
   everythingSetAsideNote,
+  EVERYTHING_SET_ASIDE_ACTION,
   mixedVersionNote,
   NO_COUNTS_NOTE,
   NOTHING_SEEN_ACTION,
@@ -293,7 +294,7 @@ export function DataGroups({ counts }: { readonly counts: CountsView | null }) {
           <Stack gap={6} align="flex-start">
             <Text size="sm">{alarm}</Text>
             <AnchorLink href={ROUTES.settings} size="sm">
-              Check who counts in settings
+              {EVERYTHING_SET_ASIDE_ACTION}
             </AnchorLink>
           </Stack>
         </SurfaceCard>

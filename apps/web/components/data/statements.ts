@@ -255,6 +255,12 @@ export const NOTHING_SEEN_RECEIPT =
 
 export const NOTHING_SEEN_ACTION = "Attach your analytics in settings";
 
+/** What settings can actually do about the alarm below: show the address, not change it. */
+export const EVERYTHING_SET_ASIDE_ACTION = "See which address we treat as your team";
+
+// The loudest sentence on the page pointed at a settings section that only restates it —
+// there is no route that edits the inferred domain. So the note names both resolutions and
+// says the second one is not yours to make yet, rather than implying a control exists.
 export function everythingSetAsideNote(counts: CountsView): string | null {
   if (counts.total === 0 || counts.kept > 0) return null;
 
@@ -266,8 +272,10 @@ export function everythingSetAsideNote(counts: CountsView): string | null {
 
   return (
     `Every one of the ${String(counts.total)} ${COUNT_UNIT} we have seen was set aside, so ` +
-    `nothing is feeding your findings. The rule catching the most is ${named}. Almost always ` +
-    `this is the internal-domain rule catching a whole team.`
+    `nothing is feeding your findings. The rule catching the most is ${named}. Either that is ` +
+    `right and nobody outside your team has been through yet, or the address we work your team ` +
+    `out from is the wrong one — settings shows which address that is. Changing it is not ` +
+    `something you can do yourself yet, so if it is wrong, tell us.`
   );
 }
 

@@ -1,7 +1,13 @@
 import { ensureProject } from "@growthmind/db";
 import { Stack, Text } from "@mantine/core";
 
-import { ConnectionBanner, EmptyRecord } from "@/components/channel/ChannelStates";
+import {
+  ConnectionBanner,
+  DismissalsUnavailable,
+  EmptyRecord,
+  LaneUnavailable,
+  RecordUnavailable,
+} from "@/components/channel/ChannelStates";
 import { DeliveryRecord } from "@/components/channel/DeliveryRecord";
 import { LaneStatus } from "@/components/channel/LaneStatus";
 import { readChannelView } from "@/components/channel/read";
@@ -51,15 +57,29 @@ export default async function ChannelPage({ searchParams }: ChannelPageProps) {
         </Text>
       )}
 
-      {view.lane === null ? null : <LaneStatus line={view.lane} history={view.laneHistory} />}
+      {view.unread.lane ? <LaneUnavailable /> : null}
 
-      <ConnectionBanner connection={view.connection} />
+      {view.lane === null ? null : (
+        <LaneStatus
+          line={view.lane}
+          history={view.laneHistory}
+          historyUnread={view.unread.laneHistory}
+        />
+      )}
 
-      {view.cards.length === 0 ? (
+      <ConnectionBanner connection={view.connection} recordUnread={view.unread.record} />
+
+      {/* Three outcomes, not two: a record we could not read is neither a record nor an
+          absence, and the empty state is the one sentence it must never borrow. */}
+      {view.unread.record ? (
+        <RecordUnavailable />
+      ) : view.cards.length === 0 ? (
         <EmptyRecord connection={view.connection} />
       ) : (
         <DeliveryRecord cards={view.cards} deepLinkId={deepLinkId} />
       )}
+
+      {view.unread.dismissals ? <DismissalsUnavailable /> : null}
 
       {view.truncatedAt === null ? null : (
         <Text size="sm" c="dimmed">

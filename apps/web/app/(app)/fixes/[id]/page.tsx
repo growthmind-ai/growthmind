@@ -9,7 +9,14 @@ import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { getDb } from "@/lib/db";
 import { readFixDetail } from "@/lib/fixes/read";
-import { EVIDENCE_ACTION, HELD_BODY, HELD_HEADING, SAME_DOCUMENT_NOTE } from "@/lib/fixes/view";
+import {
+  DETAIL_UNAVAILABLE_BODY,
+  DETAIL_UNAVAILABLE_HEADING,
+  EVIDENCE_ACTION,
+  HELD_BODY,
+  HELD_HEADING,
+  SAME_DOCUMENT_NOTE,
+} from "@/lib/fixes/view";
 import { findingPath } from "@/lib/paths";
 import { ROUTES } from "@/lib/routes";
 import { requireTenantContext } from "@/lib/tenant";
@@ -37,6 +44,17 @@ export default async function FixPage({
   const view = await readFixDetail(getDb(), ctx, id, new Date());
 
   if (view.kind === "missing") notFound();
+
+  // Deliberately not a 404. A fix we could not fetch still exists, and telling someone who
+  // followed a Slack link that it does not is the failure this page exists to avoid.
+  if (view.kind === "unavailable") {
+    return (
+      <Stack gap="lg">
+        <BackToList />
+        <EmptyState heading={DETAIL_UNAVAILABLE_HEADING}>{DETAIL_UNAVAILABLE_BODY}</EmptyState>
+      </Stack>
+    );
+  }
 
   // Not a 404: we hold this fix and cannot put it into words. The list is right to hide it,
   // which is exactly why a Slack link to it must not be told it does not exist.

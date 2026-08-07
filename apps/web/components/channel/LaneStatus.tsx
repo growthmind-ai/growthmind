@@ -6,6 +6,7 @@ import { useId, useState } from "react";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 
 import classes from "./channel.module.css";
+import { LANE_HISTORY_UNREAD } from "./unread";
 import type { LaneHistoryRow, LaneLine, LaneTone } from "./lane";
 
 const DOT: Record<LaneTone, string> = { quiet: "band.4", alarm: "red.7", cold: "gray.6" };
@@ -19,11 +20,15 @@ const BACKGROUND: Record<LaneTone, { readonly bg?: string }> = {
 interface LaneStatusProps {
   readonly line: LaneLine;
   readonly history: readonly LaneHistoryRow[];
+
+  // An empty history and one we could not read both draw no disclosure, so the second says so
+  // rather than passing for a project that has only ever had one run.
+  readonly historyUnread: boolean;
 }
 
 // The lane's current answer is always the visible one; the runs behind it sit under the same
 // measured disclosure a receipt uses, so this page has one interaction rather than two.
-export function LaneStatus({ line, history }: LaneStatusProps) {
+export function LaneStatus({ line, history, historyUnread }: LaneStatusProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
@@ -40,7 +45,13 @@ export function LaneStatus({ line, history }: LaneStatusProps) {
             {line.body}
           </Text>
 
-          {history.length === 0 ? null : (
+          {history.length === 0 ? (
+            historyUnread ? (
+              <Text size="xs" c="dimmed">
+                {LANE_HISTORY_UNREAD}
+              </Text>
+            ) : null
+          ) : (
             <Box>
               <button
                 type="button"

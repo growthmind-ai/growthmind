@@ -7,7 +7,7 @@ import {
   type TenantContext,
 } from "@growthmind/shared";
 
-import { readOrFallback } from "@/lib/read-or-fallback";
+import { tryRead, type Read } from "@/lib/read-or-fallback";
 import { ROUTES } from "@/lib/routes";
 
 import {
@@ -41,19 +41,22 @@ export type FixesListView =
       readonly lateCount: number;
     }
   | { readonly kind: "nothing_opened" }
-  | { readonly kind: "nothing_measured" };
+  | { readonly kind: "nothing_measured" }
+  // The list read answered and is empty; the read that decides which of the two empties it is
+  // did not. Stated rather than guessed: both guesses send someone the wrong way.
+  | { readonly kind: "nothing_opened_unchecked" }
+  | { readonly kind: "unavailable" };
 
 async function analyticsAttached(
   db: ScopedDb,
   ctx: TenantContext,
   projectId: string,
-): Promise<boolean> {
-  return readOrFallback(
+): Promise<Read<boolean>> {
+  return tryRead(
     async () => {
       const counter = await createEventsCounterService(db, ctx).read(projectId);
       return isAnalyticsAttached(toOnboardingCounterView(counter).state.status);
     },
-    true,
     "fixes: the analytics connection could not be read for the empty state",
     { organizationId: ctx.organizationId },
   );
@@ -65,22 +68,34 @@ export async function readOpenFixes(
   projectId: string,
   now: Date,
 ): Promise<FixesListView> {
-  const page = await createFixesService(db, ctx).listOpen({ projectId, limit: FIX_LIST_LIMIT });
+  const page = await tryRead(
+    () => createFixesService(db, ctx).listOpen({ projectId, limit: FIX_LIST_LIMIT }),
+    "fixes: the open list could not be read",
+    { organizationId: ctx.organizationId, projectId },
+  );
 
-  if (page.rows.length === 0) {
+  if (!page.ok) {
+    return { kind: "unavailable" };
+  }
+
+  if (page.value.rows.length === 0) {
     // Two empties, not one: "you have no fixes" and "we cannot see anything at all" have
     // different next actions, and merging them sends a new org looking for a Slack button
-    // that will never appear.
-    return (await analyticsAttached(db, ctx, projectId))
-      ? { kind: "nothing_opened" }
-      : { kind: "nothing_measured" };
+    // that will never appear. A third when we cannot tell them apart, for the same reason.
+    const attached = await analyticsAttached(db, ctx, projectId);
+
+    if (!attached.ok) {
+      return { kind: "nothing_opened_unchecked" };
+    }
+
+    return attached.value ? { kind: "nothing_opened" } : { kind: "nothing_measured" };
   }
 
   // Painted in the order served. The service ranked on surface weights it owns, and a
   // second sort here would stop agreeing the day the weight table is versioned up.
-  const ranked: readonly RankedRow[] = page.rows;
+  const ranked: readonly RankedRow[] = page.value.rows;
 
-  const rows: readonly FixRowView[] = page.rows.map((row, index) => ({
+  const rows: readonly FixRowView[] = page.value.rows.map((row, index) => ({
     fixId: row.fixId,
     href: fixDetailPath(row.fixId),
     rank: index + 1,
@@ -93,13 +108,16 @@ export async function readOpenFixes(
   return {
     kind: "rows",
     rows,
-    totalOpen: page.totalOpen,
+    totalOpen: page.value.totalOpen,
     lateCount: rows.filter((row) => row.due.late).length,
   };
 }
 
 export type FixDetailView =
   | { readonly kind: "missing" }
+  // Never folded into `missing`: a fix we could not fetch must not answer what an id that
+  // never existed answers, or a Slack link lands on a 404 for a fix that is sitting there.
+  | { readonly kind: "unavailable" }
   | { readonly kind: "held"; readonly findingId: string }
   | {
       readonly kind: "contract";
@@ -115,19 +133,27 @@ export async function readFixDetail(
   fixId: string,
   now: Date,
 ): Promise<FixDetailView> {
-  const result = await createFixesService(db, ctx).readFix(fixId);
+  const result = await tryRead(
+    () => createFixesService(db, ctx).readFix(fixId),
+    "fixes: the fix behind this page could not be read",
+    { fixId, organizationId: ctx.organizationId },
+  );
+
+  if (!result.ok) {
+    return { kind: "unavailable" };
+  }
 
   // A fix another organization owns answers `not_found` too, identically to an id that
   // never existed — a separate answer here would confirm the row exists (D7).
-  if (result.outcome === "not_found") {
+  if (result.value.outcome === "not_found") {
     return { kind: "missing" };
   }
 
-  if (result.outcome === "unrenderable") {
-    return { kind: "held", findingId: result.findingId };
+  if (result.value.outcome === "unrenderable") {
+    return { kind: "held", findingId: result.value.findingId };
   }
 
-  const { fix, spec, impact } = result.read;
+  const { fix, spec, impact } = result.value.read;
 
   try {
     return {

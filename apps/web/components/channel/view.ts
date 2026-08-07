@@ -83,7 +83,19 @@ export type ConnectionState =
   // `getActiveForOrg` returns null for both "revoked" and "never connected", so the record
   // itself is the evidence: rows exist only if a channel once did.
   | { readonly kind: "disconnected" }
-  | { readonly kind: "never_connected" };
+  | { readonly kind: "never_connected" }
+  // Reachable only from a read that threw, never from an absence. The other four are all
+  // inferred from the two values a failed read used to return, so a connection nobody could
+  // look at was being declared dead and a repair offered for it (D10).
+  | { readonly kind: "unavailable" };
+
+/** Which of the page's four independent reads did not answer. Each degrades on its own. */
+export interface ChannelUnread {
+  readonly record: boolean;
+  readonly lane: boolean;
+  readonly laneHistory: boolean;
+  readonly dismissals: boolean;
+}
 
 export interface ChannelView {
   readonly connection: ConnectionState;
@@ -92,6 +104,7 @@ export interface ChannelView {
   readonly lane: LaneLine | null;
   readonly laneHistory: readonly LaneHistoryRow[];
   readonly truncatedAt: number | null;
+  readonly unread: ChannelUnread;
 }
 
 const DISMISSAL_LABELS: Record<"not_useful", string> = { not_useful: "Not useful" };
