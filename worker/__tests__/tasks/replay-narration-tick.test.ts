@@ -59,14 +59,16 @@ const LISTED_META = {
 
 const STAMPED_META: RecordingMetaStamp = {
   durationSeconds: 42,
+  activeSeconds: 30,
   clickCount: 7,
   keypressCount: 3,
   consoleErrorCount: 2,
 };
 
-// A ×1000 would store 42000 for a measured 42 — three digits of precision the source never
-// had, the amendment's whole argument. Named separately so a conversion fails by name.
-const CONVERTED_DURATIONS = [42_000, 42 * 1000, 0.042];
+// A x1000 on either seconds field would store 42000 for a measured 42 — three digits of
+// precision the source never had, which is the amendment's whole argument. Both columns
+// take the source value unchanged, so a conversion fails by name rather than by rounding.
+const converted = (seconds: number): readonly number[] => [seconds * 1000, seconds / 1000];
 
 interface Stamp {
   readonly projectId: string;
@@ -1201,7 +1203,18 @@ describe("the session row is stamped with the recording's meta", () => {
 
     const stamped = sessions.stamps[0]?.meta.durationSeconds;
     expect(stamped).toBe(LISTED_META.recording_duration);
-    expect(CONVERTED_DURATIONS).not.toContain(stamped);
+    expect(converted(LISTED_META.recording_duration)).not.toContain(stamped);
+  });
+
+  test("should carry the listed active seconds through as seconds, converting nothing", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store);
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta.activeSeconds;
+    expect(stamped).toBe(LISTED_META.active_seconds);
+    expect(converted(LISTED_META.active_seconds)).not.toContain(stamped);
   });
 
   test("should stamp on a retry attempt as well as a first attempt", async () => {

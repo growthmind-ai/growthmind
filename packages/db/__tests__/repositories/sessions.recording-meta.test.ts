@@ -22,6 +22,7 @@ const NAMES = laneNames("rm");
 
 const STAMP: RecordingMetaStamp = {
   durationSeconds: 42,
+  activeSeconds: 30,
   clickCount: 7,
   keypressCount: 3,
   consoleErrorCount: 2,
@@ -58,6 +59,7 @@ function untouched(row: SessionRecord | null): Record<string, unknown> | null {
 
   const {
     recordingDurationSeconds: _duration,
+    recordingActiveSeconds: _active,
     recordingClickCount: _clicks,
     recordingKeypressCount: _keypresses,
     recordingConsoleErrorCount: _errors,
@@ -107,6 +109,7 @@ describe("stampRecordingMeta", () => {
 
     const after = await repo.findByKey(lane.projectId, sessionKey);
     expect(after?.recordingDurationSeconds).toBe(42);
+    expect(after?.recordingActiveSeconds).toBe(30);
     expect(after?.recordingClickCount).toBe(7);
     expect(after?.recordingKeypressCount).toBe(3);
     expect(after?.recordingConsoleErrorCount).toBe(2);
@@ -132,6 +135,7 @@ describe("stampRecordingMeta", () => {
     const rows = await rowsFor(db, lane.projectId, sessionKey);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.recordingDurationSeconds).toBe(42);
+    expect(rows[0]?.recordingActiveSeconds).toBe(30);
     expect(rows[0]?.recordingClickCount).toBe(7);
     expect(rows[0]?.recordingKeypressCount).toBe(3);
     expect(rows[0]?.recordingConsoleErrorCount).toBe(2);
@@ -179,6 +183,7 @@ describe("stampRecordingMeta", () => {
 
     const row = await createSessionsRepo(db, orgA.ctx).findByKey(orgA.projectId, sessionKey);
     expect(row?.recordingDurationSeconds).toBeNull();
+    expect(row?.recordingActiveSeconds).toBeNull();
     expect(row?.recordingClickCount).toBeNull();
     expect(row?.recordingKeypressCount).toBeNull();
     expect(row?.recordingConsoleErrorCount).toBeNull();
@@ -201,6 +206,7 @@ describe("stampRecordingMeta", () => {
 
     await repo.stampRecordingMeta(lane.projectId, stampedKey, {
       durationSeconds: 0,
+      activeSeconds: 0,
       clickCount: 0,
       keypressCount: 0,
       consoleErrorCount: 0,
@@ -213,5 +219,47 @@ describe("stampRecordingMeta", () => {
     const unstamped = await repo.findByKey(lane.projectId, unstampedKey);
     expect(unstamped?.recordingClickCount).toBeNull();
     expect(unstamped?.recordingConsoleErrorCount).toBeNull();
+  });
+
+  // The pair below is the null/zero rule on the fifth column, and it stays two cases. A
+  // session someone opened and never touched has zero active seconds and that is a
+  // measurement; a session we never measured has none. Parameterising them would assert
+  // that those two rows are the same row, which is the whole thing they exist to deny.
+  it("should leave active seconds null on a row that was never stamped", async () => {
+    const lane = await setUp(db, "active-null");
+    const repo = createSessionsRepo(db, lane.ctx);
+    const sessionKey = "ph:db-rm-active-null";
+
+    await seedSession(db, {
+      organizationId: lane.ctx.organizationId,
+      projectId: lane.projectId,
+      connectionId: lane.connectionId,
+      sessionKey,
+    });
+
+    const row = await repo.findByKey(lane.projectId, sessionKey);
+
+    expect(row).not.toBeNull();
+    expect(row?.recordingActiveSeconds).toBeNull();
+  });
+
+  it("should write a measured zero of active seconds as zero", async () => {
+    const lane = await setUp(db, "active-zero");
+    const repo = createSessionsRepo(db, lane.ctx);
+    const sessionKey = "ph:db-rm-active-zero";
+
+    await seedSession(db, {
+      organizationId: lane.ctx.organizationId,
+      projectId: lane.projectId,
+      connectionId: lane.connectionId,
+      sessionKey,
+    });
+
+    await repo.stampRecordingMeta(lane.projectId, sessionKey, { ...STAMP, activeSeconds: 0 });
+
+    const row = await repo.findByKey(lane.projectId, sessionKey);
+
+    expect(row?.recordingActiveSeconds).toBe(0);
+    expect(row?.recordingDurationSeconds).toBe(42);
   });
 });
