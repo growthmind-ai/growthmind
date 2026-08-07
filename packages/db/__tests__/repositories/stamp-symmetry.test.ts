@@ -29,8 +29,12 @@ import {
   transcriptRepo,
 } from "../helpers/transcript-contract";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
+import { buildFindingDeliveredDedupKey, buildKeysRevokedDedupKey } from "@growthmind/shared";
+
+import { emitNotification } from "../../src/notifications/emit";
+import { createNotificationsRepo } from "../../src/repositories/notifications.repo";
 import { createDismissalsRepo } from "../../src/repositories/dismissals.repo";
 import { createFindingSignaturesRepo } from "../../src/repositories/finding-signatures.repo";
 import { createSignatureAncestryRepo } from "../../src/repositories/signature-ancestry.repo";
@@ -471,5 +475,96 @@ describe("stamp/filter symmetry — the signature ledger tables", () => {
 
     const resolved = await createSignatureAncestryRepo(db, org.ctx).resolve(oldSignature);
     expect(resolved).toEqual({ resolution: "resolved", signature: newSignature, hops: 1 });
+  });
+});
+
+describe("stamp/filter symmetry — the notification tables", () => {
+  const LIST = { limit: 20, windowDays: 30 } as const;
+
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  async function seedNotificationOrg(label: string) {
+    return seedOrgWithOwner(db, {
+      orgName: NAMES.orgName(label),
+      userName: NAMES.userName(label),
+      email: NAMES.email(label),
+    });
+  }
+
+  it("returns a notification and its send receipt the emit seam stamped from the scoped bell read", async () => {
+    const org = await seedNotificationOrg("notif-emit");
+    const findingId = randomUUID();
+
+    await emitNotification(db, org.organizationId, {
+      type: "finding_delivered",
+      subjectKind: "finding",
+      subjectId: findingId,
+      actorUserId: null,
+      payload: { type: "finding_delivered", v: 1 },
+      dedupKey: buildFindingDeliveredDedupKey(findingId, "C0SYMMETRY"),
+      slack: { kind: "copied", channelId: "C0SYMMETRY", messageRef: null, sentAt: new Date() },
+    });
+
+    const rows = await createNotificationsRepo(db, org.ctx).listRecentWithReadState(LIST);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.subjectId).toBe(findingId);
+
+    // The send receipt is served through the same org filter its write stamped.
+    expect(rows[0]?.sends).toHaveLength(1);
+    expect(rows[0]?.sends[0]?.target).toBe("C0SYMMETRY");
+  });
+
+  it("returns a badge cleared by the bell-state row the viewer's own stamp wrote", async () => {
+    const org = await seedNotificationOrg("notif-bell");
+
+    // Owed with no Slack connection: the quiet receipt lands with the fact, no worker.
+    await emitNotification(db, org.organizationId, {
+      type: "keys_revoked",
+      subjectKind: "agent_key",
+      subjectId: randomUUID(),
+      actorUserId: org.userId,
+      payload: { type: "keys_revoked", v: 1 },
+      dedupKey: buildKeysRevokedDedupKey(randomUUID()),
+      slack: { kind: "owed" },
+    });
+
+    const repo = createNotificationsRepo(db, org.ctx);
+    expect(await repo.countNewerThanOpened()).toBe(1);
+
+    await repo.stampOpened();
+    expect(await repo.countNewerThanOpened()).toBe(0);
+  });
+
+  it("returns a read flag flipped by the reads row markRead stamped", async () => {
+    const org = await seedNotificationOrg("notif-reads");
+
+    await emitNotification(db, org.organizationId, {
+      type: "keys_revoked",
+      subjectKind: "agent_key",
+      subjectId: randomUUID(),
+      actorUserId: org.userId,
+      payload: { type: "keys_revoked", v: 1 },
+      dedupKey: buildKeysRevokedDedupKey(randomUUID()),
+      slack: { kind: "owed" },
+    });
+
+    const repo = createNotificationsRepo(db, org.ctx);
+    const [listed] = await repo.listRecentWithReadState(LIST);
+    if (!listed) throw new Error("the emitted notification was not served back");
+    expect(listed.unread).toBe(true);
+
+    await repo.markRead(listed.id);
+
+    const [after] = await repo.listRecentWithReadState(LIST);
+    expect(after?.unread).toBe(false);
   });
 });
