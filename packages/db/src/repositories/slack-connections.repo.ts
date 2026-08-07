@@ -8,6 +8,7 @@ import {
 } from "@growthmind/shared";
 import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
 import { orgCrud } from "./crud";
 import { RepoWriteError, rethrowScrubbed } from "./driver-error";
@@ -139,6 +140,26 @@ export function createSlackConnectionsRepo(
 ): SlackConnectionsRepo {
   const c = orgCrud(db, ctx, slackConnections);
 
+  // Where a finding gets delivered is an organization's setting, not the connector's, so the
+  // teammate mid-setup in another tab sees it land too (D1). OAuth finishes on a redirect no
+  // open tab made, which is why this cannot live in the route.
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+  }
+
+  // A write that matched no row changed nothing on screen, so it is not worth a refresh (D3).
+  async function announced(
+    row: SlackConnectionSummary | null,
+  ): Promise<SlackConnectionSummary | null> {
+    if (row === null) {
+      return null;
+    }
+
+    await announce();
+
+    return row;
+  }
+
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
       const row = await c.maybe(activeRow());
@@ -157,6 +178,8 @@ export function createSlackConnectionsRepo(
           connectedByUserId: memberUserId(ctx),
           connectedAt: input.connectedAt,
         });
+
+        await announce();
 
         return toSlackConnectionSummary(row);
       } catch (error) {
@@ -177,7 +200,7 @@ export function createSlackConnectionsRepo(
       // identity. Filling a sentinel forks nothing; moving is `repointChannel`'s job.
       const row = await c.update({ channelId, channelName }, activeRow(), noAddressYet());
 
-      return row ? toSlackConnectionSummary(row) : null;
+      return announced(row ? toSlackConnectionSummary(row) : null);
     },
 
     async repointChannel(input: RepointChannelInput): Promise<SlackConnectionSummary | null> {
@@ -197,7 +220,7 @@ export function createSlackConnectionsRepo(
         ne(slackConnections.channelId, input.channelId),
       );
 
-      return row ? toSlackConnectionSummary(row) : null;
+      return announced(row ? toSlackConnectionSummary(row) : null);
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {
@@ -206,7 +229,7 @@ export function createSlackConnectionsRepo(
         eq(slackConnections.id, id),
       );
 
-      return row ? toSlackConnectionSummary(row) : null;
+      return announced(row ? toSlackConnectionSummary(row) : null);
     },
 
     async openCredentialForOrg(key: CredentialKey): Promise<DecryptResult | null> {

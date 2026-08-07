@@ -146,6 +146,42 @@ describe("candidateFindingSchema — reachability", () => {
   });
 });
 
+describe("candidateFindingSchema — the trace must conclude the final class (B-020)", () => {
+  test("should reject a candidate whose trace does not end on its final class, satisfied", () => {
+    // The one-token mis-wire this exists for: `finalClass: claim.claimedClass` where the call
+    // site meant `outcome.finalClass`. Reachability passes — broken reaches broken — and the
+    // trace underneath says the gate never proved it.
+    expect(
+      rejectionPaths(
+        candidateFixture(FIXTURE_NOW, { claimedClass: "broken", finalClass: "broken" }),
+      ),
+    ).toContain("trace");
+
+    // The same shape one step further on: the trace's last entry is the right class and was
+    // not satisfied, so nothing proved the candidate at all.
+    const endsUnsatisfied = brokenDowngradedToConfusingTrace().map((entry, index, entries) =>
+      index === entries.length - 1
+        ? {
+            ...entry,
+            satisfied: false,
+            reasonCode: "confusing_unsatisfied" as const,
+            reason: GATE_REASON_MESSAGES.confusing_unsatisfied,
+          }
+        : entry,
+    );
+
+    expect(rejectionPaths(candidateFixture(FIXTURE_NOW, { trace: endsUnsatisfied }))).toContain(
+      "trace",
+    );
+  });
+
+  test("should accept the candidate the gate actually produces", () => {
+    // Anti-vacuity: the refinement must not reject the real downgrade, where the trace opens on
+    // an unsatisfied broken and closes on a satisfied confusing.
+    expect(candidateFindingSchema.safeParse(candidateFixture(FIXTURE_NOW)).success).toBe(true);
+  });
+});
+
 describe("candidateFindingSchema — counts carry denominators", () => {
   test("should reject a candidate carrying a count without a denominator", () => {
     const noDenominator = {
@@ -297,6 +333,41 @@ const MEASURED_COUNT_OWN_DEFINITION: ReadonlySet<string> = new Set([
 
 const EXCLUDED_MEMBER_NAMES: ReadonlySet<string> = new Set(["basis"]);
 
+// Every bare `number` on a scanned exported type is an offender unless it is named here with
+// why. Classifying by name instead — /count|total|numerator|sessions|hits/ — let `attempts`
+// through, of which signals.ts says "it is the number a founder reads", and let
+// `eventsWithoutUrlPath` through as well: the same denylist conflation this sprint exists to
+// prevent, applied to the sprint's own guard (B-019). A new bare number now fails by default.
+const BARE_NUMBER_EXEMPTIONS: ReadonlyMap<string, string> = new Map([
+  ["detect/types.ts :: TimelineEvent.urlPathNormalisationVersion", "a version stamp"],
+  ["detect/types.ts :: DetectorCandidate.surfaceNormalisationVersion", "a version stamp"],
+  ["evidence/gate.ts :: ProposedClaim.surfaceNormalisationVersion", "a version stamp"],
+  [
+    "findings/evidence-shape.ts :: EvidenceShapeInput.surfaceNormalisationVersion",
+    "a version stamp",
+  ],
+  ["evidence/trace.ts :: TraceEntry.predicateVersion", "a version stamp"],
+  ["evidence/predicates.ts :: ProofPredicate.version", "a version stamp"],
+  [
+    "evidence/signals.ts :: EvidenceSignal.correlationWindowMs",
+    "a duration, not a quantity of anything",
+  ],
+  ["counts/measured-count.ts :: Rate.value", "a ratio derived by rateOf from a MeasuredCount"],
+
+  // Not "allowed" — known, and visible here rather than hidden behind a word list. Both reach
+  // a customer-facing sentence as a number with no denominator, which is what the commitment
+  // "every number says out of how many" forbids. Closing either means giving it a basis, which
+  // is a change to what the detectors produce rather than to this guard.
+  [
+    "detect/types.ts :: DetectorCoverage.eventsWithoutUrlPath",
+    "KNOWN GAP (B-019): a bare count of events, no denominator",
+  ],
+  [
+    "evidence/signals.ts :: EvidenceSignal.attempts",
+    "KNOWN GAP (B-019): a bare count of attempts, no denominator",
+  ],
+]);
+
 type DeclaredMember = {
   readonly module: string;
 
@@ -348,18 +419,22 @@ function collectDeclaredMembers(module: string, source: string): readonly Declar
   return collected;
 }
 
+function memberKey(entry: DeclaredMember): string {
+  return `${entry.module} :: ${entry.owner}.${entry.member}`;
+}
+
 function bareNumberCounts(
   members: readonly DeclaredMember[],
   options: { readonly applyExclusions: boolean },
 ): readonly string[] {
   return members
-    .filter((entry) => COUNT_LIKE.test(entry.member))
     .filter((entry) => BARE_NUMBER.test(entry.annotation))
     .filter(
       (entry) =>
         !options.applyExclusions ||
         (!MEASURED_COUNT_OWN_DEFINITION.has(entry.owner) &&
-          !EXCLUDED_MEMBER_NAMES.has(entry.member)),
+          !EXCLUDED_MEMBER_NAMES.has(entry.member) &&
+          !BARE_NUMBER_EXEMPTIONS.has(memberKey(entry))),
     )
     .map((entry) => `${entry.module} :: ${entry.owner}.${entry.member}: ${entry.annotation}`);
 }
@@ -442,6 +517,21 @@ describe("no bare number count on the contract", () => {
       "control.ts :: SlackBlockInput.affectedSessions: number",
       "control.ts :: SlackBlockInput.dropoffCount: number | null",
     ]);
+
+    // The control the old name-based guard could not fail: a count whose name matches none of
+    // count/total/numerator/sessions/hits. Under the allowlist it is an offender on sight.
+    const unnamedControl = collectDeclaredMembers(
+      "control.ts",
+      ["export type Unnamed = {", "  readonly attempts: number;", "};"].join("\n"),
+    );
+    expect(unnamedControl.filter((entry) => COUNT_LIKE.test(entry.member))).toEqual([]);
+    expect(bareNumberCounts(unnamedControl, { applyExclusions: true })).toEqual([
+      "control.ts :: Unnamed.attempts: number",
+    ]);
+
+    // An exemption that no longer names anything is a rule nobody is following any more.
+    const scannedKeys = new Set(members.map(memberKey));
+    expect([...BARE_NUMBER_EXEMPTIONS.keys()].filter((key) => !scannedKeys.has(key))).toEqual([]);
 
     expect(bareNumberCounts(members, { applyExclusions: true })).toEqual([]);
 

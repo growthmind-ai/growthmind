@@ -21,12 +21,6 @@ import {
   type SetupFacts,
 } from "@growthmind/shared";
 
-import {
-  ARMED_POLL_MS,
-  DELIVERY_WATCH_POLL_MS,
-  PRE_ARM_POLL_MS,
-  resolvePollCadenceMs,
-} from "../../lib/first-run/poll-cadence";
 import { resolveOfflineNotice } from "../../lib/first-run/offline-notice";
 import type { FirstRunStatusPayload } from "../../lib/first-run/status";
 
@@ -150,100 +144,19 @@ const clientMarkup = (live: OnboardingCounterView, serverRendered: OnboardingCou
 
 const occurrences = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
 
-function pollEffect(code: string): string {
+function clockEffect(code: string): string {
   const interval = code.indexOf("setInterval(");
   const start = code.lastIndexOf("useEffect(", interval);
   const end = code.indexOf("]);", interval);
 
   if (interval === -1 || start === -1 || end === -1) {
     throw new Error(
-      `${CLIENT} no longer holds a setInterval inside a useEffect, so the poll effect cannot be read`,
+      `${CLIENT} no longer holds a setInterval inside a useEffect, so the display clock cannot be read`,
     );
   }
 
   return code.slice(start, end + 3);
 }
-
-// Terminal and deliveryState are REQUIRED properties: a call site that forgets to say
-// what it knows is a compile error rather than a branch nobody wired.
-const WATCHING = { terminal: false, deliveryState: "none", agentWaiting: false } as const;
-
-describe("resolvePollCadenceMs", () => {
-  test("the pre-arm cadence is slower than the armed cadence", () => {
-    expect(PRE_ARM_POLL_MS).toBeGreaterThan(ARMED_POLL_MS);
-
-    expect(resolvePollCadenceMs({ ...WATCHING, attached: true, armed: false })).toBe(
-      PRE_ARM_POLL_MS,
-    );
-    expect(resolvePollCadenceMs({ ...WATCHING, attached: true, armed: true })).toBe(ARMED_POLL_MS);
-  });
-
-  test("a client with no connection creates no interval and issues no fetch", () => {
-    expect(resolvePollCadenceMs({ ...WATCHING, attached: false, armed: false })).toBeNull();
-
-    expect(resolvePollCadenceMs({ ...WATCHING, attached: false, armed: true })).toBe(ARMED_POLL_MS);
-  });
-
-  test("a terminal stage whose delivery is unposted keeps polling, so the line can flip", () => {
-    expect(
-      resolvePollCadenceMs({
-        attached: true,
-        armed: true,
-        terminal: true,
-        deliveryState: "unposted",
-        agentWaiting: false,
-      }),
-    ).toBe(DELIVERY_WATCH_POLL_MS);
-
-    expect(
-      resolvePollCadenceMs({
-        attached: false,
-        armed: true,
-        terminal: true,
-        deliveryState: "unposted",
-        agentWaiting: false,
-      }),
-    ).toBe(DELIVERY_WATCH_POLL_MS);
-  });
-
-  test("a terminal stage with nothing left to watch stops, and only then", () => {
-    for (const deliveryState of ["none", "posted", "failed"] as const) {
-      expect(
-        resolvePollCadenceMs({
-          attached: true,
-          armed: true,
-          terminal: true,
-          deliveryState,
-          agentWaiting: false,
-        }),
-      ).toBeNull();
-    }
-  });
-
-  test("a finding on a project nobody armed keeps the setup cadence, findings and all", () => {
-    for (const deliveryState of ["none", "unposted", "posted", "failed"] as const) {
-      expect(
-        resolvePollCadenceMs({
-          attached: true,
-          armed: false,
-          terminal: true,
-          deliveryState,
-          agentWaiting: false,
-        }),
-      ).toBe(PRE_ARM_POLL_MS);
-    }
-
-    expect(
-      resolvePollCadenceMs({
-        attached: false,
-        armed: false,
-        terminal: true,
-        deliveryState: "unposted",
-        agentWaiting: false,
-      }),
-    ).toBeNull();
-  });
-});
 
 describe("the counter the founder is watching", () => {
   test("a connected unarmed client polls status and the rendered counter changes", () => {
@@ -290,40 +203,44 @@ describe("the counter the founder is watching", () => {
   });
 });
 
-describe("the wire into the client (D11)", () => {
-  test("exactly one interval exists whether armed or unarmed", () => {
+describe("the screen is told, never asks (D11)", () => {
+  test("nothing in the client fetches the status route any more", () => {
+    const code = blankComments(readExisting(CLIENT).source);
+
+    expect(code).not.toContain("FIRST_RUN_API.status");
+    expect(code).not.toContain("pollStatus");
+  });
+
+  test("it listens on every topic that writes a fact it renders", () => {
+    const code = blankComments(readExisting(CLIENT).source);
+
+    expect(code).toContain("LiveRefresh");
+
+    // The counter and the stage come from a worker run, the finding from the analysis lane,
+    // and first contact from the assistant's own call. Missing any one of the three is a
+    // screen that sits still while the fact behind it moved.
+    for (const topic of ["first_run", "findings", "agent_connection"]) {
+      expect(code).toContain(`"${topic}"`);
+    }
+  });
+
+  test("the one interval left advances the rendered elapsed time and reads nothing", () => {
     const code = blankComments(readExisting(CLIENT).source);
 
     expect(occurrences(code, "setInterval(")).toBe(1);
-    expect(code.match(/useRef<ReturnType<typeof setInterval>/g)?.length).toBe(1);
 
-    expect(code).toMatch(/\}, cadenceMs\);/);
-    expect(code).not.toMatch(/\}, \d[\d_]*\);/);
+    const effect = clockEffect(code);
+
+    expect(effect).toContain("setNowMs(Date.now())");
+    expect(effect).not.toContain("fetch(");
+    expect(effect).not.toContain("setOverlay");
   });
 
-  test("the poll effect asks resolvePollCadenceMs and nothing else", () => {
+  test("the clock stops once nothing is counting, so a settled screen holds no timer", () => {
     const code = blankComments(readExisting(CLIENT).source);
 
-    expect(code).toMatch(
-      /import\s*\{[^}]*resolvePollCadenceMs[^}]*\}\s*from\s*"@\/lib\/first-run\/poll-cadence"/,
-    );
-
-    const effect = pollEffect(code);
-
-    expect(effect).not.toMatch(/\barmed\b/);
-    expect(effect).toContain("cadenceMs");
-
-    // `terminal` joins `armed` on the far side of the resolver. Asked here as well, the
-    // effect tore the interval down while the delivery line still said "not posted".
-    expect(effect).not.toMatch(/\bterminal\b/);
-
-    const asked = code.indexOf("resolvePollCadenceMs({");
-    const call = code.slice(asked, code.indexOf("});", asked));
-
-    const unasked = ["attached", "armed", "terminal", "deliveryState"].filter(
-      (fact) => !new RegExp(`\\b${fact}\\b`).test(call),
-    );
-    expect(unasked).toEqual([]);
+    expect(code).toMatch(/const ticking = armed && !terminal;/);
+    expect(clockEffect(code)).toMatch(/if\s*\(!ticking\)/);
   });
 });
 
@@ -355,20 +272,13 @@ describe("the pre-arm poll degrades cleanly — FR-GL14", () => {
     }
   });
 
-  test("a failed pre-arm fetch keeps the counter and leaves the interval running", () => {
-    const effect = pollEffect(blankComments(readExisting(CLIENT).source));
+  test("a dropped change feed is what now claims the screen may be behind", () => {
+    const code = blankComments(readExisting(CLIENT).source);
 
-    const callback = effect.slice(effect.indexOf("setInterval("), effect.indexOf("}, cadenceMs);"));
-
-    expect(callback).toContain("setLost(next === null)");
-
-    // The failure path writes no state the counter is rendered from...
-    expect(occurrences(callback, "setPolled(")).toBe(1);
-    expect(callback).toMatch(/if\s*\(next\s*!==\s*null\)\s*\{\s*setPolled\(next\);/);
-
-    // ...and tears nothing down, so the next tick still happens.
-    expect(callback).not.toContain("clearInterval");
-    expect(callback).not.toContain("clearTimeout");
+    // The notice used to be driven by a failed poll. Its input is the stream's own
+    // connection state now, or the sentence would never render again.
+    expect(code).toMatch(/onConnection=\{setConnected\}/);
+    expect(code).toMatch(/lost:\s*!connected/);
   });
 
   test("the client renders the resolver's sentence, never the armed one directly", () => {

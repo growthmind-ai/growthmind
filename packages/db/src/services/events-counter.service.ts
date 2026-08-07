@@ -58,23 +58,37 @@ export function createEventsCounterService(db: ScopedDb, ctx: TenantContext): Ev
           ),
         );
 
+      // Per connection, not per project. Read per project, a cutover to a new connection with a
+      // bad key left the runs of the OLD one answering for the new one: this surface said
+      // "we checked, your product is quiet" while the connection surface said it had never
+      // polled — collapsing the one distinction §5/§7 says must never collapse (B-012).
       const [runTotals] = await db
         .select({
           runsCompleted: sql<number>`coalesce(sum(case when ${sessionSourcePollRuns.status} = 'completed' then 1 else 0 end), 0)::int`,
           droppedUnreadable: sql<number>`coalesce(sum(${sessionSourcePollRuns.eventsDroppedMalformed}), 0)::int`,
         })
         .from(sessionSourcePollRuns)
-        .where(s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.projectId, projectId)));
+        .where(
+          connection
+            ? s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.connectionId, connection.id))
+            : s.owned(sessionSourcePollRuns, eq(sessionSourcePollRuns.projectId, projectId)),
+        );
 
       const [lastSuccessful] = await db
         .select({ finishedAt: sessionSourcePollRuns.finishedAt })
         .from(sessionSourcePollRuns)
         .where(
-          s.owned(
-            sessionSourcePollRuns,
-            eq(sessionSourcePollRuns.projectId, projectId),
-            eq(sessionSourcePollRuns.status, "completed"),
-          ),
+          connection
+            ? s.owned(
+                sessionSourcePollRuns,
+                eq(sessionSourcePollRuns.connectionId, connection.id),
+                eq(sessionSourcePollRuns.status, "completed"),
+              )
+            : s.owned(
+                sessionSourcePollRuns,
+                eq(sessionSourcePollRuns.projectId, projectId),
+                eq(sessionSourcePollRuns.status, "completed"),
+              ),
         )
         .orderBy(sql`${sessionSourcePollRuns.finishedAt} desc nulls last`)
         .limit(1);

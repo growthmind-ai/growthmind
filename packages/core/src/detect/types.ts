@@ -1,4 +1,4 @@
-import type { ConnectionState, ExclusionReason } from "@growthmind/shared";
+import type { ConnectionState, ExclusionReason, SessionCohortCuts } from "@growthmind/shared";
 import { z } from "zod";
 
 import type { CountBasis, MeasuredCount } from "../counts/measured-count";
@@ -26,6 +26,10 @@ export type SessionTimeline = {
   readonly exclusionReason: ExclusionReason;
   readonly entryUrlPath: string | null;
   readonly events: readonly TimelineEvent[];
+
+  // Derived at the corpus boundary. There is deliberately no raw user-agent field here, so no
+  // detector, artifact or payload downstream can carry the string these were classified from.
+  readonly cohortCuts?: SessionCohortCuts;
 };
 
 export type AnalysisWindow = {

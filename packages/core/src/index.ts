@@ -86,6 +86,7 @@ export {
 export {
   PROOF_PREDICATE_VERSION,
   PROOF_PREDICATES,
+  admissibleProofKinds,
   brokenProofSatisfied,
   confusingProofSatisfied,
   changedMindProofSatisfied,
@@ -455,6 +456,7 @@ export {
   type DivergenceCohortInput,
   type DivergenceOptions,
 } from "./divergence/types";
+export { cohortCutsOf, type DivergenceCohortCut } from "./divergence/cuts";
 export { computeDivergence } from "./divergence/divergence";
 export { gradeOf } from "./divergence/grade";
 export { sampleSessionIds } from "./divergence/sample";

@@ -50,8 +50,33 @@ export type GateOutcome =
   | { readonly kind: "pass"; readonly finalClass: FindingClass; readonly trace: DowngradeTrace }
   | { readonly kind: "drop"; readonly trace: DowngradeTrace };
 
+// The schema validates that a signal is well-formed, never that it is about the claim it was
+// handed with — so a claim about /checkout could be proved by struggle on a different page, or
+// by an exception from outside the window the claim covers. Surface mismatch is the most likely
+// thing a model fabricates, and this file's whole premise is that model output is external data
+// (B-017). A signal that is not about the claim is not proof of it, so it is dropped before the
+// ladder descends rather than refused loudly: the claim then stands on whatever else it has.
+function isAboutClaim(signal: EvidenceSignal, claim: ProposedClaim): boolean {
+  switch (signal.kind) {
+    case "struggle":
+    case "clean_exit":
+      return signal.surface === claim.surface;
+    case "failure_correlated":
+    case "failure_uncorrelated":
+      return withinTimeframe(signal.occurredAt, claim.timeframe);
+    case "instrumentation_rate_drop":
+      // Carries neither a surface nor an instant; its two counts carry their own windows.
+      return true;
+  }
+}
+
+function withinTimeframe(instant: Date, timeframe: AnalysisWindow): boolean {
+  return instant >= timeframe.start && instant <= timeframe.end;
+}
+
 export function evaluate(claim: unknown, ruleSet: ThresholdRuleSet): GateOutcome {
   const parsed: ProposedClaim = proposedClaimSchema.parse(claim);
+  const proving = parsed.signals.filter((signal) => isAboutClaim(signal, parsed));
 
   const trace: TraceEntry[] = [];
 
@@ -63,7 +88,7 @@ export function evaluate(claim: unknown, ruleSet: ThresholdRuleSet): GateOutcome
     visited.add(current);
 
     const predicate = PROOF_PREDICATES[current];
-    const satisfied = predicate.satisfied(parsed.signals, ruleSet);
+    const satisfied = predicate.satisfied(proving, ruleSet);
 
     trace.push(
       traceEntry({

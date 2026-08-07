@@ -1,6 +1,7 @@
 import type { InterestProviderId, TenantContext } from "@growthmind/shared";
 import { asc, eq } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { providerInterest } from "../schema/provider-interest";
 import { orgCrud } from "./crud";
 import type { ScopedExecutor } from "./types";
@@ -33,6 +34,12 @@ export function createProviderInterestRepo(
           fetch: [eq(providerInterest.provider, provider)],
         },
       );
+
+      // Only a first note changes anything; a repeat leaves the row untouched, and waking
+      // every open page for it is the no-op fan-out O-047 shipped a fix for (D3).
+      if (result.claimed) {
+        await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+      }
 
       return { claimed: result.claimed };
     },

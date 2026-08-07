@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { COHORT_CUTS, SURFACE_COHORT_CUT } from "@growthmind/shared";
 import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
@@ -29,6 +30,10 @@ export const divergencePoints = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
 
     surface: text("surface").notNull(),
+    // Not nullable: a NULL here would be distinct from itself under the identity index, so
+    // every tick would INSERT instead of UPDATE. Changing COHORT_CUTS membership forks
+    // existing rows and is a deliberate cohortMatchVersion bump, not a silent edit.
+    cohortCut: text("cohort_cut", { enum: COHORT_CUTS }).notNull().default(SURFACE_COHORT_CUT),
     surfaceNormalisationVersion: integer("surface_normalisation_version"),
     spineVersion: integer("spine_version").notNull(),
     cohortMatchVersion: integer("cohort_match_version").notNull(),
@@ -55,6 +60,7 @@ export const divergencePoints = pgTable(
       table.organizationId,
       table.projectId,
       table.surface,
+      table.cohortCut,
       table.cohortMatchVersion,
       table.windowStart,
       table.windowEnd,
@@ -67,6 +73,7 @@ export const DIVERGENCE_POINTS_CONFLICT_TARGET = [
   divergencePoints.organizationId,
   divergencePoints.projectId,
   divergencePoints.surface,
+  divergencePoints.cohortCut,
   divergencePoints.cohortMatchVersion,
   divergencePoints.windowStart,
   divergencePoints.windowEnd,
