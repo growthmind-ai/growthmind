@@ -1,0 +1,217 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+}
+
+/* Width is content-derived. The prototype's fixed rest widths are a consequence of the rest
+   labels, not a size a real applied value fits inside (UX R-7). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 18px;
+  background: var(--mantine-color-default);
+  color: var(--mantine-color-text);
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 160ms linear,
+    background-color 160ms linear;
+}
+
+/* The same two custom properties Mantine's own filled controls paint from, handed over by the
+   theme's variant resolver rather than written as colours here. */
+.pill[data-variant="filled"] {
+  border-color: transparent;
+  background: var(--button-bg);
+  color: var(--button-color);
+}
+
+.label {
+  overflow: hidden;
+  max-width: 22rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The rest state reads as quieter through colour rather than through opacity: an opacity
+   magnitude is the one thing this surface may not encode state in (UX R-2). */
+.chevron {
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+  transition: color 160ms linear;
+}
+
+.clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--mantine-color-dimmed);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 160ms linear;
+}
+
+.panel {
+  --filter-ease: cubic-bezier(0.22, 0.7, 0.24, 1);
+
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  overflow: hidden;
+  padding: var(--mantine-spacing-sm);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 14px;
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-md);
+  transition:
+    width 300ms var(--filter-ease),
+    height 300ms var(--filter-ease),
+    border-radius 260ms var(--filter-ease);
+}
+
+.options {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: var(--mantine-radius-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.hiddenLabel {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (hover: hover) {
+  .pill:hover {
+    border-color: var(--mantine-primary-color-4);
+  }
+
+  .pill:hover .chevron {
+    color: var(--mantine-color-text);
+  }
+
+  .clear:hover {
+    color: var(--mantine-color-text);
+  }
+
+  .optionRow:hover {
+    background: var(--mantine-color-default-hover);
+  }
+
+  /* A row that would give you nothing is legible and pickable; what it does not get is the
+     hover lift that promises something to open. */
+  .optionRow[data-empty="true"]:hover {
+    background: transparent;
+  }
+}
+
+/* The floor arrives from the pointer, not from every render: spreading a 44px minimum inline
+   would make a desktop pill 44px tall and lose the 36px visual height the ruling keeps (R-8). */
+@media (pointer: coarse) {
+  .pill,
+  .clear,
+  .optionRow {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .pill,
+  .clear {
+    min-height: 44px;
+  }
+
+  .label {
+    max-width: 100%;
+  }
+
+  /* A 320px panel positioned from a pill's left edge cannot be made to fit 375px, so below this
+     width the surface is a sheet and the descriptor's morph target is not the layout. */
+  .panel {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 200;
+    width: auto !important;
+    height: auto !important;
+    max-height: 70vh;
+    border-radius: 14px 14px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .chevron,
+  .clear,
+  .panel {
+    transition-duration: 0ms;
+    animation-duration: 0ms;
+  }
+}
