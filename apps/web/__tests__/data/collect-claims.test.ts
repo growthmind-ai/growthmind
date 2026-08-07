@@ -8,21 +8,47 @@ import {
   URL_PATH_NORMALISATION_VERSION,
 } from "@growthmind/shared";
 
-import { readCollect } from "../../lib/preview/readers";
+import {
+  DATA_GROUPS,
+  DATA_PAGE_CLOSING,
+  DATA_PAGE_LEDE,
+  NOTHING_SEEN_NOTE,
+  NOTHING_SEEN_RECEIPT,
+  NO_COUNTS_NOTE,
+} from "../../components/data/statements";
 
-const PAGE = join(import.meta.dir, "..", "..", "app", "(app)", "(preview)", "data", "page.tsx");
+const WEB = join(import.meta.dir, "..", "..");
+
+// Every file a sentence a reader sees can be written in. The prose moved off a JSON fixture
+// into a descriptor module and the component that renders it, so the scan moved with it —
+// a guard pointed at the surface's old home stops covering it silently.
+const SOURCES: readonly string[] = [
+  join(WEB, "app", "(app)", "data", "page.tsx"),
+  join(WEB, "components", "data", "statements.ts"),
+  join(WEB, "components", "data", "DataGroups.tsx"),
+];
 
 /** Everything a reader of /data sees: the statements, and the prose the page wraps them in. */
 function pageText(): string {
-  const view = readCollect();
-  const statements = view.groups.flatMap((group) => group.statements);
-  return [...statements, view.closing, readFileSync(PAGE, "utf8")].join("\n");
+  const statements = DATA_GROUPS.flatMap((group) => group.statements).map(
+    (statement) => statement.text,
+  );
+
+  return [
+    ...statements,
+    DATA_PAGE_LEDE,
+    DATA_PAGE_CLOSING,
+    NO_COUNTS_NOTE,
+    NOTHING_SEEN_NOTE,
+    NOTHING_SEEN_RECEIPT,
+    ...SOURCES.map((path) => readFileSync(path, "utf8")),
+  ].join("\n");
 }
 
 function versionOf(label: string): string | undefined {
-  const group = readCollect().groups.find((entry) => entry.label === label);
+  const group = DATA_GROUPS.find((entry) => entry.label === label);
   if (group === undefined) throw new Error(`no group labelled "${label}"`);
-  return group.version;
+  return group.stamp;
 }
 
 /** Each stamp the page is allowed to show, and the exported constant that decides it. */
@@ -92,6 +118,18 @@ describe("the /data page states only what the code does", () => {
     );
   });
 
+  test("the scan reaches every file a statement can be written in", () => {
+    // A path that no longer exists would make the scan vacuously clean, which is the one way
+    // this guard fails without failing.
+    for (const path of SOURCES) {
+      expect(readFileSync(path, "utf8").length).toBeGreaterThan(0);
+    }
+
+    const scanned = pageText();
+    expect(scanned).toContain("Bots, automated browsers and coding agents.");
+    expect(scanned).toContain(DATA_PAGE_CLOSING);
+  });
+
   test("every version the page shows is the one the code exports", () => {
     for (const { label, stamp } of BOUND_VERSIONS) {
       expect(versionOf(label)).toBe(stamp);
@@ -100,17 +138,17 @@ describe("the /data page states only what the code does", () => {
 
   test("no group shows a version stamp nothing in the code backs", () => {
     const bound = new Set(BOUND_VERSIONS.map((entry) => entry.label));
-    const unbound = readCollect()
-      .groups.filter((group) => group.version !== undefined && !bound.has(group.label))
-      .map((group) => `${group.label}: ${String(group.version)}`);
+    const unbound = DATA_GROUPS.filter(
+      (group) => group.stamp !== undefined && !bound.has(group.label),
+    ).map((group) => `${group.label}: ${String(group.stamp)}`);
 
     expect(unbound).toEqual([]);
   });
 
   test("no statement carries an effective date, because no rule set records one", () => {
-    const dated = readCollect()
-      .groups.flatMap((group) => group.statements.concat(group.version ?? ""))
-      .filter((line) => A_DATE.test(line));
+    const dated = DATA_GROUPS.flatMap((group) =>
+      group.statements.map((statement) => statement.text).concat(group.stamp ?? ""),
+    ).filter((line) => A_DATE.test(line));
 
     expect(dated).toEqual([]);
   });

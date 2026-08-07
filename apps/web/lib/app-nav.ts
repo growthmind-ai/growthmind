@@ -24,24 +24,33 @@ const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
 const COMPANIES: NavItem = { href: ROUTES.companies, label: "Companies" };
 
 // Slack first: that is where the work arrives, pushed rather than pulled.
+const CHANNEL: NavItem = { href: ROUTES.channel, label: "In Slack" };
+
+const FIXES: NavItem = { href: ROUTES.fixes, label: "Fixes" };
+
 const WORK: NavGroup = {
   label: "Work",
   items: [
-    { href: ROUTES.channel, label: "In Slack" },
+    CHANNEL,
     FINDINGS,
-    { href: ROUTES.fixes, label: "Fixes" },
+    FIXES,
     { href: ROUTES.experiments, label: "Experiments" },
     RECORDINGS,
     COMPANIES,
   ],
 };
 
-// Findings, Recordings and Companies read real rows under the org's own tenant context, so
-// they answer for everyone rather than only the preview list — the same reason the agent
-// page does. Channel, Fixes and Experiments stay preview-only until their own record is live.
-const WORK_LIVE: NavGroup = { label: "Work", items: [FINDINGS, RECORDINGS, COMPANIES] };
+// Everything here reads real rows under the org's own tenant context, so it answers for
+// everyone rather than only the preview list. Experiments is the one Work route still on
+// fixtures: verdicts do not exist as data at all until O-028 and O-034.
+const WORK_LIVE: NavGroup = {
+  label: "Work",
+  items: [CHANNEL, FINDINGS, FIXES, RECORDINGS, COMPANIES],
+};
 
 const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };
+
+const DATA: NavItem = { href: ROUTES.data, label: "Your data" };
 
 const PRODUCT: NavGroup = {
   label: "Your product",
@@ -49,13 +58,14 @@ const PRODUCT: NavGroup = {
     { href: ROUTES.audience, label: "Audience" },
     { href: ROUTES.plan, label: "Before you build" },
     AGENT,
-    { href: ROUTES.data, label: "Your data" },
+    DATA,
   ],
 };
 
-// The agent page is the only one of the four running on real rows, and it is the only way
-// to a key after setup — which nothing links back to. It cannot sit behind the preview list.
-const PRODUCT_LIVE: NavGroup = { label: "Your product", items: [AGENT] };
+// Audience waits on O-036's ICP model and Before-you-build on O-033's brief-time exchange,
+// so both stay behind the list. The agent page is also the only way to a key once setup is
+// behind you, which nothing links back to — it could never have sat there.
+const PRODUCT_LIVE: NavGroup = { label: "Your product", items: [AGENT, DATA] };
 
 // Settings and the profile hang off the account block at the foot of the rail, not here.
 // Off the preview allow list every Work route is a `notFound`, and of Your product only

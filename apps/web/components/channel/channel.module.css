@@ -1,0 +1,157 @@
+.card {
+  overflow: hidden;
+}
+
+.card[data-tone="failed"] {
+  border-color: var(--mantine-color-red-8);
+}
+
+.card[data-tone="held"] {
+  border-color: var(--mantine-color-stamp-8);
+}
+
+.dimmed {
+  opacity: 0.55;
+}
+
+.lane[data-tone="alarm"] {
+  border-color: var(--mantine-color-red-8);
+}
+
+.banner {
+  border-left: 3px solid var(--mantine-color-stamp-6);
+}
+
+/* 38px tall and full width: on a 375px phone that clears 44px of touch slop with padding
+   either side, which a smaller pill would not. */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 var(--mantine-spacing-md);
+  background: var(--mantine-color-default);
+  color: var(--mantine-color-dimmed);
+  border: 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.14s ease;
+}
+
+@media (hover: hover) {
+  .strip:hover {
+    background: var(--mantine-color-default-hover);
+  }
+}
+
+.strip:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+/* Truncated here and carried in full inside the panel, so a narrow viewport never hides
+   the verdict's detail outright. */
+.stripText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  opacity: 0.45;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 0.7, 0.24, 1),
+    opacity 0.14s ease;
+}
+
+@media (hover: hover) {
+  .strip:hover .chevron {
+    opacity: 1;
+  }
+}
+
+.strip[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+.pip {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+/* The renderer's own line breaks are part of what was sent. */
+.messageText {
+  white-space: pre-line;
+}
+
+.absent {
+  border: 1px dashed var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.slackActions {
+  border-top: 1px dashed var(--mantine-color-default-border);
+}
+
+.slackButton {
+  border: 1px dashed var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  padding: 3px 8px;
+}
+
+.disclosure {
+  padding: 4px 0 0;
+  background: none;
+  border: 0;
+  color: var(--mantine-primary-color-filled);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.disclosure:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}

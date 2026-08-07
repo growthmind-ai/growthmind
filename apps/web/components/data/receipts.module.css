@@ -1,0 +1,56 @@
+/* The disclosure is inline and in document flow, never a popover: this page is meant to be
+   printed, copied and sent, and a layer that floats survives none of those. */
+.disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 0.7, 0.24, 1),
+    opacity 180ms ease 60ms;
+}
+
+.disclosure.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.disclosureInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The desktop pill grows on a coarse pointer rather than being restyled for it. */
+.chip {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  .chip {
+    min-height: 44px;
+  }
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 220ms ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.row {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure,
+  .chevron {
+    transition-duration: 0ms;
+  }
+
+  .chevron.open {
+    transform: none;
+  }
+}

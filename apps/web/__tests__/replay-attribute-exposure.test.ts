@@ -32,10 +32,11 @@ const BINDINGS = [
 // customer or their end users typed, which rrweb cannot mask out of an attribute.
 const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind }> = {
   "app/(app)/(preview)/experiments/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
-  "app/(app)/(preview)/fixes/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/findings/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/findings/[id]/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/agent/page.tsx": { bindings: 1, kind: "our-copy" },
+  // The page title, a constant of ours. The counts /data renders never reach an attribute.
+  "app/(app)/data/page.tsx": { bindings: 1, kind: "our-copy" },
   "app/(app)/settings/page.tsx": { bindings: 5, kind: "our-copy" },
   "components/settings/BusinessContext.tsx": { bindings: 1, kind: "our-copy" },
   // The inline fact editor has no visible label, so it names itself with a constant of
@@ -46,6 +47,11 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "app/(auth)/social-buttons.tsx": { bindings: 1, kind: "our-copy" },
   "app/(first-run)/first-run/page.tsx": { bindings: 1, kind: "our-copy" },
   "components/app/AppNav.tsx": { bindings: 1, kind: "our-copy" },
+  // Both carry a tone from a closed union of ours — the delivery state's, and the lane
+  // line's quiet/alarm/cold. The delivered message itself is text, never an attribute, so
+  // nothing a customer or their users wrote reaches one from this page.
+  "components/channel/DeliveryCard.tsx": { bindings: 1, kind: "our-copy" },
+  "components/channel/LaneStatus.tsx": { bindings: 1, kind: "our-copy" },
   "components/first-run/AgentPanelBody.tsx": { bindings: 1, kind: "our-copy" },
   "components/first-run/FirstRunClient.tsx": { bindings: 2, kind: "our-copy" },
   "components/first-run/Roadmap.tsx": { bindings: 1, kind: "our-copy" },

@@ -1,63 +1,49 @@
-import { Group, Stack, Text } from "@mantine/core";
+import { Group, Stack } from "@mantine/core";
 
+import { createSessionSetAsideService } from "@growthmind/db";
+import { logger, type TenantContext } from "@growthmind/shared";
+
+import { DataGroups } from "@/components/data/DataGroups";
+import {
+  dataPageText,
+  DATA_PAGE_CLOSING,
+  DATA_PAGE_LEDE,
+  DATA_PAGE_TITLE,
+  type CountsView,
+} from "@/components/data/statements";
 import { CopyBlock } from "@/components/ui/CopyBlock";
-import { Eyebrow } from "@/components/ui/Eyebrow";
-import { PageHeader } from "@/components/ui/Page";
-import { SurfaceCard } from "@/components/ui/SurfaceCard";
-import { readCollect } from "@/lib/preview/readers";
+import { ClosingNote, PageHeader } from "@/components/ui/Page";
+import { getDb } from "@/lib/db";
+import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
-export default function CollectPage() {
-  const view = readCollect();
+// The rules are the page and the counts are corroboration, so a count that cannot be read
+// degrades to a stated rule with nothing to press rather than taking the disclosure down.
+async function readCounts(ctx: TenantContext): Promise<CountsView | null> {
+  try {
+    return await createSessionSetAsideService(getDb(), ctx).read();
+  } catch (error) {
+    logger.error("data page: the set-aside count could not be read", { error });
+    return null;
+  }
+}
 
-  const asText = view.groups
-    .flatMap((group) => [
-      group.version === undefined
-        ? group.label.toUpperCase()
-        : `${group.label.toUpperCase()}  (${group.version})`,
-      ...group.statements.map((statement) => `- ${statement}`),
-      "",
-    ])
-    .concat(view.closing)
-    .join("\n");
+export default async function DataPage() {
+  const ctx = await requireTenantContext();
+  const counts = await readCounts(ctx);
 
   return (
     <Stack gap="lg">
-      <PageHeader title="What we do and do not collect">
-        The rule versions below are checked against the code by a test. Change a rule without
-        changing this page and the test fails.
-      </PageHeader>
+      <PageHeader title={DATA_PAGE_TITLE}>{DATA_PAGE_LEDE}</PageHeader>
 
-      <Stack gap="sm">
-        {view.groups.map((group) => (
-          <SurfaceCard key={group.label}>
-            <Group justify="space-between" gap="md" wrap="wrap" mb={6}>
-              <Eyebrow>{group.label}</Eyebrow>
-              {group.version === undefined ? null : (
-                <Text size="xs" ff="monospace" c="dimmed">
-                  {group.version}
-                </Text>
-              )}
-            </Group>
-            <Stack gap={4}>
-              {group.statements.map((statement) => (
-                <Text key={statement} size="sm">
-                  {statement}
-                </Text>
-              ))}
-            </Stack>
-          </SurfaceCard>
-        ))}
-      </Stack>
+      <DataGroups counts={counts} />
 
       <Group>
-        <CopyBlock value={asText} label="Copy as text" />
+        <CopyBlock value={dataPageText(counts)} label="Copy as text" />
       </Group>
 
-      <Text size="sm" c="dimmed">
-        {view.closing}
-      </Text>
+      <ClosingNote>{DATA_PAGE_CLOSING}</ClosingNote>
     </Stack>
   );
 }
