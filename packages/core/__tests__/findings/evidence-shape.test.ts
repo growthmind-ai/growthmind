@@ -81,7 +81,7 @@ function shapeInput<T extends Omit<EvidenceShapeInput, "proofKinds">>(
 
 const GOLDEN_V1 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +
-  '"surface":"/checkout","surfaceNormalisationVersion":2,"symptomClass":"broken","v":1}';
+  '"surface":"/checkout","surfaceNormalisationVersion":3,"symptomClass":"broken","v":1}';
 
 const GOLDEN_V2 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +

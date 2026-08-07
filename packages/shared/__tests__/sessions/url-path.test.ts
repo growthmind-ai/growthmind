@@ -52,7 +52,66 @@ describe("normaliseUrlPath", () => {
   });
 
   test("the normalisation rules are versioned", () => {
-    expect(URL_PATH_NORMALISATION_VERSION).toBe(2);
+    expect(URL_PATH_NORMALISATION_VERSION).toBe(3);
+  });
+});
+
+describe("normaliseUrlPath is idempotent (B-013)", () => {
+  // The invariant `assertNormalisedSurface` is built on: normalised exactly when re-normalising
+  // is a no-op. A doubled slash broke it, and the throw landed in the findings path.
+  const PATHS = [
+    "/app//step",
+    "/app//",
+    "//",
+    "///",
+    "//app",
+    "/app///step//11/",
+    "/",
+    "/pricing",
+    "/verify/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpM",
+  ];
+
+  test("re-normalising its own output changes nothing, for every shape", () => {
+    for (const path of PATHS) {
+      const once = normaliseUrlPath(path, null);
+      expect(once).not.toBeNull();
+      expect(normaliseUrlPath(once, null)).toBe(once);
+      expect(isNormalisedUrlPath(once!)).toBe(true);
+    }
+  });
+
+  test("collapses repeated slashes rather than leaving one behind", () => {
+    expect(normaliseUrlPath("/app//step", null)).toBe("/app/step");
+    expect(normaliseUrlPath("/app//", null)).toBe("/app");
+    expect(normaliseUrlPath("//", null)).toBe("/");
+    expect(normaliseUrlPath("/app///step//11/", null)).toBe("/app/step/11");
+
+    // The path a browser reports for a doubled-slash link, which is what intake persists.
+    expect(normaliseUrlPath(null, "https://app.example.invalid/app//step")).toBe("/app/step");
+  });
+});
+
+describe("normaliseUrlPath redacts dot-separated and padded token segments (B-013)", () => {
+  const JWT =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+    "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUifQ." +
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+
+  test("redacts a JWT, which survived whole-segment matching because it carries dots", () => {
+    expect(normaliseUrlPath(`/verify/${JWT}`, null)).toBe("/verify/:id");
+    expect(normaliseUrlPath(`/verify/${JWT}`, null)).not.toContain("eyJ");
+    expect(isNormalisedUrlPath(`/verify/${JWT}`)).toBe(false);
+  });
+
+  test("redacts a padded base64 token, whose = and + were outside the character class", () => {
+    expect(normaliseUrlPath("/download/Kx9mQ2vT8pL4wZ7nR3sB+g==", null)).toBe("/download/:id");
+    expect(normaliseUrlPath("/download/YWRtaW46c3VwZXJzZWNyZXQ=", null)).toBe("/download/:id");
+  });
+
+  test("near miss: a dotted filename is left alone — the parts are short, not a token", () => {
+    expect(normaliseUrlPath("/docs/report.pdf", null)).toBe("/docs/report.pdf");
+    expect(normaliseUrlPath("/releases/v1.2.3", null)).toBe("/releases/v1.2.3");
+    expect(normaliseUrlPath("/u/jane.doe/settings", null)).toBe("/u/jane.doe/settings");
   });
 });
 
