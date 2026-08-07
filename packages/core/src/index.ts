@@ -208,7 +208,9 @@ export {
 export {
   DELIVERY_BUDGET_PER_WEEK,
   DELIVERY_CLAIM_TTL_MS,
+  DELIVERY_TICK_INTERVAL_MS,
   deliveryClaimsExpireBefore,
+  deliveryTicksSince,
   isDeliverable,
   compareDeliveryCandidates,
   decideDelivery,

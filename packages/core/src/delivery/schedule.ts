@@ -6,17 +6,31 @@ import type { SurfaceWorth } from "../growth/surface-worth";
 
 export const DELIVERY_BUDGET_PER_WEEK = 3;
 
+// How often the delivery tick runs. The worker's crontab is the thing that actually schedules
+// it, and `delivery-tick.test.ts` fails if the two disagree — a reader deriving anything from
+// this value is otherwise reading a number nothing enforces.
+export const DELIVERY_TICK_INTERVAL_MS = 15 * 60 * 1_000;
+
 // A claim is a lease, and a lease with no expiry is a deadlock. A tick that dies between
 // claiming a delivery and recording its outcome leaves the row `pending`, and `pending` is
 // read by every later tick as work in progress — so the lane returns `one_already_open`
-// forever and the organization silently stops receiving anything. Two ticks' headroom over
-// the 15-minute cadence: long enough that a slow post is never stolen, short enough that a
-// lost claim costs half an hour rather than the rest of the installation's life.
-export const DELIVERY_CLAIM_TTL_MS = 30 * 60 * 1_000;
+// forever and the organization silently stops receiving anything. Two ticks' headroom: long
+// enough that a slow post is never stolen, short enough that a lost claim costs half an hour
+// rather than the rest of the installation's life.
+export const DELIVERY_CLAIM_TTL_MS = 2 * DELIVERY_TICK_INTERVAL_MS;
 
 // Claims older than this are abandoned, not in flight.
 export function deliveryClaimsExpireBefore(at: Date): Date {
   return new Date(at.getTime() - DELIVERY_CLAIM_TTL_MS);
+}
+
+// How many ticks a lane has gone without reaching a decision. A worker that throws records
+// `lane_errored`; a worker that stops records nothing at all, and this is the only thing that
+// separates it from a genuinely quiet lane. Deliberately a count and not a verdict: how many
+// missed ticks are too many is a product call, not one to settle here.
+export function deliveryTicksSince(lastDecidedAt: Date, now: Date): number {
+  const elapsed = now.getTime() - lastDecidedAt.getTime();
+  return elapsed <= 0 ? 0 : Math.floor(elapsed / DELIVERY_TICK_INTERVAL_MS);
 }
 
 export type DeliveryCandidate = {

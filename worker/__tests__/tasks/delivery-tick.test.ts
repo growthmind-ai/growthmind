@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  DELIVERY_TICK_INTERVAL_MS,
   measuredCount,
   scanResidualPii,
   unknownWorth,
@@ -983,6 +984,23 @@ test("the delivery tick is registered under its TASK constant and scheduled exac
     .map((line) => line.trim().split(/\s+/)[5]);
 
   expect(scheduled.filter((name) => name === TASK.DELIVERY_TICK).length).toBe(1);
+});
+
+test("the cadence a reader derives staleness from is the cadence the crontab actually runs", () => {
+  const line = crontab
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.split(/\s+/)[5] === TASK.DELIVERY_TICK);
+
+  expect(line).toBeDefined();
+
+  const minutes = /^\*\/(\d+)$/.exec((line ?? "").split(/\s+/)[0] ?? "");
+  expect(minutes).not.toBeNull();
+
+  // A page that decides "this lane has missed three ticks" is reading DELIVERY_TICK_INTERVAL_MS
+  // and trusting it to be the schedule. Nothing but this binds the constant to the crontab, and
+  // a silent drift between them turns a healthy lane into an alarm or hides a dead worker.
+  expect(Number(minutes?.[1]) * 60 * 1_000).toBe(DELIVERY_TICK_INTERVAL_MS);
 });
 
 test("the delivery task name parses as a Graphile Worker crontab identifier", () => {
