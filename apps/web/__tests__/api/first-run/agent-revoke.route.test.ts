@@ -1,6 +1,9 @@
 import { createApiKeysRepo, findUserNameById, resolveApiKeyPrincipal } from "@growthmind/db";
 import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import {
@@ -162,117 +165,32 @@ describe("POST /api/first-run/agent/revoke — the org-wide revoke (D-5, AC-33)"
   });
 });
 
-describe("POST /api/first-run/agent/revoke — B-055 the org hears who revoked its keys", () => {
-  test("announces the revoking member and workspace to the org's connected Slack channel", async () => {
-    const scope = await bed.member("announce");
-    await connectSlack(scope);
-    await mintFor(scope, "only key");
-
-    const poster = recordingPoster(OK_POST);
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    const response = await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope, { poster }));
-    expect(response.status).toBe(200);
-
-    expect(poster.sent).toHaveLength(1);
-    expect(poster.sent[0]?.channelId).toBe(CHANNEL_ID);
-
-    const revokerName = await findUserNameById(bed.db, scope.userId);
-    expect(revokerName).not.toBeNull();
-    expect(poster.sent[0]?.fallbackText ?? "").toContain(String(revokerName));
-  });
-
-  test("revoking several live keys at once sends exactly one announcement, not one per key (D3)", async () => {
-    const scope = await bed.member("multikey");
-    await connectSlack(scope);
-    await mintFor(scope, "first key");
-    await mintFor(scope, "second key");
-    await mintFor(scope, "third key");
-
-    const poster = recordingPoster(OK_POST);
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    const response = await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope, { poster }));
-
-    expect(response.status).toBe(200);
-    expect(poster.sent).toHaveLength(1);
-  });
-
-  test("names the teammate who actually pressed revoke, not whoever connected Slack (D1)", async () => {
-    const owner = await bed.member("d1owner");
-    await connectSlack(owner);
-    const teammate = await bed.member("d1mate", owner.organizationId);
-    await mintFor(teammate, "teammate's key");
-
-    const poster = recordingPoster(OK_POST);
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    await handle(routeRequest(AGENT_REVOKE, {}), depsFor(teammate, { poster }));
-
-    const teammateName = await findUserNameById(bed.db, teammate.userId);
-    expect(poster.sent).toHaveLength(1);
-    expect(poster.sent[0]?.fallbackText ?? "").toContain(String(teammateName));
-  });
-
-  test("revoking with no live keys never announces", async () => {
-    const scope = await bed.member("nolivekeys");
-    await connectSlack(scope);
-
-    const poster = recordingPoster(OK_POST);
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    const response = await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope, { poster }));
-
-    expect(response.status).toBe(200);
-    expect(poster.sent).toEqual([]);
-  });
-
-  test("does not re-announce on a retried call that finds nothing left live (D4)", async () => {
-    const scope = await bed.member("retryannounce");
-    await connectSlack(scope);
-    await mintFor(scope, "only key");
-
-    const poster = recordingPoster(OK_POST);
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-
-    await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope, { poster }));
-    expect(poster.sent).toHaveLength(1);
-
-    await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope, { poster }));
-    expect(poster.sent).toHaveLength(1);
-  });
-
-  test("with no Slack connection, the revoke still succeeds and announces nothing (D8, self-hosted)", async () => {
-    const scope = await bed.member("noslackconn");
-    await mintFor(scope, "only key");
-
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    const response = await handle(routeRequest(AGENT_REVOKE, {}), depsFor(scope));
-
-    expect(response.status).toBe(200);
-    expect(await bodyOf(response)).toEqual({ revoked: true });
-  });
-
-  test("a failing Slack post never turns a successful revoke into an error (D8)", async () => {
-    const scope = await bed.member("posterfails");
-    await connectSlack(scope);
-    await mintFor(scope, "only key");
-
-    const failingPoster: DeliveryPoster = {
-      post: async (): Promise<PostResult> => ({
-        ok: false,
-        code: "call_failed",
-        message: "fixture: the post never reached Slack",
-      }),
-    };
-
-    const handle = await loadRouteHandler(AGENT_REVOKE);
-    const response = await handle(
-      routeRequest(AGENT_REVOKE, {}),
-      depsFor(scope, { poster: failingPoster }),
+// B-055's disclosure moved onto the notification spine in O-051: the route no longer
+// composes a post, so its route-level announcement tests have no subject here. The same
+// four guarantees are asserted where the behaviour now lives —
+// packages/db/__tests__/notifications/wire-keys-revoked.test.ts (one emit per real
+// transition with the pressing member as actor; nothing on a retried call) and
+// worker/__tests__/tasks/notification-dispatch.test.ts (the sentence, with the actor's
+// name resolved, posted exactly once to the org's channel).
+describe("POST /api/first-run/agent/revoke — B-055's announcement has moved", () => {
+  test("the route composes no Slack post of its own", () => {
+    const source = readFileSync(
+      path.join(
+        import.meta.dir,
+        "..",
+        "..",
+        "..",
+        "app",
+        "api",
+        "first-run",
+        "agent",
+        "revoke",
+        "route.ts",
+      ),
+      "utf8",
     );
 
-    expect(response.status).toBe(200);
-    expect(await bodyOf(response)).toEqual({ revoked: true });
-
-    const rows = await revocations(scope.organizationId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.revoked_at).not.toBeNull();
+    expect(source).not.toContain("poster");
+    expect(source).not.toContain("agent-revoke-announcement");
   });
 });
