@@ -38,9 +38,7 @@ export const settingsNotificationDigestInputSchema = z.strictObject({
   cadence: digestCadenceSchema,
   day: weekdaySchema,
 });
-export type SettingsNotificationDigestInput = z.infer<
-  typeof settingsNotificationDigestInputSchema
->;
+export type SettingsNotificationDigestInput = z.infer<typeof settingsNotificationDigestInputSchema>;
 
 // `shown` rather than `muted`: the stored row is the exception, so the client sends the
 // state of the control a person is looking at.

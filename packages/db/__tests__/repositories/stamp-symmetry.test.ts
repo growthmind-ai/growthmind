@@ -38,7 +38,11 @@ import {
 
 import { createHash, randomUUID } from "node:crypto";
 
-import { buildFindingDeliveredDedupKey, buildKeysRevokedDedupKey } from "@growthmind/shared";
+import {
+  buildFindingDeliveredDedupKey,
+  buildKeysRevokedDedupKey,
+  NOTIFICATION_WINDOW_DAYS,
+} from "@growthmind/shared";
 
 import { emitNotification } from "../../src/notifications/emit";
 import { createNotificationMutesRepo } from "../../src/repositories/notification-mutes.repo";
@@ -547,10 +551,14 @@ describe("stamp/filter symmetry — the notification tables", () => {
     });
 
     const repo = createNotificationsRepo(db, org.ctx);
-    expect(await repo.countNewerThanOpened()).toBe(1);
+    expect(
+      await repo.countNewerThanOpened({ windowDays: NOTIFICATION_WINDOW_DAYS, hiddenTypes: [] }),
+    ).toBe(1);
 
     await repo.stampOpened();
-    expect(await repo.countNewerThanOpened()).toBe(0);
+    expect(
+      await repo.countNewerThanOpened({ windowDays: NOTIFICATION_WINDOW_DAYS, hiddenTypes: [] }),
+    ).toBe(0);
   });
 
   it("returns a read flag flipped by the reads row markRead stamped", async () => {

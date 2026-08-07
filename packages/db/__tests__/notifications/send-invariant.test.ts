@@ -265,7 +265,9 @@ test("only a record goes into the digest, and the digest is the one record that 
     const klass = NOTIFICATION_CLASS_BY_TYPE[type];
 
     if (arm === "quiet_digest") {
-      expect(`${type} in the digest is class ${klass}`).toBe(`${type} in the digest is class record`);
+      expect(`${type} in the digest is class ${klass}`).toBe(
+        `${type} in the digest is class record`,
+      );
     }
     if (klass !== "record") {
       expect(`${type} (${klass}) takes the ${arm} arm`).not.toBe(

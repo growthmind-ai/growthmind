@@ -135,7 +135,13 @@ export async function readBellSnapshot(
   const s = scoped(db, ctx);
 
   const rows = await repo.listRecentWithReadState(options);
-  const badgeCount = await repo.countNewerThanOpened();
+
+  // The same window and hidden types the list read used: two populations would offer a
+  // badge that opens onto nothing (ADD D-5).
+  const badgeCount = await repo.countNewerThanOpened({
+    windowDays: options.windowDays,
+    hiddenTypes: [],
+  });
   const connection = await createSlackConnectionsRepo(db, ctx).getActiveForOrg();
 
   const actorIds = [

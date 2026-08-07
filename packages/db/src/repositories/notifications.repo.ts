@@ -40,6 +40,11 @@ export interface ListRecentOptions {
   readonly windowDays: number;
 }
 
+export interface BadgeCountOptions {
+  readonly windowDays: number;
+  readonly hiddenTypes: readonly NotificationType[];
+}
+
 export interface NotificationsRepo {
   // The read predicate — a reads row exists OR created_at < read_before — is computed in
   // this method's SQL and nowhere else (ADD D-5); `unread` carries it outward.
@@ -49,7 +54,9 @@ export interface NotificationsRepo {
 
   // The badge is deliberately a different fact: created_at > opened_at, ignoring read
   // state. Capped by subquery LIMIT 10 — display caps at 9+, so counting past ten is waste.
-  countNewerThanOpened(): Promise<number>;
+  // It takes the same window and hidden types the list does, so the two cannot count
+  // different populations and offer a badge that opens onto nothing (ADD D-5).
+  countNewerThanOpened(options: BadgeCountOptions): Promise<number>;
 
   stampOpened(): Promise<void>;
 
@@ -186,7 +193,7 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
       }));
     },
 
-    async countNewerThanOpened(): Promise<number> {
+    async countNewerThanOpened(_options: BadgeCountOptions): Promise<number> {
       const openedAt = await openedAtOf();
 
       // A never-opened viewer counts everything (the teammate-joins case, D1): with no

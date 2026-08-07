@@ -113,7 +113,8 @@ test("a rescued notification ends with a sent receipt and renders the sent chip"
   await driveKeysRevoked(db, org);
 
   const stranded = await notificationOfType(db, org.organizationId, "keys_revoked");
-  expect((await sendFactsFor(db, stranded.id)).map((send) => [send.status, send.quietReason]),
+  expect(
+    (await sendFactsFor(db, stranded.id)).map((send) => [send.status, send.quietReason]),
   ).toEqual([["quiet", "no_channel"]]);
 
   // The producer under test: the repository write itself queues the rescue.
@@ -147,7 +148,8 @@ test("a notification stranded by a broken credential is rescued when the connect
   // rejecting post, and the receipt it leaves is failed/not_authorised, which the settled
   // predicate must treat as unsettled (the arm AC-1 cannot see).
   await runAllDispatchJobs(db, null);
-  expect((await sendFactsFor(db, stranded.id)).map((send) => [send.status, send.failureReason]),
+  expect(
+    (await sendFactsFor(db, stranded.id)).map((send) => [send.status, send.failureReason]),
   ).toEqual([["failed", "not_authorised"]]);
 
   // Recovery is the first successful post after a failure. `recovered` here also pins
@@ -238,6 +240,7 @@ test("a quiet: digest notification is never re-dispatched by the rescue path", a
   await runAllDispatchJobs(db, loud.poster);
 
   expect(loud.posted).toHaveLength(1);
-  expect((await sendFactsFor(db, settled.id)).map((send) => [send.status, send.quietReason]),
+  expect(
+    (await sendFactsFor(db, settled.id)).map((send) => [send.status, send.quietReason]),
   ).toEqual([["quiet", "digest"]]);
 });

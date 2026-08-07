@@ -175,7 +175,12 @@ describe("the badge is a different fact: created_at > opened_at, read state igno
 
     // openedAt is null — the org's whole recent record is "new" by construction (D1) —
     // and the count stops at ten because the display caps at 9+.
-    expect(await repoFor(org.ctx).countNewerThanOpened()).toBe(10);
+    expect(
+      await repoFor(org.ctx).countNewerThanOpened({
+        windowDays: NOTIFICATION_WINDOW_DAYS,
+        hiddenTypes: [],
+      }),
+    ).toBe(10);
   });
 
   test("after a stamp only rows newer than opened_at count, and reading them does not clear the badge", async () => {
@@ -188,17 +193,32 @@ describe("the badge is a different fact: created_at > opened_at, read state igno
     }
 
     await repoFor(org.ctx).stampOpened();
-    expect(await repoFor(org.ctx).countNewerThanOpened()).toBe(0);
+    expect(
+      await repoFor(org.ctx).countNewerThanOpened({
+        windowDays: NOTIFICATION_WINDOW_DAYS,
+        hiddenTypes: [],
+      }),
+    ).toBe(0);
 
     const arrival = await seedNotification(db, {
       organizationId: org.organizationId,
       createdAt: minutesFromNow(5),
     });
-    expect(await repoFor(org.ctx).countNewerThanOpened()).toBe(1);
+    expect(
+      await repoFor(org.ctx).countNewerThanOpened({
+        windowDays: NOTIFICATION_WINDOW_DAYS,
+        hiddenTypes: [],
+      }),
+    ).toBe(1);
 
     // The two-tier model: marking the arrival read moves the dot fact, never the badge fact.
     await repoFor(org.ctx).markRead(arrival.id);
-    expect(await repoFor(org.ctx).countNewerThanOpened()).toBe(1);
+    expect(
+      await repoFor(org.ctx).countNewerThanOpened({
+        windowDays: NOTIFICATION_WINDOW_DAYS,
+        hiddenTypes: [],
+      }),
+    ).toBe(1);
   });
 });
 
@@ -402,22 +422,28 @@ describe("muting a class hides its rows for that viewer only, and changes nothin
     });
 
     const recordedBefore = {
-      rows: (await db
-        .select({ id: notifications.id })
-        .from(notifications)
-        .where(eq(notifications.organizationId, org.organizationId))).length,
-      sends: (await db
-        .select({ id: notificationSends.id })
-        .from(notificationSends)
-        .where(eq(notificationSends.organizationId, org.organizationId))).length,
+      rows: (
+        await db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(eq(notifications.organizationId, org.organizationId))
+      ).length,
+      sends: (
+        await db
+          .select({ id: notificationSends.id })
+          .from(notificationSends)
+          .where(eq(notificationSends.organizationId, org.organizationId))
+      ).length,
     };
 
     await createNotificationMutesRepo(db, org.ctx).mute("work");
     expect(await createNotificationMutesRepo(db, org.ctx).listMutedClasses()).toEqual(["work"]);
     expect(await createNotificationMutesRepo(db, teammateCtx).listMutedClasses()).toEqual([]);
 
-    const listForViewer: MutedListRead = repoFor(org.ctx).listRecentWithReadState;
-    const listForTeammate: MutedListRead = repoFor(teammateCtx).listRecentWithReadState;
+    const listForViewer: MutedListRead = (options) =>
+      repoFor(org.ctx).listRecentWithReadState(options);
+    const listForTeammate: MutedListRead = (options) =>
+      repoFor(teammateCtx).listRecentWithReadState(options);
 
     const mutedRows = await listForViewer({
       limit: NOTIFICATION_LIST_LIMIT,
@@ -431,21 +457,23 @@ describe("muting a class hides its rows for that viewer only, and changes nothin
       windowDays: NOTIFICATION_WINDOW_DAYS,
       hiddenTypes: hiddenTypesOf([]),
     });
-    expect(teammateRows.map((row) => row.id).toSorted()).toEqual(
-      [work.id, actNow.id].toSorted(),
-    );
+    expect(teammateRows.map((row) => row.id).toSorted()).toEqual([work.id, actNow.id].toSorted());
 
     // A mute changes one person's bell and nothing that is recorded (AC-21): the same
     // rows and the same receipts stand after as before.
     const recordedAfter = {
-      rows: (await db
-        .select({ id: notifications.id })
-        .from(notifications)
-        .where(eq(notifications.organizationId, org.organizationId))).length,
-      sends: (await db
-        .select({ id: notificationSends.id })
-        .from(notificationSends)
-        .where(eq(notificationSends.organizationId, org.organizationId))).length,
+      rows: (
+        await db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(eq(notifications.organizationId, org.organizationId))
+      ).length,
+      sends: (
+        await db
+          .select({ id: notificationSends.id })
+          .from(notificationSends)
+          .where(eq(notificationSends.organizationId, org.organizationId))
+      ).length,
     };
     expect(recordedAfter).toEqual(recordedBefore);
   });
@@ -472,8 +500,8 @@ describe("the badge counts the same population the list shows", () => {
       createdAt: new Date(Date.now() - (NOTIFICATION_WINDOW_DAYS + 5) * 24 * 60 * 60 * 1_000),
     });
 
-    const list: MutedListRead = repoFor(org.ctx).listRecentWithReadState;
-    const count: MutedBadgeCount = repoFor(org.ctx).countNewerThanOpened;
+    const list: MutedListRead = (options) => repoFor(org.ctx).listRecentWithReadState(options);
+    const count: MutedBadgeCount = (options) => repoFor(org.ctx).countNewerThanOpened(options);
 
     // The window floor, both reads, no mute: the too-old row appears in neither.
     const unmutedRows = await list({
@@ -540,7 +568,12 @@ describe("the watermarks are written by the database clock", () => {
     // new notification unread and badge-counted, on shared DB time.
     await repoFor(org.ctx).stampOpened();
     const fresh = await seedNotification(db, { organizationId: org.organizationId });
-    expect(await repoFor(org.ctx).countNewerThanOpened()).toBeGreaterThanOrEqual(1);
+    expect(
+      await repoFor(org.ctx).countNewerThanOpened({
+        windowDays: NOTIFICATION_WINDOW_DAYS,
+        hiddenTypes: [],
+      }),
+    ).toBeGreaterThanOrEqual(1);
     expect(await unreadFlagOf(org.ctx, fresh.id)).toBe(true);
   });
 });
@@ -579,7 +612,7 @@ describe("records everything survives both display caps", () => {
       });
     }
 
-    const list: MutedListRead = repoFor(org.ctx).listRecentWithReadState;
+    const list: MutedListRead = (options) => repoFor(org.ctx).listRecentWithReadState(options);
     const snapshot = await list({
       limit: NOTIFICATION_LIST_LIMIT,
       windowDays: NOTIFICATION_WINDOW_DAYS,

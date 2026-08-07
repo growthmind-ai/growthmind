@@ -160,6 +160,14 @@ async function readCredentialColumn(
   return readRawScalar(db, query);
 }
 
+function failingAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
+  return { health: "failing", reasonCode: "call_failed", reasonMessage: null, checkedAt };
+}
+
+function healthyAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
+  return { health: "healthy", reasonCode: null, reasonMessage: null, checkedAt };
+}
+
 describe("slack_connections — the org's credential, and the teammate who set nothing up", () => {
   let db: TestDb;
   let close: () => Promise<void>;
@@ -839,14 +847,6 @@ describe("recordHealth — the transition gate, the cooldown backstop, and the d
           eq(notifications.type, "slack_disconnected"),
         ),
       );
-  }
-
-  function failingAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
-    return { health: "failing", reasonCode: "call_failed", reasonMessage: null, checkedAt };
-  }
-
-  function healthyAt(checkedAt: Date): Parameters<RecordSlackHealth>[0] {
-    return { health: "healthy", reasonCode: null, reasonMessage: null, checkedAt };
   }
 
   // Moves the emit cooldown's own evidence back in time, since nothing else may mock the

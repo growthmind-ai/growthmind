@@ -93,8 +93,13 @@ async function runOnce(
   status: Extract<AnalysisRunStatus, "completed" | "failed">,
   minute: number,
 ): Promise<void> {
-  const { run } = await lane.repo.open({ projectId: lane.projectId, tickAt: minutesAfterBase(minute) });
-  await lane.repo.close(closeInputFor(run.id, lane.projectId, status, minutesAfterBase(minute + 4)));
+  const { run } = await lane.repo.open({
+    projectId: lane.projectId,
+    tickAt: minutesAfterBase(minute),
+  });
+  await lane.repo.close(
+    closeInputFor(run.id, lane.projectId, status, minutesAfterBase(minute + 4)),
+  );
 }
 
 async function analysisFailingRows(organizationId: string) {
@@ -148,9 +153,7 @@ test("analysis_failing fires from reclaimAbandonedRun, not only from close()", a
   // reclaims it past the lease. A detector wired only to close() is blind here.
   await lane.repo.open({ projectId: lane.projectId, tickAt: minutesAfterBase(20) });
 
-  const pastLease = new Date(
-    minutesAfterBase(20).getTime() + ANALYSIS_RUN_LEASE_MS + 60_000,
-  );
+  const pastLease = new Date(minutesAfterBase(20).getTime() + ANALYSIS_RUN_LEASE_MS + 60_000);
   const reopened = await lane.repo.open({ projectId: lane.projectId, tickAt: pastLease });
   expect(reopened.opened).toBe(true);
 

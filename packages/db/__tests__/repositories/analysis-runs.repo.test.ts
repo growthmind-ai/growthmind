@@ -715,7 +715,8 @@ describe("recentTerminalStatuses reads the last N terminal runs for this org's p
         ? {}
         : {
             outcome: "no_candidates_passed_gate" as const,
-            stopReason: status === "failed" ? ("fatal_error" as const) : ("ran_to_completion" as const),
+            stopReason:
+              status === "failed" ? ("fatal_error" as const) : ("ran_to_completion" as const),
             finishedAt: new Date(startedAt.getTime() + 60_000),
           }),
     });
