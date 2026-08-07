@@ -132,7 +132,11 @@ describe("mergeResearch across a re-read of the site", () => {
 
   test("should cap merged facts per kind with person-stated facts leading", async () => {
     const mergeResearch = await loadMergeResearch();
-    const kept = [statedFact("Stated one."), statedFact("Stated two."), statedFact("Stated three.")];
+    const kept = [
+      statedFact("Stated one."),
+      statedFact("Stated two."),
+      statedFact("Stated three."),
+    ];
     const incoming = [
       siteFact("Incoming one."),
       siteFact("Incoming two."),

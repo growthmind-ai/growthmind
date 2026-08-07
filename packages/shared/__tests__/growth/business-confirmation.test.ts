@@ -15,9 +15,7 @@ async function loadConfirmInputSchema(): Promise<SafeParseable> {
   const schema = loaded["settingsBusinessConfirmInputSchema"] as SafeParseable | undefined;
 
   if (schema === undefined || typeof schema.safeParse !== "function") {
-    throw new Error(
-      "src/growth/business.ts must export settingsBusinessConfirmInputSchema (AD-3)",
-    );
+    throw new Error("src/growth/business.ts must export settingsBusinessConfirmInputSchema (AD-3)");
   }
 
   return schema;
@@ -59,9 +57,7 @@ describe("confirmation on a business fact", () => {
       persistedFact("regime", { confirmation: { at: AT.toISOString(), by: null } }),
     );
 
-    expect((field(anonymous, "confirmation") as Record<string, unknown> | null)?.["by"]).toBe(
-      null,
-    );
+    expect((field(anonymous, "confirmation") as Record<string, unknown> | null)?.["by"]).toBe(null);
   });
 
   test("should reject a confirm input missing kind or statement", async () => {

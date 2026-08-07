@@ -334,11 +334,7 @@ export {
 
 export { mergeResearch } from "./growth/research-merge";
 
-export {
-  confirmInFacts,
-  type ConfirmOutcome,
-  type ConfirmResult,
-} from "./growth/confirm-fact";
+export { confirmInFacts, type ConfirmOutcome, type ConfirmResult } from "./growth/confirm-fact";
 
 export {
   FACT_REFUSALS,
