@@ -5,7 +5,9 @@ import { analysisWindowSchema, claimSubjectSchema, detectorCoverageSchema } from
 import { isReachableClass } from "../evidence/gate";
 import { evidenceSignalSchema } from "../evidence/signals";
 import { downgradeTraceSchema } from "../evidence/trace";
+import type { DowngradeTrace } from "../evidence/trace";
 import { detectorNameSchema, findingClassSchema } from "../rules/types";
+import type { FindingClass } from "../rules/types";
 
 export { proposedClaimSchema } from "../evidence/gate";
 export type { ProposedClaim } from "../evidence/gate";
@@ -50,6 +52,21 @@ export const candidateFindingSchema = z
     message:
       "a candidate's final class must be reachable from its claimed class by the downgrade path",
     path: ["finalClass"],
+  })
+  // Reachability alone lets `finalClass: claim.claimedClass` past — one token's difference from
+  // `outcome.finalClass` at a call site — while the trace says the class was never proved. The
+  // trace is the record of what the gate concluded, so the last entry has to be that conclusion.
+  .refine((candidate) => lastTraceEntryConcludes(candidate.trace, candidate.finalClass), {
+    message:
+      "a candidate's trace must end on its final class, satisfied: the trace is the record of " +
+      "what the gate concluded, and a candidate whose trace ends unsatisfied was not proved",
+    path: ["trace"],
   });
+
+function lastTraceEntryConcludes(trace: DowngradeTrace, finalClass: FindingClass): boolean {
+  const concluding = trace.at(-1);
+
+  return concluding !== undefined && concluding.class === finalClass && concluding.satisfied;
+}
 
 export type CandidateFinding = z.infer<typeof candidateFindingSchema>;

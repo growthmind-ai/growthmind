@@ -86,7 +86,7 @@ export const SAC_CONTRACT: Record<EnforcedSacId, EnforcedSacRow> = {
         file: FLOOR_TESTS,
       },
       {
-        test: "renderFloorSummary reads finalClass and never recomputes a class from the trace",
+        test: "renderFloorSummary refuses a candidate whose trace disagrees with its final class",
         file: FLOOR_TESTS,
       },
       {

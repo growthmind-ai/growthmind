@@ -227,9 +227,11 @@ function candidateFindingFrom(input: {
     detector: source.detector,
     claimedClass: source.claimedClass,
     finalClass: input.finalClass ?? source.claimedClass,
+    // The trace ends on the class the gate concluded, because that is the only trace a real
+    // candidate carries — the schema refuses any other since B-020.
     trace: input.trace ?? [
       traceEntry({
-        class: source.claimedClass,
+        class: input.finalClass ?? source.claimedClass,
         predicate: "t1fl-fixture-predicate",
         predicateVersion: 1,
         satisfied: true,
@@ -343,13 +345,19 @@ describe("renderFloorSummary", () => {
     expect(renderedText(summary)).not.toContain(brokenTail);
   });
 
-  test("renderFloorSummary reads finalClass and never recomputes a class from the trace", () => {
+  test("renderFloorSummary refuses a candidate whose trace disagrees with its final class", () => {
     const ruleSet = ruleSetV1();
 
-    const candidate = candidateFindingFrom({
-      source: errorDetectorCandidate(ruleSet),
-      ruleSet,
-      finalClass: "confusing",
+    // The renderer re-parses what it is handed, so B-020's refinement reaches this path too: a
+    // candidate claiming `confusing` over a trace that concluded `broken` is refused rather
+    // than rendered. A sentence naming a class nothing proved is the one output worth failing
+    // closed over, because it reaches a founder as a fact.
+    const candidate: CandidateFinding = {
+      ...candidateFindingFrom({
+        source: errorDetectorCandidate(ruleSet),
+        ruleSet,
+        finalClass: "confusing",
+      }),
       trace: [
         traceEntry({
           class: "confusing",
@@ -364,13 +372,10 @@ describe("renderFloorSummary", () => {
           satisfied: true,
         }),
       ],
-    });
+    };
 
-    const summary = render(candidate);
-
-    expect(summary.headline).toBe(
-      FLOOR_OBSERVATION_TEMPLATES.confusing.replace("{surface}", candidate.surface),
-    );
+    expect(candidateFindingSchema.safeParse(candidate).success).toBe(false);
+    expect(() => render(candidate)).toThrow(/trace/i);
   });
 
   test("renderFloorSummary renders the confidence basis as words and never as a number", () => {
