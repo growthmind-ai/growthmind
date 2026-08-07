@@ -1,6 +1,6 @@
 import type { DetectorCandidate, DetectorResult } from "../detect/types";
 import { evaluate } from "../evidence/gate";
-import { confidenceBasisForPass } from "../evidence/predicates";
+import { admissibleProofKinds, confidenceBasisForPass } from "../evidence/predicates";
 import type { DowngradeTrace } from "../evidence/trace";
 import type { ThresholdRuleSet } from "../rules/types";
 import { candidateFindingSchema } from "./candidate";
@@ -69,6 +69,7 @@ export function assembleCandidates(
               surface: candidate.surface,
               surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
               signals: candidate.signals,
+              proofKinds: admissibleProofKinds(candidate.signals, outcome.finalClass, ruleSet),
               symptomClass: outcome.finalClass,
             },
             EVIDENCE_SHAPE_VERSION,

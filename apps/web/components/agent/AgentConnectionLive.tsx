@@ -7,7 +7,13 @@ import type { AgentConnection } from "@growthmind/shared";
 import { readAgentConnection } from "@/components/first-run/api";
 import { LiveAgentConnection } from "@/components/first-run/live-agent";
 import { useLiveTopics } from "@/components/live/LiveRefresh";
-import { agentStillWatched } from "@/lib/first-run/poll-cadence";
+import {
+  agentAnswerAt,
+  initialAgentAnswer,
+  shownConnection,
+  withPolledAnswer,
+} from "@/lib/first-run/agent-answer";
+import { agentStillWatched } from "@/lib/first-run/agent-watch";
 
 interface AgentConnectionLiveProps {
   readonly initial: AgentConnection;
@@ -18,16 +24,15 @@ interface AgentConnectionLiveProps {
 // `waiting` until they think to reload — the stuck-state class this panel was built to
 // avoid. The assistant's first call stamps the key, which publishes; nothing asks.
 export function AgentConnectionLive({ initial, children }: AgentConnectionLiveProps) {
-  // The answer carries the server value it was asked against. A server render is newer than
-  // anything polled before it — minting and revoking both refresh — so when that value moves
-  // the stale answer stops matching and is ignored, derived here rather than reset in an
-  // effect (`react-hooks/set-state-in-effect`).
-  const [answer, setAnswer] = useState<{
-    readonly against: AgentConnection["kind"];
-    readonly value: AgentConnection;
-  } | null>(null);
+  // The answer is dropped when the server value moves, derived here rather than reset in an
+  // effect (`react-hooks/set-state-in-effect`). Comparing against a captured value instead
+  // is what let a stale `connected` render against a freshly minted key (B-048).
+  const [state, setState] = useState(() => initialAgentAnswer(initial));
 
-  const connection = answer !== null && answer.against === initial.kind ? answer.value : initial;
+  const atThisRender = agentAnswerAt(state, initial);
+  if (atThisRender !== state) setState(atThisRender);
+
+  const connection = shownConnection(atThisRender, initial);
   const watching = agentStillWatched({ connection, heldKey: null });
 
   const live = useRef(true);
@@ -40,7 +45,9 @@ export function AgentConnectionLive({ initial, children }: AgentConnectionLivePr
 
   useLiveTopics(watching ? ["agent_connection"] : [], () => {
     void readAgentConnection().then((next) => {
-      if (live.current && next !== null) setAnswer({ against: initial.kind, value: next });
+      if (live.current && next !== null) {
+        setState((current) => withPolledAnswer(current, next));
+      }
     });
   });
 

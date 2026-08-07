@@ -2,6 +2,7 @@ import { URL_PATH_NORMALISATION_VERSION, normaliseUrlPath } from "@growthmind/sh
 import { describe, expect, test } from "bun:test";
 
 import { measuredCount } from "../../src/counts/measured-count";
+import { admissibleProofKinds } from "../../src/evidence/predicates";
 import type { EvidenceSignal } from "../../src/evidence/signals";
 import {
   EVIDENCE_SHAPE_SERIALISERS,
@@ -9,6 +10,7 @@ import {
   evidenceShape,
 } from "../../src/findings/evidence-shape";
 import type { EvidenceShapeInput } from "../../src/findings/evidence-shape";
+import { CURRENT_THRESHOLD_RULE_SET } from "../../src/rules/thresholds";
 
 const FIRST_EXCEPTION_AT = new Date("2026-06-01T10:00:00.000Z");
 
@@ -66,6 +68,17 @@ function struggleSignal(input: {
 
 type InputWithIgnoredFields = EvidenceShapeInput & { readonly [ignored: string]: unknown };
 
+// Derives `proofKinds` the way `assembleCandidates` does. A fixture that hand-listed them could
+// stay green while the real call site forked, which is the whole failure B-015 names.
+function shapeInput<T extends Omit<EvidenceShapeInput, "proofKinds">>(
+  input: T,
+): T & EvidenceShapeInput {
+  return {
+    ...input,
+    proofKinds: admissibleProofKinds(input.signals, input.symptomClass, CURRENT_THRESHOLD_RULE_SET),
+  };
+}
+
 const GOLDEN_V1 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +
   '"surface":"/checkout","surfaceNormalisationVersion":3,"symptomClass":"broken","v":1}';
@@ -74,8 +87,13 @@ const GOLDEN_V2 =
   '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","struggle"],' +
   '"surface":"/checkout","symptomClass":"broken","v":2}';
 
+// `struggle` is absent: it is in the window, and it is not admissible proof of `broken`.
+const GOLDEN_V3 =
+  '{"detector":"funnel_dropoff","proofKinds":["failure_correlated"],' +
+  '"surface":"/checkout","symptomClass":"broken","v":3}';
+
 function withSurface(surface: string): EvidenceShapeInput {
-  return {
+  return shapeInput({
     detector: "funnel_dropoff",
     surface,
     surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -89,12 +107,12 @@ function withSurface(surface: string): EvidenceShapeInput {
       }),
     ],
     symptomClass: "confusing",
-  };
+  });
 }
 
 describe("evidenceShape — identity across a churn event", () => {
   test("should serialise identically across a churn event: re-ordered payload, differently-cased path, added-then-ignored field, re-ordered signals", () => {
-    const asFirstWritten: EvidenceShapeInput = {
+    const asFirstWritten: EvidenceShapeInput = shapeInput({
       detector: "funnel_dropoff",
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -109,9 +127,9 @@ describe("evidenceShape — identity across a churn event", () => {
         }),
       ],
       symptomClass: "broken",
-    };
+    });
 
-    const afterTheChurn: InputWithIgnoredFields = {
+    const afterTheChurn: InputWithIgnoredFields = shapeInput({
       symptomClass: "broken",
       signals: [
         struggleSignal({
@@ -135,7 +153,7 @@ describe("evidenceShape — identity across a churn event", () => {
       detector: "funnel_dropoff",
 
       addedByALaterWaveAndNotReadByV1: "must not change the identity",
-    };
+    });
 
     expect(normalisedSurface("/Checkout/")).toBe(normalisedSurface("/checkout"));
 
@@ -153,7 +171,7 @@ describe("evidenceShape — identity across a churn event", () => {
 
 describe("evidenceShape — magnitudes and instants are excluded", () => {
   test("should exclude every magnitude and every instant from the serialisation", () => {
-    const leanWeek: EvidenceShapeInput = {
+    const leanWeek: EvidenceShapeInput = shapeInput({
       detector: "funnel_dropoff",
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -168,9 +186,9 @@ describe("evidenceShape — magnitudes and instants are excluded", () => {
         }),
       ],
       symptomClass: "broken",
-    };
+    });
 
-    const heavyWeek: InputWithIgnoredFields = {
+    const heavyWeek: InputWithIgnoredFields = shapeInput({
       detector: "funnel_dropoff",
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -188,7 +206,7 @@ describe("evidenceShape — magnitudes and instants are excluded", () => {
 
       counts: [{ numerator: 41, denominator: 96, unit: "sessions" }],
       timeframe: { start: FIRST_EXCEPTION_AT, end: LATER_EXCEPTION_AT },
-    };
+    });
 
     const lean = evidenceShape(leanWeek, 1);
     const heavy = evidenceShape(heavyWeek, 1);
@@ -209,7 +227,7 @@ describe("evidenceShape — magnitudes and instants are excluded", () => {
 
 describe("evidenceShape — versioning forks deliberately", () => {
   test("should fork deliberately on a version bump while EVIDENCE_SHAPE_SERIALISERS.get(1) still reproduces the v1 string", () => {
-    const candidate: EvidenceShapeInput = {
+    const candidate: EvidenceShapeInput = shapeInput({
       detector: "funnel_dropoff",
       surface: normalisedSurface("/checkout"),
       surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -224,22 +242,25 @@ describe("evidenceShape — versioning forks deliberately", () => {
         }),
       ],
       symptomClass: "broken",
-    };
+    });
 
-    expect(EVIDENCE_SHAPE_VERSION).toBe(2);
+    expect(EVIDENCE_SHAPE_VERSION).toBe(3);
     expect(evidenceShape(candidate, 1)).toContain('"v":1');
     expect(evidenceShape(candidate, 2)).toContain('"v":2');
+    expect(evidenceShape(candidate, 3)).toContain('"v":3');
 
     const current = EVIDENCE_SHAPE_SERIALISERS.get(EVIDENCE_SHAPE_VERSION);
     expect(current).toBeDefined();
-    expect(current?.(candidate)).toBe(GOLDEN_V2);
+    expect(current?.(candidate)).toBe(GOLDEN_V3);
     expect(current?.(candidate)).toBe(evidenceShape(candidate, EVIDENCE_SHAPE_VERSION));
 
-    // The retired serialiser stays reachable by its own number, and only by its own number.
+    // Every retired serialiser stays reachable by its own number, and only by its own number.
     expect(EVIDENCE_SHAPE_SERIALISERS.get(1)?.(candidate)).toBe(GOLDEN_V1);
+    expect(EVIDENCE_SHAPE_SERIALISERS.get(2)?.(candidate)).toBe(GOLDEN_V2);
     expect(evidenceShape(candidate, 1)).not.toBe(evidenceShape(candidate, 2));
+    expect(evidenceShape(candidate, 2)).not.toBe(evidenceShape(candidate, 3));
 
-    expect(() => evidenceShape(candidate, 3)).toThrow(/version/i);
+    expect(() => evidenceShape(candidate, 4)).toThrow(/version/i);
   });
 });
 
@@ -289,22 +310,23 @@ describe("evidenceShape — un-normalised paths are refused (security, PII)", ()
 });
 
 describe("evidenceShape — surfaceNormalisationVersion is provenance, not identity (B-016)", () => {
-  const atVersion = (surfaceNormalisationVersion: number | null): EvidenceShapeInput => ({
-    detector: "funnel_dropoff",
-    surface: normalisedSurface("/checkout"),
-    surfaceNormalisationVersion,
-    signals: [
-      correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
-      struggleSignal({
-        subkind: "repeated_attempt",
-        surface: "/checkout",
-        attempts: 3,
-        strugglingSessions: 3,
-        kept: 10,
-      }),
-    ],
-    symptomClass: "broken",
-  });
+  const atVersion = (surfaceNormalisationVersion: number | null): EvidenceShapeInput =>
+    shapeInput({
+      detector: "funnel_dropoff",
+      surface: normalisedSurface("/checkout"),
+      surfaceNormalisationVersion,
+      signals: [
+        correlatedFailure({ occurredAt: FIRST_EXCEPTION_AT }),
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
+      ],
+      symptomClass: "broken",
+    });
 
   test("should hold one identity across the whole 2 → null → 3 rollout walk", () => {
     // The walk a real surface takes across a URL_PATH_NORMALISATION_VERSION bump: unanimous on
@@ -370,9 +392,9 @@ const SUBKINDS_NAMED_BY_THE_CONTRACT: readonly string[] = [
   "scroll_back",
 ];
 
-const GOLDEN_STRUGGLE_ONLY_V2 =
-  '{"detector":"funnel_dropoff","signalKinds":["struggle"],' +
-  '"surface":"/checkout","symptomClass":"confusing","v":2}';
+const GOLDEN_STRUGGLE_ONLY_V3 =
+  '{"detector":"funnel_dropoff","proofKinds":["struggle"],' +
+  '"surface":"/checkout","symptomClass":"confusing","v":3}';
 
 describe("evidenceShape — the struggle subkind is invisible to the identity (D-4, D-7)", () => {
   test("should produce the same evidence shape for a struggle signal regardless of its subkind", async () => {
@@ -385,7 +407,7 @@ describe("evidenceShape — the struggle subkind is invisible to the identity (D
 
     const shapes = declared.map((subkind) =>
       evidenceShape(
-        {
+        shapeInput({
           detector: "funnel_dropoff",
           surface: normalisedSurface("/checkout"),
           surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
@@ -399,22 +421,86 @@ describe("evidenceShape — the struggle subkind is invisible to the identity (D
             }),
           ],
           symptomClass: "confusing",
-        },
+        }),
         EVIDENCE_SHAPE_VERSION,
       ),
     );
 
     for (const [index, shape] of shapes.entries()) {
-      expect(shape).toBe(GOLDEN_STRUGGLE_ONLY_V2);
+      expect(shape).toBe(GOLDEN_STRUGGLE_ONLY_V3);
       expect(shape).toBe(shapes[0]);
       expect(shape).not.toContain(declared[index]);
     }
   });
 });
 
+describe("evidenceShape — only admissible proof is identity (B-015)", () => {
+  const brokenWith = (signals: readonly EvidenceSignal[]): EvidenceShapeInput =>
+    shapeInput({
+      detector: "funnel_dropoff",
+      surface: normalisedSurface("/checkout"),
+      surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
+      signals,
+      symptomClass: "broken",
+    });
+
+  const UNCORRELATED_STRAGGLER: EvidenceSignal = {
+    kind: "failure_uncorrelated",
+    eventName: "$exception",
+    occurredAt: LATER_EXCEPTION_AT,
+  };
+
+  test("should hold one identity when a straggler exception lands outside the correlation window", () => {
+    // The reported repro: week 1 the bug correlates; week 2 the same bug plus one exception at
+    // 31s instead of 29s. Under v2 that second week minted a new identity, so the finding was
+    // re-delivered as new and a standing dismissal stopped matching it.
+    const weekOne = brokenWith([correlatedFailure()]);
+    const weekTwo = brokenWith([correlatedFailure(), UNCORRELATED_STRAGGLER]);
+
+    expect(evidenceShape(weekTwo, 3)).toBe(evidenceShape(weekOne, 3));
+    expect(evidenceShape(weekTwo, 3)).not.toContain("failure_uncorrelated");
+
+    // v2 is what forked, and it must keep forking — a row written under it recomputes to the
+    // string it was written as, or every guarantee hanging off that row detaches silently.
+    expect(evidenceShape(weekTwo, 2)).not.toBe(evidenceShape(weekOne, 2));
+  });
+
+  test("should keep a kind that IS admissible proof for the class in the identity", () => {
+    // The narrower reading — "drop everything but one kind" — would make two genuinely
+    // different problems collide. `struggle` proves `confusing`, so it stays there.
+    const confusing = shapeInput({
+      detector: "funnel_dropoff",
+      surface: normalisedSurface("/checkout"),
+      surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
+      signals: [
+        struggleSignal({
+          subkind: "repeated_attempt",
+          surface: "/checkout",
+          attempts: 3,
+          strugglingSessions: 3,
+          kept: 10,
+        }),
+      ],
+      symptomClass: "confusing",
+    });
+
+    expect(evidenceShape(confusing, 3)).toContain('"proofKinds":["struggle"]');
+    expect(evidenceShape(confusing, 3)).not.toBe(
+      evidenceShape(brokenWith([correlatedFailure()]), 3),
+    );
+  });
+
+  test("should not fork on the order the detector happened to emit its signals in", () => {
+    const emittedOneWay = brokenWith([correlatedFailure(), UNCORRELATED_STRAGGLER]);
+    const emittedTheOther = brokenWith([UNCORRELATED_STRAGGLER, correlatedFailure()]);
+
+    expect(evidenceShape(emittedTheOther, 3)).toBe(evidenceShape(emittedOneWay, 3));
+  });
+});
+
 describe("evidenceShape — the version is pinned across this sprint (D-4)", () => {
-  test("should keep EVIDENCE_SHAPE_VERSION at 2", () => {
-    expect(EVIDENCE_SHAPE_VERSION).toBe(2);
-    expect(EVIDENCE_SHAPE_SERIALISERS.size).toBe(2);
+  test("should keep EVIDENCE_SHAPE_VERSION at 3", () => {
+    expect(EVIDENCE_SHAPE_VERSION).toBe(3);
+    expect(EVIDENCE_SHAPE_SERIALISERS.size).toBe(3);
   });
 });

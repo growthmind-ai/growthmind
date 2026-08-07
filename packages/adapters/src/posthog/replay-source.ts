@@ -124,12 +124,17 @@ export function createPostHogReplaySource(
 
         const page = parseRecordingsPage(response.value);
         droppedMalformed += page.droppedMalformed;
+        // Strictly before, not at-or-before: two recordings can share one `started_at`, and if
+        // the per-lane budget cuts between them the watermark advances to that shared instant
+        // with one of them still unread. Dropping `<=` stranded it on every later tick (B-053).
+        // Re-listing the instant itself is cheap and safe — the narration tick skips ids it
+        // already holds, so a recording that has been read costs one filtered row.
         for (const recording of page.recordings) {
-          const isAtOrBeforeWatermark =
+          const isBeforeWatermark =
             sinceAt !== null &&
             recording.startedAt !== null &&
-            recording.startedAt.getTime() <= sinceAt.getTime();
-          if (!isAtOrBeforeWatermark) {
+            recording.startedAt.getTime() < sinceAt.getTime();
+          if (!isBeforeWatermark) {
             recordings.push(recording);
           }
         }
@@ -142,13 +147,16 @@ export function createPostHogReplaySource(
         if (sinceAt !== null) {
           const firstOnPage = page.recordings[0];
           const lastOnPage = page.recordings[page.recordings.length - 1];
+          // The last item must be strictly older than the watermark to count as crossing it:
+          // a page ending exactly ON the watermark can still be followed by a twin sharing
+          // that instant, and stopping there is how the twin went unread.
           const crossesWatermark =
             firstOnPage !== undefined &&
             firstOnPage.startedAt !== null &&
             firstOnPage.startedAt.getTime() > sinceAt.getTime() &&
             lastOnPage !== undefined &&
             lastOnPage.startedAt !== null &&
-            lastOnPage.startedAt.getTime() <= sinceAt.getTime();
+            lastOnPage.startedAt.getTime() < sinceAt.getTime();
           if (crossesWatermark) {
             return {
               ok: true,

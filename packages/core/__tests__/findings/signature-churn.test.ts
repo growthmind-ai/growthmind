@@ -2,11 +2,13 @@ import { normaliseUrlPath, URL_PATH_NORMALISATION_VERSION } from "@growthmind/sh
 import { describe, expect, test } from "bun:test";
 
 import { measuredCount } from "../../src/counts/measured-count";
+import { admissibleProofKinds } from "../../src/evidence/predicates";
 import type { EvidenceSignal } from "../../src/evidence/signals";
 import { EVIDENCE_SHAPE_VERSION, evidenceShape } from "../../src/findings/evidence-shape";
 import type { EvidenceShapeInput } from "../../src/findings/evidence-shape";
 import { SIGNATURE_TUPLE_VERSION, signatureTuple } from "../../src/findings/signature-tuple";
 import type { SignatureTupleInput } from "../../src/findings/signature-tuple";
+import { CURRENT_THRESHOLD_RULE_SET } from "../../src/rules/thresholds";
 import { canonicalJson } from "../../src/serialise/canonical-json";
 import type { CanonicalObject } from "../../src/serialise/canonical-json";
 
@@ -43,24 +45,52 @@ function failureUncorrelatedSignal(): EvidenceSignal {
   return { kind: "failure_uncorrelated", eventName: "$exception", occurredAt: FIXED_AT };
 }
 
+// The baseline is `broken`, and nothing else in the set can prove that class. Without this the
+// fixture describes a candidate the gate could never have passed, and under v3 it would pin an
+// identity carrying no proof at all.
+function failureCorrelatedSignal(): EvidenceSignal {
+  return {
+    kind: "failure_correlated",
+    eventName: "$exception",
+    occurredAt: FIXED_AT,
+    precedingActionName: "save_clicked",
+    correlationWindowMs: 30_000,
+    correlatedSessions: measuredCount({
+      numerator: 3,
+      denominator: 10,
+      unit: "sessions",
+      timeframe: { start: FIXED_AT, end: FIXED_WINDOW_END },
+      basis: { totalInWindow: 10, kept: 10, setAside: [], keptUnchecked: 0 },
+    }),
+  };
+}
+
 function shapeInputWithSurface(surface: string): EvidenceShapeInput {
+  const signals = [
+    struggleSignal(surface),
+    failureUncorrelatedSignal(),
+    struggleSignal(surface),
+    failureCorrelatedSignal(),
+  ];
+
   return {
     detector: "funnel_dropoff",
     surface,
     surfaceNormalisationVersion: URL_PATH_NORMALISATION_VERSION,
-    signals: [struggleSignal(surface), failureUncorrelatedSignal(), struggleSignal(surface)],
+    signals,
+    proofKinds: admissibleProofKinds(signals, "broken", CURRENT_THRESHOLD_RULE_SET),
     symptomClass: "broken",
   };
 }
 
-type TestLocalEvidenceShapeV3Input = EvidenceShapeInput & { readonly extraSignalCount: number };
+type TestLocalEvidenceShapeV4Input = EvidenceShapeInput & { readonly extraSignalCount: number };
 
-// A hypothetical NEXT version. It was written as `v2` when v2 did not exist; v2 is now the real
-// current serialiser (B-016), so the shim moves up one to keep testing what it was for — that a
-// shape-version bump forks identity and ancestry maps it.
-function testLocalSerialiseEvidenceShapeV3(input: TestLocalEvidenceShapeV3Input): string {
+// A hypothetical NEXT version. It has moved up twice, as each number it named became real — v2
+// with B-016, v3 with B-015 — because what it tests is that a shape-version bump forks identity
+// and ancestry maps it, not any particular number.
+function testLocalSerialiseEvidenceShapeV4(input: TestLocalEvidenceShapeV4Input): string {
   const shape: CanonicalObject = {
-    v: 3,
+    v: 4,
     detector: input.detector,
     surface: input.surface,
     surfaceNormalisationVersion: input.surfaceNormalisationVersion,
@@ -100,9 +130,9 @@ type TestLocalSubkindVisibleSerialiser = (
   observedSubkinds: ReadonlySet<string>,
 ) => string;
 
-// The other hypothetical v3 D-4 names: one that makes the struggle subkind visible. A signal set
+// The other hypothetical next version D-4 names: one that makes the struggle subkind visible. A signal set
 // carrying no observed subkind projects no key at all, so its payload moves only in `v`.
-function testLocalSerialiseEvidenceShapeV3SubkindVisible(
+function testLocalSerialiseEvidenceShapeV4SubkindVisible(
   input: EvidenceShapeInput,
   observedSubkinds: ReadonlySet<string>,
 ): string {
@@ -111,10 +141,10 @@ function testLocalSerialiseEvidenceShapeV3SubkindVisible(
   );
 
   const shape: CanonicalObject = {
-    v: 3,
+    v: 4,
     detector: input.detector,
     surface: input.surface,
-    signalKinds: input.signals.map((signal) => signal.kind),
+    proofKinds: [...input.proofKinds],
     symptomClass: input.symptomClass,
   };
 
@@ -124,7 +154,7 @@ function testLocalSerialiseEvidenceShapeV3SubkindVisible(
 const TEST_LOCAL_SUBKIND_VISIBLE_SERIALISERS: ReadonlyMap<
   number,
   TestLocalSubkindVisibleSerialiser
-> = new Map([[3, testLocalSerialiseEvidenceShapeV3SubkindVisible]]);
+> = new Map([[4, testLocalSerialiseEvidenceShapeV4SubkindVisible]]);
 
 function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
   return canonicalJson({
@@ -137,12 +167,16 @@ function testLocalSignatureTupleV2(input: SignatureTupleInput): string {
 }
 
 const GOLDEN_EVIDENCE_SHAPE_V1 =
-  '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
+  '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","failure_uncorrelated","struggle"],' +
   '"surface":"/checkout","surfaceNormalisationVersion":3,"symptomClass":"broken","v":1}';
 
 const GOLDEN_EVIDENCE_SHAPE_V2 =
-  '{"detector":"funnel_dropoff","signalKinds":["failure_uncorrelated","struggle"],' +
+  '{"detector":"funnel_dropoff","signalKinds":["failure_correlated","failure_uncorrelated","struggle"],' +
   '"surface":"/checkout","symptomClass":"broken","v":2}';
+
+const GOLDEN_EVIDENCE_SHAPE_V3 =
+  '{"detector":"funnel_dropoff","proofKinds":["failure_correlated"],' +
+  '"surface":"/checkout","symptomClass":"broken","v":3}';
 
 const BASELINE_SURFACE = mustNormalise("/Checkout");
 const BASELINE_EVIDENCE_SHAPE = evidenceShape(
@@ -159,10 +193,10 @@ const BASELINE_TUPLE_INPUT: SignatureTupleInput = {
 };
 
 const GOLDEN_V1_TUPLE_BASELINE =
-  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":3,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
+  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_correlated\\",\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"surfaceNormalisationVersion\\":3,\\"symptomClass\\":\\"broken\\",\\"v\\":1}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
 
 const GOLDEN_TUPLE_BASELINE =
-  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"signalKinds\\":[\\"failure_uncorrelated\\",\\"struggle\\"],\\"surface\\":\\"/checkout\\",\\"symptomClass\\":\\"broken\\",\\"v\\":2}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
+  '{"evidenceShape":"{\\"detector\\":\\"funnel_dropoff\\",\\"proofKinds\\":[\\"failure_correlated\\"],\\"surface\\":\\"/checkout\\",\\"symptomClass\\":\\"broken\\",\\"v\\":3}","projectId":"11111111-1111-4111-8111-111111111111","surfaceId":"/checkout","symptomClass":"broken","v":1}';
 
 function legacyRepeatedAttemptInput(): EvidenceShapeInput {
   return shapeInputWithSurface(BASELINE_SURFACE);
@@ -175,10 +209,14 @@ function struggleSubkindsOf(input: EvidenceShapeInput): readonly string[] {
 describe("signature-churn — baseline golden fixtures (W0-5 pin + the one committed tuple literal)", () => {
   test("pins the evidence_shape bytes for the baseline fixture", () => {
     expect(URL_PATH_NORMALISATION_VERSION).toBe(3);
-    expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V2);
+    expect(BASELINE_EVIDENCE_SHAPE).toBe(GOLDEN_EVIDENCE_SHAPE_V3);
 
-    // The retired serialiser keeps reproducing its own bytes, so a stored v1 row stays attached.
+    // Every retired serialiser keeps reproducing its own bytes, so a row stored under one stays
+    // attached to its ledger history rather than re-entering as a new problem.
     expect(BASELINE_EVIDENCE_SHAPE_AT_V1).toBe(GOLDEN_EVIDENCE_SHAPE_V1);
+    expect(evidenceShape(shapeInputWithSurface(BASELINE_SURFACE), 2)).toBe(
+      GOLDEN_EVIDENCE_SHAPE_V2,
+    );
   });
 
   test("pins the signature tuple string for the baseline fixture (golden literal, pinned)", () => {
@@ -249,40 +287,43 @@ describe("signature-churn — fork fixtures (relational; independent of any lite
 
   const TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS: ReadonlyMap<
     number,
-    (input: TestLocalEvidenceShapeV3Input) => string
-  > = new Map([[2, testLocalSerialiseEvidenceShapeV3]]);
+    (input: TestLocalEvidenceShapeV4Input) => string
+  > = new Map([[4, testLocalSerialiseEvidenceShapeV4]]);
 
-  test("forks the identity when EVIDENCE_SHAPE_VERSION moves 1 to 2 via a test-local v2 serialiser, and an ancestry row maps it", () => {
-    const v1Shape = evidenceShape(shapeInputWithSurface(BASELINE_SURFACE), EVIDENCE_SHAPE_VERSION);
+  test("forks the identity when EVIDENCE_SHAPE_VERSION moves to the next version via a test-local serialiser, and an ancestry row maps it", () => {
+    const currentShape = evidenceShape(
+      shapeInputWithSurface(BASELINE_SURFACE),
+      EVIDENCE_SHAPE_VERSION,
+    );
 
-    const v2Serialiser = TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS.get(2);
-    expect(v2Serialiser).toBeDefined();
-    const v2Shape =
-      v2Serialiser?.({
+    const nextSerialiser = TEST_LOCAL_EVIDENCE_SHAPE_SERIALISERS.get(4);
+    expect(nextSerialiser).toBeDefined();
+    const nextShape =
+      nextSerialiser?.({
         ...shapeInputWithSurface(BASELINE_SURFACE),
         extraSignalCount: shapeInputWithSurface(BASELINE_SURFACE).signals.length,
       }) ?? "";
 
-    const tupleV1Shape = signatureTuple(
+    const tupleCurrentShape = signatureTuple(
       {
         projectId: PROJECT_ID,
         surfaceId: BASELINE_SURFACE,
         symptomClass: "broken",
-        evidenceShape: v1Shape,
+        evidenceShape: currentShape,
       },
       SIGNATURE_TUPLE_VERSION,
     );
-    const tupleV2Shape = signatureTuple(
+    const tupleNextShape = signatureTuple(
       {
         projectId: PROJECT_ID,
         surfaceId: BASELINE_SURFACE,
         symptomClass: "broken",
-        evidenceShape: v2Shape,
+        evidenceShape: nextShape,
       },
       SIGNATURE_TUPLE_VERSION,
     );
 
-    expect(tupleV1Shape).not.toBe(tupleV2Shape);
+    expect(tupleCurrentShape).not.toBe(tupleNextShape);
     // Deliberate, named outcome: a fork, mapped by a `signature_ancestry` row with
     // reason `evidence_shape_version_bump`, DB-layer only.
   });
@@ -400,7 +441,7 @@ describe("signature-churn — D12 identity across O-041 (the outcome's named gat
     expect(struggleSubkindsOf(legacyInput)).toEqual(["repeated_attempt", "repeated_attempt"]);
 
     const shape = evidenceShape(legacyInput, EVIDENCE_SHAPE_VERSION);
-    expect(shape).toBe(GOLDEN_EVIDENCE_SHAPE_V2);
+    expect(shape).toBe(GOLDEN_EVIDENCE_SHAPE_V3);
 
     expect(
       signatureTuple(
@@ -415,31 +456,32 @@ describe("signature-churn — D12 identity across O-041 (the outcome's named gat
     ).toBe(GOLDEN_TUPLE_BASELINE);
   });
 
-  test("should hold one identity across a test-local evidence shape v2 to v3 for a signal set with no observed subkind", async () => {
+  test("should hold one identity across a test-local evidence shape v3 to v4 for a signal set with no observed subkind", async () => {
     const observed = await observedStruggleSubkinds();
-    const serialiseV3 = TEST_LOCAL_SUBKIND_VISIBLE_SERIALISERS.get(3);
-    expect(serialiseV3).toBeDefined();
+    const serialiseV4 = TEST_LOCAL_SUBKIND_VISIBLE_SERIALISERS.get(4);
+    expect(serialiseV4).toBeDefined();
 
     const legacyInput = legacyRepeatedAttemptInput();
     expect(struggleSubkindsOf(legacyInput).some((subkind) => observed.has(subkind))).toBe(false);
 
-    const v2Shape = evidenceShape(legacyInput, 2);
-    const v3Shape = serialiseV3?.(legacyInput, observed) ?? "";
+    const currentShape = evidenceShape(legacyInput, EVIDENCE_SHAPE_VERSION);
+    const nextShape = serialiseV4?.(legacyInput, observed) ?? "";
 
-    // FR-15 read as D-4 rules it: a v3 cannot byte-equal a v2, because `v` itself differs. What is
-    // provable, and what the ledger actually needs, is that nothing ELSE differs.
-    expect(v3Shape).toBe(v2Shape.replace('"v":2', '"v":3'));
+    // FR-15 read as D-4 rules it: a next version cannot byte-equal the current one, because `v`
+    // itself differs. What is provable, and what the ledger actually needs, is that nothing ELSE
+    // differs for a signal set carrying no observed subkind.
+    expect(nextShape).toBe(currentShape.replace('"v":3', '"v":4'));
 
-    const tupleFromV2 = signatureTuple(
-      { ...BASELINE_TUPLE_INPUT, evidenceShape: v2Shape },
+    const tupleFromCurrent = signatureTuple(
+      { ...BASELINE_TUPLE_INPUT, evidenceShape: currentShape },
       SIGNATURE_TUPLE_VERSION,
     );
-    const tupleFromV3Normalised = signatureTuple(
-      { ...BASELINE_TUPLE_INPUT, evidenceShape: v3Shape.replace('"v":3', '"v":2') },
+    const tupleFromNextNormalised = signatureTuple(
+      { ...BASELINE_TUPLE_INPUT, evidenceShape: nextShape.replace('"v":4', '"v":3') },
       SIGNATURE_TUPLE_VERSION,
     );
 
-    expect(tupleFromV3Normalised).toBe(tupleFromV2);
+    expect(tupleFromNextNormalised).toBe(tupleFromCurrent);
   });
 });
 

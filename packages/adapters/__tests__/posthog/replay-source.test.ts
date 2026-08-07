@@ -263,6 +263,72 @@ describe("createPostHogReplaySource", () => {
       expect(result.recordings.map((recording) => recording.recordingId)).toEqual(["rec-1"]);
     });
 
+    test("keeps a recording sharing the watermark's exact instant, so a tied pair cannot strand", async () => {
+      // Two recordings can share one `started_at`. If the per-lane budget cut between them the
+      // watermark advanced to that instant with one still unread, and `<=` dropped it on every
+      // later tick. The narration tick skips ids it already holds, so re-listing the instant
+      // costs one filtered row and recovers the twin (B-053).
+      const sinceAt = new Date("2026-08-01T00:05:00.000Z");
+      const fake = createPagedFetch([
+        {
+          status: 200,
+          body: recordingsPage(
+            [
+              recordingItem({ id: "rec-newer", startedAt: "2026-08-01T00:10:00.000Z" }),
+              recordingItem({ id: "rec-tied-twin", startedAt: "2026-08-01T00:05:00.000Z" }),
+              recordingItem({ id: "rec-older", startedAt: "2026-08-01T00:01:00.000Z" }),
+            ],
+            null,
+          ),
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).listRecordings({ sinceAt, maxPages: 10 });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-newer",
+        "rec-tied-twin",
+      ]);
+    });
+
+    test("does not stop on a page whose oldest item sits exactly on the watermark", async () => {
+      // Stopping there is how the twin went unread: the next page can hold another recording
+      // sharing that instant.
+      const sinceAt = new Date("2026-08-01T00:05:00.000Z");
+      const fake = createPagedFetch([
+        {
+          status: 200,
+          body: recordingsPage(
+            [
+              recordingItem({ id: "rec-newer", startedAt: "2026-08-01T00:10:00.000Z" }),
+              recordingItem({ id: "rec-on-watermark", startedAt: "2026-08-01T00:05:00.000Z" }),
+            ],
+            NEXT_RECORDINGS_PAGE_2,
+          ),
+        },
+        {
+          status: 200,
+          body: recordingsPage(
+            [recordingItem({ id: "rec-tied-twin", startedAt: "2026-08-01T00:05:00.000Z" })],
+            null,
+          ),
+        },
+      ]);
+
+      const result = await buildSource(fake.fetch).listRecordings({ sinceAt, maxPages: 10 });
+
+      expect(fake.requests).toHaveLength(2);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.recordings.map((recording) => recording.recordingId)).toEqual([
+        "rec-newer",
+        "rec-on-watermark",
+        "rec-tied-twin",
+      ]);
+    });
+
     test("filters every at-or-before-sinceAt recording out of the page, not just the last item", async () => {
       const sinceAt = new Date("2026-08-01T00:05:00.000Z");
       const fake = createPagedFetch([

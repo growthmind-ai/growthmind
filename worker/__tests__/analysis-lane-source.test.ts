@@ -8,6 +8,7 @@ import {
 import {
   and,
   createDivergencePointsRepo,
+  createDivergenceService,
   createRecordingSummariesRepo,
   eq,
   schema,
@@ -21,8 +22,12 @@ import {
   type TestDb,
 } from "@growthmind/db/testing";
 import {
+  browserCut,
+  deviceCut,
   recordingSessionKey,
   SESSION_GROUPING_VERSION,
+  SURFACE_COHORT_CUT,
+  type CohortCut,
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -74,6 +79,7 @@ async function persistPathSession(
   workspace: SeededWorkspace,
   paths: readonly string[],
   startedAt: Date,
+  userAgent: string | null = null,
 ): Promise<void> {
   const key = randomUUID();
   const session = await seedSession(db, {
@@ -82,6 +88,7 @@ async function persistPathSession(
     connectionId: workspace.connectionId,
     sessionKey: `ph:o012-${key}`,
     entryUrlPath: paths[0] ?? null,
+    userAgent,
     startedAt,
     lastEventAt: new Date(startedAt.getTime() + (paths.length - 1) * EVENT_STRIDE_MS),
   });
@@ -107,12 +114,14 @@ async function persistCohort(
   count: number,
   paths: readonly string[],
   firstStartedAt: Date,
+  userAgent: string | null = null,
 ): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await persistPathSession(
       workspace,
       paths,
       new Date(firstStartedAt.getTime() + index * SESSION_STRIDE_MS),
+      userAgent,
     );
   }
 }
@@ -417,7 +426,7 @@ function throwingDivergenceService(message: string): {
 }
 
 // Mirrors divergenceRowsFor in packages/db/__tests__/repositories/divergence-points.repo.test.ts —
-// findBySurface only returns the most recent row (limit 1), so it can't tell "exactly one row"
+// findSurfaceCut only returns the most recent row (limit 1), so it can't tell "exactly one row"
 // apart from "N rows, most recent shown". This queries the table directly.
 async function divergenceRowsFor(projectId: string, surface: string) {
   return db
@@ -462,13 +471,13 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates[0]?.surface).toBe(ORIGIN);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const found = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     expect(found?.organizationId).toBe(workspace.organizationId);
     expect(found?.surface).toBe(ORIGIN);
   });
 
-  test("listDueLanes persists at most one divergence row per surface per tick", async () => {
+  test("listDueLanes persists at most one divergence row per surface and cut per tick", async () => {
     const workspace = await seedPollableWorkspace(db, { prefix: "o043b-", now: NOW });
     const SECOND_ORIGIN = "/signup";
 
@@ -513,19 +522,26 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates.length).toBe(2);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const foundOrigin = await repo.findBySurface(workspace.projectId, ORIGIN);
-    const foundSecondOrigin = await repo.findBySurface(workspace.projectId, SECOND_ORIGIN);
+    const foundOrigin = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
+    const foundSecondOrigin = await repo.findSurfaceCut(workspace.projectId, SECOND_ORIGIN);
 
     expect(foundOrigin?.surface).toBe(ORIGIN);
     expect(foundSecondOrigin?.surface).toBe(SECOND_ORIGIN);
 
-    // findBySurface returns "most recent, limit 1" — it would mask a duplicate. Count the
-    // rows directly to prove the tick wrote exactly one, not just that at least one exists.
-    const originRows = await divergenceRowsFor(workspace.projectId, ORIGIN);
-    const secondOriginRows = await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN);
+    // findSurfaceCut returns "most recent, limit 1" — it would mask a duplicate. Count the
+    // rows directly to prove the tick wrote each cut once, not just that at least one exists.
+    const originCuts = (await divergenceRowsFor(workspace.projectId, ORIGIN)).map(
+      (row) => row.cohortCut,
+    );
+    const secondOriginCuts = (await divergenceRowsFor(workspace.projectId, SECOND_ORIGIN)).map(
+      (row) => row.cohortCut,
+    );
 
-    expect(originRows).toHaveLength(1);
-    expect(secondOriginRows).toHaveLength(1);
+    expect(new Set(originCuts).size).toBe(originCuts.length);
+    expect(new Set(secondOriginCuts).size).toBe(secondOriginCuts.length);
+
+    expect(originCuts.filter((cut) => cut === SURFACE_COHORT_CUT)).toHaveLength(1);
+    expect(secondOriginCuts.filter((cut) => cut === SURFACE_COHORT_CUT)).toHaveLength(1);
   });
 
   test("a divergence computation failure for one surface does not prevent that project's candidates from being returned", async () => {
@@ -590,10 +606,10 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
 
     await source.laneForProject(workspace.projectId, NOW);
-    const afterFirst = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const afterFirst = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     await source.laneForProject(workspace.projectId, NOW);
-    const afterSecond = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const afterSecond = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     // The identity conflict target (org, project, surface, cohortMatchVersion, window) is
     // identical across both calls (same NOW, same window) — a second row would only be
@@ -613,9 +629,124 @@ describe("createAnalysisLaneSource — divergence wiring at the real entry point
     expect(lane.candidates).toEqual([]);
 
     const repo = createDivergencePointsRepo(db, workspace.ownerCtx);
-    const found = await repo.findBySurface(workspace.projectId, ORIGIN);
+    const found = await repo.findSurfaceCut(workspace.projectId, ORIGIN);
 
     expect(found).toBeNull();
     expect(logger.lines.some((line) => line.includes("divergence computation failed"))).toBe(false);
+  });
+});
+
+const CHROME_ON_WINDOWS =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/120.0.0.0 Safari/537.36";
+
+const SAFARI_ON_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+  "Version/17.0 Mobile/15E148 Safari/604.1";
+
+const UNREADABLE_USER_AGENT = " not-a-user-agent ";
+
+const BROWSER_UNKNOWN_CUT = browserCut("unknown");
+const DEVICE_UNKNOWN_CUT = deviceCut("unknown");
+
+// The real service for every sibling cut, so "the surface row and its siblings survived" is
+// read back off real rows rather than off a counter in a fake.
+function divergenceServiceFailingOnCut(
+  ctx: TenantContext,
+  failingCut: CohortCut,
+  message: string,
+): DivergenceService {
+  const real = createDivergenceService(db, ctx);
+
+  return {
+    recordDivergence(input) {
+      if (input.cohortCut === failingCut) {
+        return Promise.reject(new Error(message));
+      }
+      return real.recordDivergence(input);
+    },
+  };
+}
+
+describe("createAnalysisLaneSource — one failing cut is isolated from its siblings (O-045, D8)", () => {
+  test("a cut whose write throws leaves the surface row and every sibling cut persisted, and names itself in the log", async () => {
+    const workspace = await seedPollableWorkspace(db, { prefix: "o045c-", now: NOW });
+
+    await persistCohort(
+      workspace,
+      3,
+      [ORIGIN, DETOUR, ORIGIN, DETOUR, ORIGIN],
+      IN_WINDOW_AT,
+      CHROME_ON_WINDOWS,
+    );
+
+    const droppedAt = new Date(IN_WINDOW_AT.getTime() + 60 * 60 * 1_000);
+    await persistCohort(workspace, 5, [ORIGIN], droppedAt, CHROME_ON_WINDOWS);
+    await persistCohort(
+      workspace,
+      5,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 5 * SESSION_STRIDE_MS),
+      SAFARI_ON_IPHONE,
+    );
+    await persistCohort(
+      workspace,
+      1,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 10 * SESSION_STRIDE_MS),
+      null,
+    );
+    await persistCohort(
+      workspace,
+      1,
+      [ORIGIN],
+      new Date(droppedAt.getTime() + 11 * SESSION_STRIDE_MS),
+      UNREADABLE_USER_AGENT,
+    );
+
+    const reachedAt = new Date(IN_WINDOW_AT.getTime() + 2 * 60 * 60 * 1_000);
+    await persistCohort(workspace, 8, [ORIGIN, DESTINATION], reachedAt, CHROME_ON_WINDOWS);
+    await persistCohort(
+      workspace,
+      7,
+      [ORIGIN, DESTINATION],
+      new Date(reachedAt.getTime() + 8 * SESSION_STRIDE_MS),
+      SAFARI_ON_IPHONE,
+    );
+
+    const message = `o045c: simulated divergence failure for ${BROWSER_UNKNOWN_CUT}`;
+    const logger = recordingLogger();
+
+    const deps: AnalysisLaneSourceDeps & { readonly divergenceServiceFor: DivergenceServiceFor } = {
+      db,
+      logger,
+      divergenceServiceFor: (ctx) =>
+        divergenceServiceFailingOnCut(ctx, BROWSER_UNKNOWN_CUT, message),
+    };
+
+    const lane = await createAnalysisLaneSource(deps).laneForProject(workspace.projectId, NOW);
+    if (lane === null) throw new Error("expected a lane despite the failing cut");
+
+    expect(lane.candidates.length).toBe(1);
+
+    const rows = await divergenceRowsFor(workspace.projectId, ORIGIN);
+    const written = rows.map((row) => row.cohortCut);
+
+    expect(written).toContain(SURFACE_COHORT_CUT);
+    expect(written).not.toContain(BROWSER_UNKNOWN_CUT);
+
+    // Written after the failing cut in the ADD's own order, so its presence is the isolation
+    // claim rather than "the loop had not reached the throw yet".
+    expect(written).toContain(DEVICE_UNKNOWN_CUT);
+    expect(new Set(written).size).toBe(written.length);
+
+    expect(
+      logger.lines.some(
+        (line) =>
+          line.includes(ORIGIN) &&
+          line.includes(workspace.projectId) &&
+          line.includes(BROWSER_UNKNOWN_CUT),
+      ),
+    ).toBe(true);
   });
 });

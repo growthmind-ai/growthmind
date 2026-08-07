@@ -468,6 +468,49 @@ describe("instrumentationProofSatisfied", () => {
     ).toBe(false);
   });
 
+  test("should not fire when the rate ROSE across two windows of different sizes (B-022)", () => {
+    const rules = ruleSetV1();
+
+    // The reported inversion: expected 100 of 500 is 20%, observed 15 of 50 is 30%. Comparing
+    // numerators, 15 looks like a collapse against 100 and the finding said the event had
+    // almost stopped arriving — on a week its rate had risen by half.
+    const rateRose: EvidenceSignal = {
+      kind: "instrumentation_rate_drop",
+      eventName: "checkout_completed",
+      observed: sessionsCount(15, 50),
+      expected: sessionsCount(100, 500),
+    };
+
+    expect(instrumentationProofSatisfied([rateRose], rules)).toBe(false);
+
+    // Anti-vacuity: the same two window sizes, and a rate that genuinely collapsed — 1 of 50 is
+    // 2%, a tenth of the expected 20% — still proves it.
+    const rateCollapsed: EvidenceSignal = {
+      kind: "instrumentation_rate_drop",
+      eventName: "checkout_completed",
+      observed: sessionsCount(1, 50),
+      expected: sessionsCount(100, 500),
+    };
+
+    expect(instrumentationProofSatisfied([rateCollapsed], rules)).toBe(true);
+  });
+
+  test("should not fire when a window carries no rate to compare", () => {
+    const rules = ruleSetV1();
+
+    // A zero denominator means nothing was measured, not that everything stopped. Claiming an
+    // event had almost stopped arriving on the strength of an empty window is the fabrication
+    // this branch refuses.
+    const noObservedWindow: EvidenceSignal = {
+      kind: "instrumentation_rate_drop",
+      eventName: "checkout_completed",
+      observed: sessionsCount(0, 0),
+      expected: sessionsCount(100, 500),
+    };
+
+    expect(instrumentationProofSatisfied([noObservedWindow], rules)).toBe(false);
+  });
+
   test("should not satisfy instrumentation proof below instrumentationMinExpected", () => {
     const rules = ruleSetV1();
 

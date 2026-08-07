@@ -15,12 +15,7 @@ import {
 } from "@growthmind/shared";
 
 import { Stage } from "../../components/first-run/Stage";
-import {
-  agentStillWatched,
-  ARMED_POLL_MS,
-  PRE_ARM_POLL_MS,
-  resolvePollCadenceMs,
-} from "../../lib/first-run/poll-cadence";
+import { agentStillWatched } from "../../lib/first-run/agent-watch";
 import { blankComments, readExisting } from "./helpers/first-run-source";
 import { readMarkup } from "./helpers/rendered-markup";
 
@@ -85,65 +80,31 @@ describe("B-040 — a found-but-unrenderable row is a terminal state", () => {
     expect(rendered.text).not.toContain(STAGE_READING_HINT);
   });
 
-  test("the flag feeds `terminal`, which is what stops the counter and the poll", () => {
+  test("the flag feeds `terminal`, which is what stops the clock", () => {
     const code = clientCode();
 
     expect(code).toMatch(
       /const terminal =[\s\S]{0,120}?kind === "ended"[\s\S]{0,40}?\|\|\s*findingUnavailable/,
     );
 
-    expect(code).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,160}?terminal,/);
-    expect(
-      resolvePollCadenceMs({
-        attached: true,
-        armed: true,
-        terminal: true,
-        deliveryState: "none",
-        agentWaiting: false,
-      }),
-    ).toBeNull();
-
-    // Control - not-terminal still polls, so the row above is not vacuous.
-    expect(
-      resolvePollCadenceMs({
-        attached: true,
-        armed: true,
-        terminal: false,
-        deliveryState: "none",
-        agentWaiting: false,
-      }),
-    ).not.toBeNull();
+    // Nothing counts on a terminal stage, so the elapsed clock stops with it. There is no
+    // poll left for it to stop — the screen is told.
+    expect(code).toMatch(/const ticking = armed && !terminal;/);
   });
 });
 
 describe("O-026 — a key that has never been called is still being watched", () => {
-  test("a founder waiting for first contact keeps polling with nothing else left to watch", () => {
-    // Every other dimension says stop: unarmed, unattached, terminal, delivered.
-    const settled = {
-      attached: false,
-      armed: false,
-      terminal: true,
-      deliveryState: "none",
-    } as const;
+  // First contact arrives from outside the browser: the assistant calls, the key is stamped,
+  // and api-keys.repo publishes `agent_connection`. The screen used to notice by asking on a
+  // timer, and notices by listening now.
+  test("the screen listens for first contact on every stage, settled or not", () => {
+    const code = clientCode();
 
-    expect(resolvePollCadenceMs({ ...settled, agentWaiting: false })).toBeNull();
-    expect(resolvePollCadenceMs({ ...settled, agentWaiting: true })).toBe(PRE_ARM_POLL_MS);
-  });
+    expect(code).toMatch(/topics=\{\[[\s\S]{0,120}?"agent_connection"/);
 
-  test("waiting never slows a lane that was already polling faster", () => {
-    expect(
-      resolvePollCadenceMs({
-        attached: true,
-        armed: true,
-        terminal: false,
-        deliveryState: "none",
-        agentWaiting: true,
-      }),
-    ).toBe(ARMED_POLL_MS);
-  });
-
-  test("the client passes the agent dimension rather than defaulting it", () => {
-    expect(clientCode()).toMatch(/resolvePollCadenceMs\(\{[\s\S]{0,200}?agentWaiting/);
+    // Unconditional, where the cadence was not: a founder who minted on an otherwise
+    // settled screen was the deadlock this outcome is named for.
+    expect(code).not.toMatch(/agentWaiting/);
   });
 });
 
@@ -164,39 +125,21 @@ describe("O-026 — the founder who just minted is watched, not deadlocked", () 
     );
   });
 
-  test("the two settled screens a founder mints from start polling once a key is held", () => {
-    // Unarmed with nothing connected, and armed at a terminal stage with delivery
-    // settled: both resolve to `null` while the payload is the only thing asked.
-    const unarmed = {
-      attached: false,
-      armed: false,
-      terminal: true,
-      deliveryState: "none",
-    } as const;
-    const settled = {
-      attached: true,
-      armed: true,
-      terminal: true,
-      deliveryState: "posted",
-    } as const;
-
-    for (const screen of [unarmed, settled]) {
-      const beforeMint = agentStillWatched({ connection: UNAWARE, heldKey: null });
-      const afterMint = agentStillWatched({ connection: UNAWARE, heldKey: "gmak_7f3c9a1b" });
-
-      expect(resolvePollCadenceMs({ ...screen, agentWaiting: beforeMint })).toBeNull();
-      expect(resolvePollCadenceMs({ ...screen, agentWaiting: afterMint })).toBe(PRE_ARM_POLL_MS);
-    }
-  });
-
-  test("the client derives the dimension from the key it holds, not from the payload alone", () => {
+  test("a settled screen hears first contact too, because the listen is not conditional", () => {
     const code = clientCode();
 
-    expect(code).toMatch(/agentStillWatched\(\{[\s\S]{0,120}?heldKey:\s*hold\.rawKey/);
-    expect(code).toMatch(/const agentWaiting = agentStillWatched\(/);
+    // The old cadence asked whether anything was still worth watching and returned null on
+    // both settled screens; only `agentWaiting` reopened it. One subscription has no such
+    // hole to reopen.
+    expect(code).not.toMatch(/resolvePollCadenceMs/);
+    expect(code).toMatch(/topics=\{\[[\s\S]{0,120}?"agent_connection"/);
+  });
+
+  test("the key minted in this tab is held by the screen that renders the panel", () => {
+    const code = clientCode();
 
     // The hold is the client's own state, so the mint that fills it re-renders the
-    // component that owns the cadence — no callback to sever (D11).
+    // component that owns it — no callback to sever (D11).
     expect(code).toMatch(/useState<AgentPanelHold>\(EMPTY_HOLD\)/);
     expect(code).toMatch(/held=\{\{ hold, setHold \}\}/);
   });

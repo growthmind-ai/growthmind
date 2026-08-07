@@ -1,8 +1,36 @@
+import { rateOf } from "../counts/measured-count";
+import type { MeasuredCount } from "../counts/measured-count";
 import { PERCENT_SCALE } from "../counts/percent";
 import type { FindingClass, ThresholdRuleSet } from "../rules/types";
 import type { EvidenceSignal, EvidenceSignalKind } from "./signals";
 
 export const PROOF_PREDICATE_VERSION = 1;
+
+type InstrumentationDrop = "below_ratio" | "at_ratio" | "above_ratio" | "no_rate";
+
+// Comparing the two numerators assumes they share a denominator, and `expected` is by
+// definition measured over a different window with a different `kept` — so 15 of 50 (30%)
+// against an expected 100 of 500 (20%) reported that an event had almost stopped arriving
+// on a week its rate had risen by half (B-022). Rates are what the sentence claims, so
+// rates are what the threshold reads, and a rate that cannot be computed proves nothing.
+function instrumentationDrop(
+  observed: MeasuredCount,
+  expected: MeasuredCount,
+  ruleSet: ThresholdRuleSet,
+): InstrumentationDrop {
+  const observedRate = rateOf(observed);
+  const expectedRate = rateOf(expected);
+  if (observedRate.kind === "no_rate" || expectedRate.kind === "no_rate") return "no_rate";
+
+  const ceiling = (ruleSet.instrumentationDropRatioPercent * expectedRate.value) / PERCENT_SCALE;
+  if (observedRate.value === ceiling) return "at_ratio";
+
+  return observedRate.value < ceiling ? "below_ratio" : "above_ratio";
+}
+
+function isAtOrBelowRatio(drop: InstrumentationDrop): boolean {
+  return drop === "below_ratio" || drop === "at_ratio";
+}
 
 function magnitudeSatisfied(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
   switch (signal.kind) {
@@ -44,8 +72,7 @@ function magnitudeSatisfied(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): 
     case "instrumentation_rate_drop":
       return (
         signal.expected.numerator >= ruleSet.instrumentationMinExpected &&
-        signal.observed.numerator * PERCENT_SCALE <=
-          ruleSet.instrumentationDropRatioPercent * signal.expected.numerator
+        isAtOrBelowRatio(instrumentationDrop(signal.observed, signal.expected, ruleSet))
       );
     case "failure_correlated":
       return signal.correlatedSessions.numerator >= ruleSet.errorMinAffectedSessions;
@@ -79,6 +106,24 @@ function admittedKindsFor(
     case "instrumentation":
       return ruleSet.instrumentationProofSignals;
   }
+}
+
+// The kinds that could stand as proof for the class a candidate actually reached, as a sorted
+// set. Everything else a window happened to contain is provenance: it moves with ordinary
+// traffic timing, and an identity that moves with it re-proposes the same problem as new
+// (B-015). Membership of the admitted set is the test, not whether the signal cleared its
+// magnitude — a kind crossing back and forth over a threshold is the same churn.
+export function admissibleProofKinds(
+  signals: readonly EvidenceSignal[],
+  finalClass: FindingClass,
+  ruleSet: ThresholdRuleSet,
+): readonly EvidenceSignalKind[] {
+  const admitted = admittedKindsFor(finalClass, ruleSet);
+  const present = new Set(
+    signals.map((signal) => signal.kind).filter((kind) => admitted.includes(kind)),
+  );
+
+  return [...present].toSorted();
 }
 
 function atInclusiveBoundary(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
@@ -122,8 +167,7 @@ function atInclusiveBoundary(signal: EvidenceSignal, ruleSet: ThresholdRuleSet):
       return signal.correlatedSessions.numerator === ruleSet.errorMinAffectedSessions;
     case "instrumentation_rate_drop":
       return (
-        signal.observed.numerator * PERCENT_SCALE ===
-          ruleSet.instrumentationDropRatioPercent * signal.expected.numerator ||
+        instrumentationDrop(signal.observed, signal.expected, ruleSet) === "at_ratio" ||
         signal.expected.numerator === ruleSet.instrumentationMinExpected
       );
     case "failure_uncorrelated":

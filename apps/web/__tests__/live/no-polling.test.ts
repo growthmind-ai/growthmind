@@ -24,8 +24,8 @@ const REVIEWED: Record<string, { readonly kind: Kind; readonly why: string }> = 
     why: "two one-shot transition timers: one settles the arrival class on the next tick, one runs out the 200ms fold-out that first-run.module.css declares; neither reads anything",
   },
   "components/first-run/FirstRunClient.tsx": {
-    kind: "asks-the-server",
-    why: "predates the live stream and is the migration backlog: it needs first_run and findings published from every writer behind the status route before the timer can go",
+    kind: "display-clock",
+    why: "advances the elapsed time the armed stage renders, and runs only while something is still counting; the status fetch it used to carry went when first_run, findings and agent_connection gained publishers",
   },
   "components/live/LiveRefresh.tsx": {
     kind: "coalesce",
@@ -66,11 +66,14 @@ describe("nothing polls", () => {
 
   // The register is what makes the rule hold when nobody is reading it: an unclassified timer
   // fails the test above, and one that admits what it does fails this one.
-  test("no timer added from here on asks the server whether something happened", () => {
+  // Empty, and it stays empty. The migration backlog this list carried is finished: every
+  // topic a screen renders now has a publisher behind it, so a timer that asks the server is
+  // no longer a thing anyone has to keep — it is a thing to reject.
+  test("nothing asks the server whether something happened", () => {
     const asking = Object.entries(REVIEWED)
       .filter(([, row]) => row.kind === "asks-the-server")
       .map(([file]) => file);
 
-    expect(asking).toEqual(["components/first-run/FirstRunClient.tsx"]);
+    expect(asking).toEqual([]);
   });
 });

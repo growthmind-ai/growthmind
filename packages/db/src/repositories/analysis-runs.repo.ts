@@ -13,6 +13,7 @@ import {
 } from "@growthmind/shared";
 import { eq, lt, sql } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { analysisModelCalls } from "../schema/analysis-model-calls";
 import { analysisRuns } from "../schema/analysis-runs";
 import { orgCrud } from "./crud";
@@ -96,6 +97,13 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, analysisRuns);
 
+  // These rows are two of the setup screen's steps — `reading` while a run is open, `ended`
+  // when it closes with no finding. Nothing else publishes them, and the screen has no timer
+  // left to notice on its own (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+  }
+
   async function insertRunningRun(input: OpenRunInput): Promise<AnalysisRunRecord | undefined> {
     const [inserted] = await db
       .insert(analysisRuns)
@@ -144,6 +152,7 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
       const inserted = await insertRunningRun(input);
 
       if (inserted) {
+        await announce();
         return { opened: true, run: inserted };
       }
 
@@ -151,6 +160,7 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
         const afterReclaim = await insertRunningRun(input);
 
         if (afterReclaim) {
+          await announce();
           return { opened: true, run: afterReclaim };
         }
       }
@@ -164,6 +174,7 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
         const afterRivalReclaim = await insertRunningRun(input);
 
         if (afterRivalReclaim) {
+          await announce();
           return { opened: true, run: afterRivalReclaim };
         }
 
@@ -204,6 +215,8 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
           "analysis_runs: no run of this organization was still open to match the close",
         );
       }
+
+      await announce();
 
       return row;
     },

@@ -13,7 +13,12 @@ import {
   tallyActions,
 } from "@growthmind/core";
 import type { AudienceRule, ExclusionReason, TenantContext } from "@growthmind/shared";
-import { confirmedAudienceRules, evaluateAudience, readBusinessContext } from "@growthmind/shared";
+import {
+  cohortCutsOfUserAgent,
+  confirmedAudienceRules,
+  evaluateAudience,
+  readBusinessContext,
+} from "@growthmind/shared";
 import { asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { createRecordingSummariesRepo } from "../repositories/recording-summaries.repo";
@@ -106,6 +111,7 @@ export function createDetectorCorpusService(
           entryUrlPath: sessions.entryUrlPath,
           identityEmailDomain: sessions.identityEmailDomain,
           identityResolution: sessions.identityResolution,
+          userAgent: sessions.userAgent,
         })
         .from(sessions)
         .where(
@@ -186,6 +192,7 @@ export function createDetectorCorpusService(
           startedAt: row.startedAt,
           exclusionReason: verdict === "outside" ? "outside_who_counts" : stamped,
           entryUrlPath: row.entryUrlPath,
+          cohortCuts: cohortCutsOfUserAgent(row.userAgent),
           events: eventsBySession.get(row.id) ?? [],
         };
       });

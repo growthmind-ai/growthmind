@@ -11,7 +11,7 @@ import type {
   DetectorCorpus,
   SessionTimeline,
 } from "../../src/detect/types";
-import { confusingProofSatisfied } from "../../src/evidence/predicates";
+import { admissibleProofKinds, confusingProofSatisfied } from "../../src/evidence/predicates";
 import type { EvidenceSignal } from "../../src/evidence/signals";
 import { EVIDENCE_SHAPE_VERSION, evidenceShape } from "../../src/findings/evidence-shape";
 import { unknownIdentity } from "../../src/replay/nodes";
@@ -846,6 +846,7 @@ describe("observedStruggleCandidates", () => {
           surface: candidate.surface,
           surfaceNormalisationVersion: candidate.surfaceNormalisationVersion,
           signals: candidate.signals,
+          proofKinds: admissibleProofKinds(candidate.signals, candidate.claimedClass, ruleSetV1()),
           symptomClass: candidate.claimedClass,
         },
         EVIDENCE_SHAPE_VERSION,
