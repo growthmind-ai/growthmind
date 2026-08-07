@@ -5,6 +5,15 @@ import {
   type BusinessFact,
 } from "@growthmind/shared";
 
+// What a person stated survives, and so does what a person confirmed: a confirmed
+// site-sourced sentence outranks the next crawl of the page it came from (AD-2). One
+// predicate rather than two, because a re-read of the site and a change of the site's
+// address must drop the same facts — two copies of this rule drifted once and cost a
+// confirmed belief its confirmation.
+export function survivesReResearch(fact: BusinessFact): boolean {
+  return fact.provenance.source !== "site" || fact.confirmation !== null;
+}
+
 // The merge a re-read of the site goes through, pure so the survival rules are testable
 // without a database. `recordResearch` owns the contention loop and status settling; this
 // owns what survives.
@@ -12,11 +21,7 @@ export function mergeResearch(
   current: BusinessContext,
   incoming: readonly BusinessFact[],
 ): BusinessContext {
-  // What a person stated survives, and so does what a person confirmed: a confirmed
-  // site-sourced sentence outranks the next crawl of the page it came from (AD-2).
-  const kept = current.facts.filter(
-    (fact) => fact.provenance.source !== "site" || fact.confirmation !== null,
-  );
+  const kept = current.facts.filter(survivesReResearch);
 
   // A person who corrected, deleted or confirmed a sentence should not be handed it back
   // by the next read of the page it came from.

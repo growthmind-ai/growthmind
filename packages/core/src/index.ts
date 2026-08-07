@@ -332,7 +332,7 @@ export {
   type DeriveInput,
 } from "./growth/derive";
 
-export { mergeResearch } from "./growth/research-merge";
+export { mergeResearch, survivesReResearch } from "./growth/research-merge";
 
 export { confirmInFacts, type ConfirmOutcome, type ConfirmResult } from "./growth/confirm-fact";
 

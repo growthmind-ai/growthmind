@@ -3,6 +3,7 @@ import {
   growthContext as toGrowthContext,
   growthContextSchema,
   mergeResearch,
+  survivesReResearch,
   type ConfirmOutcome,
   type GrowthContext,
   type RoledSurface,
@@ -422,6 +423,19 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           return written ? "stated" : null;
         }
 
+        // An add whose sentence this kind already carries is the write that already
+        // happened: a lost response, a retry or a second tab must not persist the belief
+        // twice, and the client's disabled button is not a guarantee (D3). A correction is
+        // excluded because it still has to retire the sentence it replaced, and a sentence
+        // under a tombstone is a person reviving it rather than repeating themselves.
+        if (
+          input.was === null &&
+          !removed.includes(input.statement) &&
+          others.some((fact) => fact.kind === input.kind && fact.statement === input.statement)
+        ) {
+          return "stated";
+        }
+
         const ofKind = others.filter((fact) => fact.kind === input.kind).length;
         if (ofKind >= FACTS_PER_KIND_MAX) return "full";
 
@@ -631,11 +645,11 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
 
       const current = await readResearch(input.projectId);
 
-      // Only what the old domain's pages said goes. Wiping a conversion someone typed
-      // because they fixed a typo in their address would be ours to lose, not theirs.
-      const kept = (current?.businessContext.facts ?? []).filter(
-        (fact) => fact.provenance.source !== "site",
-      );
+      // Only what the old domain's pages said and nobody stood behind goes. Wiping a
+      // conversion someone typed, or a sentence they confirmed, because they fixed a typo in
+      // their address would be ours to lose, not theirs — so this drops exactly what a
+      // re-read drops (AD-2).
+      const kept = (current?.businessContext.facts ?? []).filter(survivesReResearch);
 
       // A deletion is a statement about the business too, so it outlives the address the
       // sentence was read from.
@@ -663,6 +677,10 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
           fetch: [eq(growthContext.projectId, input.projectId)],
         },
       );
+
+      // A person naming their site in Settings is what an empty /audience is waiting for, and
+      // nothing else would tell the page it had arrived (D11).
+      await announce();
     },
 
     async markResearchRunning(projectId: string): Promise<void> {
