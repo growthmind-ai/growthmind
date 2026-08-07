@@ -293,7 +293,13 @@ describe("parseSnapshotJsonl", () => {
   });
 
   test("a cv-marked mutation with already-plain array fields passes through unchanged", () => {
-    const data = { source: 0, adds: [], removes: [{ parentId: 1, id: 4 }], texts: [], attributes: [] };
+    const data = {
+      source: 0,
+      adds: [],
+      removes: [{ parentId: 1, id: 4 }],
+      texts: [],
+      attributes: [],
+    };
     const line = JSON.stringify([
       PROBE_WINDOW_ID,
       { timestamp: 1785911274726, cv: "2024-10", type: 3, data },

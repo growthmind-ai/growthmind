@@ -51,7 +51,6 @@ function filtersFromUrl(url: string): ReplayFilters {
   return replayFiltersOf(paramsOf(url));
 }
 
-
 function barMarkup(screen: ReplayScreenView, filters: ReplayFilters): string {
   const { container } = render(
     createElement(
