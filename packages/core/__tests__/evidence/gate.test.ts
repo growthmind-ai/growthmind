@@ -799,3 +799,96 @@ describe("evidence gate — O-041 grade-unchanged regressions", () => {
     }
   });
 });
+
+describe("evaluate — the proof has to be about the claim (B-017)", () => {
+  const OTHER_SURFACE = "/pricing";
+  const BEFORE_WINDOW = new Date("2026-04-30T23:59:59.000Z");
+  const AFTER_WINDOW = new Date("2026-05-08T00:00:01.000Z");
+
+  function struggleOnSurface(surface: string): EvidenceSignal {
+    return {
+      kind: "struggle",
+      subkind: "repeated_attempt",
+      surface,
+      attempts: 9,
+      strugglingSessions: sessions(STRUGGLING_SESSIONS_ABOVE_MINIMUM, STRUGGLE_COHORT_KEPT),
+    };
+  }
+
+  function failureAt(ruleSet: ThresholdRuleSet, occurredAt: Date): EvidenceSignal {
+    const signal = failureCorrelated(ruleSet);
+    if (signal.kind !== "failure_correlated") {
+      throw new Error("failureCorrelated must build a failure_correlated signal");
+    }
+
+    return { ...signal, occurredAt };
+  }
+
+  test("should not let struggle on another surface prove a claim about this one", () => {
+    const ruleSet = ruleSetV1();
+
+    // Anti-vacuity: the identical signal on the claim's own surface does prove it, so the
+    // difference below is the surface and nothing else.
+    expect(evaluate(claim("confusing", [struggleOnSurface(SURFACE)]), ruleSet).kind).toBe("pass");
+
+    expect(evaluate(claim("confusing", [struggleOnSurface(OTHER_SURFACE)]), ruleSet).kind).toBe(
+      "drop",
+    );
+  });
+
+  test("should not let an exception outside the claim's window prove it", () => {
+    const ruleSet = ruleSetV1();
+
+    expect(evaluate(claim("broken", [failureAt(ruleSet, SIGNAL_AT)]), ruleSet)).toMatchObject({
+      kind: "pass",
+      finalClass: "broken",
+    });
+
+    for (const outside of [BEFORE_WINDOW, AFTER_WINDOW]) {
+      expect(evaluate(claim("broken", [failureAt(ruleSet, outside)]), ruleSet).kind).toBe("drop");
+    }
+  });
+
+  test("should count a signal on the window's own boundary as inside it", () => {
+    const ruleSet = ruleSetV1();
+
+    for (const edge of [WINDOW.start, WINDOW.end]) {
+      expect(evaluate(claim("broken", [failureAt(ruleSet, edge)]), ruleSet)).toMatchObject({
+        kind: "pass",
+        finalClass: "broken",
+      });
+    }
+  });
+
+  test("should let a claim stand on the proof that IS about it, alongside proof that is not", () => {
+    const ruleSet = ruleSetV1();
+
+    const outcome = evaluate(
+      claim("confusing", [struggleOnSurface(OTHER_SURFACE), struggleOnSurface(SURFACE)]),
+      ruleSet,
+    );
+
+    expect(outcome).toMatchObject({ kind: "pass", finalClass: "confusing" });
+  });
+
+  test("should not let a disqualifying signal from another surface block changed_mind", () => {
+    const ruleSet = ruleSetV1();
+
+    // A consequence worth stating rather than discovering: struggle disqualifies changed_mind,
+    // and struggle on a DIFFERENT page is not evidence about this one either way. The gate is
+    // more willing to grant changed_mind than it was, and that is the correct direction — the
+    // alternative is a claim decided by something that was never about it.
+    expect(evaluate(claim("changed_mind", [cleanExit()]), ruleSet)).toMatchObject({
+      kind: "pass",
+      finalClass: "changed_mind",
+    });
+
+    expect(
+      evaluate(claim("changed_mind", [cleanExit(), struggleOnSurface(OTHER_SURFACE)]), ruleSet),
+    ).toMatchObject({ kind: "pass", finalClass: "changed_mind" });
+
+    expect(
+      evaluate(claim("changed_mind", [cleanExit(), struggleOnSurface(SURFACE)]), ruleSet).kind,
+    ).toBe("drop");
+  });
+});

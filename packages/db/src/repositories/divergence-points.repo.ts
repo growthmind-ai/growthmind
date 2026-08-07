@@ -1,4 +1,4 @@
-import type { TenantContext } from "@growthmind/shared";
+import { SURFACE_COHORT_CUT, type CohortCut, type TenantContext } from "@growthmind/shared";
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import { divergencePoints, DIVERGENCE_POINTS_CONFLICT_TARGET } from "../schema/divergence-points";
@@ -16,6 +16,7 @@ export type DivergencePointRecord = typeof divergencePoints.$inferSelect;
 export interface RecordDivergenceInput {
   readonly projectId: string;
   readonly surface: string;
+  readonly cohortCut: CohortCut;
   readonly surfaceNormalisationVersion: number | null;
   readonly spineVersion: number;
   readonly cohortMatchVersion: number;
@@ -33,20 +34,25 @@ export interface RecordDivergenceInput {
 export interface DivergencePointsRepo {
   recordDivergence(input: RecordDivergenceInput): Promise<DivergencePointRecord>;
 
-  findBySurface(projectId: string, surface: string): Promise<DivergencePointRecord | null>;
+  findSurfaceCut(projectId: string, surface: string): Promise<DivergencePointRecord | null>;
 }
 
-function bySurface(projectId: string, surface: string): SQL | undefined {
-  return and(eq(divergencePoints.projectId, projectId), eq(divergencePoints.surface, surface));
+function bySurfaceCut(projectId: string, surface: string): SQL | undefined {
+  return and(
+    eq(divergencePoints.projectId, projectId),
+    eq(divergencePoints.surface, surface),
+    eq(divergencePoints.cohortCut, SURFACE_COHORT_CUT),
+  );
 }
 
-// The unique index (org, project, surface, cohortMatchVersion, window) is wider than
-// bySurface, so the post-conflict fetch must match on the full identity or it can hand
-// back a different window's row for the same (project, surface) pair.
+// The unique index (org, project, surface, cohortCut, cohortMatchVersion, window) is wider
+// than bySurfaceCut, so the post-conflict fetch must match on the full identity or it can
+// hand back a different window's or a different bucket's row.
 function byIdentity(input: RecordDivergenceInput): SQL | undefined {
   return and(
     eq(divergencePoints.projectId, input.projectId),
     eq(divergencePoints.surface, input.surface),
+    eq(divergencePoints.cohortCut, input.cohortCut),
     eq(divergencePoints.cohortMatchVersion, input.cohortMatchVersion),
     eq(divergencePoints.windowStart, input.windowStart),
     eq(divergencePoints.windowEnd, input.windowEnd),
@@ -65,6 +71,7 @@ export function createDivergencePointsRepo(
         {
           projectId: input.projectId,
           surface: input.surface,
+          cohortCut: input.cohortCut,
           surfaceNormalisationVersion: input.surfaceNormalisationVersion,
           spineVersion: input.spineVersion,
           cohortMatchVersion: input.cohortMatchVersion,
@@ -95,11 +102,15 @@ export function createDivergencePointsRepo(
       );
     },
 
-    // Multiple rows can exist per (projectId, surface) across different windows over
-    // time; the identity key is wider than this lookup, so this returns the most recent.
-    async findBySurface(projectId: string, surface: string): Promise<DivergencePointRecord | null> {
+    // Multiple rows can exist per (projectId, surface) across different windows and cuts
+    // over time; the identity key is wider than this lookup, so this returns the most
+    // recent surface-level row.
+    async findSurfaceCut(
+      projectId: string,
+      surface: string,
+    ): Promise<DivergencePointRecord | null> {
       const rows = await c.list({
-        where: bySurface(projectId, surface),
+        where: bySurfaceCut(projectId, surface),
         orderBy: [desc(divergencePoints.createdAt)],
         limit: 1,
       });

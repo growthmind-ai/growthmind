@@ -360,7 +360,13 @@ async function runOnePass(input: {
       return { ok: false, sawEvents: false, ...unchanged };
     }
 
-    const cursors = await applyCursors(connections, connection.id, result, input.watermarkAt);
+    const cursors = await applyCursors(
+      connections,
+      connection.id,
+      result,
+      input.watermarkAt,
+      input.backfillBefore,
+    );
     const finishedAt = deps.now();
 
     await pollRuns.finish(run.id, {
@@ -412,6 +418,7 @@ async function applyCursors(
   connectionId: string,
   result: Extract<SessionSourcePullResult, { ok: true }>,
   currentWatermarkAt: Date | null,
+  currentBackfillBefore: string | null,
 ): Promise<{ watermarkAt: Date | null; backfillBefore: string | null; advancedTo: Date | null }> {
   if (result.contiguous && result.newestObservedAt !== null) {
     const advanced = await connections.advanceWatermark(connectionId, {
@@ -429,12 +436,27 @@ async function applyCursors(
   }
 
   if (!result.contiguous) {
-     
+
     const held = await connections.setBackfillCursor(connectionId, result.resumeBefore);
     if (held) {
       return {
         watermarkAt: held.watermarkAt,
         backfillBefore: held.backfillBefore,
+        advancedTo: null,
+      };
+    }
+  }
+
+  // The backward walk drained and the forward pass saw nothing, so neither branch above wrote
+  // and the cursor stayed where it was — every later tick then re-walked up to the page cap of
+  // already-ingested data, forever, against the customer's rate limit (B-005). Clearing it is
+  // the only write left to make, and only when there is something to clear.
+  if (result.contiguous && currentBackfillBefore !== null) {
+    const cleared = await connections.setBackfillCursor(connectionId, null);
+    if (cleared) {
+      return {
+        watermarkAt: cleared.watermarkAt,
+        backfillBefore: cleared.backfillBefore,
         advancedTo: null,
       };
     }

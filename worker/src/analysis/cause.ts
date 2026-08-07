@@ -60,7 +60,7 @@ export async function planCause(
   // Step 1 + 2 (ADD Decision 7): bind the divergence row to this candidate's own
   // window, then require it to be a diverged row (FR-1). A window mismatch is
   // treated identically to "no row yet" — cheap to retry next tick, nothing spent.
-  const row = await divergencePoints.findBySurface(lane.projectId, candidate.surface);
+  const row = await divergencePoints.findSurfaceCut(lane.projectId, candidate.surface);
   if (row === null) {
     return;
   }

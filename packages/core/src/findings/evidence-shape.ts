@@ -1,11 +1,11 @@
 import { normaliseUrlPath } from "@growthmind/shared";
 
-import type { EvidenceSignal } from "../evidence/signals";
+import type { EvidenceSignal, EvidenceSignalKind } from "../evidence/signals";
 import type { DetectorName, FindingClass } from "../rules/types";
 import { canonicalJson } from "../serialise/canonical-json";
 import type { CanonicalObject } from "../serialise/canonical-json";
 
-export const EVIDENCE_SHAPE_VERSION = 2;
+export const EVIDENCE_SHAPE_VERSION = 3;
 
 export type EvidenceShapeInput = {
   readonly detector: DetectorName;
@@ -16,6 +16,10 @@ export type EvidenceShapeInput = {
 
   readonly signals: readonly EvidenceSignal[];
 
+  // Only what could prove `symptomClass`, from `admissibleProofKinds`. v1 and v2 derive their
+  // own kinds from `signals` and ignore this, so a row written under either still recomputes.
+  readonly proofKinds: readonly EvidenceSignalKind[];
+
   readonly symptomClass: FindingClass;
 };
 
@@ -24,6 +28,7 @@ export type EvidenceShapeSerialiser = (input: EvidenceShapeInput) => string;
 export const EVIDENCE_SHAPE_SERIALISERS: ReadonlyMap<number, EvidenceShapeSerialiser> = new Map([
   [1, serialiseV1],
   [2, serialiseV2],
+  [3, serialiseV3],
 ]);
 
 function assertNormalisedSurface(surface: string): string {
@@ -61,6 +66,22 @@ function serialiseV2(input: EvidenceShapeInput): string {
     detector: input.detector,
     surface: assertNormalisedSurface(input.surface),
     signalKinds: input.signals.map((signal) => signal.kind),
+    symptomClass: input.symptomClass,
+  };
+
+  return canonicalJson(shape);
+}
+
+// v3 replaces `signalKinds` with the kinds that could prove the class. Under v2 every kind the
+// window contained was identity, so one straggler exception landing at 31s rather than 29s added
+// `failure_uncorrelated` and minted a new identity for the same problem (B-015). The full kind
+// list stays on the candidate and on the findings row as provenance.
+function serialiseV3(input: EvidenceShapeInput): string {
+  const shape: CanonicalObject = {
+    v: 3,
+    detector: input.detector,
+    surface: assertNormalisedSurface(input.surface),
+    proofKinds: [...input.proofKinds],
     symptomClass: input.symptomClass,
   };
 

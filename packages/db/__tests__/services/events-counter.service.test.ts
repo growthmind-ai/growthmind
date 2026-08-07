@@ -13,6 +13,7 @@ import {
 } from "@growthmind/shared";
 
 import { createPollRunsRepo, type PollRunCounts } from "../../src/repositories/poll-runs.repo";
+import { createProjectConnectionsRepo } from "../../src/repositories/project-connections.repo";
 import { createEventsCounterService } from "../../src/services/events-counter.service";
 import { persistPullResult, type IntakeConnection } from "../../src/services/intake.service";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -255,6 +256,44 @@ describe("createEventsCounterService", () => {
     expect(counter.state.status).toBe("connected_no_events_yet");
     expect(counter.totalReceived).toBe(0);
     expect(counter.asOf?.toISOString()).toBe("2026-07-30T11:45:00.000Z");
+  });
+
+  test("a cutover to a new connection reads as never polled, not as we-looked-and-saw-nothing (B-012)", async () => {
+    // The old connection polled successfully; the new one has a bad key and has never run. Read
+    // per PROJECT, the old connection's runs answered for the new one and this surface said "we
+    // checked, your product is quiet" while the connection surface said it had never polled.
+    const target = await seedConnectedProject(db, "state-cutover", {
+      watermarkAt: new Date("2026-07-30T11:45:00.000Z"),
+    });
+    await recordRun(db, target, {
+      kind: "completed",
+      startedAt: new Date("2026-07-30T11:44:00.000Z"),
+      finishedAt: new Date("2026-07-30T11:45:00.000Z"),
+      withEvents: false,
+    });
+
+    const before = await createEventsCounterService(db, target.ws.ctx).read(
+      target.connection.projectId,
+    );
+    expect(before.state.status).toBe("connected_no_events_yet");
+
+    // The cutover: the old attachment is retired and a second one takes its place, which is the
+    // one both surfaces now describe. Nothing has polled it.
+    await createProjectConnectionsRepo(db, target.ws.ctx).deactivate(target.connection.id);
+    await seedConnection(db, {
+      organizationId: target.ws.organizationId,
+      projectId: target.connection.projectId,
+      inferredInternalDomain: INTERNAL_DOMAIN,
+      watermarkAt: null,
+      connectedAt: new Date("2026-07-30T12:00:00.000Z"),
+    });
+
+    const after = await createEventsCounterService(db, target.ws.ctx).read(
+      target.connection.projectId,
+    );
+
+    expect(after.state.status).toBe("connected_never_polled");
+    expect(after.asOf).toBeNull();
   });
 
   test("not-connected, never-polled and polled-with-zero-events are three different answers", async () => {

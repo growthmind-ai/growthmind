@@ -6,6 +6,7 @@ import {
 } from "@growthmind/shared";
 import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { organization } from "../schema/auth";
 import { deliveries } from "../schema/deliveries";
 import { orgCrud } from "./crud";
@@ -93,6 +94,18 @@ function reclaimable(staleClaimsBefore: Date): SQL {
 export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): DeliveriesRepo {
   const c = orgCrud(db, ctx, deliveries);
 
+  // The delivery line on the setup screen reads off these rows, and the post happens in a
+  // worker. A write that changed nothing is not worth waking every open page for (D3).
+  async function announced(row: DeliveryRecord | null): Promise<DeliveryRecord | null> {
+    if (row === null) {
+      return null;
+    }
+
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+
+    return row;
+  }
+
   return {
     async claimForPost(input: ClaimDeliveryInput): Promise<ClaimDeliveryResult> {
       const result = await c.claim(
@@ -129,7 +142,7 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
     },
 
     async markPosted(input: MarkPostedInput): Promise<DeliveryRecord | null> {
-      return c.update(
+      const row = await c.update(
         {
           status: "posted",
 
@@ -141,10 +154,12 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         },
         byTuple(input.findingId, input.channelId),
       );
+
+      return announced(row);
     },
 
     async markFailed(input: MarkFailedInput): Promise<DeliveryRecord | null> {
-      return c.update(
+      const row = await c.update(
         {
           status: "failed",
           failedAt: input.failedAt,
@@ -153,6 +168,8 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         byTuple(input.findingId, input.channelId),
         ne(deliveries.status, "posted"),
       );
+
+      return announced(row);
     },
 
     async findFor(findingId: string, channelId: string): Promise<DeliveryRecord | null> {

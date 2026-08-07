@@ -13,7 +13,7 @@ import {
   shownConnection,
   withPolledAnswer,
 } from "@/lib/first-run/agent-answer";
-import { agentStillWatched } from "@/lib/first-run/poll-cadence";
+import { agentStillWatched } from "@/lib/first-run/agent-watch";
 
 interface AgentConnectionLiveProps {
   readonly initial: AgentConnection;

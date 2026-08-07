@@ -189,3 +189,86 @@ describe("no host-based or domain-pattern predicate exists in src/exclusions", (
     ]);
   });
 });
+
+describe("a user-initiated fetch is a real session (B-008)", () => {
+  // Both vendors document these as a request a person asked for. F-6's declared fail direction
+  // is that anything ambiguous is INCLUDED as real, so excluding them contradicted the rule the
+  // file states about itself, and every session they covered was erased from the evidence
+  // behind a finding — an under-count that reads to a founder as a product problem.
+  // The user agents each vendor documents, verbatim, including the +url every OpenAI agent
+  // carries. The url is why removing `chatgpt-user` alone changed nothing: the bare `openai`
+  // token matched through it.
+  const CHATGPT_USER =
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; " +
+    "+https://openai.com/bot";
+  const PERPLEXITY_USER =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/120.0.0.0 Safari/537.36; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user";
+  const GPTBOT =
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; " +
+    "+https://openai.com/gptbot";
+  const OAI_SEARCHBOT =
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; " +
+    "+https://openai.com/searchbot";
+
+  test("ChatGPT-User and Perplexity-User are counted, while the crawlers beside them are not", () => {
+    expect(classifyUa(CHATGPT_USER)).toBe("none");
+    expect(classifyUa(PERPLEXITY_USER)).toBe("none");
+
+    // The near neighbours, which are crawls rather than errands, still fire — and each on its
+    // own token now that the vendor name is not standing in for all three.
+    expect(classifyUa(GPTBOT)).toBe("automation_coding_agent");
+    expect(classifyUa(OAI_SEARCHBOT)).toBe("automation_coding_agent");
+    expect(classifyUa("Mozilla/5.0 (compatible; PerplexityBot/1.0)")).toBe(
+      "automation_coding_agent",
+    );
+    expect(classifyUa("Mozilla/5.0 (compatible; ClaudeBot/1.0)")).toBe("automation_coding_agent");
+  });
+
+  test("no token is left that matches a vendor url rather than an agent", () => {
+    for (const list of [HEADLESS_TOKENS, KNOWN_AGENT_TOKENS, CODING_AGENT_TOKENS]) {
+      expect(list).not.toContain("chatgpt-user");
+      expect(list).not.toContain("perplexity-user");
+
+      // A bare vendor name is a superset of every agent that vendor ships, so it re-excludes
+      // the user-initiated ones through the +url in their user agent.
+      expect(list).not.toContain("openai");
+    }
+
+    expect(matchesToken(CHATGPT_USER, "openai")).toBe(true);
+  });
+});
+
+describe("every token is exact, one token at a time (B-008)", () => {
+  // The fixtures this file already had are per-CLASS: one member stands for the list. The k6
+  // incident was per-TOKEN — one entry firing on a superset of its target — so the check that
+  // would have caught it has to visit each entry. `matchesToken` is asserted rather than
+  // `classifyExclusion` because a composite token like `chrome-headless-shell` legitimately
+  // contains `headless`, and a class-level assertion could not tell the two apart.
+  const EVERY_TOKEN: readonly (readonly [string, string])[] = [
+    ...HEADLESS_TOKENS.map((token) => ["headless", token] as const),
+    ...KNOWN_AGENT_TOKENS.map((token) => ["known agent", token] as const),
+    ...CODING_AGENT_TOKENS.map((token) => ["coding agent", token] as const),
+  ];
+
+  test("each token fires on its own word boundary and never inside a longer one", () => {
+    expect(EVERY_TOKEN.length).toBeGreaterThan(0);
+
+    for (const [list, token] of EVERY_TOKEN) {
+      const onItsOwn = `Mozilla/5.0 (compatible; ${token}/1.0)`;
+      expect({ list, token, fires: matchesToken(onItsOwn, token) }).toEqual({
+        list,
+        token,
+        fires: true,
+      });
+
+      // The k6 shape: the same characters inside a longer alphanumeric word.
+      const buriedInAWord = `Mozilla/5.0 (compatible; x${token}9/1.0)`;
+      expect({ list, token, fires: matchesToken(buriedInAWord, token) }).toEqual({
+        list,
+        token,
+        fires: false,
+      });
+    }
+  });
+});
