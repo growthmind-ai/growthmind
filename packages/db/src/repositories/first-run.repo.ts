@@ -1,6 +1,7 @@
 import type { TenantContext } from "@growthmind/shared";
 import { eq } from "drizzle-orm";
 
+import { publishLive } from "../live/publish";
 import { firstRunDismissals } from "../schema/first-run-dismissals";
 import { firstRunState } from "../schema/first-run-state";
 import { orgCrud } from "./crud";
@@ -34,6 +35,12 @@ export function createFirstRunRepo(db: ScopedExecutor, ctx: TenantContext): Firs
   const cState = orgCrud(db, ctx, firstRunState);
   const cDismissals = orgCrud(db, ctx, firstRunDismissals);
 
+  // Beside the write, never in the route: the setup screen has no timer behind it any more,
+  // so a writer that forgot to announce would leave it frozen mid-setup (D11).
+  async function announce(): Promise<void> {
+    await publishLive(db, { organizationId: ctx.organizationId, topic: "first_run" });
+  }
+
   async function upsertState(
     projectId: string,
     set: { armedAt: Date } | { slackSkippedAt: Date },
@@ -46,6 +53,8 @@ export function createFirstRunRepo(db: ScopedExecutor, ctx: TenantContext): Firs
         fetch: [eq(firstRunState.projectId, projectId)],
       },
     );
+
+    await announce();
 
     return toFirstRunState(row);
   }
@@ -74,6 +83,8 @@ export function createFirstRunRepo(db: ScopedExecutor, ctx: TenantContext): Firs
           fetch: [eq(firstRunDismissals.userId, userId)],
         },
       );
+
+      await announce();
     },
 
     async isDismissed(userId: string): Promise<boolean> {

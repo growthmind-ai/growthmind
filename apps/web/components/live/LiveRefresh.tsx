@@ -22,10 +22,17 @@ function topicOf(data: string): string | null {
 // One open stream, told when something changed. Nothing here asks the server: the only timer
 // coalesces a burst. A change published while the stream was down reaches no listener and the
 // stream carries no id to replay from, so every reconnect after the first re-fires (D4).
-export function useLiveTopics(topics: readonly LiveTopic[], onChange: (topic: LiveTopic) => void) {
+export function useLiveTopics(
+  topics: readonly LiveTopic[],
+  onChange: (topic: LiveTopic) => void,
+  onConnection?: (connected: boolean) => void,
+) {
   // Read through a ref so an inline handler does not tear the stream down on every render.
   const handler = useRef(onChange);
   handler.current = onChange;
+
+  const connection = useRef(onConnection);
+  connection.current = onConnection;
 
   const wanted = topics.join(",");
 
@@ -55,16 +62,25 @@ export function useLiveTopics(topics: readonly LiveTopic[], onChange: (topic: Li
     const opened = (): void => {
       if (connected) for (const topic of listening) fire(topic);
       connected = true;
+      connection.current?.(true);
+    };
+
+    // EventSource reconnects on its own, so this is "not hearing right now", never a
+    // terminal failure — and it is the only signal that the screen may be behind.
+    const dropped = (): void => {
+      if (source.readyState !== EventSource.OPEN) connection.current?.(false);
     };
 
     source.addEventListener(LIVE_EVENT_NAME, take);
     source.addEventListener("open", opened);
+    source.addEventListener("error", dropped);
 
     return () => {
       for (const queued of pending.values()) clearTimeout(queued);
       pending.clear();
       source.removeEventListener(LIVE_EVENT_NAME, take);
       source.removeEventListener("open", opened);
+      source.removeEventListener("error", dropped);
       source.close();
     };
   }, [wanted]);
@@ -73,15 +89,23 @@ export function useLiveTopics(topics: readonly LiveTopic[], onChange: (topic: Li
 interface LiveRefreshProps {
   // Only the changes this page shows; anything wider refetches for things it does not.
   readonly topics: readonly LiveTopic[];
+
+  // For a screen that has to say when it may be behind. Omitted everywhere the answer is
+  // "it re-reads on load anyway", which is most places.
+  readonly onConnection?: (connected: boolean) => void;
 }
 
 // The server holds the truth, so hearing it changed is enough: `router.refresh()` re-reads it.
-export function LiveRefresh({ topics }: LiveRefreshProps) {
+export function LiveRefresh({ topics, onConnection }: LiveRefreshProps) {
   const router = useRouter();
 
-  useLiveTopics(topics, () => {
-    router.refresh();
-  });
+  useLiveTopics(
+    topics,
+    () => {
+      router.refresh();
+    },
+    onConnection,
+  );
 
   return null;
 }

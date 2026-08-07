@@ -3,6 +3,7 @@ import { summarySourceSchema, type SummarySource, type TenantContext } from "@gr
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { publishLive } from "../live/publish";
 import { findings } from "../schema/findings";
 import { orgCrud } from "./crud";
 import { readFindingText, type FindingText, type ScannedText } from "./finding-text";
@@ -116,7 +117,10 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
       const counts = countsSchema.parse(input.counts);
       await s.assertProjectOwned(input.projectId, notOurProject);
 
-      const row = await c.insertOrFetch(
+      // `claim` rather than `insertOrFetch` for the one bit `insertOrFetch` discards: whether
+      // this call inserted. A stable signature is re-detected every tick, and publishing on
+      // the fetch would refresh every open findings page for a row that did not change (D3).
+      const claimed = await c.claim(
         {
           projectId: input.projectId,
           runId: input.runId,
@@ -145,6 +149,14 @@ export function createFindingsRepo(db: ScopedExecutor, ctx: TenantContext): Find
           fetch: [bySignature(input.projectId, input.signature)],
         },
       );
+
+      const row = s.one(claimed.row ? [claimed.row] : [], "findings.persist");
+
+      // Beside the write rather than in the analysis task: a finding arrives from a worker
+      // nobody in a browser triggered, and no page has a timer left to notice it (D11).
+      if (claimed.claimed) {
+        await publishLive(db, { organizationId: ctx.organizationId, topic: "findings" });
+      }
 
       return toRecord(row);
     },

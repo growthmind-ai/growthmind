@@ -11,6 +11,7 @@ import {
 } from "@growthmind/shared";
 import type { FindingGroup, FindingRow } from "@growthmind/shared";
 
+import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ListRow } from "@/components/ui/ListRow";
 import { ClosingNote, PageHeader } from "@/components/ui/Page";
@@ -106,6 +107,8 @@ export default async function FindingsPage() {
 
   return (
     <Stack gap="lg">
+      <LiveRefresh topics={["findings"]} />
+
       <PageHeader title="Everything we’ve seen in your product">
         {overview.window} · not a queue, and nothing here needs you today
       </PageHeader>
