@@ -16,7 +16,6 @@ next-env.d.ts
 # leave a contributor with scripts that reference a directory they don't have.
 .claude/
 .ai/
-scripts/orchestrator.ts
 scripts/validate-build.ts
 scripts/validate-runtime.ts
 
