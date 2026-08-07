@@ -267,6 +267,29 @@ describe("stating a business fact", () => {
     ).rejects.toThrow(/not this organization's/);
   });
 
+  it("refuses to confirm a fact on another organization's business", async () => {
+    const mine = await seedLane(db, "confirm-tenant-mine");
+    const theirs = await seedLane(db, "confirm-tenant-theirs");
+    const theirRepo = await seedFacts(db, theirs, [readFact("Agencies")]);
+
+    await expect(
+      createGrowthContextRepo(db, mine.org.ctx).confirmFact({
+        projectId: theirs.projectId,
+        kind: "regime",
+        statement: "Agencies",
+        confirmedAt: STATED_AT,
+        confirmedBy: mine.org.userId,
+      }),
+    ).rejects.toThrow(/not this organization's/);
+
+    // The throw is only half the guarantee: a confirmation stamped on the way to it would
+    // put a stranger's name against a sentence this organization never stood behind.
+    const [fact] = await factsOn(theirRepo, theirs.projectId);
+
+    expect(fact?.statement).toBe("Agencies");
+    expect(fact?.confirmation).toBeNull();
+  });
+
   it("leaves the roled surfaces alone, which live on the same row", async () => {
     const lane = await seedLane(db, "surfaces-survive");
     const repo = createGrowthContextRepo(db, lane.org.ctx);
