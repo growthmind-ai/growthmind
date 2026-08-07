@@ -59,7 +59,7 @@ function factOf(row: SessionRecord): ReplaySessionFact {
     entryUrlPath: row.entryUrlPath,
     origin: row.origin,
     exclusionReason: row.exclusionReason,
-    durationMs: null,
+    durationSeconds: null,
     clickCount: null,
     keypressCount: null,
     consoleErrorCount: null,
