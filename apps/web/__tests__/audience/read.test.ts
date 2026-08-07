@@ -152,7 +152,10 @@ describe("the empty page is honest before it is helpful (FR-11)", () => {
     const view = await builtView(null);
     const text = textOf(view);
 
-    expect(stringsIn(view)).toContain(ROUTES.settings);
+    // Not the bare route: the website control is the last section of /settings, so the one
+    // named next action has to land on the control rather than the top of the page.
+    expect(stringsIn(view)).toContain(`${ROUTES.settings}#business`);
+    expect(stringsIn(view)).not.toContain(ROUTES.settings);
     expect(text).toContain("No model yet");
     expect(text).toContain("Name your website in Settings");
   });

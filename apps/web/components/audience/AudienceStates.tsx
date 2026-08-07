@@ -55,7 +55,9 @@ export function AudienceResearchFailed({ view }: { readonly view: ReadFailedRese
   return (
     <Paper withBorder radius="sm" p="xl">
       <Stack gap="sm" align="center">
-        <Text size="sm" c="dimmed" ta="center" maw="56ch">
+        {/* The same weight its two sibling states open with: a failure whispered in dimmed
+            small type reads as a footnote rather than the state of the page. */}
+        <Text fw={700} ta="center" maw="56ch">
           {view.message}
         </Text>
         <ButtonLink href={view.cta.href} variant="default" size="compact-sm" style={tapTargetStyle}>

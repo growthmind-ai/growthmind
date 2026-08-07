@@ -28,6 +28,10 @@ const SOURCE_SIZE = { width: 330, height: 224 };
 const CORRECT_HEADER = "Correct this belief";
 const SOURCE_HEADER = "Where this came from";
 const SAVED_CARD = "Saved — corrections outrank what we read ✓";
+
+// Confirming changed nothing about the claim, so it may not report a correction: what it
+// bought is that we now hold this as checked.
+const SAVED_CONFIRM = "Confirmed — we'll treat this as checked ✓";
 const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
 const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
 const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
@@ -81,7 +85,7 @@ function ConfirmVerb({
     }
 
     instrument(CONFIRMED_EVENT);
-    controls.applied(SAVED_CARD);
+    controls.applied(SAVED_CONFIRM);
     router.refresh();
   }
 

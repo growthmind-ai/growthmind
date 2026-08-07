@@ -21,18 +21,14 @@ import {
   type StatedOnlyDoubtKind,
 } from "./kinds";
 
-export const AUDIENCE_TITLE = "Who we think this is for";
-
 export const AUDIENCE_LEDE =
   "Our model of your users, not a verdict on them. Every line says where it came from — and what it changed.";
 
-export const BELIEFS_HEADING = "What we believe about them";
-
-export const FACT_ROWS_HEADING = "How they decide, and what they arrive with";
-
-export const CHANGED_HEADING = "What changed, and when";
-
-export const DOUBTS_HEADING = "What we are least sure about — one tap settles it";
+// Every verb on this page is revealed by hover, focus or a tap, so a reader who never
+// hovers takes the page for a wall of text. The mechanism is said out loud instead.
+export const AUDIENCE_AFFORDANCE =
+  "Nothing here is fixed. Hover a line to confirm it, correct it, or see where it came " +
+  "from — on a phone, tap the line once and the buttons appear.";
 
 export const CLOSING_NOTE =
   "We would rather show you a thin model you can argue with than a confident one you cannot check. If a belief here is wrong, say so — it changes what we rank next.";
@@ -44,6 +40,10 @@ export const DOUBT_CAP = 4;
 // pass for a full one.
 const THIN_FACTS_UNDER = 5;
 const THIN_KINDS_AT_OR_UNDER = 2;
+
+// The website control is the last section of /settings; a bare route drops the reader at
+// the top of a page whose named control is a screen further down.
+const SETTINGS_BUSINESS = `${ROUTES.settings}#business`;
 
 export interface AudienceCta {
   readonly label: string;
@@ -189,7 +189,7 @@ export function buildAudienceView(
         kind: "read-failed-research",
         hostname,
         message: `We couldn't read ${hostname}. Your site may have been unreachable.`,
-        cta: { label: "Try again from Settings", href: ROUTES.settings },
+        cta: { label: "Try again from Settings", href: SETTINGS_BUSINESS },
       };
     }
   }
@@ -207,7 +207,7 @@ function noWebsite(): NoWebsiteView {
       "Name your website and Growthmind reads it — a bounded set of pages, robots respected. " +
       "Every belief will carry the page it came from. Until there is evidence, this page " +
       "stays empty rather than confident.",
-    cta: { label: "Name your website in Settings", href: ROUTES.settings },
+    cta: { label: "Name your website in Settings", href: SETTINGS_BUSINESS },
   };
 }
 
@@ -370,7 +370,21 @@ function sourcePanelOf(fact: BusinessFact, settledBy: string | null): SourcePane
 
   if (fact.correctedFrom !== null) lines.push(`Replaced: '${fact.correctedFrom}'`);
 
-  return { citationHref: provenance.citation, lines };
+  return { citationHref: linkableCitation(provenance.citation), lines };
+}
+
+// A citation is persisted as free text, and only a web address is safe to hand to an
+// anchor. Anything else keeps its evidence line and loses its link — the panel already
+// renders without one.
+function linkableCitation(citation: string | null): string | null {
+  if (citation === null) return null;
+
+  try {
+    const { protocol } = new URL(citation);
+    return protocol === "http:" || protocol === "https:" ? citation : null;
+  } catch {
+    return null;
+  }
 }
 
 function stripOf(

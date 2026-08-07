@@ -16,6 +16,10 @@ const ANSWER_VERB = "Answer this";
 
 const SAVED_NOTE = "Saved — this reranks what we look at next ✓";
 
+// Nothing is written for this one, so it may not say saved — but a panel that closes in
+// silence is indistinguishable from a tap that missed.
+const LEFT_OPEN_NOTE = "Left open — we'll keep asking.";
+
 // A plain-English description of what happened, fired on the answer, not the attempt.
 const ANSWERED_EVENT = "Answered a doubt on the audience page";
 
@@ -143,14 +147,15 @@ function ProposalDoubtRow({ doubt }: { doubt: ProposalDoubt }) {
       >
         {doubt.rejectLabel}
       </Button>
-      {/* An honest "we don't know" persists nothing: the doubt stays open. */}
+      {/* An honest "we don't know" persists nothing: the doubt stays open, and the row
+          says which of those two things happened rather than just vanishing. */}
       <Button
         size="compact-sm"
         variant="default"
         fullWidth
         justify="flex-start"
         disabled={pending !== null}
-        onClick={controls.dismiss}
+        onClick={() => controls.applied(LEFT_OPEN_NOTE)}
       >
         {doubt.unknownLabel}
       </Button>

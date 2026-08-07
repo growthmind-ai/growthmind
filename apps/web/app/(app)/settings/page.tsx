@@ -31,9 +31,9 @@ import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
-    <Stack gap="xs">
+    <Stack gap="xs" id={id}>
       <Text size="xs" fw={700} tt="uppercase" c="dimmed">
         {title}
       </Text>
@@ -141,7 +141,9 @@ function Pages({ view, pages }: { view: SettingsView; pages: readonly PageRoleVi
 
 function Business({ view, site }: { view: SettingsView; site: BusinessResearchView }) {
   return (
-    <Section title={BUSINESS_SECTION_TITLE}>
+    // Named so /audience can link the website control itself rather than the top of a page
+    // it is the last section of.
+    <Section title={BUSINESS_SECTION_TITLE} id="business">
       <BusinessContext view={site} sourceAttached={isAnalyticsAttached(view.source.status)} />
     </Section>
   );

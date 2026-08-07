@@ -17,6 +17,7 @@ import { Eyebrow } from "@/components/ui/Eyebrow";
 import { ClosingNote, PageHeader, SectionHeading } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import {
+  AUDIENCE_AFFORDANCE,
   AUDIENCE_LEDE,
   CLOSING_NOTE,
   buildAudienceView,
@@ -90,6 +91,10 @@ function AudienceBody({ view }: { readonly view: AudienceView }) {
 function PopulatedAudience({ view }: { readonly view: PopulatedAudienceView }) {
   return (
     <>
+      {/* The verbs only appear on hover, focus or a tap, so the page says so before the
+          first belief rather than leaving a reader to discover it by accident. */}
+      <Text size="sm">{AUDIENCE_AFFORDANCE}</Text>
+
       <ProvenanceStrip strip={view.strip} />
 
       {view.thinNote === null ? null : (
@@ -136,7 +141,9 @@ function PopulatedAudience({ view }: { readonly view: PopulatedAudienceView }) {
 
       {view.doubts.length === 0 ? null : (
         <>
-          <SectionHeading title="What we are least sure about — one tap settles it" />
+          {/* Not "one tap settles it": answering one costs a reveal, the verb and the
+              option, and a heading may not promise a path the page does not have. */}
+          <SectionHeading title="What we are least sure about — we can settle it in one answer" />
           <Stack gap="sm">
             {view.doubts.map((doubt) => (
               <DoubtRow key={doubtKey(doubt)} doubt={doubt} />
