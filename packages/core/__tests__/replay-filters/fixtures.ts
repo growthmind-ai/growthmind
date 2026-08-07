@@ -13,7 +13,7 @@ export function fact(overrides: Partial<ReplaySessionFact> = {}): ReplaySessionF
     entryUrlPath: "/pricing",
     origin: "real",
     exclusionReason: "none",
-    durationMs: null,
+    durationSeconds: null,
     clickCount: null,
     keypressCount: null,
     consoleErrorCount: null,
