@@ -1,6 +1,9 @@
 import {
+  confirmInFacts,
   growthContext as toGrowthContext,
   growthContextSchema,
+  mergeResearch,
+  type ConfirmOutcome,
   type GrowthContext,
   type RoledSurface,
 } from "@growthmind/core";
@@ -70,6 +73,9 @@ export interface StateFactInput {
   // worth less than no rule.
   readonly statement: string | null;
   readonly statedAt: Date;
+
+  // The org member who typed it. Null on every write with no person behind it (AD-4).
+  readonly statedBy: string | null;
 }
 
 export type StateFactOutcome = "stated" | "not_found" | "full";
@@ -84,6 +90,19 @@ export interface DecideAudienceInput {
 }
 
 export type DecideAudienceOutcome = "decided" | "not_found";
+
+export interface ConfirmFactInput {
+  readonly projectId: string;
+
+  // Matched by (kind, statement): the same sentence under another kind is a different
+  // belief and stays untouched.
+  readonly kind: BusinessFactKind;
+  readonly statement: string;
+  readonly confirmedAt: Date;
+
+  // The org member who clicked. From the credential, never the wire (AD-3).
+  readonly confirmedBy: string;
+}
 
 export interface ProposeAudienceInput {
   readonly projectId: string;
@@ -145,6 +164,10 @@ export interface GrowthContextRepo {
   // because the browser's copy predates whatever the last read wrote.
   stateFact(input: StateFactInput): Promise<StateFactOutcome>;
   decideAudience(input: DecideAudienceInput): Promise<DecideAudienceOutcome>;
+
+  // A person standing behind one sentence. Confirming twice keeps one confirmation and
+  // one announcement — nothing is written the second time (D3).
+  confirmFact(input: ConfirmFactInput): Promise<ConfirmOutcome>;
 
   // The model's answer for one `who_counts` sentence. Never overwrites a proposal a person
   // has already answered — a re-read must not un-confirm what they confirmed.
@@ -415,7 +438,7 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
             at: input.statedAt,
             citation: null,
             seen: null,
-            statedBy: null,
+            statedBy: input.statedBy,
           },
           confirmation: null,
         };
@@ -481,6 +504,39 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
 
       // Contended past the retries reads the same as a row that moved: the browser goes back
       // for a re-read rather than being told a decision stuck when it did not.
+      return outcome ?? "not_found";
+    },
+
+    // Same re-read-and-merge loop as decideAudience; the mutation itself lives in
+    // confirmInFacts so the idempotency is tested without a database (AD-1).
+    async confirmFact(input: ConfirmFactInput): Promise<ConfirmOutcome> {
+      await s.assertProjectOwned(input.projectId, notOurProject);
+
+      const outcome = await whileContended<ConfirmOutcome>(STATE_FACT_ATTEMPTS, async () => {
+        const current = await readResearch(input.projectId);
+        if (current === null) return "not_found";
+
+        const result = confirmInFacts(current.businessContext.facts, input.kind, input.statement, {
+          at: input.confirmedAt,
+          by: input.confirmedBy,
+        });
+
+        // Nothing changed, so nothing is written and nothing announced: a double click
+        // stays one confirmation and one NOTIFY (D3).
+        if (result.outcome !== "confirmed") return result.outcome;
+
+        const written = await writeFactsIfUnchanged(
+          input.projectId,
+          result.facts,
+          current.businessContext.removed,
+          current.updatedAt,
+        );
+
+        return written ? "confirmed" : null;
+      });
+
+      // Contended past the retries reads the same as a row that moved: the browser goes
+      // back for a re-read rather than being told the click stuck when it did not.
       return outcome ?? "not_found";
     },
 
@@ -633,30 +689,13 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
         const current = await readResearch(input.projectId);
         if (current === null) return "absent";
 
-        // A whole-column overwrite would erase every correction on every re-read, which is
-        // the one row in this table that cost a person their time.
-        const kept = current.businessContext.facts.filter(
-          (fact) => fact.provenance.source !== "site",
-        );
-
-        // A person who corrected or deleted a sentence should not be handed it back by the
-        // next read of the page it came from.
-        const removed = current.businessContext.removed;
-        const alreadyAnswered = new Set([
-          ...removed,
-          ...kept.flatMap((fact) =>
-            fact.correctedFrom === null ? [fact.statement] : [fact.statement, fact.correctedFrom],
-          ),
-        ]);
-
-        const merged = capFactsPerKind([
-          ...kept,
-          ...input.facts.filter((fact) => !alreadyAnswered.has(fact.statement)),
-        ]).slice(0, BUSINESS_FACT_LIMIT);
+        // What survives a re-read is decided in mergeResearch, pure and tested (AD-2):
+        // person-stated facts, confirmed site facts, and every tombstone.
+        const merged = mergeResearch(current.businessContext, input.facts);
 
         const written = await db
           .update(growthContext)
-          .set({ businessContext: { facts: merged, removed }, ...settled, updatedAt: new Date() })
+          .set({ businessContext: merged, ...settled, updatedAt: new Date() })
           .where(
             s.owned(
               growthContext,

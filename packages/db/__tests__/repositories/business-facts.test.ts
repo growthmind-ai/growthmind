@@ -88,6 +88,7 @@ describe("stating a business fact", () => {
         was: "Held to nothing in particular",
         statement: "Licensed by the UK Gambling Commission",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -114,6 +115,7 @@ describe("stating a business fact", () => {
       was: "Marketing teams",
       statement: "Agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
     await repo.stateFact({
       projectId: lane.projectId,
@@ -121,6 +123,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small software agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     const [fact] = await factsOn(repo, lane.projectId);
@@ -142,6 +145,7 @@ describe("stating a business fact", () => {
         was: null,
         statement: "An order that arrives without a substitution complaint",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -169,6 +173,7 @@ describe("stating a business fact", () => {
         was: null,
         statement: "One more",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("full");
 
@@ -186,6 +191,7 @@ describe("stating a business fact", () => {
         was: "Enterprise buyers",
         statement: null,
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -202,6 +208,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     const untouched = (await factsOn(repo, lane.projectId)).find(
@@ -223,6 +230,7 @@ describe("stating a business fact", () => {
         was: "Something nobody ever said",
         statement: "Anything",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("not_found");
   });
@@ -237,6 +245,7 @@ describe("stating a business fact", () => {
         was: "Agencies",
         statement: "Small agencies",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("not_found");
   });
@@ -253,6 +262,7 @@ describe("stating a business fact", () => {
         was: "Agencies",
         statement: "Mine now",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).rejects.toThrow(/not this organization's/);
   });
@@ -286,6 +296,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     expect((await repo.findForProject(lane.projectId))?.bySurface.get("/checkout")?.role).toBe(
@@ -318,6 +329,7 @@ describe("reading the site again", () => {
       was: null,
       statement: "An order that arrives without a complaint",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.recordResearch({
@@ -344,6 +356,7 @@ describe("reading the site again", () => {
       was: "Marketing teams",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.recordResearch({
@@ -370,6 +383,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "An order that arrives",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
       repo.stateFact({
         projectId: lane.projectId,
@@ -377,6 +391,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "The fortnight before Christmas",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ]);
 
@@ -404,6 +419,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "An order that arrives",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ]);
 
@@ -425,6 +441,7 @@ describe("reading the site again", () => {
       was: null,
       statement: "The fortnight before Christmas",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.stateSiteDomain({ projectId: lane.projectId, siteDomain: "elsewhere.example" });
