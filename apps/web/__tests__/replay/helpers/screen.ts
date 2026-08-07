@@ -209,7 +209,12 @@ export interface ReadProbe {
 // R1 and R2 are two reads of one table, so a failure has to be aimed at one of them: this
 // counts selects that reach `sessions` and throws on the nth. Reads of other tables — the
 // project and the connection — pass through untouched.
-export function failingSessionRead(db: TestDb, nth: number): ReadProbe {
+export function failingSessionRead(
+  db: TestDb,
+  nth: number,
+  // Overridable so a caller can fail the read the way drizzle actually fails it, message and all.
+  fail: (nth: number) => Error = (n) => new Error(`replay session read ${String(n)} failed`),
+): ReadProbe {
   let reads = 0;
 
   const proxied = new Proxy(db as object, {
@@ -233,7 +238,7 @@ export function failingSessionRead(db: TestDb, nth: number): ReadProbe {
               if (table === schema.sessions) {
                 reads += 1;
                 if (reads === nth) {
-                  throw new Error(`replay session read ${String(nth)} failed`);
+                  throw fail(nth);
                 }
               }
 

@@ -152,6 +152,44 @@ describe("readReplayScreen — boundaries and terminal states", () => {
     expect(outcomeName(screen.outcome)).not.toBe("no_replays_yet");
   });
 
+  // The same sentence, made false by a filter: orbitlabs was left out, at another entry. E9 is
+  // P-2's trust surface, so a claim about the exclusion rules may only be made about the whole
+  // lane — never about what a company or entry narrowing happens to have hidden.
+  test("should not say nothing was left out when a filter, not the exclusion rules, emptied the lane", async () => {
+    const workspace = await seedReplayWorkspace(db, "e9-filtered");
+
+    await seedSessions(db, workspace, [
+      { key: "ph:e9f-real", company: "acme.example", entry: "/pricing" },
+      {
+        key: "ph:e9f-excluded",
+        company: "orbitlabs.example",
+        entry: "/docs",
+        exclusionReason: "internal_domain",
+      },
+    ]);
+
+    const { deps } = replayDeps(db, workspace.ctx);
+
+    const narrowed = [
+      // A company that does have an excluded session, at an entry it was not seen on.
+      filtersOf({ lane: "excluded", company: "orbitlabs.example", entry: "/pricing" }),
+      // A domain from another org, and one nobody has ever carried: both reach here identically.
+      filtersOf({ lane: "excluded", company: "acme.example", entry: "/pricing" }),
+      filtersOf({ lane: "excluded", company: "not-a-customer.example" }),
+    ];
+
+    const outcomes: string[] = [];
+
+    for (const filters of narrowed) {
+      const screen = screenOf(await readReplayScreen(deps, workspace.ctx, filters));
+
+      expect(screen.rows).toHaveLength(0);
+      outcomes.push(outcomeName(screen.outcome));
+    }
+
+    expect(outcomes).toEqual(["relax:entry", "value_matches_nothing", "value_matches_nothing"]);
+  });
+
   test("should return the value-matches-nothing outcome for a company value no session carries", async () => {
     const workspace = await seedReplayWorkspace(db, "e5-unknown-value");
 

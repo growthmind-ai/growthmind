@@ -100,7 +100,12 @@ async function read(
 
     return { facts: bounded.sessions.map(factOf), truncated: bounded.truncated };
   } catch (error) {
-    logger.error("replays: a session read for the replay screen failed", { error });
+    // A DrizzleQueryError's message, and so its stack, is built from the query and its bound
+    // params, and those params are the customer's own domain and paths. Only a closed set goes out.
+    logger.error("replays: a session read for the replay screen failed", {
+      lane,
+      code: error instanceof Error ? error.name : "unknown",
+    });
     return null;
   }
 }
@@ -137,6 +142,10 @@ function everyPickedValueIsUnknown(filters: ReplayFilters, facets: ReplayFacets)
   );
 }
 
+function narrowed(filters: ReplayFilters): boolean {
+  return filters.company !== null || filters.entry !== null;
+}
+
 function outcomeOf(input: {
   readonly filters: ReplayFilters;
   readonly facets: ReplayFacets;
@@ -154,8 +163,11 @@ function outcomeOf(input: {
   // "yet" and invite a return to a zero that never moves.
   if (filters.lane === "simulated") return "simulated_permanent_zero";
 
-  // E9 is a statement about the exclusion rules, not about having no data.
-  if (filters.lane === "excluded" && provenance.sessions === 0) return "nothing_left_out";
+  // E9 is a statement about the exclusion rules, so it may only be made about the whole lane: a
+  // company or entry narrowed to zero hides rows the lane does hold, and the claim is then false.
+  if (filters.lane === "excluded" && provenance.sessions === 0 && !narrowed(filters)) {
+    return "nothing_left_out";
+  }
 
   if (everyPickedValueIsUnknown(filters, input.facets)) return "value_matches_nothing";
 

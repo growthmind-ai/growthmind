@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { findFirstProjectForOrg } from "@growthmind/db";
 import { createTestDb, type TestDb } from "@growthmind/db/testing";
+import { setLogSink, type LogRecord } from "@growthmind/shared";
 
 import { readReplayScreen } from "../../lib/replay/read";
 import {
@@ -76,6 +77,54 @@ describe("readReplayScreen — failure isolation", () => {
 
     expect(result.kind).toBe("failed");
     expect(result).toEqual({ kind: "failed", filters });
+  });
+
+  // A DrizzleQueryError's message is `Failed query: ${query}\nparams: ${params}`, and the logger
+  // serialises an Error's message and stack — so the bound params of a failed read are the
+  // customer's own domain and entry paths, one DB blip away from stdout.
+  test("should log a failed read without the query's bound params", async () => {
+    const workspace = await seedReplayWorkspace(db, "read-failure-log");
+
+    await seedSessions(db, workspace, [
+      { key: "ph:log-1", company: "acme.example", entry: "/pricing" },
+    ]);
+
+    const probe = failingSessionRead(db, 1, () => {
+      const error = new Error(
+        'Failed query: select ... from "sessions" where "identity_email_domain" = $1\n' +
+          `params: ${workspace.ctx.organizationId},acme.example,/pricing`,
+      );
+      error.name = "DrizzleQueryError";
+      return error;
+    });
+
+    const { deps } = replayDeps(probe.db, workspace.ctx);
+
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
+
+    try {
+      await readReplayScreen(
+        deps,
+        workspace.ctx,
+        filtersOf({ company: "acme.example", entry: "/pricing" }),
+      );
+    } finally {
+      restore();
+    }
+
+    const written = JSON.stringify(logged);
+
+    expect(logged).toHaveLength(1);
+    expect(written).not.toContain("acme.example");
+    expect(written).not.toContain("/pricing");
+    expect(written).not.toContain(workspace.ctx.organizationId);
+    expect(written).not.toContain("params:");
+
+    // Still enough to debug with: which of the two reads failed, and how it failed.
+    expect(logged[0]?.fields).toEqual({ lane: "real", code: "DrizzleQueryError" });
   });
 
   test("should return the not-connected outcome without provisioning a project", async () => {
