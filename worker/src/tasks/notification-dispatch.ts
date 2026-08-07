@@ -104,12 +104,28 @@ export async function runNotificationDispatch(
 
   const now = new Date();
 
-  const poster = notification.channelId === null ? null : await deps.posterFor(ctx);
-
-  if (notification.channelId === null || poster === null) {
+  if (notification.channelId === null) {
     await recordDispatchOutcome(deps.db, ctx, {
       notificationId,
       outcome: { status: "quiet" },
+      now,
+    });
+    return;
+  }
+
+  const poster = await deps.posterFor(ctx);
+
+  // A channel exists but its credential could not be opened. That is a broken connection,
+  // not an absent one — recording it quiet would tell a connected org that Slack is not
+  // connected, and quiet is terminal, so job 2's lease would never come back to it.
+  if (poster === null) {
+    await recordDispatchOutcome(deps.db, ctx, {
+      notificationId,
+      outcome: {
+        status: "failed",
+        target: notification.channelId,
+        failureReason: "not_authorised",
+      },
       now,
     });
     return;

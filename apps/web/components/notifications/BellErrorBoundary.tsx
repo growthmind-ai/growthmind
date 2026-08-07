@@ -1,5 +1,6 @@
 "use client";
 
+import { logger } from "@growthmind/shared";
 import { Component, type ReactNode } from "react";
 
 // The bell lives in the layout on every page — the highest-blast-radius render in the
@@ -15,8 +16,9 @@ export class BellErrorBoundary extends Component<
   }
 
   override componentDidCatch(error: unknown): void {
-    // oxlint-disable-next-line no-console -- client boundary: the browser console is the only sink here
-    console.error("bell: render failed, hiding the bell", error);
+    logger.error("bell: the bell failed to render, so the shell is showing without it", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
 
   override render(): ReactNode {

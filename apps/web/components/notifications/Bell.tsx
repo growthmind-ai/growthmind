@@ -29,19 +29,28 @@ function stampOpened(): void {
 export function Bell({ bell, placement }: BellProps) {
   const [opened, setOpened] = useState(false);
 
+  // Cleared the moment it is opened, and it stays cleared: the server's count is measured
+  // against a watermark this render predates, so a row arriving while the popover is open
+  // would otherwise raise a badge over a list the reader is already looking at.
+  const [seen, setSeen] = useState(false);
+
   if (bell === null) {
     return null;
   }
 
-  const label = bellAriaLabel(bell.badgeCount);
+  const newCount = seen ? 0 : bell.badgeCount;
+  const label = bellAriaLabel(newCount);
+
+  function open(next: boolean): void {
+    setOpened(next);
+    setSeen(true);
+    stampOpened();
+  }
 
   return (
     <Popover
       opened={opened}
-      onChange={(next) => {
-        setOpened(next);
-        stampOpened();
-      }}
+      onChange={open}
       position={placement === "rail" ? "bottom-start" : "bottom-end"}
       withArrow
       shadow="md"

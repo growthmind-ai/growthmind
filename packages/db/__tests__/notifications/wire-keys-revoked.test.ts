@@ -22,7 +22,9 @@ import {
   createTestDb,
   laneNames,
   recordPublishedTopics,
+  seedMember,
   seedOrgWithOwner,
+  seedUser,
   stubGraphileAddJob,
   type LiveRecorder,
   type SeededOrgWithOwner,
@@ -101,6 +103,33 @@ async function dispatchJobsFor(organizationId: string) {
       (job.payload as { organizationId?: string }).organizationId === organizationId,
   );
 }
+
+describe("the actor is whoever pressed revoke, not the org's owner (D1)", () => {
+  // The retired route suite owned this one: with a single-member fixture, resolving the
+  // owner and resolving the actor are the same value, so nothing would catch a regression
+  // that read the org owner instead of the caller.
+  test("a teammate revoking is named as the actor, not the owner", async () => {
+    const bed = await bedFor("d1-actor", { slack: false });
+
+    const teammate = await seedUser(db, {
+      name: "o051-teammate-who-pressed-revoke",
+      email: `o051-teammate-${bed.org.organizationId}@example.com`,
+    });
+    await seedMember(db, { organizationId: bed.org.organizationId, userId: teammate.id });
+
+    await createApiKeysRepo(db, bed.org.ctx).mint({ name: "o051-d1-key" });
+
+    const asTeammate = createApiKeysRepo(db, { ...bed.org.ctx, userId: teammate.id });
+    expect(await asTeammate.revokeEveryLive()).toBe(true);
+
+    const rows = await notificationRowsFor(bed.org.organizationId);
+    const row = rows.at(-1);
+    if (!row) throw new Error("the teammate's revoke emitted no notification");
+
+    expect(row.actorUserId).toBe(teammate.id);
+    expect(row.actorUserId).not.toBe(bed.org.userId);
+  });
+});
 
 describe("revokeEveryLive is the keys_revoked emitter (D11 wire)", () => {
   test("revoking live keys emits once with the acting member as actor and queues the dispatch job", async () => {

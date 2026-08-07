@@ -1,4 +1,10 @@
-import { apiKeyIdOf, resolveApiKeyPrincipal, stampApiKeyUse, type ScopedDb } from "@growthmind/db";
+import {
+  apiKeyIdOf,
+  describeDriverError,
+  resolveApiKeyPrincipal,
+  stampApiKeyUse,
+  type ScopedDb,
+} from "@growthmind/db";
 import { logger, type TenantContext } from "@growthmind/shared";
 
 export interface McpCredential {
@@ -31,7 +37,9 @@ export function createApiKeyMcpCredentials(
           await stamp(db, keyId);
         } catch (error) {
           logger.error("mcp: the key was accepted and its last-used stamp was not written", {
-            error,
+            // The stamp is a transaction now (O-051 emits inside it), so a driver fault
+            // here would otherwise write the statement and its bound values to the log.
+            reason: describeDriverError(error),
           });
         }
       }

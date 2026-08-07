@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Group, Stack, Text } from "@mantine/core";
+import { Box, Button, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
 import {
   MARK_ALL_READ_LABEL,
   NOTIFICATION_EMPTY_STATE_MESSAGES,
@@ -83,11 +83,7 @@ function Row({ row }: { readonly row: BellRowViewModel }) {
         />
         <Box style={{ minWidth: 0 }}>
           {/* The dot is the sighted reader's unread fact; this is the same fact spoken. */}
-          {row.unread ? (
-            <Text component="span" size="sm" className="sr-only">
-              {UNREAD_ROW_SCREEN_READER_PREFIX}
-            </Text>
-          ) : null}
+          {row.unread ? <VisuallyHidden>{UNREAD_ROW_SCREEN_READER_PREFIX}</VisuallyHidden> : null}
 
           <Anchor
             component={Link}

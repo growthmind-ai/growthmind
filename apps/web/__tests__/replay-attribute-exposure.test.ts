@@ -47,6 +47,10 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "app/(auth)/social-buttons.tsx": { bindings: 1, kind: "our-copy" },
   "app/(first-run)/first-run/page.tsx": { bindings: 1, kind: "our-copy" },
   "components/app/AppNav.tsx": { bindings: 1, kind: "our-copy" },
+  // bellAriaLabel's sentence with a count of the org's own unread rows. A count is not
+  // something a customer or their users wrote, and no sentence, name or subject id
+  // reaches an attribute from the bell — those are text.
+  "components/notifications/Bell.tsx": { bindings: 1, kind: "our-copy" },
   // Both carry a tone from a closed union of ours — the delivery state's, and the lane
   // line's quiet/alarm/cold. The delivered message itself is text, never an attribute, so
   // nothing a customer or their users wrote reaches one from this page.
