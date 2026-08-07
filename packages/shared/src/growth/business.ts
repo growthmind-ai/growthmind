@@ -74,6 +74,16 @@ export const BUSINESS_FACT_LIMIT = 48;
 // moves leaves no room for the conversion a person typed.
 export const FACTS_PER_KIND_MAX = 4;
 
+export const factConfirmationSchema = z.object({
+  at: z.coerce.date(),
+
+  // The org member who clicked. Null on any write path with no person behind it. Rendered
+  // only as "by you" / "by your team", never as an id.
+  by: z.string().min(1).nullable().default(null),
+});
+
+export type FactConfirmation = z.infer<typeof factConfirmationSchema>;
+
 export const businessFactSchema = z.object({
   kind: businessFactKindSchema,
 
@@ -88,6 +98,10 @@ export const businessFactSchema = z.object({
   // Only `who_counts` carries one, and only once a person has confirmed it does it narrow
   // a denominator. Null on every row written before this field existed.
   audience: audienceProposalSchema.nullable().default(null),
+
+  // A person stood behind this exact sentence. A confirmed fact survives re-research, and
+  // a second confirm changes nothing. Null on every row written before this field existed.
+  confirmation: factConfirmationSchema.nullable().default(null),
 });
 
 export type BusinessFact = z.infer<typeof businessFactSchema>;
@@ -197,6 +211,15 @@ export const audienceReducePayloadSchema = z.object({
 });
 
 export type AudienceReducePayload = z.infer<typeof audienceReducePayloadSchema>;
+
+// Both fields required, and strict like every settings input: Confirm carries no free
+// text, so the statement must equal an existing fact's or the repo answers not_found.
+export const settingsBusinessConfirmInputSchema = z.strictObject({
+  kind: businessFactKindSchema,
+  statement: z.string().min(1).max(STATEMENT_MAX),
+});
+
+export type SettingsBusinessConfirmInput = z.infer<typeof settingsBusinessConfirmInputSchema>;
 
 // The name this task shipped under. Registered alongside the current one so a job queued
 // before the rename runs rather than retrying against nothing forever (D9).

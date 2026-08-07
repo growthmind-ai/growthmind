@@ -39,6 +39,9 @@ export async function handle(request: Request, deps: FirstRunRouteDeps): Promise
     was: parsed.data.was,
     statement: parsed.data.statement,
     statedAt: deps.now(),
+    // Who typed it comes from the credential, never the wire (AD-4) — rendered only ever
+    // as "by you" / "by your team".
+    statedBy: gate.ctx.userId,
   });
 
   // The row moved under the browser — a re-read is the honest answer, not a silent write

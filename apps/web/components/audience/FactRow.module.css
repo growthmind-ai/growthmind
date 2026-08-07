@@ -1,0 +1,46 @@
+.droppedBody {
+  opacity: 0.38;
+  transition: opacity 0.2s ease;
+}
+
+.prior {
+  color: var(--mantine-color-dimmed);
+  margin-right: 6px;
+}
+
+/* The panel box is a fixed height; a refusal running to three lines has to scroll rather
+   than fall off the bottom edge unread. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 10px 12px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editorInput {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+@media (pointer: coarse) {
+  .editorInput {
+    min-height: 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .droppedBody {
+    transition-duration: 0.01ms;
+  }
+}

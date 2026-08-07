@@ -103,6 +103,8 @@ describe("business research", () => {
       citation: "https://example.com/",
       // A page can never fill this. Only the sessions lane does.
       seen: null,
+      // And no worker write ever names a person.
+      statedBy: null,
     });
   });
 

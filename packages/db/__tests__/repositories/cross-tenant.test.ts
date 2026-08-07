@@ -851,6 +851,7 @@ describe("detector-corpus.service — the T1 corpus read", () => {
             at: BASE,
             citation: "https://example.com/",
             seen: null,
+            statedBy: null,
           },
           correctedFrom: null,
           audience: {
@@ -858,6 +859,7 @@ describe("detector-corpus.service — the T1 corpus read", () => {
             status: "proposed",
             decidedAt: null,
           },
+          confirmation: null,
         },
       ],
       researchedAt: BASE,
@@ -922,13 +924,20 @@ describe("detector-corpus.service — the T1 corpus read", () => {
         {
           kind: "who_counts",
           statement: WHO,
-          provenance: { source: "site", at: AT, citation: "https://example.com/", seen: null },
+          provenance: {
+            source: "site",
+            at: AT,
+            citation: "https://example.com/",
+            seen: null,
+            statedBy: null,
+          },
           correctedFrom: null,
           audience: {
             rule: { clauses: [{ attribute: "identity", is: "resolved" }] },
             status: "proposed",
             decidedAt: null,
           },
+          confirmation: null,
         },
       ],
       researchedAt: AT,

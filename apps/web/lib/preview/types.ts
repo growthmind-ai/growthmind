@@ -2,29 +2,6 @@
 // these describe screens, not the product's contracts, and they are meant to be replaced by
 // real DTOs once each surface has a reader behind it.
 
-export type BeliefSource = "observed" | "research" | "assumed";
-
-export interface Belief {
-  readonly id: string;
-  readonly claim: string;
-  readonly sources: readonly BeliefSource[];
-  readonly evidence: string;
-  readonly changed: string;
-  readonly settledBy: string | null;
-}
-
-export interface AudienceView {
-  readonly builtFrom: string;
-  readonly confidence: string;
-  readonly lastChanged: string;
-  readonly beliefs: readonly Belief[];
-  readonly arriveWith: readonly { readonly label: string; readonly value: string }[];
-  readonly wasBelieved: string;
-  readonly nowBelieved: string;
-  readonly consequence: string;
-  readonly leastSure: readonly string[];
-}
-
 export interface RankedChange {
   readonly change: string;
   readonly impact: string;

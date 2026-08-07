@@ -1007,6 +1007,8 @@ export {
   bindingFactKindSchema,
   shapingFactKindSchema,
   businessFactSchema,
+  factConfirmationSchema,
+  settingsBusinessConfirmInputSchema,
   businessContextSchema,
   bindingReadOutputSchema,
   shapingReadOutputSchema,
@@ -1024,6 +1026,8 @@ export {
   type BusinessFact,
   type BusinessContext,
   type BusinessResearchPayload,
+  type FactConfirmation,
+  type SettingsBusinessConfirmInput,
 } from "./growth/business";
 export {
   ICP_BELIEF_KINDS,

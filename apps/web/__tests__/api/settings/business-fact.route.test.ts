@@ -66,9 +66,11 @@ function read(kind: BusinessFactKind, statement: string): BusinessFact {
       at: CLOCK_AT,
       citation: "https://example.com/terms",
       seen: null,
+      statedBy: null,
     },
     correctedFrom: null,
     audience: null,
+    confirmation: null,
   };
 }
 
@@ -198,5 +200,58 @@ describe("POST /api/settings/business/fact", () => {
 
     expect((await state(mine, { kind: KIND, was: GOING, statement: null })).status).toBe(409);
     expect(await statementsFor(theirs)).toContain(GOING);
+  });
+});
+
+// O-036 (AD-4, FR-8): the audience page reuses this route for Correct and Drop, which adds
+// two contracts — the O-021 admission seam refuses a person's own PII before any persist,
+// and a stated fact carries who typed it.
+describe("POST /api/settings/business/fact — audience-page contracts (O-036)", () => {
+  const PII = "Our champion is — Jane Smith, reachable at jane.smith@example.com for approvals.";
+
+  test("refuses PII-bearing correction text before any persist", async () => {
+    const scope = await bed.member("pii-refused");
+    await seedFacts(scope, [read(KIND, KEPT)]);
+
+    const response = await state(scope, { kind: KIND, was: KEPT, statement: PII });
+
+    expect(response.status).toBe(400);
+
+    const body = await bodyOf(response);
+    const error = (body.error ?? {}) as Record<string, unknown>;
+    const message = typeof error.message === "string" ? error.message : "";
+
+    // Plain English naming what to change — and never echoing the person it refused to keep.
+    expect(message).toMatch(/group of people|segment/i);
+    expect(message).not.toContain("jane.smith@example.com");
+    expect(message).not.toContain("Jane Smith");
+
+    const left = await statementsFor(scope);
+    expect(left).toContain(KEPT);
+    expect(left).not.toContain(PII);
+  });
+
+  test("threads the session user id into the stated fact's provenance as statedBy", async () => {
+    const scope = await bed.member("stated-by");
+    await seedFacts(scope, [read(KIND, KEPT)]);
+
+    const stated = "Agencies with under ten seats decide inside a week.";
+
+    expect((await state(scope, { kind: KIND, was: null, statement: stated })).status).toBe(200);
+
+    const row = await createGrowthContextRepo(bed.db, scope.ctx).readBusinessResearch(
+      await projectFor(scope),
+    );
+    const fact = (row?.businessContext.facts ?? []).find((each) => each.statement === stated);
+
+    if (fact === undefined) {
+      throw new Error("the stated fact did not persist at all, so statedBy has nothing to sit on");
+    }
+
+    // `statedBy` is this sprint's addition to factProvenanceSchema (AD-4), so it is read
+    // unknown-shaped: red today because the field does not exist, green when the route
+    // passes gate.ctx.userId through StateFactInput and the repo persists it.
+    const provenance = fact.provenance as unknown as Record<string, unknown>;
+    expect(provenance.statedBy).toBe(scope.userId);
   });
 });

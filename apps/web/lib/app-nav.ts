@@ -52,20 +52,18 @@ const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };
 
 const DATA: NavItem = { href: ROUTES.data, label: "Your data" };
 
+const AUDIENCE: NavItem = { href: ROUTES.audience, label: "Audience" };
+
 const PRODUCT: NavGroup = {
   label: "Your product",
-  items: [
-    { href: ROUTES.audience, label: "Audience" },
-    { href: ROUTES.plan, label: "Before you build" },
-    AGENT,
-    DATA,
-  ],
+  items: [AUDIENCE, { href: ROUTES.plan, label: "Before you build" }, AGENT, DATA],
 };
 
-// Audience waits on O-036's ICP model and Before-you-build on O-033's brief-time exchange,
-// so both stay behind the list. The agent page is also the only way to a key once setup is
-// behind you, which nothing links back to — it could never have sat there.
-const PRODUCT_LIVE: NavGroup = { label: "Your product", items: [AGENT, DATA] };
+// Audience reads the live business-context model, so it answers for everyone. Before-you-build
+// waits on O-033's brief-time exchange, so it stays behind the list. The agent page is also
+// the only way to a key once setup is behind you, which nothing links back to — it could
+// never have sat there.
+const PRODUCT_LIVE: NavGroup = { label: "Your product", items: [AUDIENCE, AGENT, DATA] };
 
 // Settings and the profile hang off the account block at the foot of the rail, not here.
 // Off the preview allow list every Work route is a `notFound`, and of Your product only

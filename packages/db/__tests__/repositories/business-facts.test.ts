@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 import { createGrowthContextRepo } from "../../src/repositories/growth-context.repo";
 import { createTestDb, type TestDb } from "../../src/testing";
-import { laneNames, seedOrgWithOwner, seedProject } from "../../src/testing";
+import { laneNames, recordPublishedTopics, seedOrgWithOwner, seedProject } from "../../src/testing";
 
 const NAMES = laneNames("business-facts");
 
@@ -18,9 +18,16 @@ function readFact(statement: string, kind: BusinessFact["kind"] = "regime"): Bus
   return {
     kind,
     statement,
-    provenance: { source: "site", at: READ_AT, citation: "https://example.com/", seen: null },
+    provenance: {
+      source: "site",
+      at: READ_AT,
+      citation: "https://example.com/",
+      seen: null,
+      statedBy: null,
+    },
     correctedFrom: null,
     audience: null,
+    confirmation: null,
   };
 }
 
@@ -81,6 +88,7 @@ describe("stating a business fact", () => {
         was: "Held to nothing in particular",
         statement: "Licensed by the UK Gambling Commission",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -93,6 +101,7 @@ describe("stating a business fact", () => {
       at: STATED_AT,
       citation: null,
       seen: null,
+      statedBy: null,
     });
   });
 
@@ -106,6 +115,7 @@ describe("stating a business fact", () => {
       was: "Marketing teams",
       statement: "Agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
     await repo.stateFact({
       projectId: lane.projectId,
@@ -113,6 +123,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small software agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     const [fact] = await factsOn(repo, lane.projectId);
@@ -134,6 +145,7 @@ describe("stating a business fact", () => {
         was: null,
         statement: "An order that arrives without a substitution complaint",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -161,6 +173,7 @@ describe("stating a business fact", () => {
         was: null,
         statement: "One more",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("full");
 
@@ -178,6 +191,7 @@ describe("stating a business fact", () => {
         was: "Enterprise buyers",
         statement: null,
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("stated");
 
@@ -194,6 +208,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     const untouched = (await factsOn(repo, lane.projectId)).find(
@@ -215,6 +230,7 @@ describe("stating a business fact", () => {
         was: "Something nobody ever said",
         statement: "Anything",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("not_found");
   });
@@ -229,8 +245,64 @@ describe("stating a business fact", () => {
         was: "Agencies",
         statement: "Small agencies",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).toBe("not_found");
+  });
+
+  // A lost response, a browser retry or a second tab all replay the same add. The client's
+  // disabled button is not a guarantee, so the server has to be the one that only counts it
+  // once (D3, CR-7).
+  it("counts the same one-tap doubt once, however many times it arrives", async () => {
+    const lane = await seedLane(db, "idempotent-add");
+    const repo = await seedFacts(db, lane, []);
+    const add = {
+      projectId: lane.projectId,
+      kind: "who_counts" as const,
+      was: null,
+      statement: "No — the people who buy twice",
+      statedAt: STATED_AT,
+      statedBy: null,
+    };
+
+    expect(await repo.stateFact(add)).toBe("stated");
+    expect(await repo.stateFact(add)).toBe("stated");
+
+    expect((await factsOn(repo, lane.projectId)).map((row) => row.statement)).toEqual([
+      "No — the people who buy twice",
+    ]);
+  });
+
+  // Typing a dropped sentence back in is a person changing their mind about the removal, and
+  // the tombstone has to go with it — so the repeat-add guard must not swallow the revive.
+  it("still revives a dropped sentence when it is typed back in", async () => {
+    const lane = await seedLane(db, "revive-after-drop");
+    const repo = await seedFacts(db, lane, [readFact("Agencies")]);
+
+    await repo.stateFact({
+      projectId: lane.projectId,
+      kind: "regime",
+      was: "Agencies",
+      statement: null,
+      statedAt: STATED_AT,
+      statedBy: null,
+    });
+
+    expect(
+      await repo.stateFact({
+        projectId: lane.projectId,
+        kind: "regime",
+        was: null,
+        statement: "Agencies",
+        statedAt: STATED_AT,
+        statedBy: null,
+      }),
+    ).toBe("stated");
+
+    const row = await repo.readBusinessResearch(lane.projectId);
+
+    expect(row?.businessContext.facts.map((fact) => fact.statement)).toEqual(["Agencies"]);
+    expect(row?.businessContext.removed).toEqual([]);
   });
 
   it("refuses to state a fact on another organization's business", async () => {
@@ -245,8 +317,32 @@ describe("stating a business fact", () => {
         was: "Agencies",
         statement: "Mine now",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ).rejects.toThrow(/not this organization's/);
+  });
+
+  it("refuses to confirm a fact on another organization's business", async () => {
+    const mine = await seedLane(db, "confirm-tenant-mine");
+    const theirs = await seedLane(db, "confirm-tenant-theirs");
+    const theirRepo = await seedFacts(db, theirs, [readFact("Agencies")]);
+
+    await expect(
+      createGrowthContextRepo(db, mine.org.ctx).confirmFact({
+        projectId: theirs.projectId,
+        kind: "regime",
+        statement: "Agencies",
+        confirmedAt: STATED_AT,
+        confirmedBy: mine.org.userId,
+      }),
+    ).rejects.toThrow(/not this organization's/);
+
+    // The throw is only half the guarantee: a confirmation stamped on the way to it would
+    // put a stranger's name against a sentence this organization never stood behind.
+    const [fact] = await factsOn(theirRepo, theirs.projectId);
+
+    expect(fact?.statement).toBe("Agencies");
+    expect(fact?.confirmation).toBeNull();
   });
 
   it("leaves the roled surfaces alone, which live on the same row", async () => {
@@ -278,6 +374,7 @@ describe("stating a business fact", () => {
       was: "Agencies",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     expect((await repo.findForProject(lane.projectId))?.bySurface.get("/checkout")?.role).toBe(
@@ -310,6 +407,7 @@ describe("reading the site again", () => {
       was: null,
       statement: "An order that arrives without a complaint",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.recordResearch({
@@ -336,6 +434,7 @@ describe("reading the site again", () => {
       was: "Marketing teams",
       statement: "Small agencies",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.recordResearch({
@@ -362,6 +461,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "An order that arrives",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
       repo.stateFact({
         projectId: lane.projectId,
@@ -369,6 +469,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "The fortnight before Christmas",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ]);
 
@@ -396,6 +497,7 @@ describe("reading the site again", () => {
         was: null,
         statement: "An order that arrives",
         statedAt: STATED_AT,
+        statedBy: null,
       }),
     ]);
 
@@ -417,6 +519,7 @@ describe("reading the site again", () => {
       was: null,
       statement: "The fortnight before Christmas",
       statedAt: STATED_AT,
+      statedBy: null,
     });
 
     await repo.stateSiteDomain({ projectId: lane.projectId, siteDomain: "elsewhere.example" });
@@ -424,5 +527,51 @@ describe("reading the site again", () => {
     expect((await factsOn(repo, lane.projectId)).map((row) => row.statement)).toEqual([
       "The fortnight before Christmas",
     ]);
+  });
+
+  // Fixing a typo in the address is not a retraction of what someone stood behind. The
+  // domain change and the re-read share one survival predicate so they cannot drift apart
+  // again — this is the drift that lost a confirmed belief with no tombstone and no message.
+  it("keeps a confirmed site fact, and its confirmation, across a domain change", async () => {
+    const lane = await seedLane(db, "confirmed-survives-domain-change");
+    const repo = await seedFacts(db, lane, [
+      readFact("Licensed by the UK Gambling Commission"),
+      readFact("Read off the old site"),
+    ]);
+
+    expect(
+      await repo.confirmFact({
+        projectId: lane.projectId,
+        kind: "regime",
+        statement: "Licensed by the UK Gambling Commission",
+        confirmedAt: STATED_AT,
+        confirmedBy: lane.org.userId,
+      }),
+    ).toBe("confirmed");
+
+    await repo.stateSiteDomain({ projectId: lane.projectId, siteDomain: "exampl.com" });
+
+    const after = await factsOn(repo, lane.projectId);
+
+    expect(after.map((row) => row.statement)).toEqual(["Licensed by the UK Gambling Commission"]);
+    expect(after[0]?.confirmation).toEqual({ at: STATED_AT, by: lane.org.userId });
+  });
+
+  // The one growth-context write that used to announce nothing. A person naming their site
+  // in Settings is exactly what an open, empty /audience is waiting for (D11).
+  it("tells every open page that the site was named", async () => {
+    const lane = await seedLane(db, "domain-announces");
+    const recorder = recordPublishedTopics(db);
+
+    await createGrowthContextRepo(recorder.db, lane.org.ctx).stateSiteDomain({
+      projectId: lane.projectId,
+      siteDomain: "example.com",
+    });
+
+    expect(recorder.published).toContainEqual({
+      organizationId: lane.org.organizationId,
+      topic: "business_context",
+    });
+    expect(recorder.malformed).toEqual([]);
   });
 });
