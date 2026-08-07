@@ -399,11 +399,12 @@ describe("POST /api/slack/interactivity", () => {
     const page = await openFixesFor(pressed.ctx);
     expect(page.totalOpen).toBe(1);
 
-    const read = await readFixFor(pressed.ctx, page.rows[0]?.fixId ?? "");
+    const result = await readFixFor(pressed.ctx, page.rows[0]?.fixId ?? "");
+    if (result.outcome !== "read") throw new Error("expected the pressed fix to read back");
 
-    expect(read?.fix.organizationId).toBe(pressed.ctx.organizationId);
-    expect(read?.fix.organizationId).not.toBe(other.ctx.organizationId);
-    expect(read?.fix.openedBy).toBe(SLACK_INTERACTION_ACTOR);
+    expect(result.read.fix.organizationId).toBe(pressed.ctx.organizationId);
+    expect(result.read.fix.organizationId).not.toBe(other.ctx.organizationId);
+    expect(result.read.fix.openedBy).toBe(SLACK_INTERACTION_ACTOR);
 
     expect((await openFixesFor(other.ctx)).totalOpen).toBe(0);
   });

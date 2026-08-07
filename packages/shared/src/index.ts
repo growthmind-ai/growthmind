@@ -398,14 +398,25 @@ export {
   deliveryDecisionSchema,
   nothingTodayReasonSchema,
   deliveryStatusSchema,
+  deliveryLaneDecisionSchema,
   residualPiiKindSchema,
   RESIDUAL_PII_KINDS,
   NOTHING_TODAY_REASONS,
+  DELIVERY_LANE_DECISIONS,
   type DeliveryDecision,
   type NothingTodayReason,
   type DeliveryStatus,
+  type DeliveryLaneDecision,
   type ResidualPiiKind,
 } from "./delivery/types";
+export {
+  renderedBlockSchema,
+  renderedMessageSchema,
+  parseRenderedMessage,
+  RENDERED_MESSAGE_VERSION,
+  type RenderedBlock,
+  type RenderedMessage,
+} from "./delivery/rendered-message";
 export { channelLabel, type ChannelIdentity } from "./delivery/channel-label";
 export {
   isDeliveryAddress,
@@ -418,6 +429,7 @@ export {
   DELIVERY_DECISION_MESSAGES,
   NOTHING_TODAY_REASON_MESSAGES,
   DELIVERY_STATUS_MESSAGES,
+  DELIVERY_LANE_DECISION_MESSAGES,
   RESIDUAL_PII_KIND_MESSAGES,
   NO_RATE_SENTENCE,
   DELIVERY_VOCABULARY,
@@ -443,6 +455,22 @@ export {
   DELIVERY_LANE_FAILURE_CLAUSE,
   deliveryFailureSentence,
 } from "./delivery/messages";
+export {
+  deliveryReasonCodeSchema,
+  DELIVERY_REASON_CODES,
+  DELIVERY_REASON_SENTENCES,
+  LANE_DECISION_REASON_CODES,
+  NOTHING_TODAY_REASON_CODES,
+  RESIDUAL_PII_REASON_CODES,
+  POST_FAILURE_REASON_CODES,
+  NOT_DELIVERED_REASON_CODE,
+  deliveryReasonSentence,
+  laneDecisionReasonCode,
+  nothingTodayReasonCode,
+  residualPiiReasonCode,
+  postFailureReasonCode,
+  type DeliveryReasonCode,
+} from "./delivery/reason-code";
 export {
   GET_IT_FIXED_ACTION_ID,
   GET_IT_FIXED_LABEL,

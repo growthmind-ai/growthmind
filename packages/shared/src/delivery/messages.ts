@@ -2,6 +2,7 @@ import type { ForbiddenReason } from "../growth/types";
 import type { PostFailureCode } from "./poster";
 import type {
   DeliveryDecision,
+  DeliveryLaneDecision,
   DeliveryStatus,
   NothingTodayReason,
   ResidualPiiKind,
@@ -90,6 +91,32 @@ export function deliveryFailureSentence(code: PostFailureCode): string {
   return clause === null ? fact : `${fact} ${clause}`;
 }
 
+// What a tick concluded about one lane, in the words the record shows a founder. Every
+// sentence a decision row can carry is one of these or one of the constants above — nothing
+// derived from an exception or a vendor response ever becomes a stored reason.
+export const DELIVERY_LANE_DECISION_MESSAGES: Record<DeliveryLaneDecision, string> = {
+  posted: "We sent this one to your channel.",
+
+  failed: "We could not get this into Slack. We will try again.",
+
+  blocked_by_pii:
+    "Part of what we were about to send looked like personal data, so we held it back rather than post it.",
+
+  nothing_today: NOTHING_TODAY_LEAD,
+
+  not_claimed:
+    "Another run was already delivering this one, so this run left it alone. Nothing was missed.",
+
+  not_connected:
+    "There is no channel connected, so there was nowhere to send anything. Connect one and we will start again from here.",
+
+  unresolvable:
+    "We chose something to send and then could not find it again, so nothing went out. This is our problem to fix, not yours.",
+
+  lane_errored:
+    "Something went wrong on our side while we were working out what to send, so nothing went out. We will try again on the next run.",
+};
+
 export const FIX_QUEUED_ACKNOWLEDGEMENT =
   "Right — this one is queued for your coding agent. Ask it to work on your open fixes.";
 
@@ -139,6 +166,7 @@ export const ALL_DELIVERY_MESSAGES: readonly string[] = [
       SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
       ...Object.values(FIX_SURFACE_FORBIDDEN_REFUSALS),
       ...Object.values(DELIVERY_DECISION_MESSAGES),
+      ...Object.values(DELIVERY_LANE_DECISION_MESSAGES),
       ...Object.values(NOTHING_TODAY_REASON_MESSAGES),
       ...Object.values(DELIVERY_STATUS_MESSAGES),
       ...Object.values(RESIDUAL_PII_KIND_MESSAGES),

@@ -87,6 +87,12 @@ export {
 } from "./services/events-counter.service";
 
 export {
+  createSessionSetAsideService,
+  type SessionSetAside,
+  type SessionSetAsideService,
+} from "./services/session-set-aside.service";
+
+export {
   createDetectorCorpusService,
   type DetectorCorpusRead,
   type DetectorCorpusService,
@@ -141,6 +147,13 @@ export {
   type MarkFailedInput,
   type InteractionPrincipal,
 } from "./repositories/deliveries.repo";
+export {
+  createDeliveryDecisionsRepo,
+  type DeliveryDecisionsRepo,
+  type DeliveryDecisionRecord,
+  type RecordDeliveryDecisionInput,
+  type RecordedDeliveryDecision,
+} from "./repositories/delivery-decisions.repo";
 
 export {
   createApiKeysRepo,
@@ -179,6 +192,7 @@ export {
   type OpenFixResult,
   type OpenFixReadModel,
   type FixReadModel,
+  type ReadFixResult,
   type FindingReadModel,
   type ListOpenFixesInput,
   type ListOpenFixesPage,

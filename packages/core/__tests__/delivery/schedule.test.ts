@@ -5,9 +5,12 @@ import { describe, expect, test } from "bun:test";
 import {
   DELIVERY_BUDGET_PER_WEEK,
   DELIVERY_CLAIM_TTL_MS,
+  DELIVERY_TICK_INTERVAL_MS,
   compareDeliveryCandidates,
   decideDelivery,
   deliveryClaimsExpireBefore,
+  deliverySilenceMs,
+  deliveryTicksSince,
   isDeliverable,
 } from "../../src/delivery/schedule";
 import type { DeliveryCandidate, DeliveryLaneState } from "../../src/delivery/schedule";
@@ -603,5 +606,45 @@ describe("compareDeliveryCandidates, ranking by expected value", () => {
     );
 
     expect([...chosen]).toEqual(["f-checkout"]);
+  });
+});
+
+describe("silence is only readable against the cadence that produces it", () => {
+  const AT = new Date("2026-08-02T09:00:00.000Z");
+
+  test("a lease is two ticks, derived rather than restated", () => {
+    expect(DELIVERY_CLAIM_TTL_MS).toBe(2 * DELIVERY_TICK_INTERVAL_MS);
+  });
+
+  test("counts the ticks a lane has gone without deciding anything", () => {
+    const after = (ms: number): Date => new Date(AT.getTime() + ms);
+
+    expect(deliveryTicksSince(AT, AT)).toBe(0);
+    expect(deliveryTicksSince(AT, after(DELIVERY_TICK_INTERVAL_MS - 1))).toBe(0);
+    expect(deliveryTicksSince(AT, after(DELIVERY_TICK_INTERVAL_MS))).toBe(1);
+    expect(deliveryTicksSince(AT, after(3 * DELIVERY_TICK_INTERVAL_MS))).toBe(3);
+  });
+
+  test("a decision stamped ahead of the clock reads as current, never as negative silence", () => {
+    // Worker and web can disagree by seconds. Clamping at zero keeps a skewed clock from
+    // reporting a lane as fresher or staler than any threshold a reader applies.
+    expect(deliveryTicksSince(new Date(AT.getTime() + 60_000), AT)).toBe(0);
+    expect(deliverySilenceMs(new Date(AT.getTime() + 60_000), AT)).toBe(0);
+  });
+
+  test("a threshold held as a duration survives a change of cadence, one held as ticks does not", () => {
+    // The bug this pair exists to prevent: "3 ticks" meant three hours against an assumed
+    // hourly cadence and forty-five minutes against the real one. A window stated in minutes
+    // means the same thing whatever the schedule does.
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1_000;
+    const silence = deliverySilenceMs(AT, new Date(AT.getTime() + TWO_HOURS_MS));
+
+    expect(silence).toBe(TWO_HOURS_MS);
+    expect(silence >= TWO_HOURS_MS).toBe(true);
+
+    // The same window, counted against today's cadence, for copy that names the schedule.
+    expect(deliveryTicksSince(AT, new Date(AT.getTime() + TWO_HOURS_MS))).toBe(
+      TWO_HOURS_MS / DELIVERY_TICK_INTERVAL_MS,
+    );
   });
 });

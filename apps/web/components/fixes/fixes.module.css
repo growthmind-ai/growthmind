@@ -1,0 +1,120 @@
+.row {
+  overflow: hidden;
+  transition: border-color 0.16s ease;
+}
+
+@media (hover: hover) {
+  .row:hover {
+    border-color: var(--mantine-color-dimmed);
+  }
+}
+
+.late {
+  border-color: var(--mantine-color-stamp-light-color);
+}
+
+.head {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+  gap: var(--mantine-spacing-md);
+  align-items: start;
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+}
+
+@media (max-width: 40em) {
+  .head {
+    grid-template-columns: 3rem minmax(0, 1fr);
+  }
+
+  .trailing {
+    grid-column: 2;
+  }
+}
+
+.why {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 44px;
+  min-height: 44px;
+  padding-top: 2px;
+  border-radius: var(--mantine-radius-sm);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.why:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--mantine-color-default-border);
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.whyLabel {
+  transition: opacity 0.16s ease;
+}
+
+/* The affordance is a hint on a pointer device and a permanent label everywhere else:
+   a hover-revealed control is unreachable on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .whyLabel {
+    opacity: 0.35;
+  }
+
+  .why:hover .whyLabel {
+    opacity: 1;
+  }
+}
+
+.why[aria-expanded="true"] .whyLabel {
+  opacity: 1;
+}
+
+.why[aria-expanded="true"] .rank {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-light-color);
+}
+
+.trailing {
+  text-align: right;
+}
+
+@media (max-width: 40em) {
+  .trailing {
+    text-align: left;
+  }
+}
+
+.title {
+  text-decoration: none;
+}
+
+/* Five near-identical rows: the one already read has to be tellable at a glance, and a
+   link colour is the only thing :visited is allowed to change. */
+.title:visited {
+  color: var(--mantine-color-dimmed);
+}
+
+.panel {
+  border-top: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-default-hover);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+}
+
+.empty {
+  border-style: dashed;
+}

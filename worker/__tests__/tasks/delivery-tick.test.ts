@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  DELIVERY_TICK_INTERVAL_MS,
   measuredCount,
   scanResidualPii,
   unknownWorth,
@@ -10,9 +11,13 @@ import type {
   ClaimDeliveryInput,
   ClaimDeliveryResult,
   DeliveriesRepo,
+  DeliveryDecisionRecord,
+  DeliveryDecisionsRepo,
   DeliveryRecord,
   MarkFailedInput,
   MarkPostedInput,
+  RecordDeliveryDecisionInput,
+  RecordedDeliveryDecision,
   SignatureHex,
 } from "@growthmind/db";
 import { signatureHex } from "@growthmind/db";
@@ -24,9 +29,16 @@ import type {
   TenantContext,
 } from "@growthmind/shared";
 import {
+  ALL_DELIVERY_MESSAGES,
+  DELIVERY_LANE_DECISIONS,
+  DELIVERY_LANE_DECISION_MESSAGES,
+  DELIVERY_REASON_CODES,
   GET_IT_FIXED_ACTION_ID,
+  NOTHING_TODAY_REASON_MESSAGES,
   RESIDUAL_PII_KIND_MESSAGES,
   deliveryFailureSentence,
+  deliveryReasonSentence,
+  parseRenderedMessage,
 } from "@growthmind/shared";
 
 import { crontab, taskList } from "../../src/index";
@@ -156,6 +168,7 @@ function createFakeLedger(): FakeLedger {
       failedAt: null,
       failureReason: null,
       messageRef: null,
+      renderedMessage: null,
       attempts: 1,
       createdAt: input.claimedAt,
     };
@@ -182,6 +195,7 @@ function createFakeLedger(): FakeLedger {
         failedAt: null,
         failureReason: null,
         messageRef: null,
+        renderedMessage: null,
         attempts: 1,
         createdAt: NOW,
         ...row,
@@ -233,6 +247,10 @@ function createFakeLedger(): FakeLedger {
            
           postedAt: existing.postedAt ?? input.postedAt,
           messageRef: existing.messageRef ?? input.messageRef,
+
+          // Coalesced exactly as the SQL does, so a re-mark cannot silently replace what the
+          // first post carried.
+          renderedMessage: existing.renderedMessage ?? input.renderedMessage,
           failedAt: null,
           failureReason: null,
         };
@@ -285,6 +303,107 @@ function createFakeLedger(): FakeLedger {
           ),
         );
       },
+
+      // The delivery tick never reads this — it is the record page's read. Implemented
+      // rather than thrown so the fake stays a whole repository, and ordered like the real
+      // one so a test that does reach for it is not quietly told a different story.
+      listRecentForOrg(limit: number): Promise<DeliveryRecord[]> {
+        return Promise.resolve(
+          [...stored.values()]
+            .filter((row) => row.organizationId === ctx.organizationId)
+            .toSorted((a, b) => b.claimedAt.getTime() - a.claimedAt.getTime())
+            .slice(0, limit),
+        );
+      },
+    }),
+  };
+}
+
+interface FakeDecisions {
+  repoFor: (ctx: TenantContext) => DeliveryDecisionsRepo;
+  rows: () => DeliveryDecisionRecord[];
+
+  breakAll: () => void;
+}
+
+// Collapses consecutive identical runs exactly as `createDeliveryDecisionsRepo` does, so a
+// test asserting "fourteen quiet ticks are one row" is asserting the real rule.
+function createFakeDecisions(): FakeDecisions {
+  const rows: DeliveryDecisionRecord[] = [];
+  let broken = false;
+  let nextId = 1;
+
+  return {
+    rows: () => [...rows],
+    breakAll: () => {
+      broken = true;
+    },
+    repoFor: (ctx) => ({
+      record(input: RecordDeliveryDecisionInput): Promise<RecordedDeliveryDecision> {
+        if (broken) throw new Error("the decision ledger is unavailable");
+
+        const open = rows.find(
+          (row) =>
+            row.organizationId === ctx.organizationId &&
+            row.projectId === input.projectId &&
+            row.endedAt === null,
+        );
+
+        // Keyed on the code, never the sentence, exactly as the real repository is: a test
+        // asserting "one run" must be asserting the rule that survives a copy pass.
+        if (open && open.decision === input.decision && open.reasonCode === input.reasonCode) {
+          if (open.lastDecidedAt.getTime() <= input.decidedAt.getTime()) {
+            open.lastDecidedAt = input.decidedAt;
+            open.findingId = input.findingId;
+            open.channelId = input.channelId;
+          }
+          return Promise.resolve({ run: open, recorded: true });
+        }
+
+        if (open) {
+          open.endedAt = input.decidedAt;
+        }
+
+        const row: DeliveryDecisionRecord = {
+          id: `decision-${String(nextId)}`,
+          organizationId: ctx.organizationId,
+          projectId: input.projectId,
+          decision: input.decision,
+          reasonCode: input.reasonCode,
+          reason: input.reason,
+          findingId: input.findingId,
+          channelId: input.channelId,
+          firstDecidedAt: input.decidedAt,
+          lastDecidedAt: input.decidedAt,
+          endedAt: null,
+          createdAt: input.decidedAt,
+        };
+        nextId += 1;
+        rows.push(row);
+        return Promise.resolve({ run: row, recorded: true });
+      },
+
+      listRecentForProject(projectId: string, limit: number): Promise<DeliveryDecisionRecord[]> {
+        return Promise.resolve(
+          rows
+            .filter(
+              (row) => row.organizationId === ctx.organizationId && row.projectId === projectId,
+            )
+            .toSorted((a, b) => b.firstDecidedAt.getTime() - a.firstDecidedAt.getTime())
+            .slice(0, limit),
+        );
+      },
+
+      currentForProject(projectId: string): Promise<DeliveryDecisionRecord | null> {
+        return Promise.resolve(
+          rows.find(
+            (row) =>
+              row.organizationId === ctx.organizationId &&
+              row.projectId === projectId &&
+              row.endedAt === null,
+          ) ?? null,
+        );
+      },
     }),
   };
 }
@@ -332,20 +451,23 @@ function createRecordingLogger(): RecordingLogger & { logger: DeliveryTickDeps["
 interface Harness {
   run: () => Promise<DeliveryTickSummary>;
   ledger: FakeLedger;
+  decisions: FakeDecisions;
   posted: PostRequest[];
   logs: RecordingLogger;
-   
+
   resolved: TenantContext[];
 }
 
 function harness(input: {
   lanes: readonly DeliveryLane[];
   ledger?: FakeLedger;
+  decisions?: FakeDecisions;
   answer?: (request: PostRequest) => PostResult;
-   
+
   connectedOrgIds?: readonly string[];
 }): Harness {
   const ledger = input.ledger ?? createFakeLedger();
+  const decisions = input.decisions ?? createFakeDecisions();
   const poster = createFakePoster(input.answer);
   const logs = createRecordingLogger();
   const resolved: TenantContext[] = [];
@@ -353,7 +475,8 @@ function harness(input: {
   const deps: DeliveryTickDeps = {
     lanes: { listDueLanes: () => Promise.resolve(input.lanes) },
     deliveriesFor: ledger.repoFor,
-     
+    decisionsFor: decisions.repoFor,
+
     posterFor: (ctx: TenantContext) => {
       resolved.push(ctx);
       if (input.connectedOrgIds !== undefined && !input.connectedOrgIds.includes(ctx.organizationId)) {
@@ -365,7 +488,14 @@ function harness(input: {
     logger: logs.logger,
   };
 
-  return { run: () => runDeliveryTick(deps), ledger, posted: poster.posts, logs, resolved };
+  return {
+    run: () => runDeliveryTick(deps),
+    ledger,
+    decisions,
+    posted: poster.posts,
+    logs,
+    resolved,
+  };
 }
 
 test("a deliverable finding with clean text is claimed, posted, and recorded posted exactly once", async () => {
@@ -676,20 +806,58 @@ test("a message the residual gate cannot read is refused rather than cleared", a
   expect((scanned.cause ?? "").length).toBeGreaterThan(0);
 });
 
-test("nothing_today is logged with its reason, posts nothing, and writes no delivery row", async () => {
+test("nothing_today posts nothing, writes no delivery row, and still leaves a decision behind", async () => {
   const scene = harness({ lanes: [lane({ candidates: [] })] });
 
   const summary = await scene.run();
 
   expect(summary.nothingToday).toBe(1);
   expect(scene.posted.length).toBe(0);
-   
+
   expect(scene.ledger.rows()).toEqual([]);
   expect(scene.logs.info.some((line) => line.includes("no_findings_ready"))).toBe(true);
+
+  // The behaviour this test used to pin was "writes no row anywhere", which made a quiet day
+  // and a dead worker the same screen. A delivery row is still wrong here; a decision is not.
+  const [decision] = scene.decisions.rows();
+  expect(decision?.decision).toBe("nothing_today");
+  expect(decision?.reason).toBe(NOTHING_TODAY_REASON_MESSAGES.no_findings_ready);
+  expect(decision?.findingId).toBeNull();
+  expect(decision?.endedAt).toBeNull();
+});
+
+test("consecutive ticks that reach the same answer extend one run rather than adding rows", async () => {
+  const scene = harness({ lanes: [lane({ candidates: [] })] });
+
+  await scene.run();
+  await scene.run();
+  await scene.run();
+
+  // "Quiet since 2 August" is one row that grew, not fourteen rows that agreed. A row per
+  // tick is what would make this table unbounded.
+  expect(scene.decisions.rows()).toHaveLength(1);
+  expect(scene.decisions.rows()[0]?.firstDecidedAt).toEqual(NOW);
+});
+
+test("a quiet day for a different reason opens a new run instead of continuing the old one", async () => {
+  const decisions = createFakeDecisions();
+
+  await harness({ lanes: [lane({ candidates: [] })], decisions }).run();
+  await harness({ lanes: [lane({ deliveredThisWeek: 3 })], decisions }).run();
+
+  const rows = decisions.rows();
+
+  // A founder asking why it has been quiet is asking which quiet this was; collapsing the
+  // two reasons into one run would answer neither.
+  expect(rows.map((row) => row.reason)).toEqual([
+    NOTHING_TODAY_REASON_MESSAGES.no_findings_ready,
+    NOTHING_TODAY_REASON_MESSAGES.budget_spent,
+  ]);
+  expect(rows[0]?.endedAt).toEqual(NOW);
+  expect(rows[1]?.endedAt).toBeNull();
 });
 
 test("a lane that decides nothing_today on every tick still never posts", async () => {
-   
   const scene = harness({ lanes: [lane({ candidates: [] })] });
 
   await scene.run();
@@ -826,8 +994,217 @@ test("the delivery tick is registered under its TASK constant and scheduled exac
   expect(scheduled.filter((name) => name === TASK.DELIVERY_TICK).length).toBe(1);
 });
 
+test("the cadence a reader derives staleness from is the cadence the crontab actually runs", () => {
+  const line = crontab
+    .split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.split(/\s+/)[5] === TASK.DELIVERY_TICK);
+
+  expect(line).toBeDefined();
+
+  const minutes = /^\*\/(\d+)$/.exec((line ?? "").split(/\s+/)[0] ?? "");
+  expect(minutes).not.toBeNull();
+
+  // A page that decides "this lane has missed three ticks" is reading DELIVERY_TICK_INTERVAL_MS
+  // and trusting it to be the schedule. Nothing but this binds the constant to the crontab, and
+  // a silent drift between them turns a healthy lane into an alarm or hides a dead worker.
+  expect(Number(minutes?.[1]) * 60 * 1_000).toBe(DELIVERY_TICK_INTERVAL_MS);
+});
+
 test("the delivery task name parses as a Graphile Worker crontab identifier", () => {
    
   expect(GRAPHILE_TASK_NAME_PATTERN.test(TASK.DELIVERY_TICK)).toBe(true);
   expect(TASK.DELIVERY_TICK).not.toContain(".");
+});
+
+test("the delivery row keeps the message that was posted, not one rendered again later", async () => {
+  const scene = harness({ lanes: [lane()] });
+
+  await scene.run();
+
+  const stored = parseRenderedMessage(scene.ledger.rowFor("finding-1")?.renderedMessage);
+  expect(stored).not.toBeNull();
+
+  // One render, two frames: the stored text has to be the exact string the poster was given,
+  // because a re-render can gain a clause — a cause chain, a different budget rung — that
+  // Slack never carried, on the one page whose whole job is proof.
+  expect(stored?.text).toBe(scene.posted[0]?.fallbackText ?? "");
+  expect(stored?.blocks.length).toBeGreaterThan(0);
+  expect(stored?.legibility.characters).toBe((scene.posted[0]?.fallbackText ?? "").length);
+});
+
+test("a delivery that never reached the channel holds no render to show", async () => {
+  const scene = harness({
+    lanes: [lane()],
+    answer: () => ({ ok: false as const, code: "rejected" as const, message: "ignored" }),
+  });
+
+  await scene.run();
+
+  const row = scene.ledger.rowFor("finding-1");
+  expect(row?.status).toBe("failed");
+
+  // Null is the honest answer for a message nobody received, and it is the same null a row
+  // predating the column carries. Both mean "we do not hold what was sent".
+  expect(row?.renderedMessage ?? null).toBeNull();
+});
+
+test("every lane outcome leaves a decision a founder can read", async () => {
+  const seen = new Set<string>();
+
+  const quiet = harness({ lanes: [lane({ candidates: [] })] });
+  await quiet.run();
+  for (const row of quiet.decisions.rows()) seen.add(row.decision);
+
+  const posted = harness({ lanes: [lane()] });
+  await posted.run();
+  for (const row of posted.decisions.rows()) seen.add(row.decision);
+
+  const refused = harness({
+    lanes: [lane()],
+    answer: () => ({ ok: false as const, code: "rejected" as const, message: "ignored" }),
+  });
+  await refused.run();
+  for (const row of refused.decisions.rows()) seen.add(row.decision);
+
+  const held = harness({
+    lanes: [lane({ candidates: [finding("finding-pii", { surfacePath: DIRTY_SURFACE })] })],
+  });
+  await held.run();
+  for (const row of held.decisions.rows()) seen.add(row.decision);
+
+  // In production `not_claimed` comes from two ticks racing, which a single-threaded fake
+  // cannot stage. A stale-but-pending row reaches the same branch: the lane stops counting it
+  // as open, so the tick gets as far as the claim and loses there.
+  const busy = createFakeLedger();
+  busy.seed({
+    findingId: "finding-1",
+    status: "pending",
+    signature: SIGNATURE,
+    claimedAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1_000),
+  });
+  const claimed = harness({ lanes: [lane({ candidates: [finding("finding-1")] })], ledger: busy });
+  await claimed.run();
+  for (const row of claimed.decisions.rows()) seen.add(row.decision);
+
+  const unconnected = harness({ lanes: [lane()], connectedOrgIds: [] });
+  await unconnected.run();
+  for (const row of unconnected.decisions.rows()) seen.add(row.decision);
+
+  const broken = createFakeLedger();
+  broken.breakProject(PROJECT);
+  const errored = harness({ lanes: [lane()], ledger: broken });
+  await errored.run();
+  for (const row of errored.decisions.rows()) seen.add(row.decision);
+
+  // Every exit path terminal, including the one that throws (D8). `unresolvable` is the only
+  // decision with no reachable path from this harness — the lane source would have to return
+  // a candidate list that disagrees with itself.
+  for (const decision of DELIVERY_LANE_DECISIONS) {
+    if (decision === "unresolvable") continue;
+    expect({ decision, recorded: seen.has(decision) }).toEqual({ decision, recorded: true });
+  }
+});
+
+test("a lane that throws is recorded as a decision rather than only as a log line", async () => {
+  const broken = createFakeLedger();
+  broken.breakProject(PROJECT);
+
+  const scene = harness({ lanes: [lane()], ledger: broken });
+  const summary = await scene.run();
+
+  expect(summary.lanesErrored).toBe(1);
+
+  // The dead-worker case. Without this row the founder's screen is identical to a quiet day.
+  const [decision] = scene.decisions.rows();
+  expect(decision?.decision).toBe("lane_errored");
+  expect(decision?.reason).toBe(DELIVERY_LANE_DECISION_MESSAGES.lane_errored);
+});
+
+test("a decision that cannot be recorded never costs the lane its delivery", async () => {
+  const decisions = createFakeDecisions();
+  decisions.breakAll();
+
+  const scene = harness({ lanes: [lane()], decisions });
+  const summary = await scene.run();
+
+  expect(summary.posted).toBe(1);
+  expect(scene.ledger.rowFor("finding-1")?.status).toBe("posted");
+  expect(scene.logs.error.some((line) => line.includes("could not be recorded"))).toBe(true);
+});
+
+// D12/D11. The stored pair is what a copy pass can break: if the tick picked the code from
+// one switch and the sentence from another, a reworded constant would leave rows whose code
+// and sentence disagree, and the run key would be built on the half that moves.
+test("every decision row's sentence is the one its own reason code names", async () => {
+  const scenes = [
+    harness({ lanes: [lane()] }),
+    harness({ lanes: [lane({ candidates: [] })] }),
+    harness({ lanes: [lane({ deliveredThisWeek: 3 })] }),
+    harness({ lanes: [lane()], connectedOrgIds: [] }),
+    harness({ lanes: [lane({ candidates: [finding("finding-pii", { surfacePath: DIRTY_SURFACE })] })] }),
+    harness({
+      lanes: [lane()],
+      answer: () => ({ ok: false as const, code: "channel_unavailable" as const, message: "ignored" }),
+    }),
+  ];
+
+  const seen = new Set<string>();
+
+  for (const scene of scenes) {
+    await scene.run();
+
+    for (const row of scene.decisions.rows()) {
+      seen.add(row.reasonCode);
+
+      expect(DELIVERY_REASON_CODES).toContain(row.reasonCode);
+      expect({ code: row.reasonCode, reason: row.reason }).toEqual({
+        code: row.reasonCode,
+        reason: deliveryReasonSentence(row.reasonCode),
+      });
+    }
+  }
+
+  // A lane that recorded one code everywhere would satisfy the equality above while proving
+  // nothing, so the scenes have to have reached more than one branch of the switch.
+  expect(seen.size).toBeGreaterThan(3);
+});
+
+test("a lane that errors twice extends one run rather than restarting the quiet clock", async () => {
+  const broken = createFakeLedger();
+  broken.breakProject(PROJECT);
+
+  const scene = harness({ lanes: [lane()], ledger: broken });
+  await scene.run();
+  await scene.run();
+
+  const rows = scene.decisions.rows();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.reasonCode).toBe("lane_errored");
+  expect(rows[0]?.firstDecidedAt).toEqual(NOW);
+});
+
+test("no decision reason carries anything but a sentence Growthmind wrote", async () => {
+  const scenes = [
+    harness({ lanes: [lane()] }),
+    harness({ lanes: [lane({ candidates: [] })] }),
+    harness({ lanes: [lane({ deliveredThisWeek: 3 })] }),
+    harness({ lanes: [lane()], connectedOrgIds: [] }),
+    harness({
+      lanes: [lane()],
+      answer: () => ({ ok: false as const, code: "not_authorised" as const, message: "invalid_auth" }),
+    }),
+  ];
+
+  for (const scene of scenes) {
+    await scene.run();
+
+    for (const row of scene.decisions.rows()) {
+      // `deliveries.failure_reason` is wide enough to take a vendor string verbatim. This
+      // column is not allowed to repeat that: every reason is composed from the constants.
+      const known = ALL_DELIVERY_MESSAGES.some((message) => row.reason.includes(message));
+      expect({ reason: row.reason, known }).toEqual({ reason: row.reason, known: true });
+      expect(row.reason).not.toContain("invalid_auth");
+    }
+  }
 });

@@ -67,6 +67,16 @@ export interface OrgCrud<T extends OrgScopedTable> {
 // some generic calls. The only place the union is collapsed.
 type CrudExecutor = PgDatabase<NodePgQueryResultHKT, typeof schema>;
 
+// The same union collapse, for the repositories whose write is two statements that must
+// land together. A PgTransaction is itself a ScopedExecutor, so a repository built over the
+// handed-back executor joins this transaction rather than opening its own connection.
+export function inTransaction<T>(
+  db: ScopedExecutor,
+  run: (tx: ScopedExecutor) => Promise<T>,
+): Promise<T> {
+  return (db as CrudExecutor).transaction((tx) => run(tx));
+}
+
 export function orgCrud<T extends OrgScopedTable>(
   db: ScopedExecutor,
   ctx: TenantContext,

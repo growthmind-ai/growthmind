@@ -2,6 +2,7 @@ import {
   SLACK_INTERACTION_ACTOR,
   SLACK_INTERACTION_ROLE,
   type DeliveryStatus,
+  type RenderedMessage,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
@@ -39,6 +40,10 @@ export interface MarkPostedInput {
   readonly postedAt: Date;
 
   readonly messageRef: string | null;
+
+  // Required, and written in the same statement as `posted`: a row can only reach `posted`
+  // with no stored render by predating the column, never by a code path that forgot.
+  readonly renderedMessage: RenderedMessage;
 }
 
 export interface MarkFailedInput {
@@ -66,6 +71,12 @@ export interface DeliveriesRepo {
   // Only claims still in flight. An abandoned one must not read as work in progress, or the
   // lane answers `one_already_open` on every future tick and the org receives nothing again.
   listPendingForProject(projectId: string, staleClaimsBefore: Date): Promise<DeliveryRecord[]>;
+
+  // Every status, across the org's projects. A failed post is invisible in Slack by
+  // construction, so a read that filtered to `posted` would hide the rows the record exists
+  // to show. Ordered by when the attempt was claimed rather than when it landed: a row that
+  // never posted has no `posted_at`, and sorting on it would drop those to the end.
+  listRecentForOrg(limit: number): Promise<DeliveryRecord[]>;
 }
 
 export const DELIVERY_CONFLICT_TARGET = [
@@ -149,6 +160,11 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
           postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
           messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
 
+          // Coalesced beside the two above for the same reason: a re-mark of one post keeps
+          // what that post carried. A genuine re-post follows a `failed` row, whose render
+          // was never stored, so the new one lands.
+          renderedMessage: sql`coalesce(${deliveries.renderedMessage}, ${JSON.stringify(input.renderedMessage)}::jsonb)`,
+
           failedAt: null,
           failureReason: null,
         },
@@ -201,6 +217,10 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         ),
         orderBy: [desc(deliveries.claimedAt)],
       });
+    },
+
+    async listRecentForOrg(limit: number): Promise<DeliveryRecord[]> {
+      return c.list({ orderBy: [desc(deliveries.claimedAt)], limit });
     },
   };
 }

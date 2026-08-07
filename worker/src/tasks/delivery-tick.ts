@@ -3,34 +3,36 @@ import {
   decideDelivery,
   deliveryClaimsExpireBefore,
   renderSlackMessage,
+  renderedMessageOf,
   scanResidualPii,
   toBlockKit,
 } from "@growthmind/core";
-import type { DeliveriesRepo, SignatureHex } from "@growthmind/db";
+import type { DeliveriesRepo, DeliveryDecisionsRepo, SignatureHex } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
 import { SYSTEM_ACTOR, systemContextFor } from "@growthmind/db/system";
-import type { DeliveryPoster, PostRequest, PostResult, TenantContext } from "@growthmind/shared";
+import type {
+  DeliveryLaneDecision,
+  DeliveryPoster,
+  DeliveryReasonCode,
+  PostRequest,
+  PostResult,
+  RenderedMessage,
+  TenantContext,
+} from "@growthmind/shared";
 import {
-  DELIVERY_STATUS_MESSAGES,
   DELIVERY_VOCABULARY,
-  RESIDUAL_PII_KIND_MESSAGES,
-  deliveryFailureSentence,
+  NOT_DELIVERED_REASON_CODE,
+  deliveryReasonSentence,
   describeError,
+  laneDecisionReasonCode,
+  nothingTodayReasonCode,
+  postFailureReasonCode,
+  residualPiiReasonCode,
 } from "@growthmind/shared";
 
 import type { TaskLogger } from "../task-logger";
 
-const COULD_NOT_POST: string = requireSentence(
-  DELIVERY_STATUS_MESSAGES.failed,
-  "the delivery status 'failed'",
-);
-
-function requireSentence(sentence: string | null, subject: string): string {
-  if (sentence === null) {
-    throw new Error(`delivery tick: ${subject} has no sentence in @growthmind/shared`);
-  }
-  return sentence;
-}
+const COULD_NOT_POST: string = deliveryReasonSentence(NOT_DELIVERED_REASON_CODE);
 
 export type DeliveryLogger = TaskLogger;
 
@@ -61,13 +63,16 @@ export interface DeliveryLaneSource {
 
 export type DeliveriesRepoFor = (ctx: TenantContext) => DeliveriesRepo;
 
+export type DeliveryDecisionsRepoFor = (ctx: TenantContext) => DeliveryDecisionsRepo;
+
 export type DeliveryPosterFor = (ctx: TenantContext) => Promise<DeliveryPoster | null>;
 
 export interface DeliveryTickDeps {
   lanes: DeliveryLaneSource;
   deliveriesFor: DeliveriesRepoFor;
+  decisionsFor: DeliveryDecisionsRepoFor;
   posterFor: DeliveryPosterFor;
-   
+
   now: () => Date;
   logger: DeliveryLogger;
 }
@@ -91,18 +96,21 @@ export interface DeliveryTickSummary {
   lanesErrored: number;
 }
 
-type LaneOutcome =
-  | "posted"
-  | "failed"
-  | "blocked_by_pii"
-  | "nothing_today"
-  | "not_claimed"
-  | "not_connected"
-  | "unresolvable";
+type LaneOutcome = DeliveryLaneDecision;
+
+// What one lane concluded, carried out of `runLane` as a value rather than acted on inside
+// it: one caller writes the decision row, so no exit path can be added that records nothing.
+type LaneDecision = {
+  readonly outcome: LaneOutcome;
+  readonly reasonCode: DeliveryReasonCode;
+  readonly reason: string;
+  readonly findingId: string | null;
+  readonly channelId: string | null;
+};
 
 type PreparedPost =
-  | { readonly ok: true; readonly request: PostRequest }
-  | { readonly ok: false; readonly reason: string; readonly outcome: LaneOutcome };
+  | { readonly ok: true; readonly request: PostRequest; readonly rendered: RenderedMessage }
+  | { readonly ok: false; readonly reasonCode: DeliveryReasonCode; readonly outcome: LaneOutcome };
 
 export interface ScannableText {
   readonly text: string | null;
@@ -126,11 +134,15 @@ function prepare(
   logger: DeliveryLogger,
 ): PreparedPost {
   let request: PostRequest;
+  let rendered: RenderedMessage;
   try {
+    // One render, two frames: Block Kit goes to Slack, the same message goes onto the
+    // delivery row. Rendering twice would let the two disagree, which is the whole hazard.
     const message = renderSlackMessage(
       { ...finding.message, findingId: finding.findingId },
       DELIVERY_VOCABULARY,
     );
+    rendered = renderedMessageOf(message);
     request = {
       channelId: lane.channelId,
       // Slack is handed Block Kit, never Growthmind's intermediate model.
@@ -142,7 +154,7 @@ function prepare(
     logger.error(
       `delivery tick: finding ${finding.findingId} could not be rendered — ${describeError(error)}`,
     );
-    return { ok: false, reason: COULD_NOT_POST, outcome: "failed" };
+    return { ok: false, reasonCode: NOT_DELIVERED_REASON_CODE, outcome: "failed" };
   }
 
   const scannable = textPostedFor(request);
@@ -150,7 +162,7 @@ function prepare(
     logger.error(
       `delivery tick: finding ${finding.findingId} produced a message the residual check could not read, so it was held back — ${scannable.cause ?? "no cause reported"}`,
     );
-    return { ok: false, reason: COULD_NOT_POST, outcome: "blocked_by_pii" };
+    return { ok: false, reasonCode: NOT_DELIVERED_REASON_CODE, outcome: "blocked_by_pii" };
   }
 
   const scan = scanResidualPii(scannable.text);
@@ -162,16 +174,64 @@ function prepare(
     );
     return {
       ok: false,
-      reason: RESIDUAL_PII_KIND_MESSAGES[first.kind],
+      reasonCode: residualPiiReasonCode(first.kind),
       outcome: "blocked_by_pii",
     };
   }
 
-  return { ok: true, request };
+  return { ok: true, request, rendered };
 }
 
 function tenantContextFor(lane: DeliveryLane): TenantContext {
   return systemContextFor(SYSTEM_ACTOR.DELIVERY_TICK, lane);
+}
+
+// The code picks the sentence, so a lane cannot store a pair built from two switches that
+// drift apart, and rewording the sentence cannot change what the record treats as one run.
+function decided(
+  outcome: LaneOutcome,
+  parts: { reasonCode?: DeliveryReasonCode; findingId?: string; channelId?: string } = {},
+): LaneDecision {
+  const reasonCode = parts.reasonCode ?? laneDecisionReasonCode(outcome);
+
+  return {
+    outcome,
+    reasonCode,
+    reason: deliveryReasonSentence(reasonCode),
+    findingId: parts.findingId ?? null,
+    channelId: parts.channelId ?? null,
+  };
+}
+
+// The decision row is a side effect of the lane, not part of it: a record that cannot be
+// written must not turn a delivered finding into a failed tick (D8).
+async function recordDecision(
+  deps: DeliveryTickDeps,
+  lane: DeliveryLane,
+  decision: LaneDecision,
+  decidedAt: Date,
+): Promise<void> {
+  try {
+    const written = await deps.decisionsFor(tenantContextFor(lane)).record({
+      projectId: lane.projectId,
+      decision: decision.outcome,
+      reasonCode: decision.reasonCode,
+      reason: decision.reason,
+      findingId: decision.findingId,
+      channelId: decision.channelId,
+      decidedAt,
+    });
+
+    if (!written.recorded) {
+      deps.logger.info(
+        `delivery tick: project ${lane.projectId} decided ${decision.outcome}, and another run had already recorded ${written.run.decision} for the same lane, so this one was left alone`,
+      );
+    }
+  } catch (error) {
+    deps.logger.error(
+      `delivery tick: project ${lane.projectId} decided ${decision.outcome}, and that decision could not be recorded — ${describeDriverError(error)}`,
+    );
+  }
 }
 
 async function recordFailed(
@@ -202,18 +262,17 @@ async function runLane(
   deps: DeliveryTickDeps,
   lane: DeliveryLane,
   tickAt: Date,
-): Promise<LaneOutcome> {
+): Promise<LaneDecision> {
   const ctx = tenantContextFor(lane);
 
   const poster = await deps.posterFor(ctx);
 
   if (poster === null) {
-     
     deps.logger.info(
       `delivery tick: org ${lane.organizationId} has no delivery channel connected, so project ` +
         `${lane.projectId} was left alone this tick`,
     );
-    return "not_connected";
+    return decided("not_connected");
   }
 
   const deliveries = deps.deliveriesFor(ctx);
@@ -233,22 +292,25 @@ async function runLane(
   const decision = decideDelivery(state, tickAt);
 
   if (decision.decision === "nothing_today") {
-     
     deps.logger.info(
       `delivery tick: project ${lane.projectId} has nothing to send today — ${decision.reason}`,
     );
-    return "nothing_today";
+    // The reason, not the lead sentence: a founder asking why it has been quiet is asking
+    // which of the three quiet days this was, and collapsing runs by reason keeps them apart.
+    return decided("nothing_today", {
+      reasonCode: nothingTodayReasonCode(decision.reason),
+      channelId: lane.channelId,
+    });
   }
 
   const chosen = lane.candidates.find(
     (candidate) => candidate.findingId === decision.finding.findingId,
   );
   if (!chosen) {
-     
     deps.logger.error(
       `delivery tick: project ${lane.projectId} chose finding ${decision.finding.findingId}, which is not in its own candidate list`,
     );
-    return "unresolvable";
+    return decided("unresolvable", { channelId: lane.channelId });
   }
 
   const prepared = prepare(chosen, lane, deps.logger);
@@ -262,29 +324,28 @@ async function runLane(
     staleClaimsBefore,
   });
 
+  const about = { findingId: chosen.findingId, channelId: lane.channelId };
+
   if (!claim.claimed) {
-     
     deps.logger.info(
       `delivery tick: finding ${chosen.findingId} is already being delivered by another run, so this tick left it alone`,
     );
-    return "not_claimed";
+    return decided("not_claimed", about);
   }
 
   if (!prepared.ok) {
-     
     await recordFailed(deps, deliveries, {
       findingId: chosen.findingId,
       channelId: lane.channelId,
-      reason: prepared.reason,
+      reason: deliveryReasonSentence(prepared.reasonCode),
     });
-    return prepared.outcome;
+    return decided(prepared.outcome, { ...about, reasonCode: prepared.reasonCode });
   }
 
   let result: PostResult;
   try {
     result = await poster.post(prepared.request);
   } catch (error) {
-     
     deps.logger.error(
       `delivery tick: finding ${chosen.findingId} threw while posting — ${describeError(error)}`,
     );
@@ -293,7 +354,7 @@ async function runLane(
       channelId: lane.channelId,
       reason: COULD_NOT_POST,
     });
-    return "failed";
+    return decided("failed", { ...about, reasonCode: NOT_DELIVERED_REASON_CODE });
   }
 
   if (!result.ok) {
@@ -303,12 +364,13 @@ async function runLane(
     deps.logger.error(
       `delivery tick: finding ${chosen.findingId} was not accepted by the channel — ${result.code}`,
     );
+    const reasonCode = postFailureReasonCode(result.code);
     await recordFailed(deps, deliveries, {
       findingId: chosen.findingId,
       channelId: lane.channelId,
-      reason: deliveryFailureSentence(result.code),
+      reason: deliveryReasonSentence(reasonCode),
     });
-    return "failed";
+    return decided("failed", { ...about, reasonCode });
   }
 
   try {
@@ -317,6 +379,7 @@ async function runLane(
       channelId: lane.channelId,
       postedAt: deps.now(),
       messageRef: result.messageRef,
+      renderedMessage: prepared.rendered,
     });
     if (row === null) {
       deps.logger.error(
@@ -338,10 +401,10 @@ async function runLane(
       channelId: lane.channelId,
       reason: COULD_NOT_POST,
     });
-    return "failed";
+    return decided("failed", { ...about, reasonCode: NOT_DELIVERED_REASON_CODE });
   }
 
-  return "posted";
+  return decided("posted", about);
 }
 
 function applyOutcome(summary: DeliveryTickSummary, outcome: LaneOutcome): void {
@@ -367,6 +430,7 @@ function applyOutcome(summary: DeliveryTickSummary, outcome: LaneOutcome): void 
       summary.notConnected += 1;
       return;
     case "unresolvable":
+    case "lane_errored":
       summary.lanesErrored += 1;
       return;
   }
@@ -392,15 +456,21 @@ export async function runDeliveryTick(deps: DeliveryTickDeps): Promise<DeliveryT
   }
 
   for (const lane of lanes) {
+    let decision: LaneDecision;
+
     try {
-      applyOutcome(summary, await runLane(deps, lane, tickAt));
+      decision = await runLane(deps, lane, tickAt);
     } catch (error) {
-       
       deps.logger.error(
         `delivery tick: project ${lane.projectId} could not be processed — ${describeDriverError(error)}`,
       );
-      summary.lanesErrored += 1;
+      // The branch the record exists for: a lane that threw is the shape a dead worker takes
+      // from a founder's side, and it is the one shape a log-only trace cannot answer.
+      decision = decided("lane_errored");
     }
+
+    applyOutcome(summary, decision.outcome);
+    await recordDecision(deps, lane, decision, tickAt);
   }
 
   deps.logger.info(

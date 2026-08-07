@@ -6,18 +6,47 @@ import type { SurfaceWorth } from "../growth/surface-worth";
 
 export const DELIVERY_BUDGET_PER_WEEK = 3;
 
+// How often the delivery tick runs. The worker's crontab is the thing that actually schedules
+// it, and `delivery-tick.test.ts` fails if the two disagree — a reader deriving anything from
+// this value is otherwise reading a number nothing enforces.
+export const DELIVERY_TICK_INTERVAL_MS = 15 * 60 * 1_000;
+
 // A claim is a lease, and a lease with no expiry is a deadlock. A tick that dies between
 // claiming a delivery and recording its outcome leaves the row `pending`, and `pending` is
 // read by every later tick as work in progress — so the lane returns `one_already_open`
-// forever and the organization silently stops receiving anything. Two ticks' headroom over
-// the 15-minute cadence: long enough that a slow post is never stolen, short enough that a
-// lost claim costs half an hour rather than the rest of the installation's life.
-export const DELIVERY_CLAIM_TTL_MS = 30 * 60 * 1_000;
+// forever and the organization silently stops receiving anything. Two ticks' headroom: long
+// enough that a slow post is never stolen, short enough that a lost claim costs half an hour
+// rather than the rest of the installation's life.
+export const DELIVERY_CLAIM_TTL_MS = 2 * DELIVERY_TICK_INTERVAL_MS;
 
 // Claims older than this are abandoned, not in flight.
 export function deliveryClaimsExpireBefore(at: Date): Date {
   return new Date(at.getTime() - DELIVERY_CLAIM_TTL_MS);
 }
+
+// How long a lane has gone without reaching a decision. A worker that throws records
+// `lane_errored`; a worker that stops records nothing at all, and this is the only thing that
+// separates it from a genuinely quiet lane. Clamped at zero because worker and web clocks
+// disagree by seconds, and a negative silence reads as fresher than any threshold.
+export function deliverySilenceMs(lastDecidedAt: Date, now: Date): number {
+  return Math.max(0, now.getTime() - lastDecidedAt.getTime());
+}
+
+// The same silence counted in ticks, for copy that names the schedule. Express a staleness
+// threshold as a duration and compare it with `deliverySilenceMs` — a threshold held as a
+// tick count is silently redefined the day the cadence changes.
+export function deliveryTicksSince(lastDecidedAt: Date, now: Date): number {
+  return Math.floor(deliverySilenceMs(lastDecidedAt, now) / DELIVERY_TICK_INTERVAL_MS);
+}
+
+// Past this, a lane is reported as not being checked rather than as quiet. A duration and
+// not a tick count, deliberately: written as ticks against an assumed cadence it once meant
+// forty-five minutes where hours were intended. Ratified 2026-08-07, and the asymmetry is
+// the reason for the size — a red line that occasionally lies is one a founder learns to
+// skip, after which the real outage is invisible, while being slow costs almost nothing
+// against a product that already caps itself at one finding a week.
+// see .ai/decisions/0021-delivery-staleness-window.md
+export const DELIVERY_SILENCE_BEFORE_ALARM_MS = 2 * 60 * 60 * 1_000;
 
 export type DeliveryCandidate = {
   readonly findingId: string;

@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/ui/Page";
 import { SurfaceCard } from "@/components/ui/SurfaceCard";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 import { readVerdictForFinding } from "@/lib/preview/readers";
-import { fixPath } from "@/lib/paths";
+// No link to /fixes: this page names a fixture findingId, and the live fix route is keyed on
+// the fix's own id, so the link could only ever resolve to not-found.
 import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
@@ -65,9 +66,6 @@ export default async function VerdictPage({
           style={tapTargetStyle}
         >
           ← Back to everything we&apos;ve seen
-        </ButtonLink>
-        <ButtonLink href={fixPath(id)} variant="subtle" size="compact-sm" style={tapTargetStyle}>
-          The fix behind it
         </ButtonLink>
       </Group>
     </Stack>

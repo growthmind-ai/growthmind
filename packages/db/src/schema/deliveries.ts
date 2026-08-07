@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import type { DeliveryStatus } from "@growthmind/shared";
+import type { DeliveryStatus, RenderedMessage } from "@growthmind/shared";
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
 import { projects } from "./projects";
@@ -42,6 +42,12 @@ export const deliveries = pgTable(
     failureReason: text("failure_reason"),
 
     messageRef: text("message_ref"),
+
+    // What was actually sent, written in the same update that sets `posted`. Nullable only
+    // because rows written before this column existed have no render, and that is history
+    // rather than an error — a reader shows those as predating the record and must never
+    // re-render the finding to fill the gap, because a re-render is not what Slack carried.
+    renderedMessage: jsonb("rendered_message").$type<RenderedMessage>(),
 
     attempts: integer("attempts").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

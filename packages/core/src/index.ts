@@ -208,7 +208,11 @@ export {
 export {
   DELIVERY_BUDGET_PER_WEEK,
   DELIVERY_CLAIM_TTL_MS,
+  DELIVERY_TICK_INTERVAL_MS,
   deliveryClaimsExpireBefore,
+  deliverySilenceMs,
+  DELIVERY_SILENCE_BEFORE_ALARM_MS,
+  deliveryTicksSince,
   isDeliverable,
   compareDeliveryCandidates,
   decideDelivery,
@@ -245,6 +249,7 @@ export {
   type SlackActionsBlock,
   type SlackAction,
   type SlackMessage,
+  renderedMessageOf,
 } from "./delivery/slack-message";
 export { toBlockKit } from "./delivery/block-kit";
 

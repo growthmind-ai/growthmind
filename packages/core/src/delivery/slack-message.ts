@@ -5,10 +5,12 @@ import {
   GET_IT_FIXED_LABEL,
   NOT_USEFUL_ACTION_ID,
   NOT_USEFUL_LABEL,
+  RENDERED_MESSAGE_VERSION,
   SUMMARY_SOURCE_MESSAGES,
   nothingTodayReasonSchema,
+  renderedMessageSchema,
 } from "@growthmind/shared";
-import type { NothingTodayReason } from "@growthmind/shared";
+import type { NothingTodayReason, RenderedMessage } from "@growthmind/shared";
 import { z } from "zod";
 
 import { measuredCountSchema, rateOf } from "../counts/measured-count";
@@ -501,4 +503,16 @@ export function renderSlackMessage(
 
 function shortened(explanation: string | null): string | null {
   return explanation === null ? null : truncateEnd(explanation, TIGHT_CONTEXT_BUDGET);
+}
+
+// The second frame of "one renderer, one render, two frames": the same `SlackMessage` that
+// `toBlockKit` turns into Slack's wire format, in a shape a reader other than Slack can be
+// handed. Parsed on the way out so a shape that could not be read back is never persisted.
+export function renderedMessageOf(message: SlackMessage): RenderedMessage {
+  return renderedMessageSchema.parse({
+    version: RENDERED_MESSAGE_VERSION,
+    blocks: message.blocks,
+    text: message.text,
+    legibility: message.legibility,
+  });
 }
