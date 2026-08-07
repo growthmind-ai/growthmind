@@ -109,7 +109,10 @@ function barMarkup(): string {
     createElement(
       MantineProvider,
       { theme },
-      createElement(FilterBar, { descriptors: [COMPANY, ENTRY, WHO] }),
+      createElement(FilterBar, {
+        descriptors: [COMPANY, ENTRY, WHO],
+        onApply: () => undefined,
+      }),
     ),
   );
 }
@@ -159,6 +162,10 @@ describe("375px", () => {
     expect(source).toMatch(/position\s*:\s*fixed/);
   });
 
+  // R-8 as ruled: the 36px visual height stays on a fine pointer and the 44px floor arrives from
+  // a coarse-pointer block. `tapTargetStyle` is NOT the mechanism for this control — spreading it
+  // inline sets min-height 44 unconditionally and makes every pill 44px tall on a desktop, which
+  // is the ruling it would break. It stays the mechanism for controls with no fine-pointer size.
   test("every pill, clear control, panel row and empty-state button has a 44px hit area on a coarse pointer", () => {
     const bar = barMarkup();
     const panel = panelMarkup(COMPANY);
@@ -171,13 +178,24 @@ describe("375px", () => {
     expect(clears.length).toBeGreaterThan(0);
     expect(rows.length).toBeGreaterThan(0);
 
-    // tapTargetStyle already encodes the floor; re-deriving it is how one control ends up 40px.
+    const floor = `${String(tapTargetStyle.minHeight)}px`;
+
     for (const style of [...pills, ...clears, ...rows]) {
-      expect(style).toContain(`min-width:${String(tapTargetStyle.minWidth)}px`);
-      expect(style).toContain(`min-height:${String(tapTargetStyle.minHeight)}px`);
-      expect(style).toContain("touch-action:manipulation");
+      // Unconditionally inline would be the R-8 break, not the R-8 fix.
+      expect(style).not.toContain(`min-height:${floor}`);
     }
 
-    expect(stylesheet()).toMatch(/@media[^{]*pointer\s*:\s*coarse/);
+    // A coarse pointer and the narrow breakpoint both raise it to the floor, and neither is
+    // reachable through getComputedStyle here: happy-dom emulates no media feature, and a CSS
+    // module never reaches the document under `bun test`. The declaration is the assertion.
+    const source = stylesheet();
+    const coarse = /@media[^{]*pointer\s*:\s*coarse[^{]*\{([\s\S]*?)\n\}/.exec(source)?.[1] ?? "";
+
+    expect(coarse).not.toBe("");
+    expect(coarse).toContain(`min-height: ${floor}`);
+    expect(source).toMatch(/touch-action\s*:\s*manipulation/);
+
+    // And the fine-pointer size the ruling preserves.
+    expect(source).toMatch(/min-height\s*:\s*36px|height\s*:\s*36px/);
   });
 });

@@ -66,7 +66,7 @@ function accentedPillStyle(): string {
     createElement(
       MantineProvider,
       { theme: themeOverride },
-      createElement(FilterBar, { descriptors: [APPLIED_COMPANY] }),
+      createElement(FilterBar, { descriptors: [APPLIED_COMPANY], onApply: () => undefined }),
     ),
   );
 

@@ -132,7 +132,11 @@ function panelMarkup(descriptor: FilterDescriptor): string {
 
 function barMarkup(descriptors: readonly FilterDescriptor[]): string {
   return renderToStaticMarkup(
-    createElement(MantineProvider, { theme }, createElement(FilterBar, { descriptors })),
+    createElement(
+      MantineProvider,
+      { theme },
+      createElement(FilterBar, { descriptors, onApply: () => undefined }),
+    ),
   );
 }
 
