@@ -86,6 +86,7 @@ export {
 export {
   PROOF_PREDICATE_VERSION,
   PROOF_PREDICATES,
+  admissibleProofKinds,
   brokenProofSatisfied,
   confusingProofSatisfied,
   changedMindProofSatisfied,

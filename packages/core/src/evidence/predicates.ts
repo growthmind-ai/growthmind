@@ -81,6 +81,24 @@ function admittedKindsFor(
   }
 }
 
+// The kinds that could stand as proof for the class a candidate actually reached, as a sorted
+// set. Everything else a window happened to contain is provenance: it moves with ordinary
+// traffic timing, and an identity that moves with it re-proposes the same problem as new
+// (B-015). Membership of the admitted set is the test, not whether the signal cleared its
+// magnitude — a kind crossing back and forth over a threshold is the same churn.
+export function admissibleProofKinds(
+  signals: readonly EvidenceSignal[],
+  finalClass: FindingClass,
+  ruleSet: ThresholdRuleSet,
+): readonly EvidenceSignalKind[] {
+  const admitted = admittedKindsFor(finalClass, ruleSet);
+  const present = new Set(
+    signals.map((signal) => signal.kind).filter((kind) => admitted.includes(kind)),
+  );
+
+  return [...present].toSorted();
+}
+
 function atInclusiveBoundary(signal: EvidenceSignal, ruleSet: ThresholdRuleSet): boolean {
   switch (signal.kind) {
     case "struggle":
