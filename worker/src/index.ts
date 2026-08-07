@@ -17,6 +17,7 @@ import {
   createCauseClaimsRepo,
   createDb,
   createDeliveriesRepo,
+  createDeliveryDecisionsRepo,
   createDivergencePointsRepo,
   createFindingPayloadsRepo,
   createFindingsRepo,
@@ -385,6 +386,8 @@ export const taskList: TaskList = {
       lanes: composed.lanes,
 
       deliveriesFor: (ctx) => createDeliveriesRepo(db, ctx),
+
+      decisionsFor: (ctx) => createDeliveryDecisionsRepo(db, ctx),
 
       posterFor: composed.posterFor,
       now: () => new Date(),

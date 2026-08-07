@@ -141,6 +141,12 @@ export {
   type MarkFailedInput,
   type InteractionPrincipal,
 } from "./repositories/deliveries.repo";
+export {
+  createDeliveryDecisionsRepo,
+  type DeliveryDecisionsRepo,
+  type DeliveryDecisionRecord,
+  type RecordDeliveryDecisionInput,
+} from "./repositories/delivery-decisions.repo";
 
 export {
   createApiKeysRepo,
@@ -179,6 +185,7 @@ export {
   type OpenFixResult,
   type OpenFixReadModel,
   type FixReadModel,
+  type ReadFixResult,
   type FindingReadModel,
   type ListOpenFixesInput,
   type ListOpenFixesPage,

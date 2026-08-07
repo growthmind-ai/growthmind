@@ -30,10 +30,16 @@ export function createLiveReadPort(db: ScopedDb): McpReadPort {
     },
 
     async getFix(query: GetFixQuery): Promise<FixRecord | null> {
-      const read = await createFixesService(db, query.principal).readFix(query.fixId);
-      if (read === null) {
+      const result = await createFixesService(db, query.principal).readFix(query.fixId);
+
+      // A fix we are holding and cannot put into words is `unrenderable` to the web page,
+      // which has a state for it. `get_fix` has no such state in its published output, so
+      // both refusals stay the one typed not-found a coding agent already handles.
+      if (result.outcome !== "read") {
         return null;
       }
+
+      const read = result.read;
 
       return toFixRecord({
         fixId: read.fix.id,

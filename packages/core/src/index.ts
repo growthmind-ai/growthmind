@@ -245,6 +245,7 @@ export {
   type SlackActionsBlock,
   type SlackAction,
   type SlackMessage,
+  renderedMessageOf,
 } from "./delivery/slack-message";
 export { toBlockKit } from "./delivery/block-kit";
 

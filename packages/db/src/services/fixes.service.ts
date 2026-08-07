@@ -65,6 +65,11 @@ export interface OpenFixReadModel {
   readonly impact: MeasuredCount;
   readonly openedAt: Date;
   readonly resultsBy: Date;
+
+  // The value the sort was decided on, carried rather than discarded: a list ordered by
+  // something the reader cannot see reads as ordered by date. It also keeps the weight
+  // table in core — a page re-deriving it stops agreeing the day `weightVersion` moves.
+  readonly rankedBy: ExpectedValue;
 }
 
 export interface FixReadModel {
@@ -72,6 +77,17 @@ export interface FixReadModel {
   readonly spec: FixSpecInput;
   readonly impact: MeasuredCount;
 }
+
+// "There is no such fix" and "we are holding one we cannot put into words" are different
+// answers to a founder following a Slack link, and `null` could only ever be the first.
+export type ReadFixResult =
+  | { readonly outcome: "read"; readonly read: FixReadModel }
+  | { readonly outcome: "not_found" }
+  | {
+      readonly outcome: "unrenderable";
+      readonly fixId: string;
+      readonly findingId: string;
+    };
 
 export interface FindingReadModel {
   readonly findingId: string;
@@ -98,7 +114,7 @@ export interface ListOpenFixesPage {
 export interface FixesService {
   openFor(findingId: string): Promise<OpenFixResult>;
 
-  readFix(fixId: string): Promise<FixReadModel | null>;
+  readFix(fixId: string): Promise<ReadFixResult>;
 
   readFinding(findingId: string): Promise<FindingReadModel | null>;
 
@@ -222,25 +238,29 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       return claimed.claimed ? { outcome: "opened", fix } : { outcome: "already_open", fix };
     },
 
-    async readFix(fixId: string): Promise<FixReadModel | null> {
+    async readFix(fixId: string): Promise<ReadFixResult> {
       const fix = await repo.findById(fixId);
       if (!fix) {
-        return null;
+        return { outcome: "not_found" };
       }
+
+      // Past this line the fix exists and this organization owns it, so every remaining
+      // refusal is about the stored spec: a fix we hold, whose finding is still readable.
+      const held = { outcome: "unrenderable", fixId: fix.id, findingId: fix.findingId } as const;
 
       const payload = await payloads.findForFinding(fix.findingId);
       if (!payload) {
-        return null;
+        return held;
       }
 
       const spec = specOf(payload);
       if (!spec || !renders(spec)) {
-        return null;
+        return held;
       }
 
       const impact = impactOf(spec.candidate);
 
-      return impact ? { fix, spec, impact } : null;
+      return impact ? { outcome: "read", read: { fix, spec, impact } } : held;
     },
 
     async readFinding(findingId: string): Promise<FindingReadModel | null> {
@@ -331,7 +351,7 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
       // already resolved.
       const contexts = await growth.findForProjects(joined.map((row) => row.fix.projectId));
 
-      const ranked: { readonly row: OpenFixReadModel; readonly value: ExpectedValue }[] = [];
+      const ranked: OpenFixReadModel[] = [];
       for (const row of joined) {
         // The row leaves `rows` AND the total below it, which counts what survived this
         // loop: a denominator the page can never fill is the defect this one pass exists
@@ -349,24 +369,20 @@ export function createFixesService(db: ScopedDb, ctx: TenantContext): FixesServi
         }
 
         ranked.push({
-          row: {
-            fixId: row.fix.id,
-            findingId: row.fix.findingId,
-            summary: text.headline,
-            impact,
-            openedAt: row.fix.openedAt,
-            resultsBy: row.fix.resultsBy,
-          },
-          value: expectedValueOfCount(
+          fixId: row.fix.id,
+          findingId: row.fix.findingId,
+          summary: text.headline,
+          impact,
+          openedAt: row.fix.openedAt,
+          resultsBy: row.fix.resultsBy,
+          rankedBy: expectedValueOfCount(
             impact,
             worthOf(contexts.get(row.fix.projectId) ?? null, spec.candidate.surface),
           ),
         });
       }
 
-      const readable = ranked
-        .toSorted((a, b) => compareExpectedValue(a.value, b.value))
-        .map((entry) => entry.row);
+      const readable = ranked.toSorted((a, b) => compareExpectedValue(a.rankedBy, b.rankedBy));
 
       return { rows: readable.slice(0, input.limit), totalOpen: readable.length };
     },

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { FIX_SPEC_PAYLOAD_VERSION } from "@growthmind/core";
+import { FIX_SPEC_PAYLOAD_VERSION, WORTH_WEIGHT_VERSION, weightOfRole } from "@growthmind/core";
 import {
   FIX_RESULTS_RULE_VERSION,
   FIX_RESULTS_WINDOW_DAYS,
@@ -893,5 +893,179 @@ describe("fixes service — listOpen ranks by expected value", () => {
     const page = await service.listOpen({ projectId, limit: 25 });
 
     expect(page.rows.map((row) => row.findingId)).toEqual([larger.findingId, smaller.findingId]);
+  });
+
+  it("carries what outranked the biggest count, so the order can be read off the row", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("rank-basis"),
+      userName: NAMES.userName("rank-basis"),
+      email: NAMES.email("rank-basis"),
+    });
+    const projectId = (
+      await seedProject(db, {
+        organizationId: org.organizationId,
+        name: NAMES.projectName("rank-basis"),
+      })
+    ).id;
+
+    const BIGGEST = 22;
+    const SMALLER = 5;
+
+    const busiest = await seedFindingIn(db, org, {
+      label: "rank-basis-busiest",
+      projectId,
+      surface: "/projects/reports",
+      affected: BIGGEST,
+    });
+    const valuable = await seedFindingIn(db, org, {
+      label: "rank-basis-valuable",
+      projectId,
+      surface: "/onboarding/connect",
+      affected: SMALLER,
+    });
+
+    const service = createFixesService(db, org.ctx);
+    await service.openFor(busiest.findingId);
+    await service.openFor(valuable.findingId);
+
+    await createGrowthContextRepo(db, org.ctx).save({
+      projectId,
+      surfaces: [
+        {
+          surface: "/onboarding/connect",
+          role: "first_value",
+          basis: "stated_by_customer",
+          confirmedAt: new Date("2026-08-01T10:00:00.000Z"),
+          normalisationVersion: URL_PATH_NORMALISATION_VERSION,
+        },
+      ],
+      confirmedChangeable: [],
+    });
+
+    const page = await service.listOpen({ projectId, limit: 25 });
+    const [first, second] = page.rows;
+    if (!first || !second) throw new Error("expected both open fixes back");
+
+    // The counter-intuitive case, stated first: the row a founder would expect at the top
+    // because it hit the most people is second.
+    expect(second.findingId).toBe(busiest.findingId);
+    expect(second.impact.numerator).toBeGreaterThan(first.impact.numerator);
+
+    // Everything the page needs to say why, without arithmetic and without a second copy
+    // of the weight table.
+    expect(first.rankedBy).toEqual({
+      score: SMALLER * weightOfRole("first_value"),
+      affected: SMALLER,
+      weight: weightOfRole("first_value"),
+      weightVersion: WORTH_WEIGHT_VERSION,
+      role: "first_value",
+    });
+    expect(second.rankedBy).toEqual({
+      score: BIGGEST * weightOfRole("unknown"),
+      affected: BIGGEST,
+      weight: weightOfRole("unknown"),
+      weightVersion: WORTH_WEIGHT_VERSION,
+      role: "unknown",
+    });
+
+    expect(first.rankedBy.score).toBeGreaterThan(second.rankedBy.score);
+    expect(second.rankedBy.role).toBe("unknown");
+  });
+});
+
+describe("fixes service — readFix separates a missing fix from a held one", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it("answers not_found only when no fix of this organization's exists", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("read-absent"),
+      userName: NAMES.userName("read-absent"),
+      email: NAMES.email("read-absent"),
+    });
+
+    const service = createFixesService(db, org.ctx);
+
+    expect(await service.readFix(crypto.randomUUID())).toEqual({ outcome: "not_found" });
+
+    const seeded = await seedFindingIn(db, org, { label: "read-absent-present" });
+    const opened = await service.openFor(seeded.findingId);
+    if (opened.outcome !== "opened") throw new Error("expected the press to open a fix");
+
+    const read = await service.readFix(opened.fix.id);
+    expect(read.outcome).toBe("read");
+  });
+
+  it("answers unrenderable for a fix we hold and cannot read back, naming its finding", async () => {
+    const org = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("read-held"),
+      userName: NAMES.userName("read-held"),
+      email: NAMES.email("read-held"),
+    });
+
+    const stale = await seedFindingIn(db, org, { label: "read-held-stale" });
+    const dropped = await seedFindingIn(db, org, { label: "read-held-dropped" });
+
+    const service = createFixesService(db, org.ctx);
+    const staleFix = await service.openFor(stale.findingId);
+    const droppedFix = await service.openFor(dropped.findingId);
+    if (staleFix.outcome !== "opened" || droppedFix.outcome !== "opened") {
+      throw new Error("expected both presses to open a fix");
+    }
+
+    // A `FIX_SPEC_PAYLOAD_VERSION` bump leaves the row readable by Postgres and refused by
+    // rehydration; a deleted payload is the other way round. Both are a fix we are holding.
+    await db.execute(
+      sql`update finding_payloads set payload_version = ${FIX_SPEC_PAYLOAD_VERSION + 1} where finding_id = ${stale.findingId}`,
+    );
+    await db.execute(sql`delete from finding_payloads where finding_id = ${dropped.findingId}`);
+
+    expect(await service.readFix(staleFix.fix.id)).toEqual({
+      outcome: "unrenderable",
+      fixId: staleFix.fix.id,
+      findingId: stale.findingId,
+    });
+    expect(await service.readFix(droppedFix.fix.id)).toEqual({
+      outcome: "unrenderable",
+      fixId: droppedFix.fix.id,
+      findingId: dropped.findingId,
+    });
+
+    // The list is right to hide them, and that is exactly why the detail answer must not
+    // be not-found: a Slack link to one of these would otherwise say it does not exist.
+    expect((await service.listOpen({ projectId: null, limit: 25 })).totalOpen).toBe(0);
+  });
+
+  it("keeps another organization's held fix a not_found, not a hold we admit to", async () => {
+    const mine = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("read-cross-mine"),
+      userName: NAMES.userName("read-cross-mine"),
+      email: NAMES.email("read-cross-mine"),
+    });
+    const theirs = await seedOrgWithOwner(db, {
+      orgName: NAMES.orgName("read-cross-theirs"),
+      userName: NAMES.userName("read-cross-theirs"),
+      email: NAMES.email("read-cross-theirs"),
+    });
+
+    const seeded = await seedFindingIn(db, theirs, { label: "read-cross-theirs" });
+    const opened = await createFixesService(db, theirs.ctx).openFor(seeded.findingId);
+    if (opened.outcome !== "opened") throw new Error("expected the press to open a fix");
+
+    await db.execute(
+      sql`update finding_payloads set payload_version = ${FIX_SPEC_PAYLOAD_VERSION + 1} where finding_id = ${seeded.findingId}`,
+    );
+
+    expect(await createFixesService(db, mine.ctx).readFix(opened.fix.id)).toEqual({
+      outcome: "not_found",
+    });
   });
 });

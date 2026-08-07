@@ -15,6 +15,39 @@ export type NothingTodayReason = z.infer<typeof nothingTodayReasonSchema>;
 export const deliveryStatusSchema = z.enum(["pending", "posted", "failed"]);
 export type DeliveryStatus = z.infer<typeof deliveryStatusSchema>;
 
+// What one tick concluded about one lane. Wider than `deliveryStatusSchema`, which only
+// describes a delivery that exists: most ticks end without one, and a record that cannot
+// distinguish a deliberate quiet day from a worker that stopped running answers neither.
+export const deliveryLaneDecisionSchema = z.enum([
+  "posted",
+
+  "failed",
+
+  "blocked_by_pii",
+
+  "nothing_today",
+
+  "not_claimed",
+
+  "not_connected",
+
+  "unresolvable",
+
+  "lane_errored",
+]);
+export type DeliveryLaneDecision = z.infer<typeof deliveryLaneDecisionSchema>;
+
+export const DELIVERY_LANE_DECISIONS = [
+  "posted",
+  "failed",
+  "blocked_by_pii",
+  "nothing_today",
+  "not_claimed",
+  "not_connected",
+  "unresolvable",
+  "lane_errored",
+] as const satisfies readonly [DeliveryLaneDecision, ...DeliveryLaneDecision[]];
+
 export const residualPiiKindSchema = z.enum([
   "email_address",
 

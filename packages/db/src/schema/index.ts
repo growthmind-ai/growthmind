@@ -11,6 +11,7 @@ export * from "./signature-ancestry";
 export * from "./divergence-points";
 export * from "./cause-claims";
 export { deliveries } from "./deliveries";
+export { deliveryDecisions } from "./delivery-decisions";
 export { apiKeys } from "./api-keys";
 
 export * from "./analysis-runs";

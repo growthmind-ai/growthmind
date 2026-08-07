@@ -2,6 +2,7 @@ import {
   SLACK_INTERACTION_ACTOR,
   SLACK_INTERACTION_ROLE,
   type DeliveryStatus,
+  type RenderedMessage,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
@@ -39,6 +40,10 @@ export interface MarkPostedInput {
   readonly postedAt: Date;
 
   readonly messageRef: string | null;
+
+  // Required, and written in the same statement as `posted`: a row can only reach `posted`
+  // with no stored render by predating the column, never by a code path that forgot.
+  readonly renderedMessage: RenderedMessage;
 }
 
 export interface MarkFailedInput {
@@ -148,6 +153,11 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
 
           postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
           messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
+
+          // Coalesced beside the two above for the same reason: a re-mark of one post keeps
+          // what that post carried. A genuine re-post follows a `failed` row, whose render
+          // was never stored, so the new one lands.
+          renderedMessage: sql`coalesce(${deliveries.renderedMessage}, ${JSON.stringify(input.renderedMessage)}::jsonb)`,
 
           failedAt: null,
           failureReason: null,

@@ -398,14 +398,25 @@ export {
   deliveryDecisionSchema,
   nothingTodayReasonSchema,
   deliveryStatusSchema,
+  deliveryLaneDecisionSchema,
   residualPiiKindSchema,
   RESIDUAL_PII_KINDS,
   NOTHING_TODAY_REASONS,
+  DELIVERY_LANE_DECISIONS,
   type DeliveryDecision,
   type NothingTodayReason,
   type DeliveryStatus,
+  type DeliveryLaneDecision,
   type ResidualPiiKind,
 } from "./delivery/types";
+export {
+  renderedBlockSchema,
+  renderedMessageSchema,
+  parseRenderedMessage,
+  RENDERED_MESSAGE_VERSION,
+  type RenderedBlock,
+  type RenderedMessage,
+} from "./delivery/rendered-message";
 export { channelLabel, type ChannelIdentity } from "./delivery/channel-label";
 export {
   isDeliveryAddress,
@@ -418,6 +429,7 @@ export {
   DELIVERY_DECISION_MESSAGES,
   NOTHING_TODAY_REASON_MESSAGES,
   DELIVERY_STATUS_MESSAGES,
+  DELIVERY_LANE_DECISION_MESSAGES,
   RESIDUAL_PII_KIND_MESSAGES,
   NO_RATE_SENTENCE,
   DELIVERY_VOCABULARY,

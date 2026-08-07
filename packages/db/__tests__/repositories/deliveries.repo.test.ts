@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
+import { RENDERED_MESSAGE_VERSION, type RenderedMessage } from "@growthmind/shared";
+
 import {
   createDeliveriesRepo,
   resolveDeliveryForInteraction,
@@ -18,6 +20,13 @@ import {
 function testSignature(hex: string): SignatureHex {
   return hex as unknown as SignatureHex;
 }
+
+const RENDERED: RenderedMessage = {
+  version: RENDERED_MESSAGE_VERSION,
+  blocks: [{ kind: "section", text: "*/checkout*\nThe payment step is losing sessions" }],
+  text: "/checkout\nThe payment step is losing sessions",
+  legibility: { characters: 43, lines: 2 },
+};
 
 const CHANNEL = "C0FINDINGS";
 const OTHER_CHANNEL = "C0ENGINEERING";
@@ -106,6 +115,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: firstPostedAt,
       messageRef: "1785481299.000100",
+      renderedMessage: RENDERED,
     });
 
     const second = await repo.markPosted({
@@ -113,6 +123,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: secondPostedAt,
       messageRef: "1785481299.999999",
+      renderedMessage: RENDERED,
     });
 
     expect(first?.postedAt?.getTime()).toBe(firstPostedAt.getTime());
@@ -229,6 +240,7 @@ describe("deliveries repository", () => {
         channelId: CHANNEL,
         postedAt: new Date("2026-07-31T10:00:00.000Z"),
         messageRef: "1785481299.111111",
+        renderedMessage: RENDERED,
       }),
     ).toBeNull();
     expect(
@@ -405,6 +417,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt,
       messageRef: "1785481299.222222",
+      renderedMessage: RENDERED,
     });
 
     const late = await repo.markFailed({
@@ -453,6 +466,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T10:00:00.000Z"),
       messageRef: "1785481299.333333",
+      renderedMessage: RENDERED,
     });
     const failed = await repo.markFailed({
       findingId: "finding-sad-exit",
@@ -539,12 +553,14 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T10:00:00.000Z"),
       messageRef: refA,
+      renderedMessage: RENDERED,
     });
     await repoB.markPosted({
       findingId: "finding-shared-channel-b",
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T10:00:01.000Z"),
       messageRef: refB,
+      renderedMessage: RENDERED,
     });
 
     const fromA = await resolveDeliveryForInteraction(db, {
@@ -590,6 +606,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T10:00:00.000Z"),
       messageRef,
+      renderedMessage: RENDERED,
     });
 
     const principal = await resolveDeliveryForInteraction(db, {
@@ -670,6 +687,7 @@ describe("deliveries repository", () => {
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T10:00:00.000Z"),
       messageRef: sharedRef,
+      renderedMessage: RENDERED,
     });
 
     await expect(
@@ -678,6 +696,7 @@ describe("deliveries repository", () => {
         channelId: CHANNEL,
         postedAt: new Date("2026-07-31T10:00:01.000Z"),
         messageRef: sharedRef,
+        renderedMessage: RENDERED,
       }),
     ).rejects.toThrow();
   });
@@ -765,6 +784,7 @@ describe("an abandoned claim is a lease that expires, not a deadlock", () => {
       channelId: CHANNEL,
       postedAt: new Date("2026-07-31T09:00:05.000Z"),
       messageRef: "1785481299.000100",
+      renderedMessage: RENDERED,
     });
 
     const retaken = await repo.claimForPost(
