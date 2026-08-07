@@ -3,6 +3,7 @@
 import { Anchor, Badge, Button, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, type RefObject } from "react";
+import posthog from "posthog-js";
 
 import { PAGES_SAVE_FAILED } from "@growthmind/shared";
 
@@ -31,6 +32,18 @@ const EMPTY_CORRECTION = "Write the correction first — an empty correction cha
 const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
 const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
 const DROP_NOTE = "Dropped — you said this is wrong.";
+
+// Plain-English descriptions of what happened, fired on the fact, not the attempt.
+const CONFIRMED_EVENT = "Confirmed a belief on the audience page";
+const CORRECTED_EVENT = "Corrected a belief on the audience page";
+const DROPPED_EVENT = "Dropped a belief on the audience page";
+const REFUSED_EVENT = "A correction was refused before saving";
+
+// Self-hosted installs run without an analytics key; an uninitialised capture would log a
+// vendor warning on every click instead of staying quiet.
+function instrument(event: string): void {
+  if (posthog.__loaded) posthog.capture(event);
+}
 
 export interface BeliefCardProps {
   readonly card: BeliefCardView;
@@ -67,6 +80,7 @@ function ConfirmVerb({
       return;
     }
 
+    instrument(CONFIRMED_EVENT);
     controls.applied(SAVED_CARD);
     router.refresh();
   }
@@ -120,6 +134,7 @@ function CorrectEditor({
     // row, a dead transport, or exhausted contention all read as one retryable failure
     // with the text preserved (UX §5 write-failed).
     const refusal = readRefusal(answer?.body);
+    if (statement !== null && refusal?.code === "fact_not_admitted") instrument(REFUSED_EVENT);
     setFailed(
       refusal === null || refusal.code === "fact_not_found" ? WRITE_FAILED : refusal.message,
     );
@@ -141,6 +156,7 @@ function CorrectEditor({
 
     setInvalid(null);
     if (await post(trimmed)) {
+      instrument(CORRECTED_EVENT);
       controls.applied(SAVED_CARD);
       router.refresh();
     }
@@ -149,6 +165,7 @@ function CorrectEditor({
   async function drop(): Promise<void> {
     setInvalid(null);
     if (await post(null)) {
+      instrument(DROPPED_EVENT);
       controls.dismiss();
       onDropped();
     }

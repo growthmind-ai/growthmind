@@ -3,6 +3,7 @@
 import { Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
+import posthog from "posthog-js";
 
 import { FACT_SAVE_ACTION, PAGES_SAVE_FAILED } from "@growthmind/shared";
 
@@ -14,6 +15,15 @@ import { MorphSurface, type MorphControls } from "./MorphSurface";
 const ANSWER_VERB = "Answer this";
 
 const SAVED_NOTE = "Saved — this reranks what we look at next ✓";
+
+// A plain-English description of what happened, fired on the answer, not the attempt.
+const ANSWERED_EVENT = "Answered a doubt on the audience page";
+
+// Self-hosted installs run without an analytics key; an uninitialised capture would log a
+// vendor warning on every click instead of staying quiet.
+function instrument(event: string): void {
+  if (posthog.__loaded) posthog.capture(event);
+}
 
 const TOOLBAR_SIZE = { width: 120, height: 42 } as const;
 
@@ -100,6 +110,7 @@ function ProposalDoubtRow({ doubt }: { doubt: ProposalDoubt }) {
       return;
     }
 
+    instrument(ANSWERED_EVENT);
     controls.applied(SAVED_NOTE);
     router.refresh();
   }
@@ -200,6 +211,7 @@ function StatedOnlyDoubtRow({ doubt }: { doubt: StatedOnlyDoubt }) {
       return;
     }
 
+    instrument(ANSWERED_EVENT);
     controls.applied(SAVED_NOTE);
     router.refresh();
   }
