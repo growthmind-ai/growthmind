@@ -1,0 +1,207 @@
+.host {
+  position: relative;
+  outline: 2px solid transparent;
+  outline-offset: 3px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: outline-color 0.16s ease-out;
+}
+
+.host:focus-within,
+.host.engaged {
+  outline-color: color-mix(in srgb, var(--mantine-primary-color-6) 45%, transparent);
+}
+
+@media (hover: hover) {
+  .host:hover {
+    outline-color: color-mix(in srgb, var(--mantine-primary-color-6) 45%, transparent);
+  }
+}
+
+.host:focus-visible {
+  outline-color: var(--mantine-primary-color-6);
+}
+
+.surface {
+  position: absolute;
+  left: 10px;
+  top: -8px;
+  z-index: 20;
+  display: grid;
+  width: var(--morph-w);
+  height: var(--morph-h);
+  max-width: calc(100vw - 32px);
+  border-radius: var(--morph-r);
+  background: var(--mantine-color-default);
+  border: 1px solid var(--mantine-color-default-border);
+  box-shadow: var(--mantine-shadow-md);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(-100% - 4px));
+  transition:
+    width 0.27s cubic-bezier(0.22, 0.7, 0.24, 1),
+    height 0.28s cubic-bezier(0.22, 0.7, 0.24, 1),
+    border-radius 0.26s cubic-bezier(0.22, 0.7, 0.24, 1),
+    opacity 0.16s ease-out,
+    transform 0.16s ease-out;
+}
+
+/* The reverse morph is quicker than the opening one: 220 ms against 270/280. */
+.surface.toolbarShape {
+  transition-duration: 0.22s, 0.22s, 0.22s, 0.16s, 0.16s;
+}
+
+.surface button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.host:focus-within .surface,
+.host.engaged .surface {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-100%);
+}
+
+@media (hover: hover) {
+  .host:hover .surface {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-100%);
+  }
+}
+
+/* While the applied tick plays, the surface stays collapsed even under a resting pointer
+   or the focus the engine just returned. Last so it wins at equal specificity. */
+.host.applied .surface {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hidden layers are visibility-hidden, which also keeps their controls out of the tab
+   order and off the pointer; the 70 ms show delay is the contract's layer cross-fade. */
+.layer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.16s ease,
+    visibility 0s linear 0.16s;
+}
+
+.layer.show {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.16s ease 0.07s,
+    visibility 0s;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 6px;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.sep {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  background: var(--mantine-color-default-border);
+}
+
+.saved {
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  z-index: 21;
+  transform: translateY(-100%);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  color: var(--mantine-color-green-light-color);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.saved.show {
+  animation: saved-hold 1.8s ease forwards;
+}
+
+/* 0.2 s in, a 1.4 s hold, 0.2 s out — the hold lives in the keyframes, not in a timer. */
+@keyframes saved-hold {
+  0% {
+    opacity: 0;
+  }
+  11% {
+    opacity: 1;
+  }
+  89% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .surface {
+    max-width: min(344px, calc(100vw - 32px));
+  }
+
+  .surface.toolbarShape {
+    width: auto;
+    height: auto;
+  }
+
+  .surface.panelShape {
+    width: min(344px, calc(100vw - 32px));
+    height: auto;
+  }
+
+  /* Auto sizing needs the shown layer alone in flow; the fixed morph box is a desktop
+     refinement, so the cross-fade goes with it here. */
+  .layer:not(.show) {
+    display: none;
+  }
+
+  .tools {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .surface button {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .host,
+  .surface,
+  .layer {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+
+  .surface {
+    transform: translateY(-100%);
+  }
+
+  .saved.show {
+    animation-duration: 0.01ms;
+  }
+}
