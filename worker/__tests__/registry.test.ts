@@ -4,7 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "bun:test";
 
-import { NOTIFICATION_DISPATCH_TASK } from "@growthmind/shared";
+import {
+  NOTIFICATION_DIGEST_TASK,
+  NOTIFICATION_DISPATCH_TASK,
+  NOTIFICATION_RESCUE_TASK,
+  NOTIFICATION_RESCUE_TICK_TASK,
+} from "@growthmind/shared";
 
 import { assertUnderConstruction } from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { crontab, taskList } from "../src/index";
@@ -248,6 +253,38 @@ test("the notification dispatch task is the shared constant, registered, and del
     .filter((line) => line.trim().length > 0)
     .map((line) => line.trim().split(/\s+/)[5]);
   expect(scheduled).not.toContain(TASK.NOTIFICATION_DISPATCH);
+});
+
+// O-051 job 2 (D9): four notification tasks, all named by the shared constants the emit
+// seams queue under — a queued name with no registered handler retries against nothing.
+test("all four notification tasks are the shared constants and every one is registered", () => {
+  const expected: readonly [string, string][] = [
+    [TASK.NOTIFICATION_DISPATCH, NOTIFICATION_DISPATCH_TASK],
+    [TASK.NOTIFICATION_RESCUE, NOTIFICATION_RESCUE_TASK],
+    [TASK.NOTIFICATION_RESCUE_TICK, NOTIFICATION_RESCUE_TICK_TASK],
+    [TASK.NOTIFICATION_DIGEST, NOTIFICATION_DIGEST_TASK],
+  ];
+
+  for (const [registered, shared] of expected) {
+    expect(registered).toBe(shared);
+    expect(GRAPHILE_TASK_NAME_PATTERN.test(registered)).toBe(true);
+    expect(taskList[registered]).toBeDefined();
+  }
+});
+
+test("the two ticks are each cronned exactly once, and the two enqueued tasks are never cronned", () => {
+  const scheduled = crontab
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.trim().split(/\s+/)[5]);
+
+  expect(scheduled.filter((name) => name === TASK.NOTIFICATION_RESCUE_TICK)).toHaveLength(1);
+  expect(scheduled.filter((name) => name === TASK.NOTIFICATION_DIGEST)).toHaveLength(1);
+
+  // Dispatch is queued by the emit seam and rescue by its three producers; a cron line for
+  // either would be a fourth producer nothing designed (D-4 names exactly three).
+  expect(scheduled).not.toContain(TASK.NOTIFICATION_DISPATCH);
+  expect(scheduled).not.toContain(TASK.NOTIFICATION_RESCUE);
 });
 
 test("every crontab line's command is a registered, well-formed task name", () => {

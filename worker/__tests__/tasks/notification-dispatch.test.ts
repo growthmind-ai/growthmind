@@ -1,14 +1,17 @@
-// The dispatch task (ADD §5): posts the shared sentence once and records the honest
-// receipt — faked at exactly one seam, the poster, over a real database. RED in Wave 0:
-// the handler is a throwing stub, so every case below fails on behavior. The handler is
-// loaded by name so this file also names the deps contract Wave 2 must satisfy.
+// The dispatch task, faked at exactly one seam — the poster — over a real database. Job
+// 1's block pins the shipped post-once/honest-receipt behaviour; the job-2 block below it
+// is RED in Wave 0 and is the ADD §4.4 contract: the lease, throw-only-for-retryable, the
+// health edges, and the digest's multi-section render through this one path.
+import { randomUUID } from "node:crypto";
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { keysRevokedSentence } from "@growthmind/core";
+import { backfillCompleteSentence, keysRevokedSentence } from "@growthmind/core";
 import { schema } from "@growthmind/db";
 import {
   createTestDb,
   seedNotification,
+  seedNotificationSend,
   seedOrgWithOwner,
   type SeededOrgWithOwner,
   type TestDb,
@@ -27,6 +30,12 @@ import {
   loadUnderConstruction,
   underConstructionSpecifier,
 } from "../../../packages/shared/__tests__/onboarding/module-under-construction";
+import {
+  dropSlackHealthCheckedAt,
+  restoreSlackHealthCheckedAt,
+  setSlackConnectionFields,
+  slackConnectionRowFor,
+} from "../../../packages/db/__tests__/helpers/o051-contracts";
 import { seedSlackConnection } from "../helpers/onboarding-delivery-fixtures";
 
 const PREFIX = "o051-dispatch-";
@@ -263,5 +272,301 @@ describe("notification:dispatch posts the shared sentence once and records the h
 
     expect(poster.posted).toEqual([]);
     expect(await sendRowsFor(bed.notificationId)).toEqual([]);
+  });
+});
+
+interface RecordingLogger {
+  readonly infos: string[];
+  readonly errors: string[];
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+
+function recordingLogger(): RecordingLogger {
+  const infos: string[] = [];
+  const errors: string[] = [];
+  return {
+    infos,
+    errors,
+    info: (message) => {
+      infos.push(message);
+    },
+    warn: () => undefined,
+    error: (message) => {
+      errors.push(message);
+    },
+  };
+}
+
+async function seedReceiptRow(
+  bed: Bed,
+  receipt: {
+    readonly status: "pending" | "quiet";
+    readonly quietReason?: "no_channel" | "digest";
+    readonly claimedAt?: Date;
+  },
+): Promise<void> {
+  await db.insert(schema.notificationSends).values({
+    organizationId: bed.org.organizationId,
+    notificationId: bed.notificationId,
+    channel: "slack",
+    target: receipt.status === "quiet" ? NOTIFICATION_SEND_NO_TARGET : CHANNEL,
+    status: receipt.status,
+    quietReason: receipt.quietReason ?? null,
+    attempts: 1,
+    claimedAt: receipt.claimedAt ?? null,
+  });
+}
+
+describe("job 2 — the lease, the retry contract and the health edges (ADD §4.4, RED in Wave 0)", () => {
+  test("a call_failed post writes the failed receipt and then throws a code, never vendor text (D-2)", async () => {
+    const bed = await bedFor("retryable-throw", { slack: true });
+    const poster = loudPoster({ fails: "call_failed" });
+
+    let thrown: unknown = null;
+    try {
+      await bed.run(poster);
+    } catch (error) {
+      thrown = error;
+    }
+
+    // The receipt commits before the throw, so what Graphile retries is already honest.
+    expect(thrown).not.toBeNull();
+    const message = thrown instanceof Error ? thrown.message : String(thrown);
+    expect(message).toContain("call_failed");
+    expect(message).not.toContain(VENDOR_TEXT);
+
+    const sends = await sendRowsFor(bed.notificationId);
+    expect(sends.map((send) => [send.status, send.failureReason])).toEqual([
+      ["failed", "call_failed"],
+    ]);
+  });
+
+  test("a not_authorised post writes failed and resolves — a credential that cannot open is not retried", async () => {
+    const bed = await bedFor("not-retryable", { slack: true });
+    const poster = loudPoster({ fails: "not_authorised" });
+
+    await bed.run(poster);
+
+    const sends = await sendRowsFor(bed.notificationId);
+    expect(sends.map((send) => [send.status, send.failureReason])).toEqual([
+      ["failed", "not_authorised"],
+    ]);
+  });
+
+  test("a live lease held by another runner posts nothing and resolves — a held lease is not an error", async () => {
+    const bed = await bedFor("held-lease", { slack: true });
+    await seedReceiptRow(bed, { status: "pending", claimedAt: new Date() });
+
+    const poster = loudPoster();
+    await bed.run(poster);
+
+    expect(poster.posted).toEqual([]);
+
+    const sends = await sendRowsFor(bed.notificationId);
+    expect(sends.map((send) => send.status)).toEqual(["pending"]);
+    expect(sends[0]?.attempts).toBe(1);
+  });
+
+  test("a quiet no_channel receipt does not settle the dispatch once a channel exists (D-4's reconnect arm)", async () => {
+    const bed = await bedFor("unsettled-quiet", { slack: true });
+    await seedReceiptRow(bed, { status: "quiet", quietReason: "no_channel" });
+
+    const poster = loudPoster();
+    await bed.run(poster);
+
+    expect(poster.posted).toHaveLength(1);
+    const statuses = (await sendRowsFor(bed.notificationId)).map((send) => send.status);
+    expect(statuses).toContain("sent");
+  });
+
+  test("a quiet digest receipt settles the dispatch: the summary owns it, it is never posted alone (D-8)", async () => {
+    const bed = await bedFor("digest-settled", { slack: true });
+    await seedReceiptRow(bed, { status: "quiet", quietReason: "digest" });
+
+    const poster = loudPoster({ refuse: true });
+    await bed.run(poster);
+
+    expect(poster.posted).toEqual([]);
+    const statuses = (await sendRowsFor(bed.notificationId)).map((send) => send.status);
+    expect(statuses).toEqual(["quiet"]);
+  });
+
+  test("a failed post records the failing health edge with the closed-union code (D-3)", async () => {
+    const bed = await bedFor("health-failing", { slack: true });
+    const poster = loudPoster({ fails: "rejected" });
+
+    await bed.run(poster);
+
+    const connection = await slackConnectionRowFor(db, bed.org.organizationId);
+    expect(connection.health).toBe("failing");
+    expect(connection.healthReasonCode).toBe("rejected");
+  });
+
+  test("a successful post records the healthy edge and clears the stored reason (D-3)", async () => {
+    const bed = await bedFor("health-recovery", { slack: true });
+    await setSlackConnectionFields(db, bed.org.organizationId, {
+      health: "failing",
+      healthReasonCode: "call_failed",
+    });
+
+    const poster = loudPoster();
+    await bed.run(poster);
+
+    expect(poster.posted).toHaveLength(1);
+    const connection = await slackConnectionRowFor(db, bed.org.organizationId);
+    expect(connection.health).toBe("healthy");
+    expect(connection.healthReasonCode).toBeNull();
+  });
+
+  test("a health write that throws is logged and cannot break the post — the receipt is already committed (D8)", async () => {
+    const bed = await bedFor("health-isolated", { slack: true });
+    const logger = recordingLogger();
+    const posted: PostRequest[] = [];
+
+    // The fault is injected on the poster seam so it lands after the post and on nothing
+    // but the health write: the dropped column is one every recordHealth edge must stamp.
+    const poster: DeliveryPoster = {
+      post: async (request) => {
+        posted.push(request);
+        await dropSlackHealthCheckedAt(db);
+        return { ok: true, messageRef: "o051-iso-1" };
+      },
+    };
+
+    const run = await loadDispatch();
+    try {
+      await run(bed.payload, { db, posterFor: () => Promise.resolve(poster), logger });
+    } finally {
+      await restoreSlackHealthCheckedAt(db);
+    }
+
+    expect(posted).toHaveLength(1);
+    const sends = await sendRowsFor(bed.notificationId);
+    expect(sends.map((send) => send.status)).toEqual(["sent"]);
+
+    // Isolated, not silent: the swallowed health fault must leave a trace (D8).
+    expect(logger.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe("job 2 — the digest renders through the one dispatch path (ADD D-8, RED in Wave 0)", () => {
+  const MEMBER_COUNTS = { sessionsTouched: 12, eventsPersisted: 340 } as const;
+
+  interface DigestBed {
+    readonly organizationId: string;
+    readonly digestId: string;
+    readonly run: (poster: DeliveryPoster) => Promise<void>;
+  }
+
+  async function digestBed(): Promise<DigestBed> {
+    orgCount += 1;
+    const org = await seedOrgWithOwner(db, {
+      orgName: `${PREFIX}org-digest-${String(orgCount)}`,
+      userName: `${PREFIX}owner-digest`,
+      email: `${PREFIX}digest-${String(orgCount)}@example.com`,
+    });
+    await seedSlackConnection(
+      db,
+      { organizationId: org.organizationId, channelId: CHANNEL },
+      SCHEMA_OWNER,
+    );
+    await setSlackConnectionFields(db, org.organizationId, { channelName: "growth" });
+
+    const memberOne = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "backfill_complete",
+      subjectKind: "source_connection",
+      subjectId: randomUUID(),
+      payload: { type: "backfill_complete", v: 1, ...MEMBER_COUNTS },
+    });
+    const memberTwo = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "backfill_complete",
+      subjectKind: "source_connection",
+      subjectId: randomUUID(),
+      payload: { type: "backfill_complete", v: 1, sessionsTouched: 7, eventsPersisted: 90 },
+    });
+    for (const member of [memberOne, memberTwo]) {
+      await seedNotificationSend(db, {
+        organizationId: org.organizationId,
+        notificationId: member.id,
+        status: "quiet",
+        quietReason: "digest",
+        target: NOTIFICATION_SEND_NO_TARGET,
+      });
+    }
+
+    const digest = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "digest",
+      subjectKind: "organization",
+      subjectId: org.organizationId,
+      payload: {
+        type: "digest",
+        v: 1,
+        notificationIds: [memberOne.id, memberTwo.id],
+        totalCount: 3,
+      },
+    });
+
+    return {
+      organizationId: org.organizationId,
+      digestId: digest.id,
+      run: async (poster) => {
+        const run = await loadDispatch();
+        await run(
+          { organizationId: org.organizationId, notificationId: digest.id },
+          { db, posterFor: () => Promise.resolve(poster), logger: silentLogger },
+        );
+      },
+    };
+  }
+
+  test("a digest posts one multi-section message whose lines are the shared builders' sentences", async () => {
+    const bed = await digestBed();
+    const poster = loudPoster();
+
+    await bed.run(poster);
+
+    expect(poster.posted).toHaveLength(1);
+    const request = poster.posted[0];
+    if (!request) throw new Error("the digest posted nothing");
+
+    const sections = (request.blocks as readonly { type?: string }[]).filter(
+      (block) => block.type === "section",
+    );
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+
+    // One home per sentence: a member's line in the summary is the same builder output the
+    // bell renders, never a second copy authored inside the digest.
+    expect(JSON.stringify(request.blocks)).toContain(backfillCompleteSentence(MEMBER_COUNTS));
+  });
+
+  test("the digest's receipt is an ordinary sent row carrying the channel label", async () => {
+    const bed = await digestBed();
+
+    await bed.run(loudPoster());
+
+    const sends = await sendRowsFor(bed.digestId);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.status).toBe("sent");
+    expect(sends[0]?.target).toBe(CHANNEL);
+    expect(sends[0]?.channelLabel).toBe("growth");
+  });
+
+  test("the shipped one-section types still post exactly one section", async () => {
+    const bed = await bedFor("one-section", { slack: true });
+    const poster = loudPoster();
+
+    await bed.run(poster);
+
+    const request = poster.posted[0];
+    if (!request) throw new Error("the post never happened");
+    const sections = (request.blocks as readonly { type?: string }[]).filter(
+      (block) => block.type === "section",
+    );
+    expect(sections).toHaveLength(1);
   });
 });

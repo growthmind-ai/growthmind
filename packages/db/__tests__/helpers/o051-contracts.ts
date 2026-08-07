@@ -17,6 +17,8 @@ import {
   type TenantContext,
 } from "@growthmind/shared";
 
+import { eq, sql } from "drizzle-orm";
+
 import {
   assertUnderConstruction,
   loadModuleUnderConstruction,
@@ -24,16 +26,20 @@ import {
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createSlackConnectionsRepo } from "../../src/repositories/slack-connections.repo";
+import { slackConnections } from "../../src/schema/slack-connections";
 import { capturedJobs, type CapturedJob, type TestDb } from "../../src/testing";
 import type { SeededOrgWithOwner } from "../../src/testing";
 
 export const HEALTH_OWNER = "O-051 task 3.1 (slack-connections.repo.ts recordHealth, ADD D-3)";
 
-export const RESCUE_TASK_OWNER = "O-051 task 3.3 (worker/src/tasks/notification-rescue.ts, ADD D-4)";
+export const RESCUE_TASK_OWNER =
+  "O-051 task 3.3 (worker/src/tasks/notification-rescue.ts, ADD D-4)";
 
-export const DIGEST_TASK_OWNER = "O-051 task 3.3 (worker/src/tasks/notification-digest.ts, ADD D-8)";
+export const DIGEST_TASK_OWNER =
+  "O-051 task 3.3 (worker/src/tasks/notification-digest.ts, ADD D-8)";
 
-export const DISPATCH_OWNER = "O-051 task 3.3 (worker/src/tasks/notification-dispatch.ts, ADD §4.4)";
+export const DISPATCH_OWNER =
+  "O-051 task 3.3 (worker/src/tasks/notification-dispatch.ts, ADD §4.4)";
 
 // ADD D-3, verbatim: both health edges live inside one repository method, and the first
 // statement's returned row is the gate.
@@ -192,6 +198,41 @@ export async function runAllDispatchJobs(
   }
 }
 
+// The worker workspace declares no drizzle-orm dependency, so its suites reach the few
+// operator-needing reads and writes through these helpers rather than importing the ORM.
+export async function slackConnectionRowFor(db: TestDb, organizationId: string) {
+  const [row] = await db
+    .select()
+    .from(slackConnections)
+    .where(eq(slackConnections.organizationId, organizationId));
+
+  if (!row) {
+    throw new Error(`o051-contracts: organization ${organizationId} holds no Slack connection row`);
+  }
+  return row;
+}
+
+export async function setSlackConnectionFields(
+  db: TestDb,
+  organizationId: string,
+  set: Partial<typeof slackConnections.$inferInsert>,
+): Promise<void> {
+  await db
+    .update(slackConnections)
+    .set(set)
+    .where(eq(slackConnections.organizationId, organizationId));
+}
+
+// A fault every recordHealth edge must hit — the column each health write stamps — without
+// touching any other table, so a dispatch test can break exactly the health write.
+export async function dropSlackHealthCheckedAt(db: TestDb): Promise<void> {
+  await db.execute(sql`alter table slack_connections drop column health_checked_at`);
+}
+
+export async function restoreSlackHealthCheckedAt(db: TestDb): Promise<void> {
+  await db.execute(sql`alter table slack_connections add column health_checked_at timestamptz`);
+}
+
 const FIXTURE_CREDENTIAL_KEY: CredentialKey = {
   bytes: Uint8Array.from({ length: 32 }, (_, index) => index),
 };
@@ -222,11 +263,10 @@ export async function connectSlackChannel(
 // URL so packages/db keeps no static edge onto the worker workspace.
 export interface WirePollFixtures {
   testServerEnv(): unknown;
-  encryptTestCredential(params: {
-    env: unknown;
-    organizationId: string;
-    projectId: string;
-  }): { ciphertext: string; keyId: string };
+  encryptTestCredential(params: { env: unknown; organizationId: string; projectId: string }): {
+    ciphertext: string;
+    keyId: string;
+  };
   seedProjectWithConnection(
     db: TestDb,
     params: {
