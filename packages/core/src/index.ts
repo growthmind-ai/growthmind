@@ -472,6 +472,36 @@ export { sampleSessionIds } from "./divergence/sample";
 
 export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-dropoff-cohorts";
 
+export { LANE_BY_EXCLUSION_REASON, laneOf } from "./replay-filters/lanes";
+export {
+  listFacet,
+  companyFacet,
+  entryFacet,
+  laneFacet,
+  type FacetInput,
+  type FacetOption,
+  type FacetAccessor,
+  type FacetUniverse,
+  type ReplayFacet,
+} from "./replay-filters/facets";
+export {
+  selectReplaySessions,
+  toReplayRow,
+  type ReplayListRow,
+  type ReplayProvenance,
+  type ReplaySelection,
+} from "./replay-filters/select";
+export {
+  wayOut,
+  wayOutAction,
+  wayOutBody,
+  type ReplayRelaxTarget,
+  type ReplayWayOut,
+  type ReplayOutcome,
+  type WayOutInput,
+} from "./replay-filters/way-out";
+export { provenanceSentence, tailNote } from "./replay-filters/provenance";
+
 export { type CauseBeatEvidence, type CauseClaim } from "./cause/types";
 export { guardCauseText, type CauseGuardVerdict } from "./cause/guard";
 export { applyCitationGate, type CitationGateResult } from "./cause/citation-gate";
