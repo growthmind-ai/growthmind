@@ -14,6 +14,7 @@ export function fact(overrides: Partial<ReplaySessionFact> = {}): ReplaySessionF
     origin: "real",
     exclusionReason: "none",
     durationSeconds: null,
+    activeSeconds: null,
     clickCount: null,
     keypressCount: null,
     consoleErrorCount: null,
