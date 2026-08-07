@@ -60,6 +60,7 @@ function factOf(row: SessionRecord): ReplaySessionFact {
     origin: row.origin,
     exclusionReason: row.exclusionReason,
     durationSeconds: null,
+    activeSeconds: null,
     clickCount: null,
     keypressCount: null,
     consoleErrorCount: null,
