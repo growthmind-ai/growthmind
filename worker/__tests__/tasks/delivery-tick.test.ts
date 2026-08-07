@@ -299,6 +299,18 @@ function createFakeLedger(): FakeLedger {
           ),
         );
       },
+
+      // The delivery tick never reads this — it is the record page's read. Implemented
+      // rather than thrown so the fake stays a whole repository, and ordered like the real
+      // one so a test that does reach for it is not quietly told a different story.
+      listRecentForOrg(limit: number): Promise<DeliveryRecord[]> {
+        return Promise.resolve(
+          [...stored.values()]
+            .filter((row) => row.organizationId === ctx.organizationId)
+            .toSorted((a, b) => b.claimedAt.getTime() - a.claimedAt.getTime())
+            .slice(0, limit),
+        );
+      },
     }),
   };
 }

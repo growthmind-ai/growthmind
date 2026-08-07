@@ -71,6 +71,12 @@ export interface DeliveriesRepo {
   // Only claims still in flight. An abandoned one must not read as work in progress, or the
   // lane answers `one_already_open` on every future tick and the org receives nothing again.
   listPendingForProject(projectId: string, staleClaimsBefore: Date): Promise<DeliveryRecord[]>;
+
+  // Every status, across the org's projects. A failed post is invisible in Slack by
+  // construction, so a read that filtered to `posted` would hide the rows the record exists
+  // to show. Ordered by when the attempt was claimed rather than when it landed: a row that
+  // never posted has no `posted_at`, and sorting on it would drop those to the end.
+  listRecentForOrg(limit: number): Promise<DeliveryRecord[]>;
 }
 
 export const DELIVERY_CONFLICT_TARGET = [
@@ -211,6 +217,10 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
         ),
         orderBy: [desc(deliveries.claimedAt)],
       });
+    },
+
+    async listRecentForOrg(limit: number): Promise<DeliveryRecord[]> {
+      return c.list({ orderBy: [desc(deliveries.claimedAt)], limit });
     },
   };
 }

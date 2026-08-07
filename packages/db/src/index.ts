@@ -87,6 +87,12 @@ export {
 } from "./services/events-counter.service";
 
 export {
+  createSessionSetAsideService,
+  type SessionSetAside,
+  type SessionSetAsideService,
+} from "./services/session-set-aside.service";
+
+export {
   createDetectorCorpusService,
   type DetectorCorpusRead,
   type DetectorCorpusService,
