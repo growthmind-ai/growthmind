@@ -1,0 +1,442 @@
+"use client";
+
+import { Anchor, Badge, Button, Text, Textarea } from "@mantine/core";
+import { useRouter } from "next/navigation";
+import { useId, useRef, useState, type RefObject } from "react";
+
+import { PAGES_SAVE_FAILED } from "@growthmind/shared";
+
+import type { BeliefCardView } from "@/lib/audience/read";
+
+import { SETTINGS_API, postJson, readRefusal } from "../first-run/api";
+import styles from "./BeliefCard.module.css";
+import { MorphSurface, type MorphControls, type MorphPanelDescriptor } from "./MorphSurface";
+import surface from "./MorphSurface.module.css";
+
+// The confirm route has no entry in SETTINGS_API yet; adding one there mid-wave would
+// collide with the sibling agents editing beside this file, so the path lives here until
+// a quieter moment folds it into the shared table.
+const CONFIRM_API = "/api/settings/business/confirm";
+
+type BeliefPanel = "correct" | "source";
+
+const TOOLBAR_SIZE = { width: 228, height: 42 };
+const CORRECT_SIZE = { width: 344, height: 258 };
+const SOURCE_SIZE = { width: 330, height: 224 };
+
+const CORRECT_HEADER = "Correct this belief";
+const SOURCE_HEADER = "Where this came from";
+const SAVED_CARD = "Saved — corrections outrank what we read ✓";
+const EMPTY_CORRECTION = "Write the correction first — an empty correction changes nothing.";
+const UNCHANGED_CORRECTION = "Change something first — this is what we already believe.";
+const WRITE_FAILED = "That didn't save. Your text is still here — try again.";
+const DROP_NOTE = "Dropped — you said this is wrong.";
+
+export interface BeliefCardProps {
+  readonly card: BeliefCardView;
+}
+
+// Confirm carries no text, so a moved row cannot be retried into existence: the honest
+// answer is the server's own reload sentence plus a re-read (AD-3, D3).
+function ConfirmVerb({
+  card,
+  controls,
+  onFailed,
+}: {
+  readonly card: BeliefCardView;
+  readonly controls: MorphControls<BeliefPanel>;
+  readonly onFailed: (message: string, refresh: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+
+  async function confirm(): Promise<void> {
+    setPending(true);
+    onFailed("", false);
+
+    const answer = await postJson(CONFIRM_API, {
+      kind: card.factKind,
+      statement: card.claim,
+    });
+
+    setPending(false);
+
+    if (answer === null || !answer.ok) {
+      const refusal = readRefusal(answer?.body);
+      onFailed(refusal?.message ?? PAGES_SAVE_FAILED, refusal?.code === "fact_not_found");
+      return;
+    }
+
+    controls.applied(SAVED_CARD);
+    router.refresh();
+  }
+
+  return (
+    <Button
+      size="compact-sm"
+      variant="subtle"
+      radius="xl"
+      disabled={pending}
+      onClick={() => void confirm()}
+    >
+      ✓ Confirm
+    </Button>
+  );
+}
+
+function CorrectEditor({
+  card,
+  controls,
+  textareaRef,
+  onDropped,
+}: {
+  readonly card: BeliefCardView;
+  readonly controls: MorphControls<BeliefPanel>;
+  readonly textareaRef: RefObject<HTMLTextAreaElement | null>;
+  readonly onDropped: () => void;
+}) {
+  const router = useRouter();
+  const headerId = useId();
+  const [draft, setDraft] = useState(card.claim);
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [pending, setPending] = useState<"save" | "drop" | null>(null);
+
+  async function post(statement: string | null): Promise<boolean> {
+    setPending(statement === null ? "drop" : "save");
+    setFailed(null);
+
+    const answer = await postJson(SETTINGS_API.businessFact, {
+      kind: card.factKind,
+      was: card.claim,
+      statement,
+    });
+
+    setPending(null);
+
+    if (answer !== null && answer.ok) return true;
+
+    // The admission seam's sentence names what to change and is worth keeping; a moved
+    // row, a dead transport, or exhausted contention all read as one retryable failure
+    // with the text preserved (UX §5 write-failed).
+    const refusal = readRefusal(answer?.body);
+    setFailed(
+      refusal === null || refusal.code === "fact_not_found" ? WRITE_FAILED : refusal.message,
+    );
+    return false;
+  }
+
+  async function save(): Promise<void> {
+    const trimmed = draft.trim();
+
+    // Refused before any request leaves the browser (FR-5, a-form-ships-complete).
+    if (trimmed.length === 0) {
+      setInvalid(EMPTY_CORRECTION);
+      return;
+    }
+    if (trimmed === card.claim.trim()) {
+      setInvalid(UNCHANGED_CORRECTION);
+      return;
+    }
+
+    setInvalid(null);
+    if (await post(trimmed)) {
+      controls.applied(SAVED_CARD);
+      router.refresh();
+    }
+  }
+
+  async function drop(): Promise<void> {
+    setInvalid(null);
+    if (await post(null)) {
+      controls.dismiss();
+      onDropped();
+    }
+  }
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <Text component="span" id={headerId} size="xs" fw={700} tt="uppercase" c="dimmed">
+          {CORRECT_HEADER}
+        </Text>
+        <Button size="compact-xs" variant="subtle" color="gray" onClick={controls.back}>
+          ← back
+        </Button>
+      </div>
+      <Textarea
+        ref={textareaRef}
+        rows={4}
+        value={draft}
+        aria-labelledby={headerId}
+        placeholder="Say what's actually true — about the group, never a named person."
+        classNames={{ input: invalid === null ? undefined : styles.warnInput }}
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          setInvalid(null);
+        }}
+      />
+      {invalid === null ? null : (
+        <Text size="xs" c="orange">
+          {invalid}
+        </Text>
+      )}
+      <div className={styles.actions}>
+        <Button size="compact-sm" disabled={pending !== null} onClick={() => void save()}>
+          {pending === "save" ? "Saving…" : "Save correction"}
+        </Button>
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          color="red"
+          ml="auto"
+          disabled={pending !== null}
+          onClick={() => void drop()}
+        >
+          Drop this belief
+        </Button>
+      </div>
+      {failed === null ? null : (
+        <Text size="xs" c="orange" component="output">
+          {failed}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+function SourcePanel({
+  card,
+  controls,
+}: {
+  readonly card: BeliefCardView;
+  readonly controls: MorphControls<BeliefPanel>;
+}) {
+  const href = card.source.citationHref;
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <Text component="span" size="xs" fw={700} tt="uppercase" c="dimmed">
+          {SOURCE_HEADER}
+        </Text>
+        <Button size="compact-xs" variant="subtle" color="gray" onClick={controls.back}>
+          ← back
+        </Button>
+      </div>
+      {href === null ? null : (
+        <Anchor href={href} target="_blank" rel="noreferrer" size="sm" className={styles.cite}>
+          {href.replace(/^https?:\/\//, "")}
+        </Anchor>
+      )}
+      {card.source.lines.map((line) => (
+        <Text key={line} size="sm" c="dimmed">
+          {line}
+        </Text>
+      ))}
+    </div>
+  );
+}
+
+// The struck-through prior is announced, never left to decoration alone (UX §9).
+function CardBody({ card }: { readonly card: BeliefCardView }) {
+  return (
+    <div className={styles.body}>
+      <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+        {card.label}
+      </Text>
+      <div className={styles.claimLine}>
+        {card.prior === null ? null : (
+          <Text component="s" c="dimmed">
+            <span className={surface.srOnly}>previously believed: </span>
+            {card.prior}
+          </Text>
+        )}
+        <Text component="span" fw={600}>
+          {card.claim}
+        </Text>
+        {card.chips.map((chip) => (
+          <Badge key={chip} variant="light" size="sm" color={chipColor(chip)}>
+            {chip}
+          </Badge>
+        ))}
+      </div>
+      <Text size="sm" c="dimmed">
+        {card.evidence}
+      </Text>
+      <div className={styles.changed}>
+        <Text component="span" size="xs" fw={700} tt="uppercase" c="dimmed">
+          Changed{" "}
+        </Text>
+        <Text component="span" size="sm">
+          {card.changed}
+        </Text>
+      </div>
+      {card.settledBy === null ? null : (
+        <div>
+          <Text component="span" size="xs" fw={700} tt="uppercase" c="dimmed">
+            Would be settled by{" "}
+          </Text>
+          <Text component="span" size="sm" c="dimmed">
+            {card.settledBy}
+          </Text>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The chips are render-ready sentences; only their tone is decided here, keyed on the
+// stable opening word each wording rule guarantees (read.ts chipsOf). "band" is the
+// theme's primary palette (lib/theme.ts), the accent the storyboard gives a correction.
+function chipColor(chip: string): string {
+  if (chip.startsWith("confirmed")) return "green";
+  if (chip.startsWith("corrected")) return "band";
+  return "gray";
+}
+
+function DroppedCard({
+  card,
+  original,
+}: {
+  readonly card: BeliefCardView;
+  readonly original: string;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  // Undo restores the sentence as the person's own statement — original research
+  // provenance is gone with the tombstoned row, and re-minting it would fabricate a
+  // receipt (AD-3, named in the PR body).
+  async function undo(): Promise<void> {
+    if (pending) return;
+    setPending(true);
+    setFailed(null);
+
+    const answer = await postJson(SETTINGS_API.businessFact, {
+      kind: card.factKind,
+      was: null,
+      statement: original,
+    });
+
+    setPending(false);
+
+    if (answer === null || !answer.ok) {
+      setFailed(readRefusal(answer?.body)?.message ?? PAGES_SAVE_FAILED);
+      return;
+    }
+
+    router.refresh();
+  }
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.dimmed}>
+        <CardBody card={card} />
+      </div>
+      <Text size="sm" c="dimmed" className={styles.dropNote}>
+        {DROP_NOTE}{" "}
+        <Anchor component="button" type="button" onClick={() => void undo()} disabled={pending}>
+          Undo
+        </Anchor>
+      </Text>
+      {failed === null ? null : (
+        <Text size="xs" c="red" component="output">
+          {failed}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+export function BeliefCard({ card }: BeliefCardProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [dropped, setDropped] = useState<string | null>(null);
+  const [confirmFailed, setConfirmFailed] = useState<string | null>(null);
+  const router = useRouter();
+
+  // The dropped body keeps its Undo on screen instead of vanishing under an immediate
+  // re-render; the next navigation or push reconciles from the DB either way.
+  if (dropped !== null) {
+    return <DroppedCard card={card} original={dropped} />;
+  }
+
+  const hasSource = card.source.lines.length > 0;
+
+  const panels: Record<BeliefPanel, MorphPanelDescriptor<BeliefPanel>> = {
+    correct: {
+      size: CORRECT_SIZE,
+      label: CORRECT_HEADER,
+      onOpened: () => textareaRef.current?.focus(),
+      render: (controls) => (
+        <CorrectEditor
+          key={card.claim}
+          card={card}
+          controls={controls}
+          textareaRef={textareaRef}
+          onDropped={() => setDropped(card.claim)}
+        />
+      ),
+    },
+    source: {
+      size: SOURCE_SIZE,
+      label: SOURCE_HEADER,
+      render: (controls) => <SourcePanel card={card} controls={controls} />,
+    },
+  };
+
+  // A render prop by MorphSurface's contract, not a nested component: the engine calls it
+  // inline on its own render pass, so nothing here remounts between phases.
+  const toolbar = (controls: MorphControls<BeliefPanel>) => (
+    <>
+      <ConfirmVerb
+        card={card}
+        controls={controls}
+        onFailed={(message, refresh) => {
+          setConfirmFailed(message === "" ? null : message);
+          if (refresh) router.refresh();
+        }}
+      />
+      <span className={surface.sep} />
+      <Button
+        size="compact-sm"
+        variant="subtle"
+        radius="xl"
+        onClick={() => controls.openPanel("correct")}
+      >
+        ✎ Correct
+      </Button>
+      {hasSource ? (
+        <>
+          <span className={surface.sep} />
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            radius="xl"
+            onClick={() => controls.openPanel("source")}
+          >
+            ⌕ Source
+          </Button>
+        </>
+      ) : null}
+    </>
+  );
+
+  return (
+    <MorphSurface<BeliefPanel>
+      toolbarSize={TOOLBAR_SIZE}
+      toolbarLabel="Confirm, correct, or check the source"
+      className={styles.card}
+      panels={panels}
+      toolbar={toolbar}
+    >
+      <CardBody card={card} />
+      {confirmFailed === null ? null : (
+        <Text size="xs" c="red" component="output">
+          {confirmFailed}
+        </Text>
+      )}
+    </MorphSurface>
+  );
+}

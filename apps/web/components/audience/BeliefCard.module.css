@@ -1,0 +1,76 @@
+.card {
+  display: block;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 12px;
+  background: var(--mantine-color-default);
+  padding: 14px 16px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.claimLine {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.changed {
+  border-left: 2px solid var(--mantine-primary-color-6);
+  padding-left: 10px;
+  margin-top: 5px;
+}
+
+/* The storyboard's dropped treatment: the body stays legible but visibly parked. */
+.dimmed {
+  opacity: 0.38;
+  transition: opacity 0.2s ease;
+}
+
+.dropNote {
+  margin-top: 8px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.warnInput {
+  border-color: var(--mantine-color-orange-6);
+}
+
+.cite {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dimmed {
+    transition-duration: 0.01ms;
+  }
+}
