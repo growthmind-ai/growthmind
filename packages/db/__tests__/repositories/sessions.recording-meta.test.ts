@@ -21,7 +21,7 @@ import {
 const NAMES = laneNames("rm");
 
 const STAMP: RecordingMetaStamp = {
-  durationMs: 42_000,
+  durationSeconds: 42,
   clickCount: 7,
   keypressCount: 3,
   consoleErrorCount: 2,
@@ -57,7 +57,7 @@ function untouched(row: SessionRecord | null): Record<string, unknown> | null {
   if (row === null) return null;
 
   const {
-    recordingDurationMs: _duration,
+    recordingDurationSeconds: _duration,
     recordingClickCount: _clicks,
     recordingKeypressCount: _keypresses,
     recordingConsoleErrorCount: _errors,
@@ -106,7 +106,7 @@ describe("stampRecordingMeta", () => {
     await repo.stampRecordingMeta(lane.projectId, sessionKey, STAMP);
 
     const after = await repo.findByKey(lane.projectId, sessionKey);
-    expect(after?.recordingDurationMs).toBe(42_000);
+    expect(after?.recordingDurationSeconds).toBe(42);
     expect(after?.recordingClickCount).toBe(7);
     expect(after?.recordingKeypressCount).toBe(3);
     expect(after?.recordingConsoleErrorCount).toBe(2);
@@ -131,7 +131,7 @@ describe("stampRecordingMeta", () => {
 
     const rows = await rowsFor(db, lane.projectId, sessionKey);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.recordingDurationMs).toBe(42_000);
+    expect(rows[0]?.recordingDurationSeconds).toBe(42);
     expect(rows[0]?.recordingClickCount).toBe(7);
     expect(rows[0]?.recordingKeypressCount).toBe(3);
     expect(rows[0]?.recordingConsoleErrorCount).toBe(2);
@@ -178,7 +178,7 @@ describe("stampRecordingMeta", () => {
     expect(stamped).toBeNull();
 
     const row = await createSessionsRepo(db, orgA.ctx).findByKey(orgA.projectId, sessionKey);
-    expect(row?.recordingDurationMs).toBeNull();
+    expect(row?.recordingDurationSeconds).toBeNull();
     expect(row?.recordingClickCount).toBeNull();
     expect(row?.recordingKeypressCount).toBeNull();
     expect(row?.recordingConsoleErrorCount).toBeNull();
@@ -200,7 +200,7 @@ describe("stampRecordingMeta", () => {
     }
 
     await repo.stampRecordingMeta(lane.projectId, stampedKey, {
-      durationMs: 0,
+      durationSeconds: 0,
       clickCount: 0,
       keypressCount: 0,
       consoleErrorCount: 0,

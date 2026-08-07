@@ -26,7 +26,7 @@ const FROZEN_COLUMN_NAMES = [
   "project_id",
   "recording_click_count",
   "recording_console_error_count",
-  "recording_duration_ms",
+  "recording_duration_seconds",
   "recording_keypress_count",
   "session_key",
   "started_at",
@@ -35,7 +35,7 @@ const FROZEN_COLUMN_NAMES = [
 ] as const;
 
 const RATIFIED_META_COLUMNS = [
-  "recording_duration_ms",
+  "recording_duration_seconds",
   "recording_click_count",
   "recording_keypress_count",
   "recording_console_error_count",
