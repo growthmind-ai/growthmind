@@ -125,7 +125,8 @@ export interface AgentView {
 
 export interface CollectGroup {
   readonly label: string;
-  readonly version: string;
+  // Present only where an exported rule-set constant backs it; collect-claims.test.ts binds each.
+  readonly version?: string;
   readonly statements: readonly string[];
 }
 

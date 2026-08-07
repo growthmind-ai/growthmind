@@ -13,7 +13,9 @@ export default function CollectPage() {
 
   const asText = view.groups
     .flatMap((group) => [
-      `${group.label.toUpperCase()}  (${group.version})`,
+      group.version === undefined
+        ? group.label.toUpperCase()
+        : `${group.label.toUpperCase()}  (${group.version})`,
       ...group.statements.map((statement) => `- ${statement}`),
       "",
     ])
@@ -23,7 +25,8 @@ export default function CollectPage() {
   return (
     <Stack gap="lg">
       <PageHeader title="What we do and do not collect">
-        Not written by hand. If the rules change, this page changes with them — or a test fails.
+        The rule versions below are checked against the code by a test. Change a rule without
+        changing this page and the test fails.
       </PageHeader>
 
       <Stack gap="sm">
@@ -31,9 +34,11 @@ export default function CollectPage() {
           <SurfaceCard key={group.label}>
             <Group justify="space-between" gap="md" wrap="wrap" mb={6}>
               <Eyebrow>{group.label}</Eyebrow>
-              <Text size="xs" ff="monospace" c="dimmed">
-                {group.version}
-              </Text>
+              {group.version === undefined ? null : (
+                <Text size="xs" ff="monospace" c="dimmed">
+                  {group.version}
+                </Text>
+              )}
             </Group>
             <Stack gap={4}>
               {group.statements.map((statement) => (

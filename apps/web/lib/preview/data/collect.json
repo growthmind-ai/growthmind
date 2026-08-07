@@ -2,16 +2,15 @@
   "groups": [
     {
       "label": "What we read",
-      "version": "reading rules v1 · since 28 Jul",
       "statements": [
         "Events, and the people behind them, from the analytics you already run. We never write to it.",
         "Recordings of sessions where something looked wrong. Never all of them.",
-        "Your code, read-only, so we can point at the right file. We never write code."
+        "Not your code — reading a repository is not connected yet. When it is, it will be read-only: we never write to your repository."
       ]
     },
     {
       "label": "What we set aside",
-      "version": "exclusion rules v1 · since 28 Jul",
+      "version": "exclusion rules v1",
       "statements": [
         "Visits from your own team, worked out from the email address that created this workspace.",
         "Bots, automated browsers and coding agents.",
@@ -20,21 +19,20 @@
     },
     {
       "label": "What a recording keeps",
-      "version": "recording rules v1 · since 4 Aug",
+      "version": "page address rules v3",
       "statements": [
         "What was pressed, and what it was labelled.",
-        "How many characters were typed — never the characters.",
+        "How many times a key was pressed — a count from your session recorder, not a record of what was typed.",
         "The address of each page as a tidied-up pattern, never the raw address with your customers' own details in it.",
-        "Who someone is, stored as a scrambled stand-in that cannot be turned back into a name or an address.",
-        "Below our confidence bar, the recording is withheld and we say so on the finding."
+        "Who someone is, stored as a scrambled stand-in that cannot be turned back into a name or an address."
       ]
     },
     {
       "label": "What leaves this system",
-      "version": "delivery rules v1 · since 28 Jul",
       "statements": [
         "Everything we send to your channel is checked for leftover personal details before it leaves.",
-        "Whether we were right or wrong goes into a record shared across customers. What your product is, who your users are, and anything they typed does not."
+        "Nothing crosses from your workspace to another customer's. Every record is stored against your workspace and read back only for it.",
+        "When the evidence sits below the level we ask for, the finding is not sent at all."
       ]
     }
   ],
