@@ -1,3 +1,5 @@
+import type { PostFailureCode } from "@growthmind/shared";
+
 import type { FindingText } from "../delivery/finding-text";
 
 // One pure builder per type; web (bell rows) and worker (Slack render) call the same
@@ -41,4 +43,40 @@ export function agentFirstContactSentence(): string {
 
 export function genericNotificationSentence(): string {
   return GENERIC_SENTENCE;
+}
+
+export interface KeyCreatedSentenceInput {
+  // Null for a key minted from the CLI; the unknown-actor fallback is the revoke
+  // builder's, reused rather than copied.
+  readonly createdByName: string | null;
+}
+
+export function keyCreatedSentence(_input: KeyCreatedSentenceInput): string {
+  throw new Error("O-051 job 2: not implemented");
+}
+
+export interface BackfillCompleteSentenceInput {
+  readonly sessionsTouched: number;
+  readonly eventsPersisted: number;
+}
+
+export function backfillCompleteSentence(_input: BackfillCompleteSentenceInput): string {
+  throw new Error("O-051 job 2: not implemented");
+}
+
+// Built from the stored CODE, never from the vendor's message: that string carries
+// internal ids and is not ours to show anyone.
+export function slackDisconnectedSentence(_reasonCode: PostFailureCode | null): string {
+  throw new Error("O-051 job 2: not implemented");
+}
+
+export interface AnalysisFailingSentenceInput {
+  readonly failed: number;
+
+  readonly of: number;
+  readonly projectName: string;
+}
+
+export function analysisFailingSentence(_input: AnalysisFailingSentenceInput): string {
+  throw new Error("O-051 job 2: not implemented");
 }

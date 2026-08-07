@@ -1,6 +1,7 @@
 import {
   NOTIFICATION_SEND_NO_TARGET,
   type NotificationSendFailureReason,
+  type NotificationSendStatus,
   type NotificationType,
   type TenantContext,
 } from "@growthmind/shared";
@@ -76,6 +77,42 @@ export async function readNotificationForDispatch(
     settled: sends.some((send) => send.status === "sent" || send.status === "quiet"),
     channelId: summary !== null && isDeliveryTarget(summary) ? summary.channelId : null,
   };
+}
+
+// What the winner of a claim holds. `attempts` is the authoritative count because the
+// claim statement's own predicate enforces the cap, so the caller never re-decides it.
+export interface NotificationSendClaim {
+  readonly id: string;
+  readonly target: string;
+  readonly status: NotificationSendStatus;
+  readonly attempts: number;
+  readonly claimedAt: Date | null;
+}
+
+// The loser re-reads the held row rather than being told nothing, so "someone else has
+// this lease" is observable instead of indistinguishable from "there was no row".
+export type NotificationSendClaimResult =
+  | { readonly claimed: true; readonly row: NotificationSendClaim }
+  | { readonly claimed: false; readonly row: NotificationSendClaim | null };
+
+export interface ClaimNotificationSendInput {
+  readonly notificationId: string;
+  readonly target: string;
+  readonly claimedAt: Date;
+
+  // Claims older than this are abandoned, not in flight.
+  readonly staleClaimsBefore: Date;
+}
+
+// One statement: the lease, the supersede guard and the attempt increment are the same
+// INSERT … ON CONFLICT DO UPDATE … WHERE reclaimable, so an outcome can only ever improve
+// and the cap is enforced inside the write rather than by a read-then-decide.
+export function claimNotificationSend(
+  _db: ScopedExecutor,
+  _ctx: TenantContext,
+  _input: ClaimNotificationSendInput,
+): Promise<NotificationSendClaimResult> {
+  throw new Error("O-051 job 2: not implemented");
 }
 
 export type DispatchOutcome =

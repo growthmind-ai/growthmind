@@ -3,10 +3,15 @@ import { describe, expect, test } from "bun:test";
 import * as messagesModule from "../../src/notifications/messages";
 import {
   ALL_NOTIFICATION_MESSAGES,
+  DIGEST_CHIP_DAY_PLACEHOLDER,
+  NOTIFICATION_EMPTY_STATE_MESSAGES,
   NOTIFICATION_FAILURE_SENTENCES,
   NOTIFICATION_QUIET_SENTENCES,
+  QUIET_DIGEST_CHIP_TEMPLATE,
+  QUIET_DIGEST_OFF_CHIP_LABEL,
   QUIET_NO_CHANNEL_CHIP_LABEL,
   QUIET_UNKNOWN_REASON_CHIP_LABEL,
+  digestChipLabel,
   quietChipLabel,
 } from "../../src/notifications/messages";
 import {
@@ -34,6 +39,10 @@ describe("the plain-English audit", () => {
       "enum",
       "payload",
       "idempotent",
+      "dispatch",
+      "lease",
+      "quiet",
+      "act_now",
     ];
 
     const offenders: string[] = [];
@@ -54,10 +63,21 @@ describe("the plain-English audit", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("no registered notification message contains a Slack channel id", () => {
+    // The P-2 bar: channel_label exists precisely so no id shaped like C01AB2CD3EF can
+    // reach a customer-facing string.
+    const CHANNEL_ID = /\bC[0-9A-Z]{7,}\b/;
+    const offenders = everyMessage().filter((message) => CHANNEL_ID.test(message));
+    expect(offenders).toEqual([]);
+  });
+
   test("the audit list is complete — every fixed constant is reachable through it", () => {
     const derivedFromExports: string[] = [];
     for (const [name, value] of Object.entries(messagesModule)) {
       if (name === "ALL_NOTIFICATION_MESSAGES") continue;
+      // The substitution token, not a message: the registered digest template carries it,
+      // and the pairing is pinned in the digest-chip describe below.
+      if (name === "DIGEST_CHIP_DAY_PLACEHOLDER") continue;
       if (typeof value === "string") {
         derivedFromExports.push(value);
       } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
@@ -95,5 +115,30 @@ describe("receipt sentence maps — union totality", () => {
     expect(quietChipLabel("no_channel")).toBe(QUIET_NO_CHANNEL_CHIP_LABEL);
     expect(quietChipLabel("muted_by_settings")).toBe(QUIET_UNKNOWN_REASON_CHIP_LABEL);
     expect(quietChipLabel("muted_by_settings")).not.toContain("muted_by_settings");
+  });
+});
+
+describe("the digest chip is a template the shipped labeller fills (UX C-12)", () => {
+  test("the quiet record's digest arm is the template, and the labeller substitutes the day", () => {
+    // One home for the sentence: the record holds the template, digestChipLabel fills it.
+    expect(NOTIFICATION_QUIET_SENTENCES.digest).toBe(QUIET_DIGEST_CHIP_TEMPLATE);
+    expect(QUIET_DIGEST_CHIP_TEMPLATE).toContain(DIGEST_CHIP_DAY_PLACEHOLDER);
+
+    expect(digestChipLabel("Monday")).toBe("in Monday's summary");
+    expect(digestChipLabel("Monday")).not.toContain(DIGEST_CHIP_DAY_PLACEHOLDER);
+    expect(digestChipLabel("Friday")).toBe("in Friday's summary");
+  });
+
+  test("the quiet record stays total over the reasons, digest included", () => {
+    expect(Object.keys(NOTIFICATION_QUIET_SENTENCES).toSorted()).toEqual(
+      [...notificationQuietReasonSchema.options].toSorted(),
+    );
+    expect(quietChipLabel("digest")).toBe(QUIET_DIGEST_CHIP_TEMPLATE);
+  });
+
+  test("every new string is reachable through the registry the audits walk", () => {
+    expect(ALL_NOTIFICATION_MESSAGES).toContain(QUIET_DIGEST_CHIP_TEMPLATE);
+    expect(ALL_NOTIFICATION_MESSAGES).toContain(QUIET_DIGEST_OFF_CHIP_LABEL);
+    expect(ALL_NOTIFICATION_MESSAGES).toContain(NOTIFICATION_EMPTY_STATE_MESSAGES.muted_by_you);
   });
 });

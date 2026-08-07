@@ -16,6 +16,7 @@ import { inArray } from "drizzle-orm";
 import { readFindingText } from "../repositories/finding-text";
 import {
   createNotificationsRepo,
+  type NotificationSendFacts,
   type NotificationWithReadState,
 } from "../repositories/notifications.repo";
 import { scoped } from "../repositories/scope";
@@ -89,6 +90,12 @@ function sentenceOf(row: NotificationWithReadState, seams: RenderSeams): string 
     }
     case "agent_first_contact":
       return agentFirstContactSentence();
+    case "key_created":
+    case "backfill_complete":
+    case "slack_disconnected":
+    case "analysis_failing":
+    case "digest":
+      throw new Error("O-051 job 2: not implemented");
   }
 }
 
@@ -96,10 +103,13 @@ function chipOf(
   row: NotificationWithReadState,
   connection: SlackConnectionSummary | null,
 ): BellSnapshotChip | null {
-  const send = row.sends.find((candidate) => candidate.channel === "slack");
+  const send = row.sends.find(
+    (candidate): candidate is NotificationSendFacts & { status: BellSnapshotChip["kind"] } =>
+      candidate.channel === "slack" && candidate.status !== "pending",
+  );
 
   // No receipt yet means the dispatch job still owns the outcome — no chip beats a
-  // guessed one.
+  // guessed one. A `pending` row is that same state with a row attached.
   if (!send) {
     return null;
   }

@@ -19,3 +19,32 @@ export function buildKeysRevokedDedupKey(eventId: string): string {
 export function buildAgentFirstContactDedupKey(): string {
   return "agent_first_contact";
 }
+
+// The fresh row's own id: per-mint dedup is the intent, and a key id is minted once. Key
+// ids do churn across revoke-and-re-mint, which is why `keys_revoked` mints an event id of
+// its own instead — the two are opposite sides of D12's fork.
+export function buildKeyCreatedDedupKey(keyId: string): string {
+  return `key_created:${keyId}`;
+}
+
+// randomUUID at the write, the keys_revoked shape: the once-per-transition gate is the
+// cursor clear that returned a row, and the key exists to satisfy the unique column.
+export function buildBackfillCompleteDedupKey(eventId: string): string {
+  return `backfill_complete:${eventId}`;
+}
+
+export function buildSlackDisconnectedDedupKey(eventId: string): string {
+  return `slack_disconnected:${eventId}`;
+}
+
+// The run that tripped the detector, so a later trip on the same project is a new fact
+// rather than a conflict. Both inputs are minted ids.
+export function buildAnalysisFailingDedupKey(projectId: string, runId: string): string {
+  return `analysis_failing:${projectId}:${runId}`;
+}
+
+// The window's own end instant — derived, stable, and the reason a second run inside the
+// same hour cannot mint a second summary.
+export function buildDigestDedupKey(organizationId: string, windowEndIso: string): string {
+  return `digest:${organizationId}:${windowEndIso}`;
+}

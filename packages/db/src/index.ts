@@ -371,6 +371,31 @@ export {
 export {
   readNotificationForDispatch,
   recordDispatchOutcome,
+  claimNotificationSend,
   type NotificationForDispatch,
   type DispatchOutcome,
+  type NotificationSendClaim,
+  type NotificationSendClaimResult,
+  type ClaimNotificationSendInput,
 } from "./services/notification-dispatch.service";
+export {
+  listUnsettledNotificationIds,
+  type UnsettledNotificationsInput,
+} from "./services/notification-rescue.service";
+export {
+  listOrganizationsDueForDigest,
+  gatherDigestNotifications,
+  type DigestDueOrganization,
+  type DigestGatherInput,
+  type DigestGather,
+} from "./services/notification-digest.service";
+export {
+  createNotificationSettingsRepo,
+  type NotificationSettingsRepo,
+  type NotificationSettingsRow,
+  type SaveNotificationSettingsInput,
+} from "./repositories/notification-settings.repo";
+export {
+  createNotificationMutesRepo,
+  type NotificationMutesRepo,
+} from "./repositories/notification-mutes.repo";

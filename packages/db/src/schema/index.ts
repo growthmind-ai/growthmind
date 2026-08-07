@@ -27,6 +27,8 @@ export {
   notificationBellState,
   notificationReads,
 } from "./notifications";
+export { notificationSettings } from "./notification-settings";
+export { notificationMutes } from "./notification-mutes";
 
 export * from "./slack-connections";
 export * from "./first-run-state";

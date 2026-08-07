@@ -4,9 +4,13 @@ import { describe, expect, test } from "bun:test";
 import { reviewFindingText, type FindingText } from "../../src/delivery/finding-text";
 import {
   agentFirstContactSentence,
+  analysisFailingSentence,
+  backfillCompleteSentence,
   findingDeliveredSentence,
   genericNotificationSentence,
+  keyCreatedSentence,
   keysRevokedSentence,
+  slackDisconnectedSentence,
 } from "../../src/notifications/sentence";
 
 // One sentence per type, rendered identically in the bell and in Slack. The revoke copy
@@ -115,5 +119,69 @@ describe("the generic fallback is a customer sentence, not a diagnostic", () => 
     for (const token of ["payload", "schema", "null", "undefined", "enum"]) {
       expect(new RegExp(`\\b${token}\\b`, "i").test(sentence)).toBe(false);
     }
+  });
+});
+
+// The O-051 job-2 builders (ADD checklist unit row 15). The shared bar: plain English, no
+// stored code, no snake_case identifier, and every count beside the noun it counts.
+function expectPlainEnglish(sentence: string): void {
+  expect(sentence.trim().length).toBeGreaterThan(0);
+
+  expect(/\b[a-z]+_[a-z_]+\b/.test(sentence)).toBe(false);
+
+  for (const token of ["payload", "schema", "null", "undefined", "enum", "dispatch", "lease"]) {
+    expect(new RegExp(`\\b${token}\\b`, "i").test(sentence)).toBe(false);
+  }
+}
+
+describe("the key_created sentence reuses the revoke builder's unknown-actor fallback", () => {
+  test("a resolved actor is named", () => {
+    const sentence = keyCreatedSentence({ createdByName: "Priya" });
+
+    expect(sentence).toContain("Priya");
+    expectPlainEnglish(sentence);
+  });
+
+  test("a key minted from the CLI falls back to the shared unknown-actor phrase, not a blank", () => {
+    // One home for the phrase: the revoke builder's UNKNOWN_REVOKER, reused, never copied.
+    const sentence = keyCreatedSentence({ createdByName: null });
+
+    expect(sentence).toContain(UNKNOWN_REVOKER);
+    expectPlainEnglish(sentence);
+  });
+});
+
+describe("the slack_disconnected sentence names no vendor text", () => {
+  test("the stored code never reaches the sentence", () => {
+    const sentence = slackDisconnectedSentence("not_authorised");
+
+    expect(sentence).not.toContain("not_authorised");
+    expectPlainEnglish(sentence);
+  });
+
+  test("a null code still renders a customer sentence", () => {
+    const sentence = slackDisconnectedSentence(null);
+
+    expectPlainEnglish(sentence);
+  });
+});
+
+describe("the backfill_complete sentence names what its count is of", () => {
+  test("the frozen count appears beside its noun, never bare", () => {
+    const sentence = backfillCompleteSentence({ sessionsTouched: 128, eventsPersisted: 5321 });
+
+    expect(sentence).toContain("128");
+    expect(/session/i.test(sentence)).toBe(true);
+    expectPlainEnglish(sentence);
+  });
+});
+
+describe("the analysis_failing sentence carries its denominator", () => {
+  test("three of the last three, and the project by name", () => {
+    const sentence = analysisFailingSentence({ failed: 3, of: 3, projectName: "Checkout" });
+
+    expect(sentence).toContain("3 of the last 3");
+    expect(sentence).toContain("Checkout");
+    expectPlainEnglish(sentence);
   });
 });

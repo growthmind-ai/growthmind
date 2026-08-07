@@ -84,6 +84,10 @@ export interface AnalysisRunsRepo {
   close(input: CloseRunInput): Promise<AnalysisRunRecord>;
 
   claimModelCall(input: ClaimModelCallInput): Promise<ClaimModelCallResult>;
+
+  // The last N runs that reached an end, newest first — `running` excluded, because a run
+  // still in flight is not evidence either way. The org filter is repo-injected.
+  recentTerminalStatuses(projectId: string, limit: number): Promise<readonly AnalysisRunStatus[]>;
 }
 
 type RawExecutor = {
@@ -296,6 +300,13 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
       return existing
         ? { claimed: false, reason: "already_claimed" }
         : { claimed: false, reason: "cap_exhausted" };
+    },
+
+    recentTerminalStatuses(
+      _projectId: string,
+      _limit: number,
+    ): Promise<readonly AnalysisRunStatus[]> {
+      throw new Error("O-051 job 2: not implemented");
     },
   };
 }

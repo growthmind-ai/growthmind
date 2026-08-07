@@ -9,6 +9,8 @@ export const SYSTEM_ACTOR = {
   BUSINESS_RESEARCH: "system:business-research",
   REDUCE_AUDIENCE: "system:reduce-audience",
   NOTIFICATION_DISPATCH: "system:notification-dispatch",
+  NOTIFICATION_RESCUE: "system:notification-rescue",
+  NOTIFICATION_DIGEST: "system:notification-digest",
 } as const;
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];

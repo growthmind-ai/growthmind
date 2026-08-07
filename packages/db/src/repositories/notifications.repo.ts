@@ -1,9 +1,8 @@
 import {
   memberUserId,
-  type NotificationChannel,
-  type NotificationSendStatus,
   type NotificationSubjectKind,
   type NotificationType,
+  type SlackReceiptFacts,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
@@ -17,15 +16,9 @@ import {
 import { scoped } from "./scope";
 import type { ScopedExecutor } from "./types";
 
-export interface NotificationSendFacts {
-  readonly channel: NotificationChannel;
-  readonly target: string;
-  readonly status: NotificationSendStatus;
-  readonly quietReason: string | null;
-  readonly failureReason: string | null;
-  readonly messageRef: string | null;
-  readonly sentAt: Date | null;
-}
+// The receipt shape is declared once, in shared, so the pure precedence rule and the row
+// this repository hands out cannot come to disagree about what a receipt is.
+export interface NotificationSendFacts extends SlackReceiptFacts {}
 
 // `payload` stays `unknown` outward: a stored row can carry any shape ever written (D5),
 // so the one tolerant parse happens in the consuming service, never on trust of the
@@ -123,7 +116,9 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
         quietReason: row.quietReason,
         failureReason: row.failureReason,
         messageRef: row.messageRef,
+        channelLabel: row.channelLabel,
         sentAt: row.sentAt,
+        createdAt: row.createdAt,
       };
 
       const existing = byNotification.get(row.notificationId);

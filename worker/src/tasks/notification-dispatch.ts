@@ -55,6 +55,14 @@ async function sentenceFor(
       // Findings reach Slack through the delivery tick, which posts them itself and hands
       // the emit a copied receipt — a job for one would be a second path to the channel.
       return genericNotificationSentence();
+    case "key_created":
+    case "backfill_complete":
+    case "slack_disconnected":
+    case "analysis_failing":
+    case "digest":
+      // These render from the stored payload and the subject row, which this read model
+      // does not carry yet; `messageFor` lands with their emitters.
+      throw new Error("O-051 job 2: not implemented");
   }
 }
 
