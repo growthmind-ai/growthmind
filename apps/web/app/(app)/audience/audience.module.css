@@ -1,0 +1,23 @@
+/* Storyboard transition 10: rows cascade in rather than snapping, staggered by the inline
+   animation-delay the page computes from row index — no JS timers anywhere. Ends on
+   transform: none so the wrapper never stays a containing block for the floating toolbar. */
+.rowIn {
+  animation: rowIn 240ms ease-out both;
+}
+
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowIn {
+    animation: none;
+  }
+}
