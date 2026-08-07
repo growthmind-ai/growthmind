@@ -30,6 +30,10 @@ export const factProvenanceSchema = z.object({
 
   // Only the sessions lane fills this, and no row written before it existed carries it.
   seen: factSeenSchema.nullable().default(null),
+
+  // The org member who typed it. Only stated_by_customer writes ever set this; null on
+  // every worker write and every row written before it existed.
+  statedBy: z.string().min(1).nullable().default(null),
 });
 
 export type FactProvenance = z.infer<typeof factProvenanceSchema>;

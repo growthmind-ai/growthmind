@@ -9,9 +9,16 @@ function fact(statement: string, kind: BusinessFact["kind"] = "regime"): Busines
   return {
     kind,
     statement,
-    provenance: { source: "site", at: AT, citation: "https://example.com/", seen: null },
+    provenance: {
+      source: "site",
+      at: AT,
+      citation: "https://example.com/",
+      seen: null,
+      statedBy: null,
+    },
     correctedFrom: null,
     audience: null,
+    confirmation: null,
   };
 }
 

@@ -18,9 +18,16 @@ function readFact(statement: string, kind: BusinessFact["kind"] = "regime"): Bus
   return {
     kind,
     statement,
-    provenance: { source: "site", at: READ_AT, citation: "https://example.com/", seen: null },
+    provenance: {
+      source: "site",
+      at: READ_AT,
+      citation: "https://example.com/",
+      seen: null,
+      statedBy: null,
+    },
     correctedFrom: null,
     audience: null,
+    confirmation: null,
   };
 }
 
@@ -93,6 +100,7 @@ describe("stating a business fact", () => {
       at: STATED_AT,
       citation: null,
       seen: null,
+      statedBy: null,
     });
   });
 

@@ -8,9 +8,16 @@ const AT = new Date("2026-08-05T00:00:00.000Z");
 const READ_OFF_THE_SITE: BusinessFact = {
   kind: "who_counts",
   statement: "People arriving from a search for a specific product.",
-  provenance: { source: "site", at: AT, citation: "https://example.com/about", seen: null },
+  provenance: {
+    source: "site",
+    at: AT,
+    citation: "https://example.com/about",
+    seen: null,
+    statedBy: null,
+  },
   correctedFrom: null,
   audience: null,
+  confirmation: null,
 };
 
 const OBSERVED: BusinessFact = {
@@ -26,17 +33,20 @@ const OBSERVED: BusinessFact = {
       from: new Date("2026-07-12T00:00:00.000Z"),
       to: new Date("2026-07-19T00:00:00.000Z"),
     },
+    statedBy: null,
   },
   correctedFrom: null,
   audience: null,
+  confirmation: null,
 };
 
 const CORRECTED: BusinessFact = {
   kind: "who_counts",
   statement: "Solo founders, mostly.",
-  provenance: { source: "stated_by_customer", at: AT, citation: null, seen: null },
+  provenance: { source: "stated_by_customer", at: AT, citation: null, seen: null, statedBy: null },
   correctedFrom: "People arriving from a search for a specific product.",
   audience: null,
+  confirmation: null,
 };
 
 function contextOf(facts: readonly BusinessFact[]): BusinessContext {

@@ -66,9 +66,11 @@ function read(kind: BusinessFactKind, statement: string): BusinessFact {
       at: CLOCK_AT,
       citation: "https://example.com/terms",
       seen: null,
+      statedBy: null,
     },
     correctedFrom: null,
     audience: null,
+    confirmation: null,
   };
 }
 

@@ -94,9 +94,10 @@ function factsFrom(
       {
         kind: fact.kind,
         statement: fact.statement.trim(),
-        provenance: { source: "site" as const, at, citation: page.url, seen: null },
+        provenance: { source: "site" as const, at, citation: page.url, seen: null, statedBy: null },
         correctedFrom: null,
         audience: null,
+        confirmation: null,
       },
     ];
   });

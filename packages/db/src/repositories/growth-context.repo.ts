@@ -415,7 +415,9 @@ export function createGrowthContextRepo(db: ScopedExecutor, ctx: TenantContext):
             at: input.statedAt,
             citation: null,
             seen: null,
+            statedBy: null,
           },
+          confirmation: null,
         };
 
         // Typing a deleted sentence back in is a person changing their mind about the

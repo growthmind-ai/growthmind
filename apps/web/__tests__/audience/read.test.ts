@@ -67,7 +67,7 @@ function researchRow(over: Partial<ResearchRowFixture> = {}): ResearchRowFixture
 }
 
 function siteProvenance(citation: string | null): FactProvenance {
-  return { source: "site", at: READ_AT, citation, seen: null };
+  return { source: "site", at: READ_AT, citation, seen: null, statedBy: null };
 }
 
 function sessionsProvenance(sessions: number, of: number): FactProvenance {
@@ -76,11 +76,12 @@ function sessionsProvenance(sessions: number, of: number): FactProvenance {
     at: READ_AT,
     citation: null,
     seen: { sessions, of, from: new Date("2026-07-01T00:00:00.000Z"), to: READ_AT },
+    statedBy: null,
   };
 }
 
 function statedProvenance(): FactProvenance {
-  return { source: "stated_by_customer", at: READ_AT, citation: null, seen: null };
+  return { source: "stated_by_customer", at: READ_AT, citation: null, seen: null, statedBy: null };
 }
 
 function fact(
@@ -90,6 +91,7 @@ function fact(
     provenance: siteProvenance(`https://${HOSTNAME}/pricing`),
     correctedFrom: null,
     audience: null,
+    confirmation: null,
     ...over,
   };
 }
