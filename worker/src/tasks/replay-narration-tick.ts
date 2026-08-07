@@ -16,8 +16,10 @@ import {
 import type { FloorNarration, ScannedText, TranscriptDigest } from "@growthmind/core";
 import type {
   PersistRecordingSummaryInput,
+  RecordingMetaStamp,
   RecordingSummariesRepo,
   RefreshFailedPullInput,
+  SessionsRepo,
   TranscriptPullStop,
 } from "@growthmind/db";
 import {
@@ -55,6 +57,7 @@ export interface ReplayNarrationDeps {
   readonly lanes: ReplayLaneSource;
   readonly sourceFor: (ctx: TenantContext, projectId: string) => Promise<ResolvedReplaySource>;
   readonly summariesFor: (ctx: TenantContext) => RecordingSummariesRepo;
+  readonly sessionsFor: (ctx: TenantContext) => SessionsRepo;
   readonly contextFor: (lane: ReplayLane) => TenantContext;
 
   readonly narrator: ConfiguredNarrator | null;
@@ -363,6 +366,53 @@ async function narrateOne(
   );
 }
 
+// An absent key is unmeasured, so it stamps null rather than zero, and the two time fields are
+// seconds at the source and seconds in the column — a conversion here would invent precision the
+// listing never had. See .ai/decisions/0020-o-050-recording-meta-on-the-session-row.md.
+function measured(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function recordingMetaOf(meta: Record<string, unknown>): RecordingMetaStamp {
+  return {
+    durationSeconds: measured(meta.recording_duration),
+    activeSeconds: measured(meta.active_seconds),
+    clickCount: measured(meta.click_count),
+    keypressCount: measured(meta.keypress_count),
+    consoleErrorCount: measured(meta.console_error_count),
+  };
+}
+
+// The stamp hangs off the link `persistInputFor` already derives, but from the lane loop rather
+// than from inside narrateOne: narrateOne returns early on a retry, so a stamp written in its
+// persist branch would never re-run for a recording whose first attempt failed after the summary
+// was written. The meta comes from the listing, which both attempts hold.
+async function stampRecordingMeta(
+  deps: ReplayNarrationDeps,
+  lane: ReplayLane,
+  sessions: SessionsRepo,
+  provider: ReplaySourceKind,
+  recording: ReplayRecordingSummary,
+): Promise<void> {
+  // A provider whose keys carry no recording id gets no stamp rather than a fabricated one.
+  const sessionKey = recordingSessionKey(provider, recording.recordingId);
+  if (sessionKey === null) {
+    return;
+  }
+
+  // Its own catch: a narration bought with a model call is never lost because a session row
+  // could not be updated, and a stalled lane costs more than a missing badge (D8).
+  try {
+    await sessions.stampRecordingMeta(lane.projectId, sessionKey, recordingMetaOf(recording.meta));
+  } catch (error) {
+    deps.logger.error(
+      `replay narration: recording ${recording.recordingId} in project ${lane.projectId} was ` +
+        `summarised, but its session row could not be stamped: ` +
+        `${error instanceof Error ? error.message : "unknown error"}`,
+    );
+  }
+}
+
 // The watermark is max(started_at) over the rows a project holds, and `sinceAt` drops everything
 // at or below it. That is only safe while every recording below the newest held row is already
 // held — so a lane drains from the oldest end. Reading the newest first advanced the watermark
@@ -401,6 +451,7 @@ async function runLane(
   }
 
   const summaries = deps.summariesFor(ctx);
+  const sessions = deps.sessionsFor(ctx);
   const watermark = await summaries.latestStartedAt(lane.projectId);
 
   const listed = await resolved.source.listRecordings({
@@ -448,7 +499,10 @@ async function runLane(
         `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
           `could not be summarised: ${error instanceof Error ? error.message : "unknown error"}`,
       );
+      continue;
     }
+
+    await stampRecordingMeta(deps, lane, sessions, resolved.source.kind, recording);
   }
 
   tally.attempted = due.length;
