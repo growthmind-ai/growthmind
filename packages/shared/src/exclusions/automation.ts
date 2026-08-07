@@ -100,17 +100,23 @@ export const KNOWN_AGENT_TOKENS: readonly string[] = [
   "siege",
 ];
 
+// `chatgpt-user` and `perplexity-user` were here and are not: both vendors document them as a
+// request a person asked for, not a crawl, and the declared fail direction is that anything
+// ambiguous is INCLUDED as real. Excluding them dropped real customer sessions — an under-count
+// that reads to a founder as a product problem (B-008). `claudebot`, `gptbot` and
+// `oai-searchbot` are genuine crawlers and stay.
+//
+// `openai` went with them, and had to: every OpenAI user agent carries `+https://openai.com/…`,
+// so the bare vendor name matched ChatGPT-User through the URL and removing its own token
+// changed nothing. GPTBot and OAI-SearchBot still fire on their own tokens.
 export const CODING_AGENT_TOKENS: readonly string[] = [
   "claude-user",
   "claude-web",
   "claudebot",
   "anthropic-ai",
-  "chatgpt-user",
   "gptbot",
   "oai-searchbot",
-  "openai",
   "perplexitybot",
-  "perplexity-user",
   "cursor",
   "windsurf",
   "codeium",
