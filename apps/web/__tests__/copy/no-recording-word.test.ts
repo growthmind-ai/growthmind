@@ -15,7 +15,12 @@ const SWEPT_DIRECTORIES: readonly string[] = ["app", "components", "lib"];
 
 const FINDINGS_DETAIL_PAGE = path.join(APPS_WEB, "app", "(app)", "findings", "[id]", "page.tsx");
 
-const ANNOTATED_TRANSCRIPT = path.join(APPS_WEB, "components", "findings", "AnnotatedTranscript.tsx");
+const ANNOTATED_TRANSCRIPT = path.join(
+  APPS_WEB,
+  "components",
+  "findings",
+  "AnnotatedTranscript.tsx",
+);
 
 // Same gate as the packages/shared half: the NOUN, never the verb. A word boundary on both sides
 // is what keeps every code shape out — recordingId, RecordingMetaStamp, recordingSessionKey,
@@ -234,7 +239,9 @@ describe("no literal rendered from apps/web says recording (AC-8(b), G8)", () =>
   test("the annotated transcript's visually-hidden link text says replay", () => {
     const source = readFileSync(ANNOTATED_TRANSCRIPT, "utf8");
 
-    const hidden = [...withoutComments(source).matchAll(/<VisuallyHidden>([^<]*)<\/VisuallyHidden>/g)]
+    const hidden = [
+      ...withoutComments(source).matchAll(/<VisuallyHidden>([^<]*)<\/VisuallyHidden>/g),
+    ]
       .map((match) => match[1] ?? "")
       .filter((text) => text.trim().length > 0);
 
