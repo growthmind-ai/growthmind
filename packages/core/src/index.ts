@@ -501,6 +501,7 @@ export {
   type WayOutInput,
 } from "./replay-filters/way-out";
 export { provenanceSentence, tailNote } from "./replay-filters/provenance";
+export { fill } from "./replay-filters/template";
 
 export { type CauseBeatEvidence, type CauseClaim } from "./cause/types";
 export { guardCauseText, type CauseGuardVerdict } from "./cause/guard";

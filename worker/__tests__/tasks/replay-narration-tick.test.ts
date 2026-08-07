@@ -8,6 +8,7 @@ import type {
   RecordingSummariesRepo,
   RecordingSummaryRecord,
   RefreshFailedPullInput,
+  SessionRecord,
   SessionsRepo,
 } from "@growthmind/db";
 import type {
@@ -87,9 +88,13 @@ const unused =
     throw new Error(`fakeSessions: the narration tick must not call ${name}`);
   };
 
+// The repository returns the row it updated, and null when the key matched none. A fake that
+// always returned null would hide the tick's report of exactly that.
+const MATCHED_ROW = { id: "session-row" } as SessionRecord;
+
 // Loud on every method the tick has no business calling: a silent stub here would let the
 // stamp land through a path D-13 never described.
-function fakeSessions(onStamp?: () => void) {
+function fakeSessions(onStamp?: () => SessionRecord | null) {
   const stamps: Stamp[] = [];
   const rows = new Map<string, RecordingMetaStamp>();
 
@@ -99,10 +104,10 @@ function fakeSessions(onStamp?: () => void) {
     findByKey: unused("findByKey"),
     listSessions: unused("listSessions"),
     stampRecordingMeta: (projectId, sessionKey, meta) => {
-      onStamp?.();
+      const stamped = onStamp === undefined ? MATCHED_ROW : onStamp();
       stamps.push({ projectId, sessionKey, meta });
       rows.set(stampKey(projectId, sessionKey), meta);
-      return Promise.resolve(null);
+      return Promise.resolve(stamped);
     },
   };
 
@@ -1182,7 +1187,7 @@ describe("the session row is stamped with the recording's meta", () => {
     });
   }
 
-  test("should stamp the session row after the recording summary is persisted", async () => {
+  test("should stamp the session row and persist the recording summary in one pass", async () => {
     const store = fakeRepo();
     const { deps, sessions } = meteredDeps(store);
 
@@ -1244,6 +1249,117 @@ describe("the session row is stamped with the recording's meta", () => {
     expect(second.retried).toBe(1);
     expect(sessions.stamps.map((stamp) => stamp.sessionKey)).toEqual(["ph:rec-1", "ph:rec-1"]);
     expect(sessions.stamps[1]?.meta).toEqual(STAMPED_META);
+  });
+
+  // The stamp is hoisted out of the narration path, so it survives a narration that never
+  // reaches a persisted row — the recordings whose meta is most worth having.
+  test("should stamp the session row for a recording whose narration throws", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk([METERED])),
+            pullEvents: () => Promise.reject(new Error("the source hung up")),
+          }),
+        }),
+    });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.failed).toBe(1);
+    expect(outcome.summarised).toBe(0);
+    expect(store.rows).toHaveLength(0);
+    expect(sessions.stamps).toEqual([
+      { projectId: LANE.projectId, sessionKey: "ph:rec-1", meta: STAMPED_META },
+    ]);
+  });
+
+  // The allowlist is per key: an omitted key is unmeasured on that column alone, and a zero
+  // there would report a session nobody measured as one where nothing happened.
+  test("should stamp active seconds as null when the listing omits it", async () => {
+    const store = fakeRepo();
+    const withoutActiveSeconds = Object.fromEntries(
+      Object.entries(LISTED_META).filter(([key]) => key !== "active_seconds"),
+    );
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () =>
+              Promise.resolve(listOk([recording("rec-1", undefined, withoutActiveSeconds)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.durationSeconds).toBe(LISTED_META.recording_duration);
+    expect(stamped?.clickCount).toBe(LISTED_META.click_count);
+  });
+
+  test("should stamp a fractional count as null, because the column is an integer", async () => {
+    const store = fakeRepo();
+    const fractional = { ...LISTED_META, active_seconds: 22.5, click_count: 7.5 };
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () =>
+              Promise.resolve(listOk([recording("rec-1", undefined, fractional)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.clickCount).toBeNull();
+    expect(stamped?.durationSeconds).toBe(LISTED_META.recording_duration);
+  });
+
+  test("should stamp a negative count as null, because no session had fewer than none", async () => {
+    const store = fakeRepo();
+    const negative = { ...LISTED_META, active_seconds: -1, console_error_count: -3 };
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk([recording("rec-1", undefined, negative)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.consoleErrorCount).toBeNull();
+    expect(stamped?.keypressCount).toBe(LISTED_META.keypress_count);
+  });
+
+  test("should say so when the stamp matched no session row", async () => {
+    const store = fakeRepo();
+    const unmatched = fakeSessions(() => null);
+
+    const { deps, logs } = meteredDeps(store, { sessionsFor: () => unmatched.repo });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.summarised).toBe(1);
+    expect(unmatched.stamps).toHaveLength(1);
+    expect(logs.join(" ")).toContain("no session row under ph:rec-1");
+    expect(logs.join(" ")).toContain("rec-1");
   });
 
   test("should persist the recording summary and complete the lane when the meta stamp throws", async () => {

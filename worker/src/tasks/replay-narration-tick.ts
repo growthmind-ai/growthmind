@@ -366,11 +366,12 @@ async function narrateOne(
   );
 }
 
-// An absent key is unmeasured, so it stamps null rather than zero, and the two time fields are
-// seconds at the source and seconds in the column — a conversion here would invent precision the
-// listing never had. See .ai/decisions/0020-o-050-recording-meta-on-the-session-row.md.
+// An absent key is unmeasured, so it stamps null rather than zero. The columns are `integer`
+// and both time fields are seconds at the source and seconds in the column, so a fraction, a
+// negative or a conversion is not a value they can hold.
+// See .ai/decisions/0020-o-050-recording-meta-on-the-session-row.md.
 function measured(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function recordingMetaOf(meta: Record<string, unknown>): RecordingMetaStamp {
@@ -383,10 +384,9 @@ function recordingMetaOf(meta: Record<string, unknown>): RecordingMetaStamp {
   };
 }
 
-// The stamp hangs off the link `persistInputFor` already derives, but from the lane loop rather
-// than from inside narrateOne: narrateOne returns early on a retry, so a stamp written in its
-// persist branch would never re-run for a recording whose first attempt failed after the summary
-// was written. The meta comes from the listing, which both attempts hold.
+// The meta comes from the listing, which every attempt holds, so the stamp runs from the lane
+// loop ahead of narration and inside its own catch: the recordings whose narration is failing
+// are the ones whose duration, clicks and errors are most worth having (ADD D-13, D8).
 async function stampRecordingMeta(
   deps: ReplayNarrationDeps,
   lane: ReplayLane,
@@ -400,14 +400,25 @@ async function stampRecordingMeta(
     return;
   }
 
-  // Its own catch: a narration bought with a model call is never lost because a session row
-  // could not be updated, and a stalled lane costs more than a missing badge (D8).
   try {
-    await sessions.stampRecordingMeta(lane.projectId, sessionKey, recordingMetaOf(recording.meta));
+    const stamped = await sessions.stampRecordingMeta(
+      lane.projectId,
+      sessionKey,
+      recordingMetaOf(recording.meta),
+    );
+
+    // A stamp that matched no row leaves the same nulls as a recording nobody measured, and
+    // the two are indistinguishable afterwards.
+    if (stamped === null) {
+      deps.logger.info(
+        `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
+          `has no session row under ${sessionKey}, so its meta was not stamped`,
+      );
+    }
   } catch (error) {
     deps.logger.error(
-      `replay narration: recording ${recording.recordingId} in project ${lane.projectId} was ` +
-        `summarised, but its session row could not be stamped: ` +
+      `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
+        `could not have its session row stamped: ` +
         `${error instanceof Error ? error.message : "unknown error"}`,
     );
   }
@@ -485,6 +496,8 @@ async function runLane(
   for (const recording of due) {
     const attempt: PullAttempt = retryable.has(recording.recordingId) ? "retry" : "first";
 
+    await stampRecordingMeta(deps, lane, sessions, resolved.source.kind, recording);
+
     try {
       await narrateOne(deps, lane, resolved.source, summaries, recording, watermark, attempt);
 
@@ -499,10 +512,7 @@ async function runLane(
         `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
           `could not be summarised: ${error instanceof Error ? error.message : "unknown error"}`,
       );
-      continue;
     }
-
-    await stampRecordingMeta(deps, lane, sessions, resolved.source.kind, recording);
   }
 
   tally.attempted = due.length;

@@ -7,6 +7,7 @@ import {
   createSessionsRepo,
   type RecordingMetaStamp,
   type SessionRecord,
+  type SessionUpsertRow,
 } from "../../src/repositories/sessions.repo";
 import { sessions } from "../../src/schema/sessions";
 import { createTestDb, type TestDb } from "../../src/testing";
@@ -32,6 +33,28 @@ interface Lane {
   ctx: TenantContext;
   projectId: string;
   connectionId: string;
+}
+
+const INGESTED = new Date("2026-08-05T09:00:00.000Z");
+
+function upsertRow(lane: Lane, sessionKey: string): SessionUpsertRow {
+  return {
+    projectId: lane.projectId,
+    connectionId: lane.connectionId,
+    sessionKey,
+    identityKey: null,
+    identityEmailDomain: null,
+    identityResolution: "unresolved",
+    userAgent: null,
+    entryUrlPath: "/pricing",
+    startedAt: INGESTED,
+    lastEventAt: INGESTED,
+    origin: "real",
+    exclusionReason: "none",
+    internalDomainAtStamp: null,
+    exclusionRuleSetVersion: 1,
+    groupingVersion: 1,
+  };
 }
 
 async function setUp(db: TestDb, label: string): Promise<Lane> {
@@ -261,5 +284,58 @@ describe("stampRecordingMeta", () => {
 
     expect(row?.recordingActiveSeconds).toBe(0);
     expect(row?.recordingDurationSeconds).toBe(42);
+  });
+
+  // The row mirrors the newest listing rather than accumulating across listings, so a key the
+  // source has stopped reporting clears rather than persisting a measurement the source no
+  // longer makes. Decision 0020 forbids inventing a value; it does not license keeping a stale
+  // one, and a coalescing stamp could never correct a wrong value either.
+  it("should clear a previously measured value when a later stamp omits it", async () => {
+    const lane = await setUp(db, "unstamp");
+    const repo = createSessionsRepo(db, lane.ctx);
+    const sessionKey = "ph:db-rm-unstamp";
+
+    await seedSession(db, {
+      organizationId: lane.ctx.organizationId,
+      projectId: lane.projectId,
+      connectionId: lane.connectionId,
+      sessionKey,
+    });
+
+    await repo.stampRecordingMeta(lane.projectId, sessionKey, STAMP);
+    await repo.stampRecordingMeta(lane.projectId, sessionKey, { ...STAMP, activeSeconds: null });
+
+    const row = await repo.findByKey(lane.projectId, sessionKey);
+    expect(row?.recordingActiveSeconds).toBeNull();
+    expect(row?.recordingDurationSeconds).toBe(42);
+    expect(row?.recordingClickCount).toBe(7);
+  });
+
+  // The five columns survive re-ingest only because `upsertMany`'s conflict clause never names
+  // them. Adding one to that `set` block would wipe every badge on the next poll, silently.
+  it("should leave the stamp untouched when the same session is ingested again", async () => {
+    const lane = await setUp(db, "reingest");
+    const repo = createSessionsRepo(db, lane.ctx);
+    const sessionKey = "ph:db-rm-reingest";
+
+    await repo.upsertMany([upsertRow(lane, sessionKey)]);
+    await repo.stampRecordingMeta(lane.projectId, sessionKey, STAMP);
+
+    await repo.upsertMany([
+      {
+        ...upsertRow(lane, sessionKey),
+        lastEventAt: new Date("2026-08-05T09:30:00.000Z"),
+        identityEmailDomain: "acme.example",
+        identityResolution: "resolved",
+      },
+    ]);
+
+    const row = await repo.findByKey(lane.projectId, sessionKey);
+    expect(row?.identityEmailDomain).toBe("acme.example");
+    expect(row?.recordingDurationSeconds).toBe(42);
+    expect(row?.recordingActiveSeconds).toBe(30);
+    expect(row?.recordingClickCount).toBe(7);
+    expect(row?.recordingKeypressCount).toBe(3);
+    expect(row?.recordingConsoleErrorCount).toBe(2);
   });
 });
