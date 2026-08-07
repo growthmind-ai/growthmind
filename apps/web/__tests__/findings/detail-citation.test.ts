@@ -112,6 +112,6 @@ describe("UX rows 2-3 — the citation link", () => {
     const cited = anchors.find((tag) => tag.includes(CITED_HREF));
 
     expect(cited).toBeDefined();
-    expect(cited?.toLowerCase()).toContain("opens the recording in a new tab");
+    expect(cited?.toLowerCase()).toContain("opens the replay in a new tab");
   });
 });

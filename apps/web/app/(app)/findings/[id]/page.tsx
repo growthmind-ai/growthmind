@@ -3,7 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ensureProject } from "@growthmind/db";
-import { GROUP_TITLES } from "@growthmind/shared";
+import {
+  EVIDENCE_COVERAGE_TITLE,
+  EVIDENCE_WITHHELD_BODY,
+  EVIDENCE_WITHHELD_TITLE,
+  GROUP_TITLES,
+} from "@growthmind/shared";
 
 import { AnnotatedTranscript } from "@/components/findings/AnnotatedTranscript";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -37,10 +42,9 @@ export default async function FindingPage({ params }: PageProps) {
 
       {finding.withheld ? (
         <SurfaceCard>
-          <Text fw={600}>We are not showing this recording</Text>
+          <Text fw={600}>{EVIDENCE_WITHHELD_TITLE}</Text>
           <Text c="dimmed" mt={4}>
-            We could not mask it confidently, so the detail stays sealed. The counts above were
-            still measured from what happened.
+            {EVIDENCE_WITHHELD_BODY}
           </Text>
         </SurfaceCard>
       ) : (
@@ -70,7 +74,7 @@ export default async function FindingPage({ params }: PageProps) {
       )}
 
       <Stack gap={4}>
-        <Eyebrow>Coverage and confidence</Eyebrow>
+        <Eyebrow>{EVIDENCE_COVERAGE_TITLE}</Eyebrow>
         <Text size="sm" c="dimmed">
           {finding.coverageLine}
         </Text>

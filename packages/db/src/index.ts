@@ -49,6 +49,9 @@ export {
   type SessionsRepo,
   type SessionRecord,
   type SessionUpsertRow,
+  type SessionLaneFilter,
+  type SessionListFilter,
+  type RecordingMetaStamp,
 } from "./repositories/sessions.repo";
 export {
   createEventsRepo,

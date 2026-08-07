@@ -20,10 +20,6 @@ export const ROUTES = {
   replays: "/replays",
   replayDetail: "/replays/[recordingId]",
 
-  // Same connection, one level up: sessions grouped by the account they came from.
-  companies: "/companies",
-  companyDetail: "/companies/[domain]",
-
   // Standing reference about the customer's own product.
   audience: "/audience",
   plan: "/plan",

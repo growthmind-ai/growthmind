@@ -16,8 +16,10 @@ import {
 import type { FloorNarration, ScannedText, TranscriptDigest } from "@growthmind/core";
 import type {
   PersistRecordingSummaryInput,
+  RecordingMetaStamp,
   RecordingSummariesRepo,
   RefreshFailedPullInput,
+  SessionsRepo,
   TranscriptPullStop,
 } from "@growthmind/db";
 import {
@@ -55,6 +57,7 @@ export interface ReplayNarrationDeps {
   readonly lanes: ReplayLaneSource;
   readonly sourceFor: (ctx: TenantContext, projectId: string) => Promise<ResolvedReplaySource>;
   readonly summariesFor: (ctx: TenantContext) => RecordingSummariesRepo;
+  readonly sessionsFor: (ctx: TenantContext) => SessionsRepo;
   readonly contextFor: (lane: ReplayLane) => TenantContext;
 
   readonly narrator: ConfiguredNarrator | null;
@@ -363,6 +366,64 @@ async function narrateOne(
   );
 }
 
+// An absent key is unmeasured, so it stamps null rather than zero. The columns are `integer`
+// and both time fields are seconds at the source and seconds in the column, so a fraction, a
+// negative or a conversion is not a value they can hold.
+// See .ai/decisions/0020-o-050-recording-meta-on-the-session-row.md.
+function measured(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function recordingMetaOf(meta: Record<string, unknown>): RecordingMetaStamp {
+  return {
+    durationSeconds: measured(meta.recording_duration),
+    activeSeconds: measured(meta.active_seconds),
+    clickCount: measured(meta.click_count),
+    keypressCount: measured(meta.keypress_count),
+    consoleErrorCount: measured(meta.console_error_count),
+  };
+}
+
+// The meta comes from the listing, which every attempt holds, so the stamp runs from the lane
+// loop ahead of narration and inside its own catch: the recordings whose narration is failing
+// are the ones whose duration, clicks and errors are most worth having (ADD D-13, D8).
+async function stampRecordingMeta(
+  deps: ReplayNarrationDeps,
+  lane: ReplayLane,
+  sessions: SessionsRepo,
+  provider: ReplaySourceKind,
+  recording: ReplayRecordingSummary,
+): Promise<void> {
+  // A provider whose keys carry no recording id gets no stamp rather than a fabricated one.
+  const sessionKey = recordingSessionKey(provider, recording.recordingId);
+  if (sessionKey === null) {
+    return;
+  }
+
+  try {
+    const stamped = await sessions.stampRecordingMeta(
+      lane.projectId,
+      sessionKey,
+      recordingMetaOf(recording.meta),
+    );
+
+    // A stamp that matched no row leaves the same nulls as a recording nobody measured, and
+    // the two are indistinguishable afterwards.
+    if (stamped === null) {
+      deps.logger.info(
+        `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
+          `has no session row under ${sessionKey}, so its meta was not stamped`,
+      );
+    }
+  } catch (error) {
+    deps.logger.error(
+      `replay narration: recording ${recording.recordingId} in project ${lane.projectId} ` +
+        `could not have its session row stamped: ` +
+        `${error instanceof Error ? error.message : "unknown error"}`,
+    );
+  }
+}
+
 // The watermark is max(started_at) over the rows a project holds, and `sinceAt` drops everything
 // at or below it. That is only safe while every recording below the newest held row is already
 // held — so a lane drains from the oldest end. Reading the newest first advanced the watermark
@@ -401,6 +462,7 @@ async function runLane(
   }
 
   const summaries = deps.summariesFor(ctx);
+  const sessions = deps.sessionsFor(ctx);
   const watermark = await summaries.latestStartedAt(lane.projectId);
 
   const listed = await resolved.source.listRecordings({
@@ -433,6 +495,8 @@ async function runLane(
 
   for (const recording of due) {
     const attempt: PullAttempt = retryable.has(recording.recordingId) ? "retry" : "first";
+
+    await stampRecordingMeta(deps, lane, sessions, resolved.source.kind, recording);
 
     try {
       await narrateOne(deps, lane, resolved.source, summaries, recording, watermark, attempt);

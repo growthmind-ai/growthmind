@@ -19,7 +19,7 @@ export const COVERAGE_SPLIT_TEMPLATE =
   "We can explain {explained} of them; {described} we can only describe.";
 
 export const COVERAGE_WITHHELD_TEMPLATE =
-  "{withheld} we are not showing you, because we could not mask the recordings confidently.";
+  "{withheld} we are not showing you, because we could not mask the replays confidently.";
 
 // Not "…worth telling you about": the copy audit reads a trailing "about" as a hedge.
 export const COVERAGE_FOUND_NOTHING = "We found nothing worth telling you.";
@@ -61,12 +61,12 @@ export const EVIDENCE_CLAIMS_TITLE = "What we think happened";
 export const EVIDENCE_CITES_TEMPLATE = "from {when}";
 
 export const EVIDENCE_CLAIM_DROPPED =
-  "We had another explanation and nothing in the recording backed it up, so we left it out.";
+  "We had another explanation and nothing in the replay backed it up, so we left it out.";
 
 export const EVIDENCE_NO_CLAIMS =
   "We can show you what people did here. We can't yet tell you why it went wrong.";
 
-export const EVIDENCE_WITHHELD_TITLE = "We are not showing this recording";
+export const EVIDENCE_WITHHELD_TITLE = "We are not showing this replay";
 
 export const EVIDENCE_WITHHELD_BODY =
   "We could not mask it confidently, so the detail stays sealed. The counts above were still measured from what happened.";

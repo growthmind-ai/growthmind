@@ -134,19 +134,25 @@ describe("failure code coverage", () => {
     }
   });
 
-  test("the missing_read_scope message points at the rrweb.com API keys page and says the key can only record", () => {
+  // Updated with the behaviour, not softened: O-050 D-10 removed the app.rrweb.com address this
+  // row used to demand. The message named a vendor this installation does not talk to — the
+  // shipped source is PostHog — so it now names the action and no address at all.
+  test("the missing_read_scope message says the key can only record, names read access, and gives no address", () => {
     const message = REPLAY_FAILURE_MESSAGES.missing_read_scope;
 
-    expect(message).toContain("app.rrweb.com/api-keys");
     expect(/\brecord/i.test(message)).toBe(true);
-    expect(/\bread/i.test(message)).toBe(true);
+    expect(/\bread\b/i.test(message)).toBe(true);
+    expect(message).not.toMatch(/https?:\/\//i);
+    expect(message).not.toMatch(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|net|dev|org|ai|app)\b/i);
   });
 
-  // The address a person has to visit is worth naming; the vendor behind our
-  // plumbing is not, and naming it dates the copy the day a second one arrives.
-  test("no message names the vendor except inside the address a person has to visit", () => {
+  // The vendor behind our plumbing is never named: it dates the copy the day a second one
+  // arrives, and it carries an id from somewhere we do not own.
+  test("no message names a vendor", () => {
     for (const message of Object.values(REPLAY_FAILURE_MESSAGES)) {
-      expect(message.toLowerCase().replaceAll("app.rrweb.com/api-keys", "")).not.toContain("rrweb");
+      const lowered = message.toLowerCase();
+      expect(lowered).not.toContain("rrweb");
+      expect(lowered).not.toContain("posthog");
     }
   });
 });

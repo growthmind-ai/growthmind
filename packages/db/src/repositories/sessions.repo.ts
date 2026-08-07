@@ -2,9 +2,11 @@ import type {
   StampedExclusionReason,
   IdentityResolution,
   Origin,
+  RecordingMetaStamp,
+  ReplayLane,
   TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql, type SQL } from "drizzle-orm";
 
 import { sessions } from "../schema/sessions";
 import { orgCrud } from "./crud";
@@ -37,6 +39,20 @@ export interface BoundedSessions {
   readonly truncated: boolean;
 }
 
+export type { RecordingMetaStamp };
+
+// Reading across lanes is a thing you write out loud. `lane` is required so the lane-blind read
+// the deleted listGroupableSessions expressed cannot be spelled again.
+export type SessionLaneFilter = ReplayLane | "every_lane";
+
+export interface SessionListFilter {
+  readonly projectId: string;
+  readonly lane: SessionLaneFilter;
+  readonly identityEmailDomain?: string;
+  readonly entryUrlPath?: string;
+  readonly hasIdentityEmailDomain?: boolean;
+}
+
 export interface SessionsRepo {
   upsertMany(rows: readonly SessionUpsertRow[]): Promise<SessionRecord[]>;
 
@@ -44,13 +60,29 @@ export interface SessionsRepo {
 
   findByKey(projectId: string, sessionKey: string): Promise<SessionRecord | null>;
 
-  listGroupableSessions(projectId: string, options: { limit: number }): Promise<BoundedSessions>;
+  listSessions(filter: SessionListFilter, options: { limit: number }): Promise<BoundedSessions>;
 
-  listSessionsForDomain(
+  stampRecordingMeta(
     projectId: string,
-    domain: string,
-    options: { limit: number },
-  ): Promise<BoundedSessions>;
+    sessionKey: string,
+    meta: RecordingMetaStamp,
+  ): Promise<SessionRecord | null>;
+}
+
+// The ordered partition of .ai/ux/o-050-replays-filters.md R-6, mirrored from laneOf: a
+// synthetic session is simulated whatever its exclusion reason, so rule one beats rule two.
+// `outside_who_counts` is a count-time reason that is never stamped, so no lane names it.
+function lanePredicate(lane: SessionLaneFilter): SQL | undefined {
+  switch (lane) {
+    case "simulated":
+      return eq(sessions.origin, "synthetic");
+    case "excluded":
+      return and(eq(sessions.origin, "real"), ne(sessions.exclusionReason, "none"));
+    case "real":
+      return and(eq(sessions.origin, "real"), eq(sessions.exclusionReason, "none"));
+    case "every_lane":
+      return undefined;
+  }
 }
 
 const RESOLUTION_RANK: Record<IdentityResolution, number> = {
@@ -178,24 +210,46 @@ export function createSessionsRepo(db: ScopedExecutor, ctx: TenantContext): Sess
       return c.maybe(eq(sessions.projectId, projectId), eq(sessions.sessionKey, sessionKey));
     },
 
-    async listGroupableSessions(
-      projectId: string,
+    async listSessions(
+      filter: SessionListFilter,
       options: { limit: number },
     ): Promise<BoundedSessions> {
       return boundedList(
-        and(eq(sessions.projectId, projectId), isNotNull(sessions.identityEmailDomain)),
+        and(
+          eq(sessions.projectId, filter.projectId),
+          lanePredicate(filter.lane),
+          filter.identityEmailDomain === undefined
+            ? undefined
+            : eq(sessions.identityEmailDomain, filter.identityEmailDomain),
+          filter.entryUrlPath === undefined
+            ? undefined
+            : eq(sessions.entryUrlPath, filter.entryUrlPath),
+          filter.hasIdentityEmailDomain === true
+            ? isNotNull(sessions.identityEmailDomain)
+            : undefined,
+        ),
         options.limit,
       );
     },
 
-    async listSessionsForDomain(
+    // An absolute SET of the five columns, so a replayed poll re-stamps identically, and a
+    // blind update so a recording listing can never conjure a session row with no ingest
+    // provenance. Both second counts land as the source measured them, unmultiplied.
+    async stampRecordingMeta(
       projectId: string,
-      domain: string,
-      options: { limit: number },
-    ): Promise<BoundedSessions> {
-      return boundedList(
-        and(eq(sessions.projectId, projectId), eq(sessions.identityEmailDomain, domain)),
-        options.limit,
+      sessionKey: string,
+      meta: RecordingMetaStamp,
+    ): Promise<SessionRecord | null> {
+      return c.update(
+        {
+          recordingDurationSeconds: meta.durationSeconds,
+          recordingActiveSeconds: meta.activeSeconds,
+          recordingClickCount: meta.clickCount,
+          recordingKeypressCount: meta.keypressCount,
+          recordingConsoleErrorCount: meta.consoleErrorCount,
+        },
+        eq(sessions.projectId, projectId),
+        eq(sessions.sessionKey, sessionKey),
       );
     },
   };

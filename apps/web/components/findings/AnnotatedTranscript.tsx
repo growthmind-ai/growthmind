@@ -91,7 +91,7 @@ export function AnnotatedTranscript({ beats, claims, droppedClaims }: AnnotatedT
                 className={classes.citation}
               >
                 {claim.citesLabel}
-                <VisuallyHidden> (opens the recording in a new tab)</VisuallyHidden>
+                <VisuallyHidden> (opens the replay in a new tab)</VisuallyHidden>
               </AnchorLink>
             )}
           </Paper>

@@ -46,28 +46,28 @@ export const RECORDING_SUMMARY_SOURCE_MESSAGES = {
 // Rendered on a card with a player under it and on a list row with only a link, so it names
 // the mechanism and never a position on screen.
 export const RECORDING_SUMMARY_PENDING =
-  "We have not read this recording yet. The description appears here on its own when it is ready.";
+  "We have not read this replay yet. The description appears here on its own when it is ready.";
 
 export const RECORDING_SUMMARY_HELD =
-  "We read this recording, but what we wrote about it could not be shown.";
+  "We read this replay, but what we wrote about it could not be shown.";
 
 // "Analytics connection" is what /settings and REPLAY_NO_CONNECTION call it, and the sentence
 // has to stay true whether none is connected or the one connected cannot be read.
 export const RECORDING_SUMMARY_NO_SOURCE =
-  "We cannot read the analytics connection for this project, so no description is coming for this recording.";
+  "We cannot read the analytics connection for this project, so no description is coming for this replay.";
 
 export const RECORDING_SUMMARY_NO_SOURCE_LINK = "Check your analytics connection";
 
 export const RECORDING_SUMMARY_NOT_CONFIGURED =
-  "This installation is not set up to read recordings, so no description is coming. Whoever runs Growthmind here has to turn it on.";
+  "This installation is not set up to read replays, so no description is coming. Whoever runs Growthmind here has to turn it on.";
 
 // No instruction to reload: the page re-reads itself on any recordings publish, so naming a
 // manual action would describe a product that no longer exists.
 export const RECORDING_SUMMARY_READ_FAILED =
-  "Something went wrong looking up the description for this recording. The recording itself is fine, and we will show the description if we can read it.";
+  "Something went wrong looking up the description for this replay. The replay itself is fine, and we will show the description if we can read it.";
 
 export const RECORDING_SUMMARY_PARTIAL =
-  "We could only read part of this recording, so this description may be missing some of what happened. The rest is still in your analytics.";
+  "We could only read part of this replay, so this description may be missing some of what happened. The rest is still in your analytics.";
 
 export const ALL_RECORDING_NARRATION_MESSAGES: readonly string[] = [
   RECORDING_SUMMARY_PENDING,

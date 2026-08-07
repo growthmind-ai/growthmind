@@ -62,6 +62,12 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "components/first-run/Strip.tsx": { bindings: 1, kind: "our-copy" },
   "components/landing/workspace-name.tsx": { bindings: 1, kind: "our-copy" },
   "components/preview/StartInChannel.tsx": { bindings: 1, kind: "our-copy" },
+  // The pill's own name is composed from text nodes via aria-labelledby, so what is left here is
+  // the clear control's sentence, the bar's group name, and a variant from a closed union.
+  "components/replay/filters/FilterBar.tsx": { bindings: 3, kind: "our-copy" },
+  // The axis word twice (dialog and listbox), the search placeholder — an example we authored,
+  // never a real domain — and a zero flag. Every option's label reaches the name as text.
+  "components/replay/filters/FilterPanel.tsx": { bindings: 4, kind: "our-copy" },
   "components/slack/SlackConnection.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/CopyableBlock.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/Logo.tsx": { bindings: 1, kind: "our-copy" },
