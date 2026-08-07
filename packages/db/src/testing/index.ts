@@ -13,6 +13,8 @@ export * from "./fixtures";
 
 export { recordPublishedTopics, type LiveRecorder } from "./live";
 
+export { stubGraphileAddJob, capturedJobs, type CapturedJob } from "./jobs";
+
 export {
   laneNames,
   seedEvent,

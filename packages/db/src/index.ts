@@ -350,3 +350,20 @@ export {
   type CauseClaimStatement,
   type PersistCauseClaimsInput,
 } from "./repositories/cause-claims.repo";
+
+// `notifications/emit.ts` is deliberately absent here: the emit seam is module-internal
+// to this package (ADD D-2), and the barrel is the wall that keeps it so.
+export {
+  createNotificationsRepo,
+  type NotificationsRepo,
+  type NotificationWithReadState,
+  type NotificationSendFacts,
+  type ListRecentOptions,
+} from "./repositories/notifications.repo";
+export {
+  readBellSnapshot,
+  type BellSnapshot,
+  type BellSnapshotRow,
+  type BellSnapshotChip,
+  type ReadBellSnapshotOptions,
+} from "./services/notification-bell.service";

@@ -72,6 +72,7 @@ import { runReduceAudience } from "./tasks/reduce-audience";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
+import { runNotificationDispatch } from "./tasks/notification-dispatch";
 import { runProviderInterestTick } from "./tasks/provider-interest-tick";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
@@ -467,6 +468,11 @@ export const taskList: TaskList = {
       logger: helpers.logger,
       now: () => new Date(),
     });
+  },
+
+  // Enqueued by the emit seam in packages/db, never cronned.
+  [TASK.NOTIFICATION_DISPATCH]: async (payload) => {
+    await runNotificationDispatch(payload);
   },
 };
 
