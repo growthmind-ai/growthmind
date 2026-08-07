@@ -1,0 +1,48 @@
+.droppedBody {
+  opacity: 0.38;
+  transition: opacity 0.2s ease;
+}
+
+.prior {
+  color: var(--mantine-color-dimmed);
+  margin-right: 6px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.editorInput {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+}
+
+.tap {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  .editorInput {
+    min-height: 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .droppedBody {
+    transition-duration: 0.01ms;
+  }
+}
