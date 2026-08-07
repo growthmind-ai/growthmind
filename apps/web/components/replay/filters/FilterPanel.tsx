@@ -20,7 +20,7 @@ import {
   REPLAY_SESSION_NOUN_ONE,
 } from "@growthmind/shared";
 
-import { fill } from "../copy";
+import { fill } from "@growthmind/core";
 import classes from "./filter-bar.module.css";
 import type { FilterDescriptor, FilterOption } from "./types";
 

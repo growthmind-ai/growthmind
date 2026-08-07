@@ -35,7 +35,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import type { ReplayScreen } from "@/lib/replay/read";
 import { ROUTES } from "@/lib/routes";
 
-import { fill } from "./copy";
+import { fill } from "@growthmind/core";
 import { ReplayRow } from "./ReplayRow";
 import { clearedReplayUrl, nextReplayUrl, replayUrlOf } from "./filters/filter-url";
 
