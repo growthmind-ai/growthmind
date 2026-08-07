@@ -8,6 +8,7 @@ export const SYSTEM_ACTOR = {
   REPLAY_NARRATION_TICK: "system:replay-narration-tick",
   BUSINESS_RESEARCH: "system:business-research",
   REDUCE_AUDIENCE: "system:reduce-audience",
+  NOTIFICATION_DISPATCH: "system:notification-dispatch",
 } as const;
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];

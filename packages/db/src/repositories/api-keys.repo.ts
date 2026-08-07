@@ -1,8 +1,10 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import {
   API_KEY_DISPLAY_PREFIX_LENGTH,
   API_KEY_PREFIX,
+  buildAgentFirstContactDedupKey,
+  buildKeysRevokedDedupKey,
   hashApiKeyMaterial,
   isApiKeyFormat,
   memberUserId,
@@ -14,9 +16,10 @@ import {
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { publishLive } from "../live/publish";
+import { emitNotification } from "../notifications/emit";
 import { apiKeys } from "../schema/api-keys";
 import { organization } from "../schema/auth";
-import { orgCrud } from "./crud";
+import { inTransaction, orgCrud } from "./crud";
 import type { ScopedDb, ScopedExecutor } from "./types";
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
@@ -105,10 +108,33 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
     // No id parameter: `orgCrud.update` injects the organisation filter, so there is
     // nowhere for a caller-supplied key id to enter this path.
     async revokeEveryLive(): Promise<boolean> {
-      const row = await c.update(
-        { revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` },
-        isNull(apiKeys.revokedAt),
-      );
+      // The transition and its announcement land together: the UPDATE returning a row is
+      // what makes one real revocation one notification, and the disclosure now reaches the
+      // whole org rather than only the person who pressed it (B-055, ADD §4 seam 2).
+      const row = await inTransaction(db, async (tx) => {
+        const revoked = await orgCrud(tx, ctx, apiKeys).update(
+          { revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` },
+          isNull(apiKeys.revokedAt),
+        );
+
+        if (revoked !== null) {
+          // Minted here rather than derived from a key: key ids churn through revoke and
+          // re-mint, and a churning input inside a dedup key forks the identity (D12).
+          const eventId = randomUUID();
+
+          await emitNotification(tx, ctx.organizationId, {
+            type: "keys_revoked",
+            subjectKind: "agent_key",
+            subjectId: eventId,
+            actorUserId: memberUserId(ctx),
+            payload: { type: "keys_revoked", v: 1 },
+            dedupKey: buildKeysRevokedDedupKey(eventId),
+            slack: { kind: "owed" },
+          });
+        }
+
+        return revoked;
+      });
 
       return row !== null;
     },
@@ -136,24 +162,42 @@ export function apiKeyIdOf(ctx: TenantContext): string | null {
 // Unconditional in the application, conditional in the statement: the first call on a
 // key always writes, and the database decides every call after that.
 export async function stampApiKeyUse(db: ScopedDb, keyId: string): Promise<void> {
-  const stamped = await db
-    .update(apiKeys)
-    .set({ lastUsedAt: sql`now()` })
-    .where(
-      and(
-        eq(apiKeys.id, keyId),
-        isNull(apiKeys.revokedAt),
-        sql`(${apiKeys.lastUsedAt} is null or ${apiKeys.lastUsedAt} < now() - make_interval(secs => ${API_KEY_USE_STAMP_INTERVAL_SECONDS}))`,
-      ),
-    )
-    .returning();
+  await inTransaction(db, async (tx) => {
+    const stamped = await tx
+      .update(apiKeys)
+      .set({ lastUsedAt: sql`now()` })
+      .where(
+        and(
+          eq(apiKeys.id, keyId),
+          isNull(apiKeys.revokedAt),
+          sql`(${apiKeys.lastUsedAt} is null or ${apiKeys.lastUsedAt} < now() - make_interval(secs => ${API_KEY_USE_STAMP_INTERVAL_SECONDS}))`,
+        ),
+      )
+      .returning();
 
-  // A first call from someone's coding assistant is the moment the setup panel is waiting
-  // for, and it arrives on a request nobody in a browser made.
-  const row = stamped[0];
-  if (row !== undefined) {
-    await publishLive(db, { organizationId: row.organizationId, topic: "agent_connection" });
-  }
+    // A first call from someone's coding assistant is the moment the setup panel is waiting
+    // for, and it arrives on a request nobody in a browser made.
+    const row = stamped[0];
+    if (row === undefined) {
+      return;
+    }
+
+    await publishLive(tx, { organizationId: row.organizationId, topic: "agent_connection" });
+
+    // This statement re-fires every stamp interval for the life of the key, so once-ever
+    // rests entirely on the dedup key: every call after the first conflicts and returns
+    // without a row, a job or a publish. The organization comes off the row rather than a
+    // context — this path authenticates a machine, and there is no member to carry one.
+    await emitNotification(tx, row.organizationId, {
+      type: "agent_first_contact",
+      subjectKind: "agent_key",
+      subjectId: keyId,
+      actorUserId: null,
+      payload: { type: "agent_first_contact", v: 1 },
+      dedupKey: buildAgentFirstContactDedupKey(),
+      slack: { kind: "owed" },
+    });
+  });
 }
 
 // The organization is read out of the database, keyed by the digest of an unforgeable

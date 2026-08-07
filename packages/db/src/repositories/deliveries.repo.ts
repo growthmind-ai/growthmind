@@ -1,4 +1,5 @@
 import {
+  buildFindingDeliveredDedupKey,
   SLACK_INTERACTION_ACTOR,
   SLACK_INTERACTION_ROLE,
   type DeliveryStatus,
@@ -8,9 +9,10 @@ import {
 import { and, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 
 import { publishLive } from "../live/publish";
+import { emitNotification } from "../notifications/emit";
 import { organization } from "../schema/auth";
 import { deliveries } from "../schema/deliveries";
-import { orgCrud } from "./crud";
+import { inTransaction, orgCrud } from "./crud";
 import { signatureHex, type SignatureHex } from "../signatures/hex";
 import type { ScopedDb, ScopedExecutor } from "./types";
 
@@ -153,23 +155,48 @@ export function createDeliveriesRepo(db: ScopedExecutor, ctx: TenantContext): De
     },
 
     async markPosted(input: MarkPostedInput): Promise<DeliveryRecord | null> {
-      const row = await c.update(
-        {
-          status: "posted",
+      // The delivery row and the notification of it land together, so the record can never
+      // hold a post the bell has no receipt for (ADD §4 seam 1).
+      const row = await inTransaction(db, async (tx) => {
+        const posted = await orgCrud(tx, ctx, deliveries).update(
+          {
+            status: "posted",
 
-          postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
-          messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
+            postedAt: sql`coalesce(${deliveries.postedAt}, ${input.postedAt})`,
+            messageRef: sql`coalesce(${deliveries.messageRef}, ${input.messageRef}::text)`,
 
-          // Coalesced beside the two above for the same reason: a re-mark of one post keeps
-          // what that post carried. A genuine re-post follows a `failed` row, whose render
-          // was never stored, so the new one lands.
-          renderedMessage: sql`coalesce(${deliveries.renderedMessage}, ${JSON.stringify(input.renderedMessage)}::jsonb)`,
+            // Coalesced beside the two above for the same reason: a re-mark of one post keeps
+            // what that post carried. A genuine re-post follows a `failed` row, whose render
+            // was never stored, so the new one lands.
+            renderedMessage: sql`coalesce(${deliveries.renderedMessage}, ${JSON.stringify(input.renderedMessage)}::jsonb)`,
 
-          failedAt: null,
-          failureReason: null,
-        },
-        byTuple(input.findingId, input.channelId),
-      );
+            failedAt: null,
+            failureReason: null,
+          },
+          byTuple(input.findingId, input.channelId),
+        );
+
+        if (posted !== null) {
+          // Slack already carries this one, so the receipt is copied rather than owed — no
+          // second path to the channel exists.
+          await emitNotification(tx, ctx.organizationId, {
+            type: "finding_delivered",
+            subjectKind: "finding",
+            subjectId: input.findingId,
+            actorUserId: null,
+            payload: { type: "finding_delivered", v: 1 },
+            dedupKey: buildFindingDeliveredDedupKey(input.findingId, input.channelId),
+            slack: {
+              kind: "copied",
+              channelId: input.channelId,
+              messageRef: input.messageRef,
+              sentAt: input.postedAt,
+            },
+          });
+        }
+
+        return posted;
+      });
 
       return announced(row);
     },

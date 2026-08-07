@@ -471,8 +471,18 @@ export const taskList: TaskList = {
   },
 
   // Enqueued by the emit seam in packages/db, never cronned.
-  [TASK.NOTIFICATION_DISPATCH]: async (payload) => {
-    await runNotificationDispatch(payload);
+  [TASK.NOTIFICATION_DISPATCH]: async (payload, helpers) => {
+    const { db } = resolveResources();
+    const composed = await resolveDeliveryComposition();
+
+    await runNotificationDispatch(payload, {
+      db,
+
+      // No delivery composition means no channel on this installation: the handler records
+      // the quiet receipt rather than the job failing (AD-20 — the token stays out here).
+      posterFor: composed?.posterFor ?? (() => Promise.resolve(null)),
+      logger: helpers.logger,
+    });
   },
 };
 

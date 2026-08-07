@@ -367,3 +367,10 @@ export {
   type BellSnapshotChip,
   type ReadBellSnapshotOptions,
 } from "./services/notification-bell.service";
+
+export {
+  readNotificationForDispatch,
+  recordDispatchOutcome,
+  type NotificationForDispatch,
+  type DispatchOutcome,
+} from "./services/notification-dispatch.service";
