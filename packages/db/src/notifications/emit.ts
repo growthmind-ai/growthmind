@@ -7,10 +7,13 @@ import {
   type NotificationSubjectKind,
   type NotificationType,
 } from "@growthmind/shared";
+import { logger } from "@growthmind/shared";
 import { and, eq } from "drizzle-orm";
 
 import { enqueueJob } from "../jobs/enqueue";
 import { publishLive } from "../live/publish";
+import { inTransaction } from "../repositories/crud";
+import { describeDriverError } from "../repositories/driver-error";
 import { toSlackConnectionSummary } from "../repositories/slack-connections.repo";
 import type { ScopedExecutor } from "../repositories/types";
 import { notifications, notificationSends } from "../schema/notifications";
@@ -150,6 +153,28 @@ async function writeSlackLeg(
 // repo method accepts an org id" — both callers derive it from a DB-returned row.
 // `db` is the CALLER's transaction executor; emit never opens a transaction of its own.
 export async function emitNotification(
+  db: ScopedExecutor,
+  organizationId: string,
+  input: EmitNotificationInput,
+): Promise<{ readonly emitted: boolean }> {
+  // A savepoint, so this can never undo the fact it is announcing. The notification and its
+  // receipt still commit or vanish together — that is what the class invariant needs — but a
+  // fault on this side rolls back to here, not through the caller's write. The harms are not
+  // symmetric: a missing bell row is a missing bell row, while the other direction leaves
+  // keys live after "revoke every key", or re-posts a finding Slack already has.
+  try {
+    return await inTransaction(db, (tx) => writeNotification(tx, organizationId, input));
+  } catch (error) {
+    logger.error("notifications: the fact was written and its notification was not", {
+      organizationId,
+      type: input.type,
+      reason: describeDriverError(error),
+    });
+    return { emitted: false };
+  }
+}
+
+async function writeNotification(
   db: ScopedExecutor,
   organizationId: string,
   input: EmitNotificationInput,

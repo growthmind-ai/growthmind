@@ -12,9 +12,11 @@ import {
   type CredentialKey,
 } from "@growthmind/shared";
 import { afterAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { emitNotification, type EmitNotificationInput } from "../../src/notifications/emit";
+import { createApiKeysRepo } from "../../src/repositories/api-keys.repo";
+import { apiKeys } from "../../src/schema/api-keys";
 import { createSlackConnectionsRepo } from "../../src/repositories/slack-connections.repo";
 import { notifications, notificationSends } from "../../src/schema/notifications";
 import {
@@ -309,5 +311,45 @@ describe("the owed arm resolves the Slack leg at emit time", () => {
     expect(recorder.published).toEqual([
       { organizationId: org.organizationId, topic: "notifications" },
     ]);
+  });
+});
+
+// The edge sweep's blocking pair: before the savepoint landed, a fault on the notification
+// side rolled back the caller's write — a successful Slack post re-posted forever, and
+// "revoke every key" left the keys live. The harms are not symmetric, so the emit is the
+// side that gives way.
+describe("a notification fault never undoes the fact it announces (D8)", () => {
+  test("revokeEveryLive still revokes when the emit cannot write its row", async () => {
+    const { db, close } = await createTestDb();
+    try {
+      const org = await seedOrgWithOwner(db, {
+        orgName: "o051-emit-fault-org",
+        userName: "o051-emit-fault-owner",
+        email: "o051-emit-fault@example.com",
+      });
+
+      await createApiKeysRepo(db, org.ctx).mint({ name: "o051-emit-fault-key" });
+
+      // An actor the `user` table has never held: the notification insert's foreign key
+      // rejects it, which is a fault arriving from inside the emit exactly as a lagging
+      // migration or a new constraint would (D13).
+      const ghost = { ...org.ctx, userId: "o051-user-that-does-not-exist" };
+
+      expect(await createApiKeysRepo(db, ghost).revokeEveryLive()).toBe(true);
+
+      const live = await db
+        .select()
+        .from(apiKeys)
+        .where(and(eq(apiKeys.organizationId, org.organizationId), isNull(apiKeys.revokedAt)));
+      expect(live).toEqual([]);
+
+      const emitted = await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.organizationId, org.organizationId));
+      expect(emitted).toEqual([]);
+    } finally {
+      await close();
+    }
   });
 });
