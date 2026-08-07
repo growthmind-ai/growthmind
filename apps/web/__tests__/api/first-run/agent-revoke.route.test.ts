@@ -1,5 +1,4 @@
-import { createApiKeysRepo, findUserNameById, resolveApiKeyPrincipal } from "@growthmind/db";
-import type { DeliveryPoster, PostRequest, PostResult } from "@growthmind/shared";
+import { createApiKeysRepo, resolveApiKeyPrincipal } from "@growthmind/db";
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,11 +21,7 @@ import {
 } from "./helpers/first-run-route-contract";
 
 const AGENT_REVOKE = routeById("agent-revoke");
-const SLACK_CONNECT = routeById("slack-connect");
 const CLOCK = clockAt(new Date("2026-08-04T10:00:00.000Z"));
-
-const BOT_TOKEN = "xoxb-b055-fixture-token-never-real";
-const CHANNEL_ID = "C0B055REVOKE";
 
 let bed: FirstRunTestBed;
 
@@ -47,34 +42,6 @@ function depsFor(
   extra?: Partial<FirstRunRouteDeps>,
 ): FirstRunRouteDeps {
   return { db: bed.db, tenant: tenantOf(scope?.ctx ?? null), now: CLOCK, ...extra };
-}
-
-interface RecordingPoster extends DeliveryPoster {
-  readonly sent: PostRequest[];
-}
-
-function recordingPoster(result: PostResult): RecordingPoster {
-  const sent: PostRequest[] = [];
-  return {
-    sent,
-    post: async (request: PostRequest): Promise<PostResult> => {
-      sent.push(request);
-      return result;
-    },
-  };
-}
-
-const OK_POST: PostResult = { ok: true, messageRef: "1712345678.000200" };
-
-async function connectSlack(scope: SeededMemberScope): Promise<void> {
-  const handle = await loadRouteHandler(SLACK_CONNECT);
-  const response = await handle(
-    routeRequest(SLACK_CONNECT, { botToken: BOT_TOKEN, channelId: CHANNEL_ID }),
-    depsFor(scope),
-  );
-  if (response.status !== 200) {
-    throw new Error(`slack connect fixture failed with status ${response.status}`);
-  }
 }
 
 async function rawRows(query: string): Promise<Record<string, unknown>[]> {
