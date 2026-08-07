@@ -24,6 +24,10 @@ const GATE_FILES = [
   "packages/db/src/repositories/findings.repo.ts",
   "packages/db/src/services/fixes.service.ts",
   "packages/db/src/services/growth-context.service.ts",
+
+  // The bell renders a delivered finding's sentence, and it reads the columns the same
+  // way every other gated reader does — straight into readFindingText, never as a string.
+  "packages/db/src/services/notification-bell.service.ts",
 ] as const;
 
 const GATE_CALL = "readFindingText(";

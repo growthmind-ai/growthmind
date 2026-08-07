@@ -15,6 +15,7 @@ export const LIVE_TOPICS = [
   "first_run",
   "findings",
   "recordings",
+  "notifications",
 ] as const;
 
 export type LiveTopic = (typeof LIVE_TOPICS)[number];

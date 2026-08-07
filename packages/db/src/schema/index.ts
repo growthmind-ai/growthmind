@@ -21,6 +21,13 @@ export * from "./recording-summaries";
 export * from "./fixes";
 export * from "./analysis-model-calls";
 
+export {
+  notifications,
+  notificationSends,
+  notificationBellState,
+  notificationReads,
+} from "./notifications";
+
 export * from "./slack-connections";
 export * from "./first-run-state";
 export * from "./first-run-dismissals";

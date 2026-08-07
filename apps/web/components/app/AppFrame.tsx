@@ -5,8 +5,11 @@ import { useDisclosure } from "@mantine/hooks";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { Bell } from "@/components/notifications/Bell";
+import { BellErrorBoundary } from "@/components/notifications/BellErrorBoundary";
 import { LogoMark, LogoWordmark } from "@/components/ui/Logo";
 import type { NavGroup } from "@/lib/app-nav";
+import type { BellViewModel } from "@/lib/notifications/bell";
 import { ROUTES } from "@/lib/routes";
 
 import { AppNav } from "./AppNav";
@@ -23,6 +26,11 @@ interface AppFrameProps {
   readonly organizations: readonly OrgOption[];
   readonly activeOrganizationId: string;
   readonly role: string;
+
+  // Required rather than optional: a required field is the cheapest wire, and `null` is the
+  // shell's honest answer when the snapshot read failed (ADD D-3).
+  readonly bell: BellViewModel | null;
+
   readonly children: ReactNode;
 }
 
@@ -41,6 +49,7 @@ export function AppFrame({
   organizations,
   activeOrganizationId,
   role,
+  bell,
   children,
 }: AppFrameProps) {
   const [opened, { toggle, close }] = useDisclosure(false);
@@ -50,8 +59,11 @@ export function AppFrame({
       <AppShell.Navbar p={0} withBorder>
         <Box className={classes.rail}>
           <Box className={classes.railTop}>
-            <Group px="md" py="md" wrap="nowrap">
+            <Group px="md" py="md" wrap="nowrap" justify="space-between">
               <Brand />
+              <BellErrorBoundary>
+                <Bell bell={bell} placement="rail" />
+              </BellErrorBoundary>
             </Group>
             <Box style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
               <OrgSwitcher
@@ -77,6 +89,11 @@ export function AppFrame({
         <Group hiddenFrom="sm" px="md" py="xs" gap="md" wrap="nowrap" style={HAIRLINE}>
           <Burger opened={opened} onClick={toggle} size="sm" aria-label="Menu" />
           <Brand size={22} />
+          <Box ml="auto">
+            <BellErrorBoundary>
+              <Bell bell={bell} placement="bar" />
+            </BellErrorBoundary>
+          </Box>
         </Group>
 
         <Container size="lg" py="xl" px="lg">

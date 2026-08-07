@@ -471,3 +471,11 @@ export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-
 export { type CauseBeatEvidence, type CauseClaim } from "./cause/types";
 export { guardCauseText, type CauseGuardVerdict } from "./cause/guard";
 export { applyCitationGate, type CitationGateResult } from "./cause/citation-gate";
+
+export {
+  findingDeliveredSentence,
+  keysRevokedSentence,
+  agentFirstContactSentence,
+  genericNotificationSentence,
+  type KeysRevokedSentenceInput,
+} from "./notifications/sentence";

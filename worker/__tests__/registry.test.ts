@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "bun:test";
 
+import { NOTIFICATION_DISPATCH_TASK } from "@growthmind/shared";
+
 import { assertUnderConstruction } from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { crontab, taskList } from "../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../src/task-names";
@@ -232,6 +234,20 @@ test("the raw task-name scan sweeps the provider interest task file", () => {
     ownedBy: "O-024 ADD task 4.2 (worker/src/tasks/provider-interest-tick.ts)",
   });
   expect(walked).toContain(expected);
+});
+
+// O-051 D9: the emit seam queues this name from packages/db; a queued name with no
+// registered handler retries against nothing until it exhausts its attempts.
+test("the notification dispatch task is the shared constant, registered, and deliberately never cronned", () => {
+  expect(TASK.NOTIFICATION_DISPATCH).toBe(NOTIFICATION_DISPATCH_TASK);
+  expect(GRAPHILE_TASK_NAME_PATTERN.test(TASK.NOTIFICATION_DISPATCH)).toBe(true);
+  expect(taskList[TASK.NOTIFICATION_DISPATCH]).toBeDefined();
+
+  const scheduled = crontab
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.trim().split(/\s+/)[5]);
+  expect(scheduled).not.toContain(TASK.NOTIFICATION_DISPATCH);
 });
 
 test("every crontab line's command is a registered, well-formed task name", () => {

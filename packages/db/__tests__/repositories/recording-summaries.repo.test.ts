@@ -19,6 +19,7 @@ import {
   seedSession,
   seedUser,
   type SeededOrgWithOwner,
+  followingStatements,
 } from "../../src/testing";
 import {
   SESSION_GROUPING_VERSION,
@@ -182,25 +183,14 @@ type BlindPublisher = {
 function failLivePublishes(realDb: TestDb, thrown: Error): BlindPublisher {
   let attempts = 0;
 
-  const proxied = new Proxy(realDb, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-
-      if (prop !== "execute") {
-        return typeof value === "function"
-          ? (value as (...args: unknown[]) => unknown).bind(target)
-          : value;
-      }
-
-      return (...args: unknown[]) => {
-        if (namesPgNotify(args[0])) {
-          attempts += 1;
-          throw thrown;
-        }
-
-        return (value as (...args: unknown[]) => unknown).apply(target, args);
-      };
-    },
+  // Through `followingStatements` so the trap follows into a transaction: `publishLive`
+  // nests its NOTIFY in one, and a handle-level proxy never sees a statement issued on the
+  // tx executor — which reads as a correct zero-publish and makes this assertion vacuous.
+  const proxied = followingStatements(realDb, (statement) => {
+    if (namesPgNotify(statement)) {
+      attempts += 1;
+      throw thrown;
+    }
   });
 
   return { db: proxied, attempts: () => attempts };

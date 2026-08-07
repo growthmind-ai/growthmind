@@ -327,6 +327,100 @@ export async function seedUnscannedFinding(
   return { id: row.id };
 }
 
+export interface SeedNotificationParams {
+  readonly organizationId: string;
+  readonly type?: "finding_delivered" | "keys_revoked" | "agent_first_contact";
+  readonly audience?: "org" | "owner";
+  readonly subjectKind?: "finding" | "agent_key";
+  readonly subjectId?: string;
+  readonly actorUserId?: string | null;
+
+  // `unknown` on purpose: production holds every payload shape ever written (D5), and the
+  // tolerant-parse fixtures need to persist shapes today's schema refuses.
+  readonly payload?: unknown;
+  readonly dedupKey?: string;
+  readonly createdAt?: Date;
+}
+
+export interface SeededNotification {
+  readonly id: string;
+}
+
+// Writes a notifications row straight to the table, past the emit seam, so read-path tests
+// can stand up rows without driving an emitter. Nothing outside `__tests__/` may use it.
+export async function seedNotification(
+  db: ScopedDb,
+  params: SeedNotificationParams,
+): Promise<SeededNotification> {
+  const type = params.type ?? "keys_revoked";
+  const subjectKind =
+    params.subjectKind ?? (type === "finding_delivered" ? "finding" : "agent_key");
+
+  const [row] = await db
+    .insert(schema.notifications)
+    .values({
+      id: randomUUID(),
+      organizationId: params.organizationId,
+      type,
+      audience: params.audience ?? "org",
+      subjectKind,
+      subjectId: params.subjectId ?? randomUUID(),
+      actorUserId: params.actorUserId ?? null,
+      payload: (params.payload ?? {
+        type,
+        v: 1,
+      }) as (typeof schema.notifications.$inferInsert)["payload"],
+      dedupKey: params.dedupKey ?? `seeded:${randomUUID()}`,
+      ...(params.createdAt === undefined ? {} : { createdAt: params.createdAt }),
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("seedNotification: insert returned no row");
+  }
+
+  return { id: row.id };
+}
+
+export interface SeedNotificationSendParams {
+  readonly organizationId: string;
+  readonly notificationId: string;
+  readonly channel?: "slack" | "web_push";
+  readonly target?: string;
+  readonly status?: "sent" | "failed" | "quiet";
+  readonly quietReason?: string | null;
+  readonly failureReason?: string | null;
+  readonly messageRef?: string | null;
+  readonly sentAt?: Date | null;
+}
+
+export async function seedNotificationSend(
+  db: ScopedDb,
+  params: SeedNotificationSendParams,
+): Promise<{ readonly id: string }> {
+  const [row] = await db
+    .insert(schema.notificationSends)
+    .values({
+      id: randomUUID(),
+      organizationId: params.organizationId,
+      notificationId: params.notificationId,
+      channel: params.channel ?? "slack",
+      target: params.target ?? "C0FIXTURE",
+      status: params.status ?? "sent",
+      quietReason: params.quietReason ?? null,
+      failureReason: params.failureReason ?? null,
+      messageRef: params.messageRef ?? null,
+      sentAt: params.sentAt ?? null,
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("seedNotificationSend: insert returned no row");
+  }
+
+  return { id: row.id };
+}
+
 // O-044's D11 wiring proof: worker/__tests__/analysis/cause.test.ts (producer half) and
 // apps/web/__tests__/findings/detail-gate-emptied.test.ts (consumer half) must run against
 // the SAME org/project/finding/divergence-row/session ids, or the "one wire, not a producer
