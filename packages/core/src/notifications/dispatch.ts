@@ -10,6 +10,6 @@ export const NOTIFICATION_DISPATCH_MAX_ATTEMPTS = 5;
 // crontab by the rescue tick's drift test.
 export const NOTIFICATION_RESCUE_TICK_INTERVAL_MS = NOTIFICATION_DISPATCH_CLAIM_TTL_MS;
 
-export function dispatchClaimsExpireBefore(_at: Date): Date {
-  throw new Error("O-051 job 2: not implemented");
+export function dispatchClaimsExpireBefore(at: Date): Date {
+  return new Date(at.getTime() - NOTIFICATION_DISPATCH_CLAIM_TTL_MS);
 }

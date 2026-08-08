@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   NOTIFICATION_DISPATCH_TASK,
   NOTIFICATION_SEND_NO_TARGET,
@@ -8,7 +10,7 @@ import {
   type NotificationType,
 } from "@growthmind/shared";
 import { logger } from "@growthmind/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { enqueueJob } from "../jobs/enqueue";
 import { publishLive } from "../live/publish";
@@ -48,6 +50,11 @@ export interface EmitNotificationInput {
   readonly dedupKey: string;
 
   readonly slack: EmitNotificationSlack;
+
+  // When present, the insert is additionally guarded by "no notification of this type for
+  // this subject in this organization within the window" — one mechanism for every
+  // per-subject cooldown (ADD §3.2). Dedup stays the once-ever guard beside it.
+  readonly cooldownSeconds?: number;
 }
 
 interface SendReceipt {
@@ -174,11 +181,49 @@ export async function emitNotification(
   }
 }
 
-async function writeNotification(
+type RawExecutor = {
+  execute(query: ReturnType<typeof sql>): Promise<{ rows: unknown[] }>;
+};
+
+// One statement, no read-then-write: the cooldown guard is the insert-select's own WHERE,
+// served by notifications_org_type_subject_created_at_idx, and the dedup conflict stays as
+// the once-ever guard beside it. Raw SQL because the query builder cannot express an
+// insert-from-select with a conflict clause; the id is minted here because the schema's
+// $defaultFn does not run outside the builder.
+async function insertGuardedByCooldown(
   db: ScopedExecutor,
   organizationId: string,
   input: EmitNotificationInput,
-): Promise<{ readonly emitted: boolean }> {
+  cooldownSeconds: number,
+): Promise<string | null> {
+  const id = randomUUID();
+
+  const result = await (db as unknown as RawExecutor).execute(sql`
+    insert into ${notifications} ("id", "organization_id", "type", "audience", "subject_kind", "subject_id", "actor_user_id", "payload", "dedup_key")
+    select ${id}, ${organizationId}, ${input.type}, 'org', ${input.subjectKind}, ${input.subjectId}, ${input.actorUserId}, ${JSON.stringify(input.payload)}::jsonb, ${input.dedupKey}
+    where not exists (
+      select 1 from ${notifications}
+      where ${notifications.organizationId} = ${organizationId}
+        and ${notifications.type} = ${input.type}
+        and ${notifications.subjectId} = ${input.subjectId}
+        and ${notifications.createdAt} > now() - make_interval(secs => ${cooldownSeconds})
+    )
+    on conflict ("organization_id", "dedup_key") do nothing
+    returning "id"
+  `);
+
+  return result.rows.length > 0 ? id : null;
+}
+
+async function insertNotificationRow(
+  db: ScopedExecutor,
+  organizationId: string,
+  input: EmitNotificationInput,
+): Promise<string | null> {
+  if (input.cooldownSeconds !== undefined) {
+    return insertGuardedByCooldown(db, organizationId, input, input.cooldownSeconds);
+  }
+
   const [row] = await db
     .insert(notifications)
     .values({
@@ -196,12 +241,23 @@ async function writeNotification(
     })
     .returning();
 
-  // D3: a conflict is a fact the org already holds — no send row, no job, no publish.
-  if (!row) {
+  return row?.id ?? null;
+}
+
+async function writeNotification(
+  db: ScopedExecutor,
+  organizationId: string,
+  input: EmitNotificationInput,
+): Promise<{ readonly emitted: boolean }> {
+  const notificationId = await insertNotificationRow(db, organizationId, input);
+
+  // D3: a conflict or a still-cooling subject is a fact the org already holds — no send
+  // row, no job, no publish.
+  if (notificationId === null) {
     return { emitted: false };
   }
 
-  await writeSlackLeg(db, organizationId, row.id, input.slack);
+  await writeSlackLeg(db, organizationId, notificationId, input.slack);
 
   // NOTIFY defers to commit inside a transaction, so open pages hear about the fact only
   // once it is real.

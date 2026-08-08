@@ -11,7 +11,7 @@ import {
   type ModelCallStage,
   type TenantContext,
 } from "@growthmind/shared";
-import { eq, lt, sql } from "drizzle-orm";
+import { desc, eq, lt, ne, sql } from "drizzle-orm";
 
 import { publishLive } from "../live/publish";
 import { analysisModelCalls } from "../schema/analysis-model-calls";
@@ -302,11 +302,24 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
         : { claimed: false, reason: "cap_exhausted" };
     },
 
-    recentTerminalStatuses(
-      _projectId: string,
-      _limit: number,
+    async recentTerminalStatuses(
+      projectId: string,
+      limit: number,
     ): Promise<readonly AnalysisRunStatus[]> {
-      throw new Error("O-051 job 2: not implemented");
+      const rows = await db
+        .select({ status: analysisRuns.status })
+        .from(analysisRuns)
+        .where(
+          s.owned(
+            analysisRuns,
+            eq(analysisRuns.projectId, projectId),
+            ne(analysisRuns.status, "running"),
+          ),
+        )
+        .orderBy(desc(analysisRuns.startedAt))
+        .limit(limit);
+
+      return rows.map((row) => row.status);
     },
   };
 }

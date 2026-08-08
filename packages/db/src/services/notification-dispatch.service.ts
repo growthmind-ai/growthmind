@@ -1,13 +1,17 @@
+import { NOTIFICATION_DISPATCH_MAX_ATTEMPTS } from "@growthmind/core";
 import {
   NOTIFICATION_SEND_NO_TARGET,
+  NOTIFICATION_SEND_FAILURE_REASONS,
+  isRetryableSendFailure,
   type NotificationSendFailureReason,
   type NotificationSendStatus,
   type NotificationType,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
 
-import { scoped } from "../repositories/scope";
+import { orgCrud } from "../repositories/crud";
+import { scoped, type Scope } from "../repositories/scope";
 import { toSlackConnectionSummary } from "../repositories/slack-connections.repo";
 import type { ScopedExecutor } from "../repositories/types";
 import { notifications, notificationSends } from "../schema/notifications";
@@ -49,7 +53,7 @@ export async function readNotificationForDispatch(
   }
 
   const sends = await db
-    .select({ status: notificationSends.status })
+    .select({ status: notificationSends.status, quietReason: notificationSends.quietReason })
     .from(notificationSends)
     .where(
       s.owned(
@@ -74,7 +78,14 @@ export async function readNotificationForDispatch(
     type: row.type,
     subjectId: row.subjectId,
     actorUserId: row.actorUserId,
-    settled: sends.some((send) => send.status === "sent" || send.status === "quiet"),
+
+    // Reason-aware (ADD D-4): a `quiet: no_channel` receipt does not settle the outcome —
+    // a reconnect must be able to rescue it — while `quiet: digest` does, because the
+    // summary owns that row and the dispatcher must never post it individually.
+    settled: sends.some(
+      (send) =>
+        send.status === "sent" || (send.status === "quiet" && send.quietReason === "digest"),
+    ),
     channelId: summary !== null && isDeliveryTarget(summary) ? summary.channelId : null,
   };
 }
@@ -104,19 +115,128 @@ export interface ClaimNotificationSendInput {
   readonly staleClaimsBefore: Date;
 }
 
+const RETRYABLE_FAILURE_REASONS = NOTIFICATION_SEND_FAILURE_REASONS.filter((reason) =>
+  isRetryableSendFailure(reason),
+);
+
+// A live lease is never takeable; one claimed and never resolved is (deliveries' shape).
+// Composed through `sql` rather than `or`, which widens to `SQL | undefined` and cannot
+// satisfy the non-optional `setWhere` — a claim with no predicate would overwrite a live row.
+function abandonedPending(staleClaimsBefore: Date): SQL {
+  return sql`(${eq(notificationSends.status, "pending")} and ${lt(
+    notificationSends.claimedAt,
+    staleClaimsBefore,
+  )})`;
+}
+
+// The retry arm (ADD D-2): within an unchanged world only a retryable failure may be
+// re-attempted, and the cap is enforced inside the statement, never by a read-then-decide.
+function retryReclaimable(staleClaimsBefore: Date): SQL {
+  return sql`(((${eq(notificationSends.status, "failed")} and ${inArray(
+    notificationSends.failureReason,
+    RETRYABLE_FAILURE_REASONS,
+  )}) or ${abandonedPending(staleClaimsBefore)}) and ${lt(
+    notificationSends.attempts,
+    NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
+  )})`;
+}
+
+// The rescue arm (ADD D-4): once the org's connection is currently healthy, every failed
+// receipt describes a world that no longer exists — the code and the spent cap gated a
+// retry loop that is over, so neither may strand the row past the recovery.
+function rescueReclaimable(staleClaimsBefore: Date): SQL {
+  return sql`(${eq(notificationSends.status, "failed")} or ${abandonedPending(staleClaimsBefore)})`;
+}
+
+async function orgConnectionIsHealthy(db: ScopedExecutor, s: Scope): Promise<boolean> {
+  const [row] = await db
+    .select({ health: slackConnections.health })
+    .from(slackConnections)
+    .where(s.owned(slackConnections, eq(slackConnections.isActive, true)))
+    .limit(1);
+
+  return row?.health === "healthy";
+}
+
+function toClaim(row: typeof notificationSends.$inferSelect): NotificationSendClaim {
+  return {
+    id: row.id,
+    target: row.target,
+    status: row.status,
+    attempts: row.attempts,
+    claimedAt: row.claimedAt,
+  };
+}
+
 // One statement: the lease, the supersede guard and the attempt increment are the same
 // INSERT … ON CONFLICT DO UPDATE … WHERE reclaimable, so an outcome can only ever improve
-// and the cap is enforced inside the write rather than by a read-then-decide.
-export function claimNotificationSend(
-  _db: ScopedExecutor,
-  _ctx: TenantContext,
-  _input: ClaimNotificationSendInput,
+// and the cap is enforced inside the write rather than by a read-then-decide. Which
+// predicate applies is derived here, from the connection's recorded health, so no caller
+// has to remember to say "this is a rescue" — the row's world says it.
+export async function claimNotificationSend(
+  db: ScopedExecutor,
+  ctx: TenantContext,
+  input: ClaimNotificationSendInput,
 ): Promise<NotificationSendClaimResult> {
-  throw new Error("O-051 job 2: not implemented");
+  const s = scoped(db, ctx);
+  const c = orgCrud(db, ctx, notificationSends);
+
+  const reclaimable = (await orgConnectionIsHealthy(db, s))
+    ? rescueReclaimable(input.staleClaimsBefore)
+    : retryReclaimable(input.staleClaimsBefore);
+
+  const result = await c.claim(
+    {
+      notificationId: input.notificationId,
+      channel: "slack",
+      target: input.target,
+      status: "pending",
+      claimedAt: input.claimedAt,
+      attempts: 1,
+    },
+    {
+      target: [
+        notificationSends.notificationId,
+        notificationSends.channel,
+        notificationSends.target,
+      ],
+      setWhere: reclaimable,
+      set: {
+        status: "pending",
+        claimedAt: input.claimedAt,
+
+        attempts: sql`${notificationSends.attempts} + 1`,
+
+        quietReason: null,
+        failureReason: null,
+      },
+      fetch: [
+        and(
+          eq(notificationSends.notificationId, input.notificationId),
+          eq(notificationSends.channel, "slack"),
+          eq(notificationSends.target, input.target),
+        ),
+      ],
+    },
+  );
+
+  if (result.claimed && result.row) {
+    return { claimed: true, row: toClaim(result.row) };
+  }
+
+  return { claimed: false, row: result.row ? toClaim(result.row) : null };
 }
 
 export type DispatchOutcome =
-  | { readonly status: "sent"; readonly target: string; readonly messageRef: string | null }
+  | {
+      readonly status: "sent";
+      readonly target: string;
+      readonly messageRef: string | null;
+
+      // The connection's channel name at send time, so the receipt stays self-describing
+      // after a repoint or a disconnect.
+      readonly channelLabel?: string | null;
+    }
   | {
       readonly status: "failed";
       readonly target: string;
@@ -124,8 +244,14 @@ export type DispatchOutcome =
     }
   | { readonly status: "quiet" };
 
-// Conflict-tolerant on the same unique key the emit uses: a retry that raced an earlier run
-// records nothing twice.
+const OUTCOME_RANK = { pending: 0, quiet: 1, failed: 2, sent: 3 } as const;
+
+// The stored row's place on the same ladder, computed in SQL so the supersede decision
+// happens inside the statement.
+const storedOutcomeRank = sql`case ${notificationSends.status} when 'sent' then 3 when 'failed' then 2 when 'quiet' then 1 else 0 end`;
+
+// The same key the claim uses, and a set that only ever improves: a sent receipt is never
+// clobbered by a late failure, and a retry that raced an earlier run records nothing twice.
 export async function recordDispatchOutcome(
   db: ScopedExecutor,
   ctx: TenantContext,
@@ -138,6 +264,15 @@ export async function recordDispatchOutcome(
   const s = scoped(db, ctx);
   const { outcome } = input;
 
+  const columns = {
+    status: outcome.status,
+    quietReason: outcome.status === "quiet" ? ("no_channel" as const) : null,
+    failureReason: outcome.status === "failed" ? outcome.failureReason : null,
+    messageRef: outcome.status === "sent" ? outcome.messageRef : null,
+    channelLabel: outcome.status === "sent" ? (outcome.channelLabel ?? null) : null,
+    sentAt: outcome.status === "sent" ? input.now : null,
+  };
+
   await db
     .insert(notificationSends)
     .values({
@@ -145,17 +280,19 @@ export async function recordDispatchOutcome(
       notificationId: input.notificationId,
       channel: "slack",
       target: outcome.status === "quiet" ? NOTIFICATION_SEND_NO_TARGET : outcome.target,
-      status: outcome.status,
-      quietReason: outcome.status === "quiet" ? "no_channel" : null,
-      failureReason: outcome.status === "failed" ? outcome.failureReason : null,
-      messageRef: outcome.status === "sent" ? outcome.messageRef : null,
-      sentAt: outcome.status === "sent" ? input.now : null,
+      attempts: 1,
+      ...columns,
     })
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: [
         notificationSends.notificationId,
         notificationSends.channel,
         notificationSends.target,
       ],
+      set: {
+        ...columns,
+        attempts: sql`${notificationSends.attempts} + 1`,
+      },
+      setWhere: sql`${storedOutcomeRank} < ${OUTCOME_RANK[outcome.status]}`,
     });
 }

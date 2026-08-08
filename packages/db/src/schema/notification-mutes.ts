@@ -1,5 +1,6 @@
 import type { MutableNotificationClass } from "@growthmind/shared";
-import { index, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 
@@ -31,5 +32,9 @@ export const notificationMutes = pgTable(
     primaryKey({ columns: [table.organizationId, table.userId, table.class] }),
 
     index("notification_mutes_org_user_idx").on(table.organizationId, table.userId),
+
+    // The Drizzle enum above is TypeScript-only; this is the database's own copy of the
+    // refusal, so a raw write cannot hide a health notification either (ADD D-6, AC-20).
+    check("notification_mutes_class_check", sql`${table.class} in ('work', 'record')`),
   ],
 );

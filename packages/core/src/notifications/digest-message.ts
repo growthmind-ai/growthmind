@@ -15,10 +15,20 @@ export interface DigestMessage {
   readonly fallbackText: string;
 }
 
-export function digestLeadSentence(_shown: number, _total: number): string {
-  throw new Error("O-051 job 2: not implemented");
+export function digestLeadSentence(shown: number, total: number): string {
+  return `Your weekly summary — ${shown} of ${total} things that happened.`;
 }
 
-export function buildDigestMessage(_input: DigestMessageInput): DigestMessage {
-  throw new Error("O-051 job 2: not implemented");
+export function buildDigestMessage(input: DigestMessageInput): DigestMessage {
+  const lead = digestLeadSentence(input.sentences.length, input.totalCount);
+
+  const blocks: readonly SlackBlock[] = [
+    { kind: "section", text: lead },
+    ...input.sentences.map((sentence): SlackBlock => ({ kind: "section", text: sentence })),
+  ];
+
+  return {
+    blocks,
+    fallbackText: [lead, ...input.sentences].join("\n"),
+  };
 }

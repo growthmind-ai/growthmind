@@ -51,8 +51,10 @@ export interface KeyCreatedSentenceInput {
   readonly createdByName: string | null;
 }
 
-export function keyCreatedSentence(_input: KeyCreatedSentenceInput): string {
-  throw new Error("O-051 job 2: not implemented");
+export function keyCreatedSentence(input: KeyCreatedSentenceInput): string {
+  const who = input.createdByName ?? UNKNOWN_REVOKER;
+
+  return `${who} created a new agent key for this workspace. If that wasn't you or your coding assistant, revoke every key in settings.`;
 }
 
 export interface BackfillCompleteSentenceInput {
@@ -60,14 +62,21 @@ export interface BackfillCompleteSentenceInput {
   readonly eventsPersisted: number;
 }
 
-export function backfillCompleteSentence(_input: BackfillCompleteSentenceInput): string {
-  throw new Error("O-051 job 2: not implemented");
+export function backfillCompleteSentence(input: BackfillCompleteSentenceInput): string {
+  return `We've finished reading your history — ${input.sessionsTouched} sessions from your past traffic are now part of the record, from ${input.eventsPersisted} events.`;
 }
 
 // Built from the stored CODE, never from the vendor's message: that string carries
 // internal ids and is not ours to show anyone.
-export function slackDisconnectedSentence(_reasonCode: PostFailureCode | null): string {
-  throw new Error("O-051 job 2: not implemented");
+export function slackDisconnectedSentence(reasonCode: PostFailureCode | null): string {
+  const what =
+    reasonCode === "not_authorised" || reasonCode === "rejected"
+      ? "Slack stopped accepting this workspace's connection"
+      : reasonCode === "channel_unavailable"
+        ? "The channel we deliver to is no longer available"
+        : "Slack couldn't be reached";
+
+  return `${what}, so findings aren't landing in your channel. Reconnect Slack in settings — anything missed will be delivered once it's back.`;
 }
 
 export interface AnalysisFailingSentenceInput {
@@ -77,6 +86,6 @@ export interface AnalysisFailingSentenceInput {
   readonly projectName: string;
 }
 
-export function analysisFailingSentence(_input: AnalysisFailingSentenceInput): string {
-  throw new Error("O-051 job 2: not implemented");
+export function analysisFailingSentence(input: AnalysisFailingSentenceInput): string {
+  return `${input.failed} of the last ${input.of} checks on ${input.projectName} didn't finish. We'll keep trying, and your data is untouched.`;
 }

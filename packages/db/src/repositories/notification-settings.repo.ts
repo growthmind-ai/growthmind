@@ -1,5 +1,13 @@
-import type { DigestCadence, TenantContext, Weekday } from "@growthmind/shared";
+import {
+  DIGEST_CADENCE_DEFAULT,
+  DIGEST_DAY_DEFAULT,
+  type DigestCadence,
+  type TenantContext,
+  type Weekday,
+} from "@growthmind/shared";
 
+import { orgCrud } from "./crud";
+import { notificationSettings } from "../schema/notification-settings";
 import type { ScopedExecutor } from "./types";
 
 export interface NotificationSettingsRow {
@@ -21,19 +29,48 @@ export interface NotificationSettingsRepo {
   save(input: SaveNotificationSettingsInput): Promise<NotificationSettingsRow>;
 }
 
+function toRow(row: {
+  readonly digestCadence: DigestCadence;
+  readonly digestDay: Weekday;
+}): NotificationSettingsRow {
+  return { digestCadence: row.digestCadence, digestDay: row.digestDay };
+}
+
 // The primary key is the organization, so there is no parameter through which one org
 // could ever name another's row.
 export function createNotificationSettingsRepo(
-  _db: ScopedExecutor,
-  _ctx: TenantContext,
+  db: ScopedExecutor,
+  ctx: TenantContext,
 ): NotificationSettingsRepo {
+  const c = orgCrud(db, ctx, notificationSettings);
+
   return {
-    read(): Promise<NotificationSettingsRow> {
-      throw new Error("O-051 job 2: not implemented");
+    async read(): Promise<NotificationSettingsRow> {
+      const row = await c.maybe();
+
+      return row === null
+        ? { digestCadence: DIGEST_CADENCE_DEFAULT, digestDay: DIGEST_DAY_DEFAULT }
+        : toRow(row);
     },
 
-    save(_input: SaveNotificationSettingsInput): Promise<NotificationSettingsRow> {
-      throw new Error("O-051 job 2: not implemented");
+    async save(input: SaveNotificationSettingsInput): Promise<NotificationSettingsRow> {
+      const saved = await c.insertOrFetch(
+        {
+          digestCadence: input.cadence,
+          digestDay: input.day,
+        },
+        {
+          target: [notificationSettings.organizationId],
+          set: {
+            digestCadence: input.cadence,
+            digestDay: input.day,
+            updatedAt: new Date(),
+          },
+          fetch: [],
+        },
+      );
+
+      return toRow(saved);
     },
   };
 }

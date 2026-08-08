@@ -1,11 +1,12 @@
 import {
   memberUserId,
+  NOTIFICATION_BADGE_COUNT_CAP,
   type NotificationSubjectKind,
   type NotificationType,
   type SlackReceiptFacts,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 
 import {
   notificationBellState,
@@ -38,6 +39,10 @@ export interface NotificationWithReadState {
 export interface ListRecentOptions {
   readonly limit: number;
   readonly windowDays: number;
+
+  // One computed value, passed into both the list and the badge count by the service, so
+  // the two reads cannot come to filter different populations (ADD D-5b).
+  readonly hiddenTypes?: readonly NotificationType[];
 }
 
 export interface BadgeCountOptions {
@@ -52,10 +57,12 @@ export interface NotificationsRepo {
     options: ListRecentOptions,
   ): Promise<readonly NotificationWithReadState[]>;
 
-  // The badge is deliberately a different fact: created_at > opened_at, ignoring read
-  // state. Capped by subquery LIMIT 10 — display caps at 9+, so counting past ten is waste.
-  // It takes the same window and hidden types the list does, so the two cannot count
-  // different populations and offer a badge that opens onto nothing (ADD D-5).
+  // The badge is deliberately a different fact: created_at at-or-after opened_at, ignoring
+  // read state — at-or-after because the shared clock resolves to a finite tick, and an
+  // arrival inside the stamp's own tick must light the badge rather than vanish. Capped by
+  // subquery LIMIT 10 — display caps at 9+, so counting past ten is waste. It takes the
+  // same window and hidden types the list does, so the two cannot count different
+  // populations and offer a badge that opens onto nothing (ADD D-5).
   countNewerThanOpened(options: BadgeCountOptions): Promise<number>;
 
   stampOpened(): Promise<void>;
@@ -67,9 +74,13 @@ export interface NotificationsRepo {
   markRead(notificationId: string): Promise<boolean>;
 }
 
-const BADGE_COUNT_CAP = 10;
-
 const DAY_MS = 24 * 60 * 60 * 1_000;
+
+function visibleTypes(hiddenTypes: readonly NotificationType[] | undefined): SQL | undefined {
+  return hiddenTypes === undefined || hiddenTypes.length === 0
+    ? undefined
+    : notInArray(notifications.type, [...hiddenTypes]);
+}
 
 export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext): NotificationsRepo {
   const s = scoped(db, ctx);
@@ -86,16 +97,6 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
     }
 
     return userId;
-  }
-
-  async function openedAtOf(): Promise<Date | null> {
-    const [row] = await db
-      .select({ openedAt: notificationBellState.openedAt })
-      .from(notificationBellState)
-      .where(s.owned(notificationBellState, eq(notificationBellState.userId, ctx.userId)))
-      .limit(1);
-
-    return row?.openedAt ?? null;
   }
 
   async function sendsFor(
@@ -174,7 +175,13 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
             eq(notificationBellState.userId, ctx.userId),
           ),
         )
-        .where(s.owned(notifications, gte(notifications.createdAt, since)))
+        .where(
+          s.owned(
+            notifications,
+            gte(notifications.createdAt, since),
+            visibleTypes(options.hiddenTypes),
+          ),
+        )
         .orderBy(desc(notifications.createdAt))
         .limit(options.limit);
 
@@ -193,21 +200,37 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
       }));
     },
 
-    async countNewerThanOpened(_options: BadgeCountOptions): Promise<number> {
-      const openedAt = await openedAtOf();
+    async countNewerThanOpened(options: BadgeCountOptions): Promise<number> {
+      const since = new Date(Date.now() - options.windowDays * DAY_MS);
 
-      // A never-opened viewer counts everything (the teammate-joins case, D1): with no
-      // stamp there is no "since" to narrow by.
+      // A never-opened viewer counts everything inside the window (the teammate-joins
+      // case, D1): the coalesced -infinity is that arm. The watermark is compared in SQL
+      // rather than read out and passed back, because a JS Date round-trip loses the
+      // microseconds and can round the watermark past a same-millisecond insert. The
+      // window and the mute filter are the list's own, so the badge can never count a row
+      // the popover will not show.
       const capped = db
         .select({ one: sql`1` })
         .from(notifications)
+        .leftJoin(
+          notificationBellState,
+          and(
+            eq(notificationBellState.organizationId, notifications.organizationId),
+            eq(notificationBellState.userId, ctx.userId),
+          ),
+        )
         .where(
           s.owned(
             notifications,
-            openedAt === null ? undefined : gt(notifications.createdAt, openedAt),
+            gte(notifications.createdAt, since),
+            visibleTypes(options.hiddenTypes),
+            gte(
+              notifications.createdAt,
+              sql`coalesce(${notificationBellState.openedAt}, '-infinity'::timestamptz)`,
+            ),
           ),
         )
-        .limit(BADGE_COUNT_CAP)
+        .limit(NOTIFICATION_BADGE_COUNT_CAP)
         .as("capped");
 
       const [row] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(capped);
@@ -220,9 +243,11 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
 
       // greatest(coalesce(old, -infinity), new): two racing tabs or an out-of-order close
       // stamp can only clear more, never resurrect a badge (D6). read_before is untouched.
+      // now(), not new Date(): this value is compared against created_at, which the
+      // database stamps, and a comparison needs one clock (ADD §4.5).
       await db
         .insert(notificationBellState)
-        .values({ ...s.stamp, userId, openedAt: new Date() })
+        .values({ ...s.stamp, userId, openedAt: sql`now()` })
         .onConflictDoUpdate({
           target: [notificationBellState.organizationId, notificationBellState.userId],
           set: {
@@ -236,7 +261,7 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
 
       await db
         .insert(notificationBellState)
-        .values({ ...s.stamp, userId, readBefore: new Date() })
+        .values({ ...s.stamp, userId, readBefore: sql`now()` })
         .onConflictDoUpdate({
           target: [notificationBellState.organizationId, notificationBellState.userId],
           set: {
