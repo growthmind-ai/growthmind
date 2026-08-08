@@ -2,7 +2,7 @@
 // the anyRevoked gate (the UPDATE returning a row) is what makes one real transition one
 // emit. RED in Wave 0: the seam edit does not exist yet.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   buildKeysRevokedDedupKey,
@@ -52,6 +52,7 @@ interface Bed {
   readonly org: SeededOrgWithOwner;
   readonly recorder: LiveRecorder;
   readonly repo: ReturnType<typeof createApiKeysRepo>;
+  readonly mintSetup: (name: string) => Promise<unknown>;
 }
 
 async function bedFor(label: string, options: { readonly slack: boolean }): Promise<Bed> {
@@ -76,11 +77,28 @@ async function bedFor(label: string, options: { readonly slack: boolean }): Prom
   }
 
   const recorder = recordPublishedTopics(db);
-  return { org, recorder, repo: createApiKeysRepo(recorder.db, org.ctx) };
+
+  return {
+    org,
+    recorder,
+    repo: createApiKeysRepo(recorder.db, org.ctx),
+
+    // Minting is this suite's setup, and it is its own emit now. Off the recorder, so what
+    // the recorder holds is the transition under test and nothing else.
+    mintSetup: (name: string) => createApiKeysRepo(db, org.ctx).mint({ name }),
+  };
 }
 
+// This suite's claim is about `keys_revoked` and nothing else. Minting a key is now its own
+// act_now emit, so an org-total count would fail on the fixture's setup rather than on the
+// transition under test.
 async function notificationRowsFor(organizationId: string) {
-  return db.select().from(notifications).where(eq(notifications.organizationId, organizationId));
+  return db
+    .select()
+    .from(notifications)
+    .where(
+      and(eq(notifications.organizationId, organizationId), eq(notifications.type, "keys_revoked")),
+    );
 }
 
 async function sendRowsFor(notificationId: string) {
@@ -96,11 +114,15 @@ function notificationsTopicFor(recorder: LiveRecorder, organizationId: string) {
   );
 }
 
+// Scoped to the org's keys_revoked notifications only: minting the fixture's keys queues
+// its own dispatch job now, and an org-wide count would measure the setup.
 async function dispatchJobsFor(organizationId: string) {
+  const mine = new Set((await notificationRowsFor(organizationId)).map((row) => row.id));
+
   return (await capturedJobs(db)).filter(
     (job) =>
       job.task === NOTIFICATION_DISPATCH_TASK &&
-      (job.payload as { organizationId?: string }).organizationId === organizationId,
+      mine.has((job.payload as { notificationId?: string }).notificationId ?? ""),
   );
 }
 
@@ -134,8 +156,8 @@ describe("the actor is whoever pressed revoke, not the org's owner (D1)", () => 
 describe("revokeEveryLive is the keys_revoked emitter (D11 wire)", () => {
   test("revoking live keys emits once with the acting member as actor and queues the dispatch job", async () => {
     const bed = await bedFor("live", { slack: true });
-    await bed.repo.mint({ name: "wire agent one" });
-    await bed.repo.mint({ name: "wire agent two" });
+    await bed.mintSetup("wire agent one");
+    await bed.mintSetup("wire agent two");
 
     const revoked = await bed.repo.revokeEveryLive();
     expect(revoked).toBe(true);
@@ -173,7 +195,7 @@ describe("revokeEveryLive is the keys_revoked emitter (D11 wire)", () => {
 
   test("a second revoke that finds nothing live emits nothing — the transition gate, not the call, decides", async () => {
     const bed = await bedFor("retry", { slack: true });
-    await bed.repo.mint({ name: "retry agent" });
+    await bed.mintSetup("retry agent");
 
     expect(await bed.repo.revokeEveryLive()).toBe(true);
     expect(await notificationRowsFor(bed.org.organizationId)).toHaveLength(1);
@@ -187,7 +209,7 @@ describe("revokeEveryLive is the keys_revoked emitter (D11 wire)", () => {
 
   test("a no-Slack org gets the quiet no_channel receipt at commit instead of a job (self-host path)", async () => {
     const bed = await bedFor("quiet", { slack: false });
-    await bed.repo.mint({ name: "quiet agent" });
+    await bed.mintSetup("quiet agent");
 
     expect(await bed.repo.revokeEveryLive()).toBe(true);
 
@@ -216,7 +238,7 @@ describe("revokeEveryLive is the keys_revoked emitter (D11 wire)", () => {
 
     expect(await bed.repo.revokeEveryLive()).toBe(false);
 
-    await bed.repo.mint({ name: "signature agent" });
+    await bed.mintSetup("signature agent");
     expect(await bed.repo.revokeEveryLive()).toBe(true);
   });
 });

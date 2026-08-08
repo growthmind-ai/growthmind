@@ -2,7 +2,7 @@
 // agent_first_contact, org id off the UPDATE's returned row, dedup key the type constant
 // alone — one row per org, ever. RED in Wave 0: the seam edit does not exist yet.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
   buildAgentFirstContactDedupKey,
@@ -87,8 +87,18 @@ async function bedFor(label: string): Promise<Bed> {
   };
 }
 
+// Scoped to the type under test: minting the fixture's key is now its own act_now emit, so
+// an org-total count would measure the setup rather than the once-ever guarantee.
 async function notificationRowsFor(organizationId: string) {
-  return db.select().from(notifications).where(eq(notifications.organizationId, organizationId));
+  return db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.type, "agent_first_contact"),
+      ),
+    );
 }
 
 async function lastUsedAtOf(keyId: string): Promise<Date | null> {
@@ -109,11 +119,15 @@ function topicCount(recorder: LiveRecorder, organizationId: string, topic: strin
   ).length;
 }
 
+// Scoped to this org's agent_first_contact notification: the fixture's mint() queues its
+// own dispatch job, which is not the once-ever guarantee under test.
 async function dispatchJobsFor(organizationId: string) {
+  const mine = new Set((await notificationRowsFor(organizationId)).map((row) => row.id));
+
   return (await capturedJobs(db)).filter(
     (job) =>
       job.task === NOTIFICATION_DISPATCH_TASK &&
-      (job.payload as { organizationId?: string }).organizationId === organizationId,
+      mine.has((job.payload as { notificationId?: string }).notificationId ?? ""),
   );
 }
 

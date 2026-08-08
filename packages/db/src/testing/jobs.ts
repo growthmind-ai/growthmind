@@ -34,14 +34,17 @@ export async function stubGraphileAddJob(db: TestDb): Promise<void> {
   `);
 
   // Language sql, not plpgsql: the parameters must keep the names the caller binds
-  // (payload, job_key, job_key_mode), and in a sql function those never collide with the
-  // insert's column names. The upsert mirrors job_key_mode := 'replace'.
+  // (payload, job_key, job_key_mode, max_attempts), and in a sql function those never
+  // collide with the insert's column names. The upsert mirrors job_key_mode := 'replace';
+  // max_attempts is accepted because the real add_job accepts it, and discarded because
+  // no capture assertion reads it.
   await db.execute(sql`
     create or replace function graphile_worker.add_job(
       identifier text,
       payload json default null,
       job_key text default null,
-      job_key_mode text default 'replace'
+      job_key_mode text default 'replace',
+      max_attempts integer default null
     ) returns void language sql as $body$
       insert into graphile_worker.captured_jobs (task, payload, job_key, job_key_mode)
       values (identifier, payload, job_key, job_key_mode)

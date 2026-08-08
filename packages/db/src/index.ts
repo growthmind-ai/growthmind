@@ -352,7 +352,13 @@ export {
 } from "./repositories/cause-claims.repo";
 
 // `notifications/emit.ts` is deliberately absent here: the emit seam is module-internal
-// to this package (ADD D-2), and the barrel is the wall that keeps it so.
+// to this package (ADD D-2), and the barrel is the wall that keeps it so. The one
+// narrow exception is `emitBackfillComplete` — the drained-cursor fact is computed by the
+// worker's poll loop (ADD §4.2), so that single seam crosses, not the general emit.
+export {
+  emitBackfillComplete,
+  type EmitBackfillCompleteInput,
+} from "./notifications/backfill-complete";
 export {
   createNotificationsRepo,
   type NotificationsRepo,
@@ -372,7 +378,10 @@ export {
   readNotificationForDispatch,
   recordDispatchOutcome,
   claimNotificationSend,
+  listNotificationsByIds,
+  findProjectNameForDispatch,
   type NotificationForDispatch,
+  type DigestMemberNotification,
   type DispatchOutcome,
   type NotificationSendClaim,
   type NotificationSendClaimResult,
@@ -385,9 +394,12 @@ export {
 export {
   listOrganizationsDueForDigest,
   gatherDigestNotifications,
+  findLastDigestAt,
+  emitDigestSummary,
   type DigestDueOrganization,
   type DigestGatherInput,
   type DigestGather,
+  type EmitDigestSummaryInput,
 } from "./services/notification-digest.service";
 export {
   createNotificationSettingsRepo,

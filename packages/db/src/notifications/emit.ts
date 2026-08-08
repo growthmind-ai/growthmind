@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { NOTIFICATION_DISPATCH_MAX_ATTEMPTS } from "@growthmind/core";
 import {
   NOTIFICATION_DISPATCH_TASK,
   NOTIFICATION_SEND_NO_TARGET,
@@ -26,7 +27,8 @@ import { isDeliveryTarget } from "../services/delivery-channel-guard";
 // happened; "owed" resolves the org's delivery target inside the caller's transaction —
 // no connection writes the quiet receipt, a connection queues the dispatch job, and an
 // enqueue fault writes the failed receipt, so a committed notification can never exist
-// without its Slack receipt.
+// without its Slack receipt. "quiet_digest" defers to the weekly summary (ADD D-7): the
+// receipt is written even though a channel may exist, and no dispatch job is queued.
 export type EmitNotificationSlack =
   | {
       readonly kind: "copied";
@@ -34,7 +36,8 @@ export type EmitNotificationSlack =
       readonly messageRef: string | null;
       readonly sentAt: Date;
     }
-  | { readonly kind: "owed" };
+  | { readonly kind: "owed" }
+  | { readonly kind: "quiet_digest" };
 
 export interface EmitNotificationInput {
   readonly type: NotificationType;
@@ -127,6 +130,15 @@ async function writeSlackLeg(
     return;
   }
 
+  if (slack.kind === "quiet_digest") {
+    await writeSendRow(db, organizationId, notificationId, {
+      target: NOTIFICATION_SEND_NO_TARGET,
+      status: "quiet",
+      quietReason: "digest",
+    });
+    return;
+  }
+
   const connection = await activeConnectionOf(db, organizationId);
 
   if (connection === null || !isDeliveryTarget(connection)) {
@@ -142,6 +154,7 @@ async function writeSlackLeg(
     task: NOTIFICATION_DISPATCH_TASK,
     payload: { organizationId, notificationId },
     jobKey: `notification:dispatch:${notificationId}`,
+    maxAttempts: NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
   });
 
   // D-1 amendment 2: the fact commits with a failed receipt rather than bare, and the

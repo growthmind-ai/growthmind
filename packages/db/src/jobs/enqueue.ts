@@ -18,12 +18,22 @@ import type { ScopedExecutor } from "../repositories/types";
 // the fact it belongs to.
 export async function enqueueJob(
   db: ScopedExecutor,
-  input: { readonly task: string; readonly payload: unknown; readonly jobKey: string },
+  input: {
+    readonly task: string;
+    readonly payload: unknown;
+    readonly jobKey: string;
+
+    // Only the dispatch enqueue supplies this (ADD D-2): every other job keeps the
+    // runner's default rather than restating a cap it does not own.
+    readonly maxAttempts?: number;
+  },
 ): Promise<boolean> {
   try {
     await inTransaction(db, async (attempt) => {
       await attempt.execute(
-        sql`select graphile_worker.add_job(${input.task}, payload := ${JSON.stringify(input.payload)}::json, job_key := ${input.jobKey}, job_key_mode := 'replace')`,
+        input.maxAttempts === undefined
+          ? sql`select graphile_worker.add_job(${input.task}, payload := ${JSON.stringify(input.payload)}::json, job_key := ${input.jobKey}, job_key_mode := 'replace')`
+          : sql`select graphile_worker.add_job(${input.task}, payload := ${JSON.stringify(input.payload)}::json, job_key := ${input.jobKey}, job_key_mode := 'replace', max_attempts := ${input.maxAttempts})`,
       );
     });
     return true;

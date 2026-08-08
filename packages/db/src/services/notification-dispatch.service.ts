@@ -6,6 +6,7 @@ import {
   type NotificationSendFailureReason,
   type NotificationSendStatus,
   type NotificationType,
+  type PostFailureCode,
   type TenantContext,
 } from "@growthmind/shared";
 import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
@@ -15,6 +16,7 @@ import { scoped, type Scope } from "../repositories/scope";
 import { toSlackConnectionSummary } from "../repositories/slack-connections.repo";
 import type { ScopedExecutor } from "../repositories/types";
 import { notifications, notificationSends } from "../schema/notifications";
+import { projects } from "../schema/projects";
 import { slackConnections } from "../schema/slack-connections";
 import { isDeliveryTarget } from "./delivery-channel-guard";
 
@@ -24,6 +26,9 @@ export interface NotificationForDispatch {
   readonly subjectId: string;
   readonly actorUserId: string | null;
 
+  // Stored shape, parsed at render (D5): a row can carry any shape ever written.
+  readonly payload: unknown;
+
   // A receipt already recorded for this channel: the post happened, or was decided against,
   // on an earlier run of this job (D4).
   readonly settled: boolean;
@@ -31,6 +36,13 @@ export interface NotificationForDispatch {
   // Resolved at post time rather than at emit: an org that disconnected in between gets the
   // honest quiet receipt, and the chip explains it.
   readonly channelId: string | null;
+
+  // The connection's name at post time, written into the receipt so it stays
+  // self-describing after a repoint or a disconnect (FR-4 req 2).
+  readonly channelName: string | null;
+
+  // The stored code the slack_disconnected sentence is built from; never the vendor text.
+  readonly healthReasonCode: PostFailureCode | null;
 }
 
 // The worker's read model for one queued notification, scoped by the context the caller
@@ -78,6 +90,7 @@ export async function readNotificationForDispatch(
     type: row.type,
     subjectId: row.subjectId,
     actorUserId: row.actorUserId,
+    payload: row.payload,
 
     // Reason-aware (ADD D-4): a `quiet: no_channel` receipt does not settle the outcome —
     // a reconnect must be able to rescue it — while `quiet: digest` does, because the
@@ -87,7 +100,62 @@ export async function readNotificationForDispatch(
         send.status === "sent" || (send.status === "quiet" && send.quietReason === "digest"),
     ),
     channelId: summary !== null && isDeliveryTarget(summary) ? summary.channelId : null,
+    channelName: summary?.channelName ?? null,
+    healthReasonCode: connection?.healthReasonCode ?? null,
   };
+}
+
+export interface DigestMemberNotification {
+  readonly id: string;
+  readonly type: NotificationType;
+  readonly subjectId: string;
+  readonly actorUserId: string | null;
+  readonly payload: unknown;
+}
+
+// The digest render's member read (ADD D-8): ids come from the frozen payload, and the
+// rows resolve at render so no sentence or name can go stale inside a stored summary.
+export async function listNotificationsByIds(
+  db: ScopedExecutor,
+  ctx: TenantContext,
+  ids: readonly string[],
+): Promise<readonly DigestMemberNotification[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const s = scoped(db, ctx);
+
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      subjectId: notifications.subjectId,
+      actorUserId: notifications.actorUserId,
+      payload: notifications.payload,
+    })
+    .from(notifications)
+    .where(s.owned(notifications, inArray(notifications.id, [...ids])));
+
+  return rows;
+}
+
+// The analysis_failing sentence names the project; a deleted one degrades to the generic
+// sentence at the caller (job 1's D5 behaviour).
+export async function findProjectNameForDispatch(
+  db: ScopedExecutor,
+  ctx: TenantContext,
+  projectId: string,
+): Promise<string | null> {
+  const s = scoped(db, ctx);
+
+  const [row] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(s.owned(projects, eq(projects.id, projectId)))
+    .limit(1);
+
+  return row?.name ?? null;
 }
 
 // What the winner of a claim holds. `attempts` is the authoritative count because the

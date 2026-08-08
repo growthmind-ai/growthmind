@@ -14,6 +14,7 @@ import {
 import { desc, eq, lt, ne, sql } from "drizzle-orm";
 
 import { publishLive } from "../live/publish";
+import { emitAnalysisFailingIfDue } from "../notifications/analysis-health";
 import { analysisModelCalls } from "../schema/analysis-model-calls";
 import { analysisRuns } from "../schema/analysis-runs";
 import { orgCrud } from "./crud";
@@ -146,7 +147,18 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
       lt(analysisRuns.startedAt, cutoff),
     );
 
-    return reclaimed !== null;
+    if (reclaimed === null) {
+      return false;
+    }
+
+    // The emit lives in this write, never in open()'s control flow: a detector wired only
+    // to close() is blind to every abandoned lease (ADD §4.3).
+    await emitAnalysisFailingIfDue(db, ctx, {
+      projectId: input.projectId,
+      runId: reclaimed.id,
+    });
+
+    return true;
   }
 
   return {
@@ -218,6 +230,16 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
         throw new Error(
           "analysis_runs: no run of this organization was still open to match the close",
         );
+      }
+
+      // Only a failed close can complete a failing streak, so the health read is skipped on
+      // the ordinary path. The helper reads after the update committed, on this executor,
+      // and swallows its own faults (D8).
+      if (status === "failed") {
+        await emitAnalysisFailingIfDue(db, ctx, {
+          projectId: input.projectId,
+          runId: input.runId,
+        });
       }
 
       await announce();

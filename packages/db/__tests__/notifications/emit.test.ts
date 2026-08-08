@@ -474,10 +474,17 @@ describe("a notification fault never undoes the fact it announces (D8)", () => {
         .where(and(eq(apiKeys.organizationId, org.organizationId), isNull(apiKeys.revokedAt)));
       expect(live).toEqual([]);
 
+      // The revoke's own emit, not the org's total: minting the fixture key is a separate
+      // act_now emit with a real actor, so it lands and should.
       const emitted = await db
         .select()
         .from(notifications)
-        .where(eq(notifications.organizationId, org.organizationId));
+        .where(
+          and(
+            eq(notifications.organizationId, org.organizationId),
+            eq(notifications.type, "keys_revoked"),
+          ),
+        );
       expect(emitted).toEqual([]);
     } finally {
       await close();
