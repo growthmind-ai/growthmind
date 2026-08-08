@@ -114,7 +114,9 @@ describe("readReplayEvents", () => {
   test("should read a mutation's added nodes and ignore entries with no node", () => {
     const read = readReplayEvents([mutationEvent(5)]);
 
-    expect(read.facts).toEqual([{ kind: "mutation", tsMs: BASE_TS + 5, adds: [] }]);
+    expect(read.facts).toEqual([
+      { kind: "mutation", tsMs: BASE_TS + 5, adds: [], removedParentIds: [] },
+    ]);
   });
 
   test("should order facts by timestamp regardless of the order they arrived in", () => {

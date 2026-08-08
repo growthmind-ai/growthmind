@@ -14,6 +14,22 @@ export interface RecommendationVerdict {
   readonly note: string | null;
 }
 
+export interface LeadVerdict {
+  readonly led: boolean;
+  readonly proposalId: string | null;
+  readonly method: VerdictMethod;
+  readonly note: string | null;
+}
+
+/** A claim whose number disagrees with one the harness counted. */
+export interface ContradictionRow {
+  readonly proposalId: string;
+  readonly title: string;
+  readonly factId: string;
+  readonly factStatement: string;
+  readonly claimed: string;
+}
+
 export interface FoundRow {
   readonly keyProblemId: string;
   readonly keyTitle: string;
@@ -51,6 +67,14 @@ export interface Scorecard {
 
   readonly unsupportedClaims: readonly ProposalRow[];
   readonly claimsOverstatingTheCorpus: readonly ProposalRow[];
+
+  /** Did the analyser open with the fact the corpus itself leads on? */
+  readonly headlineFact: string;
+  readonly ledWithHeadlineFact: boolean;
+  readonly leadProposalId: string | null;
+  readonly leadMethod: VerdictMethod;
+
+  readonly claimsContradictingAFact: readonly ContradictionRow[];
 
   readonly actionableRecommendations: number;
   readonly recommendationsJudged: number;

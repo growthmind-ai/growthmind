@@ -26,6 +26,44 @@ bun evals/find-problems/src/run.ts score   --run my-run       # grade against th
 
 Splitting the phases is the point: recording four personas costs minutes and real tokens, so an analyser prompt or a scorer change is re-run against a corpus already on disk. `--persona <id>` records one persona. Output lands in `runs/<run-id>/`, which is gitignored — recordings of our own app with real sign-ups in them are not artefacts to commit.
 
+### Rebuilding one run's recordings into another run id
+
+A change to the replay path is measured by putting the **same recordings** through it and comparing. `--from` does that without a browser, a tunnel or a model:
+
+```bash
+bun evals/find-problems/src/run.ts corpus  --run corpus-3-b --from corpus-3
+bun evals/find-problems/src/run.ts analyse --run corpus-3-b
+bun evals/find-problems/src/run.ts score   --run corpus-3-b
+```
+
+The new run gets its own manifest, marked `recordingsFrom`, pointing at the recordings where they already sit; nothing is copied and nothing is re-recorded. Re-recording would move the personas as well as the code, and there would be nothing left to attribute the difference to. A run id that already holds recordings of its own is refused rather than written over.
+
+### Three arms, one variable each
+
+Two things changed at once for `corpus-3`: the replay path started emitting what the screen said back, and the analyser started being handed the counts. A single rebuilt run would move both, and a better score would belong to neither. So there are three arms over the **same recordings** and the **same held-out key**:
+
+| Arm   | Transcript              | Counts       | Isolates                                             |
+| ----- | ----------------------- | ------------ | ---------------------------------------------------- |
+| **A** | old (`corpus-3` as run) | not given    | the baseline                                         |
+| **B** | new                     | **withheld** | what the replay-path work alone bought               |
+| **C** | new                     | given        | what not asking a model to do arithmetic adds on top |
+
+```bash
+bun evals/find-problems/src/run.ts analyse --run corpus-3-b --from corpus-3 --counts-withheld
+bun evals/find-problems/src/run.ts score   --run corpus-3-b
+
+bun evals/find-problems/src/run.ts analyse --run corpus-3-c --from corpus-3
+bun evals/find-problems/src/run.ts score   --run corpus-3-c
+```
+
+Arm A is `corpus-3` as it already stands; it needs nothing run against it.
+
+B−A is the value of the transcript carrying what the screen said back; C−B is the value of the counts. Neither claim rests on the other.
+
+`--counts-withheld` moves the prompt and nothing else. With the counts withheld the analyser is sent **word for word** what arm A was sent — same body, same system prompt minus the one line about the counts — and a test asserts that byte for byte against the prompt stored in `corpus-3`'s own `analysis.json`. The facts are still counted and the analysis is still scored against them, so "did it lead with the headline fact" is answered for every arm; that row is the measurement, not the instruction.
+
+**The arm is written into the run's manifest at analyse time and printed at the top of `report.md`**, above the scorecard, because a scorecard whose conditions are not on its face gets quoted out of context eventually. A run analysed before arms were recorded says so rather than implying one. The report takes the conditions from the manifest, never from the flags of whoever is running `score`.
+
 ### A missing credential must never look like a model that found nothing
 
 `readEvalEnv()` throws `MissingCredentialError` naming the variable and the working-directory trap. That is deliberate: the whole output of this harness is a judgement about model capability, and a silent credential failure would read as "the model found nothing". A failed read is not an empty state.
@@ -69,6 +107,28 @@ A persona here gets an intent in plain English ("you heard about this tool and w
 
 `__tests__/a-persona-is-never-told-where-to-click.test.ts` asserts no persona's intent and no part of the system prompt names a route, a control, or a vendor. A hint there would quietly convert the whole exercise into a scripted walk.
 
+## Why the analyser is told the counts rather than asked for them
+
+The first sentence a growth engineer writes about a set of sessions is a count — _nobody got through_ — and `corpus-3` proved a model will not write it. It proposed three problems and none of them was that none of the four sessions connected anything, which the key lists as high severity and the scorer counted as missed.
+
+That is not a prompt to tune. **Counting is deterministic code's job**, and this repo already says so everywhere else: `packages/core/src/counts/measured-count.ts` owns the numbers in a delivered finding, and `summariser.ts` is told never to write one because "the numbers are added afterwards from verified data; any you write would be wrong". The eval was violating its own product's architecture by asking a model to notice a funnel fact.
+
+So `src/facts/` counts the corpus itself, before the analyser is asked anything, and hands it the result as settled fact:
+
+- **Every fact names the sessions it counts**, so a reader and the scorer can check it rather than trust it. A fact nobody can check is the thing this harness exists to avoid producing.
+- **Every fact carries its denominator**, because the statement is built as `N of M` and cannot be built any other way.
+- **Nothing in it is a threshold.** There is no minimum session count, no percentage floor and no similarity cut-off: a fact exists for every page reached, every outcome present and every thing the screen said back, whether one session or all of them saw it.
+
+**What counts as connected is a definition, not a number**, and it is one line, in `src/facts/activation.ts`, carried with every count it decides and printed at the top of the run's `facts.json` and `report.md`:
+
+> A session connected something when the screen said back that a connection was made — the analytics it can see, the Slack workspace, the coding assistant, or the product reporting itself as running. Reaching the setup page, filling its fields and pressing Connect are not connecting.
+
+The markers are imported from `ONBOARDING_MESSAGES` rather than pasted, so a reworded screen cannot leave a stale string matching forever.
+
+Their limit is the transcript's, and it is worth being exact about what that limit is, because it is the whole point of the exercise. **None of the four sessions in `corpus-3` connected anything** — that is a fact about what happened, and the personas' own traces confirm it: two pressed Connect and were told the request could not be read, one left for another company's login and never came back, one gave up on the sign-in page. What changed when the replay path started emitting what the screen said back is not that fact but its status: the claim became **observable from the record** rather than true-but-unevidenced. A corpus built before that reports every session as not connected because it can see no connection, and it happens to be right; after it, the same answer rests on the recording rather than on nobody having found evidence to the contrary. A harness whose numbers are right for the wrong reason has not measured anything, which is why the arms below separate the two.
+
+The analyser keeps the job worth having, the why and the fix, and its prompt presents the counts as established — except on the arm where they are withheld, which is how what they were worth gets measured rather than assumed. The scorer checks two things back on every arm: whether the first problem proposed is the one the headline fact names, and whether any claim states a number that disagrees with a counted one. A claim may state the count or its complement — "0 of 4 connected" and "4 of 4 did not" are the same fact — and any other number disagrees with the record.
+
 ## Why the answer key is held out
 
 If the analyser is told what to find, the exercise measures nothing. So a scenario is two files:
@@ -79,7 +139,7 @@ If the analyser is told what to find, the exercise measures nothing. So a scenar
 The separation is enforced in code, not by convention:
 
 - `loadScenario()` reads `scenario.json` and its schema is `.strict()`, so a key pasted into the scenario fails to parse rather than reaching a prompt.
-- `loadAnswerKey()` lives in `src/score/answer-key.ts` and is the only reader of `answers.json` in the package. Nothing on the analyser's path imports it.
+- `loadAnswerKey()` lives in `src/score/answer-key.ts` and is the only reader of `answers.json` in the package. Nothing on the analyser's path imports it, `src/facts/` included — the facts are counted from the corpus, and a fact that agreed with the key because it had read it would measure nothing at all.
 - `corpusAnalysisInputSchema` is `.strict()`, so a key spread into the analyser's input is rejected at the boundary rather than trusted to a type.
 - `__tests__/answer-key-is-unreachable-from-the-analyser.test.ts` asserts all of it, including that no key title or statement appears in the prompt actually sent.
 
@@ -100,7 +160,7 @@ Two disciplines survive the change of lane, because they are what makes an answe
 
 The scorer runs a cheap deterministic pass first, matching a key problem's `matchAny` signals against the proposal text, then asks a model judge only about the rows a string cannot settle. Every row in the report says which of the two settled it, because a judged match is a weaker claim than a matched one and the reader is entitled to know which they are reading.
 
-It reports, always with denominators: planted problems found and missed; proposals that match no planted problem and cite nothing checkable (**invented**); proposals that match no planted problem but do cite real beats (**beyond the key** — a real observation the key does not list, which is not the same as being wrong); claims marked unsupported; claims counting more sessions than the corpus holds; and whether each recommendation is actionable, which always needs the judge.
+It reports, always with denominators: whether the analyser led with the corpus's own headline fact, and how many of its claims disagree with a count the harness made; planted problems found and missed; proposals that match no planted problem and cite nothing checkable (**invented**); proposals that match no planted problem but do cite real beats (**beyond the key** — a real observation the key does not list, which is not the same as being wrong); claims marked unsupported; claims counting more sessions than the corpus holds; and whether each recommendation is actionable, which always needs the judge.
 
 ## Known limits of the evidence
 
@@ -126,8 +186,10 @@ recorder.mjs       plan-driven recording, no model        (Node)
 smoke.ts           events through the production schema and transcript
 src/env.ts         credentials, loudly
 src/protocol.ts    the driver contract, as Zod
+src/rebuild.ts     a new run id onto an existing run's recordings
 src/persona/       the brain that decides its own next click
 src/session/       personas driven, recordings summarised
+src/facts/         the counts, made by code before the model is asked
 src/analyse/       the pass under test, and citation support
 src/score/         the key, the match, the judge, the card
 src/scenarios/     scenario.json and the held-out answers.json

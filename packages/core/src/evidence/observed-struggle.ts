@@ -180,7 +180,9 @@ function tallySession(
 
   for (const action of transcript.actions) {
     if (action.kind === "page") {
-      const normalised = normaliseUrlPath(null, action.href);
+      // A page whose address was withheld surfaces nothing, so struggle on it is counted
+      // against no surface rather than against whichever one came before.
+      const normalised = action.href === undefined ? null : normaliseUrlPath(null, action.href);
       current = normalised !== null && isNormalisedUrlPath(normalised) ? normalised : null;
       if (current !== null) tallyFor(visited, current);
       continue;

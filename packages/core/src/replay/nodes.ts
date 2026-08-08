@@ -55,6 +55,8 @@ export const LABEL_TAG_NAME = "label";
 // <script>, so excluding the subtree excludes the sentinel without naming it.
 export const UNNAMED_TAG_NAMES: readonly string[] = ["script", "style", "noscript", "template"];
 
+export const PAGE_ROOT_TAG_NAMES: readonly string[] = ["body", "html"];
+
 // Elements whose own text is chrome a developer wrote rather than a row of data, so a name from
 // one may be a phrase. Every other element's text stays one token, <a> included — a link's text
 // is as often a person's name as a label (.ai/decisions/0025-multi-word-accessible-names.md).
@@ -70,6 +72,11 @@ export type DomSegment = {
   readonly fromTsMs: number;
   readonly index: NodeIndex;
   readonly parents: ReadonlyMap<number, number>;
+
+  // When a mutation put a node into this generation. Absent for anything the snapshot opened
+  // with, which is the distinction between a field a person has been looking at and one that
+  // has only just mounted (B-060).
+  readonly addedAt: ReadonlyMap<number, number>;
 };
 
 export type DomSegments = readonly DomSegment[];
@@ -78,6 +85,7 @@ type SegmentDraft = {
   readonly fromTsMs: number;
   readonly index: Map<number, ElementIdentity>;
   readonly parents: Map<number, number>;
+  readonly addedAt: Map<number, number>;
 
   visited: number;
 };
@@ -122,7 +130,7 @@ function nodeIdOf(node: UnknownRecord): number | null {
   return typeof nodeId === "number" && Number.isInteger(nodeId) ? nodeId : null;
 }
 
-function isUnnamed(node: UnknownRecord): boolean {
+export function isUnnamed(node: UnknownRecord): boolean {
   const tagName = node["tagName"];
   if (typeof tagName === "string" && UNNAMED_TAG_NAMES.includes(tagName.toLowerCase())) return true;
 
@@ -197,7 +205,12 @@ function identityOf(node: UnknownRecord): ElementIdentity | null {
   return accessibleName === null ? identity : { ...identity, accessibleName };
 }
 
-function collectTree(root: UnknownRecord, rootParentId: number | null, draft: SegmentDraft): void {
+function collectTree(
+  root: UnknownRecord,
+  rootParentId: number | null,
+  draft: SegmentDraft,
+  addedAtMs: number | null = null,
+): void {
   const pending: PendingNode[] = [{ node: root, parentId: rootParentId }];
 
   while (pending.length > 0 && draft.visited < MAX_INDEXED_NODES) {
@@ -209,6 +222,9 @@ function collectTree(root: UnknownRecord, rootParentId: number | null, draft: Se
     // Masked text nodes get no identity but do get a parent link, because a click on one
     // still has to find the control it sits inside.
     if (nodeId !== null && entry.parentId !== null) draft.parents.set(nodeId, entry.parentId);
+    if (nodeId !== null && addedAtMs !== null && !draft.addedAt.has(nodeId)) {
+      draft.addedAt.set(nodeId, addedAtMs);
+    }
 
     const identity = identityOf(entry.node);
     if (identity !== null) draft.index.set(identity.nodeId, identity);
@@ -278,6 +294,7 @@ export function indexDomSegments(events: readonly RrwebEvent[]): DomSegments {
         fromTsMs: fact.tsMs,
         index: new Map<number, ElementIdentity>(),
         parents: new Map<number, number>(),
+        addedAt: new Map<number, number>(),
         visited: 0,
       };
       drafts.push(opened);
@@ -290,13 +307,18 @@ export function indexDomSegments(events: readonly RrwebEvent[]): DomSegments {
     // A mutation ahead of the first snapshot describes a DOM this recording never showed.
     const open = drafts.at(-1);
     if (open === undefined) continue;
-    for (const add of fact.adds) collectTree(add.node, add.parentId, open);
+    for (const add of fact.adds) collectTree(add.node, add.parentId, open, fact.tsMs);
   }
 
   return drafts.map((draft) => {
     bindLabelNames(draft);
 
-    return { fromTsMs: draft.fromTsMs, index: draft.index, parents: draft.parents };
+    return {
+      fromTsMs: draft.fromTsMs,
+      index: draft.index,
+      parents: draft.parents,
+      addedAt: draft.addedAt,
+    };
   });
 }
 
@@ -328,6 +350,13 @@ export function resolveIdentityAt(
 ): ElementIdentity {
   const segment = segmentAt(segments, tsMs);
   return segment === null ? unknownIdentity(nodeId) : resolveIdentity(segment.index, nodeId);
+}
+
+// The identity-side twin of `isUnnamed`, for a container reached through the index rather than
+// walked as a raw node: text landing under <style> or inside an aria-hidden branch never rendered.
+export function isRenderedContainer(identity: ElementIdentity): boolean {
+  if (UNNAMED_TAG_NAMES.includes(identity.tagName)) return false;
+  return identity.attributes[ARIA_HIDDEN_ATTRIBUTE] !== ARIA_HIDDEN_VALUE;
 }
 
 export function isInteractive(identity: ElementIdentity): boolean {

@@ -359,9 +359,12 @@ export type {
   FieldRefocusAction,
   FieldAbandonedAction,
   ScrollBackAction,
+  ReactionAction,
+  ReactionKind,
   WaitAction,
   EndedAction,
 } from "./replay/types";
+export { REACTION_KINDS } from "./replay/types";
 export {
   RRWEB_EVENT_TYPE,
   RRWEB_INCREMENTAL_SOURCE,
@@ -409,6 +412,7 @@ export {
   DESCRIBE_NAME_LABEL,
   DESCRIBE_MAX_CLASSES,
   DESCRIBE_VALUE_MAX_LENGTH,
+  DESCRIBE_SENTENCE_MAX_LENGTH,
   DESCRIBE_TRUNCATION_MARKER,
   DESCRIBE_IDENTIFIER_VALUE,
   describeElement,
@@ -430,7 +434,10 @@ export {
   SECONDS_PER_MINUTE,
   STAMP_SEPARATOR,
   EMPTY_TRANSCRIPT_LINE,
+  REACTION_WITHHELD_ERROR,
+  REACTION_WITHHELD_MESSAGE,
   renderTranscript,
+  reactionPhrase,
   stampOf,
 } from "./replay/render";
 export {

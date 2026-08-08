@@ -112,14 +112,14 @@ describe("renderTranscript", () => {
     );
   });
 
-  test("should describe an element the recording never described rather than dropping the line", () => {
+  test("should never put the walk's own sentinel for an unplaceable element into a digest", () => {
     const transcript = buildTranscript([
       metaEvent(0, SETTINGS_PAGE),
       clickEvent(1_000, 4_242),
       mutationEvent(1_050),
     ]);
 
-    expect(renderTranscript(transcript)).toContain("clicked #unknown(4242)");
+    expect(renderTranscript(transcript)).not.toContain("#unknown");
   });
 
   test("should stamp the first line 0:00 rather than the offset the recorder happened to start at", () => {

@@ -2,6 +2,10 @@ import { isCleanForDelivery } from "../delivery/residual-pii";
 
 export const DESCRIBE_VALUE_MAX_LENGTH = 40;
 
+// Two caps for two kinds of thing: 40 bounds a selector-shaped value, this bounds a sentence a
+// screen showed, and only this one keeps its front. See .ai/decisions/0026-reaction-text-cap.md
+export const DESCRIBE_SENTENCE_MAX_LENGTH = 160;
+
 export const DESCRIBE_TRUNCATION_MARKER = "…";
 
 // One developer-authored token, because a live DOM's attributes carry a person's data (B-052).
@@ -39,6 +43,13 @@ export function truncate(value: string): string {
   return `${DESCRIBE_TRUNCATION_MARKER}${value.slice(-tail).trimStart()}`;
 }
 
+export function truncateSentence(value: string): string {
+  if (value.length <= DESCRIBE_SENTENCE_MAX_LENGTH) return value;
+
+  const head = Math.max(0, DESCRIBE_SENTENCE_MAX_LENGTH - DESCRIBE_TRUNCATION_MARKER.length);
+  return `${value.slice(0, head).trimEnd()}${DESCRIBE_TRUNCATION_MARKER}`;
+}
+
 export function readableValue(value: string): string {
   return truncate(collapse(value));
 }
@@ -61,4 +72,12 @@ export function deliverableName(value: string): string | null {
   if (!isCleanForDelivery(collapsed)) return null;
 
   return truncate(collapsed);
+}
+
+export function deliverableSentence(value: string): string | null {
+  const collapsed = collapse(value);
+  if (collapsed.length === 0 || isMaskedText(collapsed)) return null;
+  if (!isCleanForDelivery(collapsed)) return null;
+
+  return truncateSentence(collapsed);
 }

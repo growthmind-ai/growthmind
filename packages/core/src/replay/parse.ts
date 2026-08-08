@@ -35,7 +35,15 @@ export type MutationAdd = {
 export type ReplayFact =
   | { readonly kind: "page"; readonly tsMs: number; readonly href: string }
   | { readonly kind: "snapshot"; readonly tsMs: number; readonly node: UnknownRecord }
-  | { readonly kind: "mutation"; readonly tsMs: number; readonly adds: readonly MutationAdd[] }
+  | {
+      readonly kind: "mutation";
+      readonly tsMs: number;
+      readonly adds: readonly MutationAdd[];
+
+      // Which parents lost children in the same breath: an element whose contents were taken away
+      // and put back was replaced, and a replacement is not an answer to anything.
+      readonly removedParentIds: readonly number[];
+    }
   | {
       readonly kind: "mouse";
       readonly tsMs: number;
@@ -90,12 +98,28 @@ function addedNodesOf(value: unknown): readonly MutationAdd[] {
   return adds;
 }
 
+function removedParentsOf(value: unknown): readonly number[] {
+  if (!Array.isArray(value)) return [];
+
+  const parents: number[] = [];
+  for (const entry of value) {
+    const parentId = asWholeNumber(asRecord(entry)?.["parentId"]);
+    if (parentId !== null) parents.push(parentId);
+  }
+  return parents;
+}
+
 function incrementalFact(tsMs: number, data: UnknownRecord): ReplayFact | null {
   const source = asWholeNumber(data["source"]);
   if (source === null) return null;
 
   if (source === RRWEB_INCREMENTAL_SOURCE.mutation) {
-    return { kind: "mutation", tsMs, adds: addedNodesOf(data["adds"]) };
+    return {
+      kind: "mutation",
+      tsMs,
+      adds: addedNodesOf(data["adds"]),
+      removedParentIds: removedParentsOf(data["removes"]),
+    };
   }
 
   if (source === RRWEB_INCREMENTAL_SOURCE.mouseInteraction) {

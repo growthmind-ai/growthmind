@@ -5,6 +5,7 @@ import type { ElementIdentity } from "./types";
 export {
   DESCRIBE_IDENTIFIER_VALUE,
   DESCRIBE_TRUNCATION_MARKER,
+  DESCRIBE_SENTENCE_MAX_LENGTH,
   DESCRIBE_VALUE_MAX_LENGTH,
 } from "./describe-value";
 

@@ -3,6 +3,7 @@ import type { TranscriptBeatKind } from "@growthmind/shared";
 import type { CauseBeatEvidence } from "../cause/types";
 import { describeElement } from "./describe";
 import type { PersistedElement, PersistedSessionAction } from "./persisted-transcript";
+import { reactionPhrase } from "./render";
 import type { ElementIdentity, SessionActionKind } from "./types";
 
 // The "something went wrong here" signal set the citation link's own label
@@ -30,6 +31,8 @@ export function beatKindOf(kind: SessionActionKind): TranscriptBeatKind {
     case "field_refocus":
     case "field_abandoned":
       return "input";
+    case "reaction":
+      return "text_appeared";
     case "scroll_back":
     case "wait":
       return "idle";
@@ -67,6 +70,8 @@ function beatTextOf(action: PersistedSessionAction): string {
     case "field_abandoned":
     case "scroll_back":
       return action.element === undefined ? "" : describeElement(identityOf(action.element));
+    case "reaction":
+      return action.reaction === undefined ? "" : reactionPhrase(action.reaction, action.text);
     case "wait":
       return "waited";
     case "ended":

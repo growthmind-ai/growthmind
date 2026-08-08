@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 
 import type { AssessedProblem } from "../src/analyse/types";
+import type { CorpusFacts } from "../src/facts/types";
 import { answerKeySchema, keyProblemSchema, type AnswerKey } from "../src/scenario/types";
 import { loadAnswerKey } from "../src/score/answer-key";
 import { matchDeterministically } from "../src/score/match";
@@ -30,6 +31,23 @@ const KEY: AnswerKey = {
     },
   ],
 };
+
+const HEADLINE = {
+  id: "connected",
+  statement: "0 of 2 sessions connected anything",
+  count: 0,
+  of: 2,
+  sessionIds: [],
+  subjectSignals: ["connected anything"],
+};
+
+const FACTS: CorpusFacts = {
+  definitionOfActivation: "the screen said a connection was made",
+  headline: HEADLINE,
+  facts: [HEADLINE],
+};
+
+const NO_LEAD = { led: false, proposalId: null, method: "matched" as const, note: null };
 
 function proposal(overrides: Partial<AssessedProblem>): AssessedProblem {
   return {
@@ -78,6 +96,8 @@ describe("scoring a corpus against the key", () => {
       proposals,
       matchVerdicts: deterministic.verdicts,
       recommendationVerdicts: [],
+      facts: FACTS,
+      lead: NO_LEAD,
     });
 
     expect(card.keyTotal).toBe(2);
@@ -92,6 +112,8 @@ describe("scoring a corpus against the key", () => {
       proposals: [],
       matchVerdicts: [],
       recommendationVerdicts: [],
+      facts: FACTS,
+      lead: NO_LEAD,
     });
 
     expect(card.found).toEqual([]);
@@ -107,6 +129,8 @@ describe("scoring a corpus against the key", () => {
       proposals,
       matchVerdicts: [{ keyProblemId: "A2", proposalId: null, method: "judged", note: "no match" }],
       recommendationVerdicts: [],
+      facts: FACTS,
+      lead: NO_LEAD,
     });
 
     expect(card.found).toEqual([]);
@@ -124,6 +148,8 @@ describe("scoring a corpus against the key", () => {
       proposals,
       matchVerdicts: [],
       recommendationVerdicts: [],
+      facts: FACTS,
+      lead: NO_LEAD,
     });
 
     expect(card.beyondTheKey.map((row) => row.proposalId)).toEqual(["P1"]);
@@ -145,6 +171,8 @@ describe("scoring a corpus against the key", () => {
         { keyProblemId: "A2", proposalId: "P2", method: "judged", note: "same problem" },
       ],
       recommendationVerdicts: [],
+      facts: FACTS,
+      lead: NO_LEAD,
     });
 
     expect(card.rowsMatched).toBe(1);

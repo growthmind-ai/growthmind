@@ -42,7 +42,9 @@ function transcriptOf(actions: readonly SessionAction[]): SessionTranscript {
     actions,
     startedAt: new Date("2026-08-05T10:00:00.000Z"),
     durationMs: 60_000,
-    pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
+    pages: actions.flatMap((action) =>
+      action.kind === "page" && action.href !== undefined ? [action.href] : [],
+    ),
     counts: {
       clicks: actions.filter((action) => action.kind === "click").length,
       deadClicks: 0,
@@ -264,7 +266,9 @@ function heldFrom(
   return {
     actions: persisted.actions,
     omitted: 0,
-    pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
+    pages: actions.flatMap((action) =>
+      action.kind === "page" && action.href !== undefined ? [action.href] : [],
+    ),
     durationMs: 1_000,
     droppedEvents: 0,
     clockOriginAtMs,

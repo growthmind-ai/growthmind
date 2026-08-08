@@ -8,12 +8,21 @@ import {
   type CorpusAnalysisInput,
 } from "./analyse/types";
 import { readEvalEnv } from "./env";
+import { buildCorpusFacts, factLine } from "./facts/build";
+import type { CorpusFacts } from "./facts/types";
 import { createEvalModels } from "./models";
 import { createPersonaBrain } from "./persona/brain";
+import { cloneRunForRebuild } from "./rebuild";
 import { renderReport } from "./report";
+import {
+  describeConditions,
+  readManifest,
+  writeManifest,
+  type AnalysisConditions,
+} from "./run-manifest";
 import { loadScenario, resolveFacts } from "./scenario/load";
 import { loadAnswerKey } from "./score/answer-key";
-import { judgeRecommendations, judgeUnresolvedMatches } from "./score/judge";
+import { judgeHeadlineLead, judgeRecommendations, judgeUnresolvedMatches } from "./score/judge";
 import { matchDeterministically } from "./score/match";
 import { scoreCorpus } from "./score/score";
 import { assertHarnessNoiseUnchanged, attributeConsoleErrors } from "./session/console-attribution";
@@ -38,21 +47,15 @@ function say(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-interface Manifest {
-  readonly runId: string;
-  readonly scenarioId: string;
-  readonly scenarioTitle: string;
-  readonly startUrl: string;
-  readonly modelIds: Readonly<Record<string, string>>;
-  readonly sessions: readonly PersonaSessionResult[];
-}
-
-function manifestPath(runDir: string): string {
-  return join(runDir, "manifest.json");
-}
-
-function readManifest(runDir: string): Manifest {
-  return JSON.parse(readFileSync(manifestPath(runDir), "utf8")) as Manifest;
+/**
+ * `--from` points a fresh run id at another run's recordings, so a pipeline change can be
+ * compared against the same sessions without recording them again.
+ */
+function runDirFor(runId: string): string {
+  const from = flag("from", null);
+  return from === null
+    ? join(RUNS_DIR, runId)
+    : cloneRunForRebuild({ runsDir: RUNS_DIR, sourceRunId: from, targetRunId: runId });
 }
 
 async function record(): Promise<string> {
@@ -117,20 +120,24 @@ async function record(): Promise<string> {
     sessions.push(result);
   }
 
-  const manifest: Manifest = {
+  writeManifest(runDir, {
     runId,
     scenarioId,
     scenarioTitle: scenario.title,
     startUrl: scenario.startUrl,
     modelIds: models.ids,
     sessions,
-  };
-  writeFileSync(manifestPath(runDir), JSON.stringify(manifest, null, 2));
+  });
 
   return runId;
 }
 
-function buildCorpus(runDir: string, includeExitReason: boolean): CorpusAnalysisInput {
+interface BuiltCorpus {
+  readonly corpus: CorpusAnalysisInput;
+  readonly facts: CorpusFacts;
+}
+
+function buildCorpus(runDir: string, includeExitReason: boolean): BuiltCorpus {
   const manifest = readManifest(runDir);
 
   const appOrigin = new URL(manifest.startUrl).origin;
@@ -151,20 +158,39 @@ function buildCorpus(runDir: string, includeExitReason: boolean): CorpusAnalysis
   });
 
   writeFileSync(join(runDir, "corpus.json"), JSON.stringify(corpus, null, 2));
-  return corpus;
+
+  const facts = buildCorpusFacts(corpus);
+  writeFileSync(join(runDir, "facts.json"), JSON.stringify(facts, null, 2));
+
+  say(`what the corpus counts (connected means: ${facts.definitionOfActivation})`);
+  for (const entry of facts.facts) say(`  ${factLine(entry)}`);
+
+  return { corpus, facts };
 }
 
 async function analyse(runDir: string): Promise<readonly AssessedProblem[]> {
   const env = readEvalEnv();
   const models = createEvalModels(env);
-  const corpus = buildCorpus(runDir, has("exit-reasons"));
+  const exitReasonsShown = has("exit-reasons");
+  const countsGiven = !has("counts-withheld");
+  const built = buildCorpus(runDir, exitReasonsShown);
 
-  const result = await analyseCorpus(models.analyser, corpus);
+  const result = await analyseCorpus(models.analyser, built.corpus, built.facts, { countsGiven });
   writeFileSync(
     join(runDir, "analysis.json"),
     JSON.stringify({ problems: result.problems, prompt: result.prompt }, null, 2),
   );
 
+  const manifest = readManifest(runDir);
+  const conditions: AnalysisConditions = {
+    countsGiven,
+    exitReasonsShown,
+    recordingsFrom: manifest.recordingsFrom ?? null,
+    analysedAt: new Date().toISOString(),
+  };
+  writeManifest(runDir, { ...manifest, conditions });
+
+  say(describeConditions(conditions));
   say(`analyser proposed ${String(result.problems.length)} problems`);
   return result.problems;
 }
@@ -183,6 +209,12 @@ async function score(runDir: string): Promise<void> {
     }
   ).problems;
 
+  const corpusPath = join(runDir, "corpus.json");
+  if (!existsSync(corpusPath)) throw new Error(`no corpus.json in ${runDir}; run corpus first`);
+  const facts = buildCorpusFacts(
+    corpusAnalysisInputSchema.parse(JSON.parse(readFileSync(corpusPath, "utf8"))),
+  );
+
   const key = loadAnswerKey(join(SCENARIOS_DIR, manifest.scenarioId));
   const deterministic = matchDeterministically(key, problems);
   const judged = await judgeUnresolvedMatches(models.judge, {
@@ -191,17 +223,20 @@ async function score(runDir: string): Promise<void> {
     unresolvedKeyIds: deterministic.unresolvedKeyIds,
   });
   const recommendationVerdicts = await judgeRecommendations(models.judge, problems);
+  const lead = await judgeHeadlineLead(models.judge, { facts, proposals: problems });
 
   const card = scoreCorpus({
     key,
     proposals: problems,
     matchVerdicts: [...deterministic.verdicts, ...judged],
     recommendationVerdicts,
+    facts,
+    lead,
   });
 
   writeFileSync(
     join(runDir, "scorecard.json"),
-    JSON.stringify({ scorecard: card, judged, recommendationVerdicts }, null, 2),
+    JSON.stringify({ scorecard: card, judged, recommendationVerdicts, lead }, null, 2),
   );
 
   const report = renderReport({
@@ -213,8 +248,11 @@ async function score(runDir: string): Promise<void> {
         `${session.sessionId} (${session.personaId}): ${session.outcome} after ${String(session.steps.length)} steps — ${session.outcomeReason ?? "(no reason)"}`,
     ),
     problems,
+    facts,
     scorecard: card,
-    exitReasonsShown: has("exit-reasons"),
+    // From the manifest, never from this command's own flags: the conditions belong to the
+    // analysis that produced these proposals, not to whoever is scoring it afterwards.
+    conditions: manifest.conditions,
   });
 
   writeFileSync(join(runDir, "report.md"), report);
@@ -229,15 +267,15 @@ if (command === "record") {
 } else if (command === "corpus") {
   const runId = flag("run", null);
   if (runId === null) throw new Error("--run is required");
-  buildCorpus(join(RUNS_DIR, runId), has("exit-reasons"));
+  buildCorpus(runDirFor(runId), has("exit-reasons"));
 } else if (command === "analyse") {
   const runId = flag("run", null);
   if (runId === null) throw new Error("--run is required");
-  await analyse(join(RUNS_DIR, runId));
+  await analyse(runDirFor(runId));
 } else if (command === "score") {
   const runId = flag("run", null);
   if (runId === null) throw new Error("--run is required");
-  await score(join(RUNS_DIR, runId));
+  await score(runDirFor(runId));
 } else if (command === "all") {
   const runId = await record();
   const runDir = join(RUNS_DIR, runId);

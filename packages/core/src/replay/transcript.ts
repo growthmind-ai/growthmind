@@ -31,7 +31,7 @@ export function tallyActions(actions: readonly SessionAction[]): TranscriptCount
 export function pagesOfActions(actions: readonly SessionAction[]): readonly string[] {
   const seen = new Set<string>();
   for (const action of actions) {
-    if (action.kind === "page") seen.add(action.href);
+    if (action.kind === "page" && action.href !== undefined) seen.add(action.href);
   }
   return [...seen];
 }

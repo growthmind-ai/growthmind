@@ -249,7 +249,9 @@ function transcriptOf(
     actions,
     startedAt,
     durationMs: actions.length * ACTION_STEP_MS,
-    pages: actions.flatMap((action) => (action.kind === "page" ? [action.href] : [])),
+    pages: actions.flatMap((action) =>
+      action.kind === "page" && action.href !== undefined ? [action.href] : [],
+    ),
     counts: countsOf(actions),
     droppedEvents,
     clockOriginAtMs: null,
