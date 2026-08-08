@@ -424,6 +424,7 @@ export function createRecordingSummariesRepo(
 
         stories.set(row.recordingId, {
           headline: text.held ? null : text.headline,
+          held: text.held,
           pages: pages.success ? pages.data : [],
         });
       }
