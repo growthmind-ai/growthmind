@@ -13,7 +13,7 @@ describe("the badge cap can never exceed the list limit", () => {
     expect(NOTIFICATION_BADGE_COUNT_CAP).toBeLessThanOrEqual(NOTIFICATION_LIST_LIMIT);
   });
 
-  test("the three constants are the ratified 10 / 20 / 30", () => {
+  test("the three constants are 10 / 20 / 30, and one home holds them", () => {
     expect(NOTIFICATION_BADGE_COUNT_CAP).toBe(10);
     expect(NOTIFICATION_LIST_LIMIT).toBe(20);
     expect(NOTIFICATION_WINDOW_DAYS).toBe(30);
