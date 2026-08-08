@@ -191,6 +191,28 @@ function decompressEventData(raw: string): { ok: true; data: unknown } | { ok: f
   }
 }
 
+// The cv marker's second form: an incremental mutation (type 3, source 0) keeps `data`
+// as an object and gzips these four fields individually. The replayer needs them as
+// arrays, so a compressed field reaching the browser breaks playback of that mutation.
+const COMPRESSED_MUTATION_FIELDS = ["adds", "removes", "texts", "attributes"] as const;
+
+const RRWEB_INCREMENTAL_SNAPSHOT = 3;
+const RRWEB_MUTATION_SOURCE = 0;
+
+function decompressMutationData(
+  data: Record<string, unknown>,
+): { ok: true; data: Record<string, unknown> } | { ok: false } {
+  const inflated: Record<string, unknown> = { ...data };
+  for (const field of COMPRESSED_MUTATION_FIELDS) {
+    const value = data[field];
+    if (typeof value !== "string") continue;
+    const decompressed = decompressEventData(value);
+    if (!decompressed.ok) return { ok: false };
+    inflated[field] = decompressed.data;
+  }
+  return { ok: true, data: inflated };
+}
+
 export function parseSnapshotJsonl(text: string): ParsedSnapshotJsonl {
   const events: RrwebEvent[] = [];
   const windowIds: string[] = [];
@@ -237,6 +259,16 @@ export function parseSnapshotJsonl(text: string): ParsedSnapshotJsonl {
         continue;
       }
       data = decompressed.data;
+    } else if (typeof rawEvent.cv === "string" && rawEvent.type === RRWEB_INCREMENTAL_SNAPSHOT) {
+      const mutation = asRecord(rawEvent.data);
+      if (mutation !== null && mutation.source === RRWEB_MUTATION_SOURCE) {
+        const decompressed = decompressMutationData(mutation);
+        if (!decompressed.ok) {
+          decompressionFailures += 1;
+          continue;
+        }
+        data = decompressed.data;
+      }
     }
 
     const parsedEvent = rrwebEventSchema.safeParse({

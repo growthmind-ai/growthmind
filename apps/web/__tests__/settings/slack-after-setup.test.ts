@@ -11,7 +11,11 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-import { ONBOARDING_MESSAGES, SLACK_CONNECTION_FIELDS } from "@growthmind/shared";
+import {
+  buildDeliveryCard,
+  ONBOARDING_MESSAGES,
+  SLACK_CONNECTION_FIELDS,
+} from "@growthmind/shared";
 
 import { SlackConnection } from "../../components/slack/SlackConnection";
 import { blankComments, readExisting } from "../first-run/helpers/first-run-source";
@@ -124,10 +128,43 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(code).toContain("<SlackConnection");
     expect(code).toMatch(/skippable=\{false\}/);
     expect(code).toMatch(/\binteractive\b/);
-    expect(code).toContain("settingsNoDelivery");
 
     // The posting sentence lives on the settled control — the only state with an address.
     expect(controls).toContain("settingsPostingTemplate");
+  });
+
+  // The sentence used to be mounted by the page; it is now the delivery card's own
+  // statement, so it is asserted where it is decided rather than where it is rendered.
+  test("a founder with no workspace is still told findings have nowhere to arrive", () => {
+    const card = buildDeliveryCard({
+      providerId: null,
+      workspaceAttached: false,
+      workspaceName: null,
+      channelId: null,
+      channelLabel: null,
+      connectedAt: null,
+      nowMs: Date.parse("2026-08-07T12:00:00Z"),
+    });
+
+    expect(card.statement).toBe(ONBOARDING_MESSAGES.settingsNoDelivery);
+  });
+
+  // B-035 was a control nobody could reach. The card that names Slack is the same class
+  // of miss one layer up: the workspace was read and never rendered, so the section said
+  // a channel and never which product it belonged to (D11).
+  test("a connected workspace names Slack, not only the channel", () => {
+    const card = buildDeliveryCard({
+      providerId: "slack",
+      workspaceAttached: true,
+      workspaceName: "Acme",
+      channelId: "C01AB2CD3EF",
+      channelLabel: "issues",
+      connectedAt: new Date("2026-08-04T12:00:00Z"),
+      nowMs: Date.parse("2026-08-07T12:00:00Z"),
+    });
+
+    expect(card.headline).toBe("Slack");
+    expect(card.facts.map((fact) => fact.value)).toContain("Acme");
   });
 
   test("the page reads the connection at organization scope, so a teammate can finish it", () => {
@@ -162,9 +199,13 @@ describe("B-035 — somewhere to connect Slack after setup has retired", () => {
     expect(code).toContain("<PrivacyReceipt");
     expect(code).toContain("<SlackDeliveryControls");
 
-    for (const group of ["settingsSourceGroup", "settingsDeliveryGroup", "settingsExcludedGroup"]) {
-      expect(code).toContain(group);
+    // Each rail gets a card that names the product behind it — the group titles that
+    // named only the rail ("What it reads") never said who was being read.
+    for (const card of ["buildProductCard", "buildAnalyticsCard", "buildDeliveryCard"]) {
+      expect(code).toContain(card);
     }
+
+    expect(code).toContain("settingsExcludedGroup");
   });
 
   test("the terminal setup state mounts the card itself rather than linking away", () => {

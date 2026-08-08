@@ -18,10 +18,7 @@ const ROOT: NavGroup = {
 
 const FINDINGS: NavItem = { href: ROUTES.findings, label: "Findings" };
 
-const RECORDINGS: NavItem = { href: ROUTES.replays, label: "Recordings" };
-
-// Same connection as Recordings, one level up: sessions grouped by account.
-const COMPANIES: NavItem = { href: ROUTES.companies, label: "Companies" };
+const REPLAYS: NavItem = { href: ROUTES.replays, label: "Replays" };
 
 // Slack first: that is where the work arrives, pushed rather than pulled.
 const CHANNEL: NavItem = { href: ROUTES.channel, label: "In Slack" };
@@ -30,14 +27,7 @@ const FIXES: NavItem = { href: ROUTES.fixes, label: "Fixes" };
 
 const WORK: NavGroup = {
   label: "Work",
-  items: [
-    CHANNEL,
-    FINDINGS,
-    FIXES,
-    { href: ROUTES.experiments, label: "Experiments" },
-    RECORDINGS,
-    COMPANIES,
-  ],
+  items: [CHANNEL, FINDINGS, FIXES, { href: ROUTES.experiments, label: "Experiments" }, REPLAYS],
 };
 
 // Everything here reads real rows under the org's own tenant context, so it answers for
@@ -45,7 +35,7 @@ const WORK: NavGroup = {
 // fixtures: verdicts do not exist as data at all until O-028 and O-034.
 const WORK_LIVE: NavGroup = {
   label: "Work",
-  items: [CHANNEL, FINDINGS, FIXES, RECORDINGS, COMPANIES],
+  items: [CHANNEL, FINDINGS, FIXES, REPLAYS],
 };
 
 const AGENT: NavItem = { href: ROUTES.agent, label: "Your agent" };

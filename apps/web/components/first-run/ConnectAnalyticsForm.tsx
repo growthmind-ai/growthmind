@@ -56,7 +56,9 @@ interface ConnectAnalyticsFormProps {
   readonly step: WorkStep;
   readonly view: StepView;
 
-  readonly connectionMessage: string;
+  // Null where the surface around the form already states the connection's state, which
+  // would otherwise print the same sentence twice on one screen.
+  readonly connectionMessage: string | null;
 
   readonly providerInterest: readonly InterestProviderId[];
   readonly interestPingAvailable: boolean;
@@ -268,9 +270,11 @@ export function ConnectAnalyticsForm(props: ConnectAnalyticsFormProps) {
 
   return (
     <Stack gap="sm">
-      <Text size="sm" c="dimmed">
-        {connectionMessage}
-      </Text>
+      {connectionMessage === null ? null : (
+        <Text size="sm" c="dimmed">
+          {connectionMessage}
+        </Text>
+      )}
 
       {attached || discovery === null ? null : (
         <Stack gap="xs">

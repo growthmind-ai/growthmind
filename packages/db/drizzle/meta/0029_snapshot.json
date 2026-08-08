@@ -1,5 +1,5 @@
 {
-  "id": "b834a5ca-f3cb-4da6-9182-2301f824f047",
+  "id": "37997e6f-d753-4c1c-b7a2-370290f1c4f5",
   "prevId": "d401cb6f-de79-4d40-be3c-8a15377493cf",
   "version": "7",
   "dialect": "postgresql",
@@ -789,102 +789,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.notification_mutes": {
-      "name": "notification_mutes",
-      "schema": "",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "class": {
-          "name": "class",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "notification_mutes_org_user_idx": {
-          "name": "notification_mutes_org_user_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "notification_mutes_organization_id_organization_id_fk": {
-          "name": "notification_mutes_organization_id_organization_id_fk",
-          "tableFrom": "notification_mutes",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "notification_mutes_user_id_user_id_fk": {
-          "name": "notification_mutes_user_id_user_id_fk",
-          "tableFrom": "notification_mutes",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "notification_mutes_organization_id_user_id_class_pk": {
-          "name": "notification_mutes_organization_id_user_id_class_pk",
-          "columns": [
-            "organization_id",
-            "user_id",
-            "class"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.notification_reads": {
       "name": "notification_reads",
       "schema": "",
@@ -1045,12 +949,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "channel_label": {
-          "name": "channel_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "message_ref": {
           "name": "message_ref",
           "type": "text",
@@ -1059,12 +957,6 @@
         },
         "sent_at": {
           "name": "sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "claimed_at": {
-          "name": "claimed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -1148,67 +1040,6 @@
           "tableTo": "notifications",
           "columnsFrom": [
             "notification_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.notification_settings": {
-      "name": "notification_settings",
-      "schema": "",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "digest_cadence": {
-          "name": "digest_cadence",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'weekly'"
-        },
-        "digest_day": {
-          "name": "digest_day",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'monday'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "notification_settings_organization_id_organization_id_fk": {
-          "name": "notification_settings_organization_id_organization_id_fk",
-          "tableFrom": "notification_settings",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -1316,39 +1147,6 @@
           "columns": [
             {
               "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "notifications_org_type_subject_created_at_idx": {
-          "name": "notifications_org_type_subject_created_at_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2638,6 +2436,36 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "recording_duration_seconds": {
+          "name": "recording_duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_active_seconds": {
+          "name": "recording_active_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_click_count": {
+          "name": "recording_click_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_keypress_count": {
+          "name": "recording_keypress_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_console_error_count": {
+          "name": "recording_console_error_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "internal_domain_at_stamp": {
           "name": "internal_domain_at_stamp",

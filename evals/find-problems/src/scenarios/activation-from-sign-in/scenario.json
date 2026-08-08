@@ -1,0 +1,68 @@
+{
+  "id": "activation-from-sign-in",
+  "title": "Getting Growthmind watching your product, starting from the sign-in wall",
+  "startUrl": "http://localhost:3000/sign-in",
+  "viewport": { "width": 1280, "height": 800 },
+  "personas": [
+    {
+      "id": "vibe-builder",
+      "label": "someone who ships side projects with a coding assistant and has never hired anyone for growth",
+      "intent": "You heard this thing watches your product and tells you what is losing you users. You want it watching your product, today, and then you want to get back to building.",
+      "patience": "medium",
+      "technicalConfidence": "medium",
+      "maxSteps": 16,
+      "facts": {
+        "your name": "Sam Okafor",
+        "your email": "eval-{run}-vibe@example.com",
+        "a password you would use": "correct-horse-42",
+        "your product": "Lanternote, a note-taking app",
+        "your product's website": "https://lanternote.example.com"
+      }
+    },
+    {
+      "id": "sceptical-founder",
+      "label": "a non-technical founder whose developer sent them this link",
+      "intent": "Someone told you this finds the problems in your product before your customers complain. You want to see whether that is actually true before you spend any real time on it.",
+      "patience": "low",
+      "technicalConfidence": "low",
+      "maxSteps": 12,
+      "facts": {
+        "your name": "Priya Raman",
+        "your email": "eval-{run}-founder@example.com",
+        "a password you would use": "lighthouse-orbit-9",
+        "your product": "Cadenza, a scheduling app for music teachers",
+        "your product's website": "https://cadenza.example.com"
+      }
+    },
+    {
+      "id": "engineer-in-a-hurry",
+      "label": "a senior engineer who has been asked to evaluate this by lunchtime",
+      "intent": "You want this set up end to end, so that whatever it finds turns up where your team already talks rather than in another dashboard nobody opens.",
+      "patience": "high",
+      "technicalConfidence": "high",
+      "maxSteps": 20,
+      "facts": {
+        "your name": "Dan Whitlock",
+        "your email": "eval-{run}-eng@example.com",
+        "a password you would use": "kestrel-manifold-3",
+        "your product": "Ferrytide, a logistics dashboard",
+        "your product's website": "https://ferrytide.example.com"
+      }
+    },
+    {
+      "id": "just-looking",
+      "label": "someone who followed a link from a newsletter and is only browsing",
+      "intent": "You want to work out what this product actually does before you hand over anything about your own product. If you cannot tell, you will close the tab.",
+      "patience": "low",
+      "technicalConfidence": "medium",
+      "maxSteps": 10,
+      "facts": {
+        "your name": "Alex Berger",
+        "your email": "eval-{run}-look@example.com",
+        "a password you would use": "tangerine-vault-6",
+        "your product": "not saying yet",
+        "your product's website": "not saying yet"
+      }
+    }
+  ]
+}

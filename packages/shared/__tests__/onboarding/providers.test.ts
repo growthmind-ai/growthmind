@@ -99,7 +99,7 @@ describe("the provider catalogue — AD-4, W-1, W-2", () => {
   test("the analytics rail names exactly one live provider, posthog", async () => {
     const catalogue = await loadCatalogue();
 
-    expect(catalogue).toHaveLength(11);
+    expect(catalogue).toHaveLength(12);
 
     const analytics = catalogue.filter((entry) => entry.rail === "analytics");
     expect(analytics.filter((entry) => entry.live).map((entry) => entry.id)).toEqual(["posthog"]);
@@ -108,11 +108,23 @@ describe("the provider catalogue — AD-4, W-1, W-2", () => {
     expect(liveCode.map((entry) => entry.id)).toEqual([]);
   });
 
+  // The rail exists so delivery has a provider identity to name. Before it, the settings
+  // screen could say a channel but never which product the channel belonged to.
+  test("the delivery rail names exactly one live provider, slack", async () => {
+    const catalogue = await loadCatalogue();
+
+    const delivery = catalogue.filter((entry) => entry.rail === "delivery");
+    expect(delivery.map((entry) => entry.id)).toEqual(["slack"]);
+    expect(delivery.filter((entry) => entry.live).map((entry) => entry.id)).toEqual(["slack"]);
+  });
+
   test("every descriptor carries a non-empty display name and a rail from PROVIDER_RAILS", async () => {
     const catalogue = await loadCatalogue();
     const rails = await loadRails();
 
-    expect([...rails].toSorted()).toEqual(["analytics", "code", "coding-assistant"].toSorted());
+    expect([...rails].toSorted()).toEqual(
+      ["analytics", "code", "coding-assistant", "delivery"].toSorted(),
+    );
 
     const unnamed = catalogue.filter((entry) => entry.displayName.trim().length === 0);
     expect(unnamed.map((entry) => entry.id)).toEqual([]);
@@ -187,7 +199,7 @@ describe("the coding-assistant rail goes live — O-026 D-8, D-10", () => {
 
     // Every member of the ProviderId union, so the `?? id` fallback is unreachable.
     const offenders: string[] = [];
-    for (const id of [...interestIds, "posthog"]) {
+    for (const id of [...interestIds, "posthog", "slack"]) {
       const name = providerDisplayName(id);
       if (name.trim().length === 0) offenders.push(`${id} resolves to nothing`);
       if (name === id) offenders.push(`${id} falls back to its own id`);

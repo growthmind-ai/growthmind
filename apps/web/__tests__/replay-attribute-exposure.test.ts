@@ -37,7 +37,10 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "app/(app)/agent/page.tsx": { bindings: 1, kind: "our-copy" },
   // The page title, a constant of ours. The counts /data renders never reach an attribute.
   "app/(app)/data/page.tsx": { bindings: 1, kind: "our-copy" },
-  "app/(app)/settings/page.tsx": { bindings: 5, kind: "our-copy" },
+  // Three section titles, all constants of ours. The connection cards took the other two:
+  // what they render — the domain, the workspace, the channel — is text, which rrweb masks,
+  // and none of it reaches an attribute.
+  "app/(app)/settings/page.tsx": { bindings: 3, kind: "our-copy" },
   "components/settings/BusinessContext.tsx": { bindings: 1, kind: "our-copy" },
   // The inline fact editor has no visible label, so it names itself with a constant of
   // ours. B-049's rule holds: what reaches the attribute is our copy, never the fact.
@@ -62,6 +65,12 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "components/first-run/Strip.tsx": { bindings: 1, kind: "our-copy" },
   "components/landing/workspace-name.tsx": { bindings: 1, kind: "our-copy" },
   "components/preview/StartInChannel.tsx": { bindings: 1, kind: "our-copy" },
+  // The pill's own name is composed from text nodes via aria-labelledby, so what is left here is
+  // the clear control's sentence, the bar's group name, and a variant from a closed union.
+  "components/replay/filters/FilterBar.tsx": { bindings: 3, kind: "our-copy" },
+  // The axis word twice (dialog and listbox), the search placeholder — an example we authored,
+  // never a real domain — and a zero flag. Every option's label reaches the name as text.
+  "components/replay/filters/FilterPanel.tsx": { bindings: 4, kind: "our-copy" },
   "components/slack/SlackConnection.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/CopyableBlock.tsx": { bindings: 1, kind: "our-copy" },
   "components/ui/Logo.tsx": { bindings: 1, kind: "our-copy" },

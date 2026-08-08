@@ -183,8 +183,8 @@ describe("sessions repository", () => {
     expect(await repo.findByKey(otherProject.id, sessionKey)).toBeNull();
   });
 
-  describe("listGroupableSessions and listSessionsForDomain", () => {
-    it("excludes sessions with a null identityEmailDomain", async () => {
+  describe("listSessions", () => {
+    it("excludes sessions with a null identityEmailDomain, and a synthetic one from the real lane", async () => {
       const { ctx, projectId, connectionId } = await setUp(db, "groupable-null-domain");
       const repo = createSessionsRepo(db, ctx);
 
@@ -204,13 +204,33 @@ describe("sessions repository", () => {
         identityEmailDomain: null,
         startedAt: LATE,
       });
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
+        sessionKey: "ph:db-se-groupable-synthetic",
+        identityEmailDomain: "acme.example",
+        origin: "synthetic",
+        startedAt: LATE,
+      });
 
-      const result = await repo.listGroupableSessions(projectId, { limit: 50 });
+      const result = await repo.listSessions(
+        { projectId, lane: "real", hasIdentityEmailDomain: true },
+        { limit: 50 },
+      );
 
       expect(result.sessions.map((session) => session.sessionKey)).toEqual([
         "ph:db-se-groupable-with-domain",
       ]);
       expect(result.truncated).toBe(false);
+
+      const simulated = await repo.listSessions(
+        { projectId, lane: "simulated", hasIdentityEmailDomain: true },
+        { limit: 50 },
+      );
+      expect(simulated.sessions.map((session) => session.sessionKey)).toEqual([
+        "ph:db-se-groupable-synthetic",
+      ]);
     });
 
     it("orders by startedAt descending and sets truncated:true when a seeded limit+1 rows exceeds the cap", async () => {
@@ -230,7 +250,10 @@ describe("sessions repository", () => {
         });
       }
 
-      const result = await repo.listGroupableSessions(projectId, { limit });
+      const result = await repo.listSessions(
+        { projectId, lane: "real", hasIdentityEmailDomain: true },
+        { limit },
+      );
 
       expect(result.sessions).toHaveLength(limit);
       expect(result.truncated).toBe(true);
@@ -238,7 +261,7 @@ describe("sessions repository", () => {
       expect(startedAts).toEqual([...startedAts].toSorted((a, b) => b - a));
     });
 
-    it("listSessionsForDomain returns only sessions matching the exact domain, most recent first, when two domains are seeded in the same project", async () => {
+    it("returns only sessions matching the exact domain in the named lane, most recent first, when two domains are seeded in the same project", async () => {
       const { ctx, projectId, connectionId } = await setUp(db, "domain-filter");
       const repo = createSessionsRepo(db, ctx);
 
@@ -262,21 +285,41 @@ describe("sessions repository", () => {
         organizationId: ctx.organizationId,
         projectId,
         connectionId,
+        sessionKey: "ph:db-se-domain-a-internal",
+        identityEmailDomain: "acme.example",
+        exclusionReason: "internal_domain",
+        startedAt: LATE,
+      });
+      await seedSession(db, {
+        organizationId: ctx.organizationId,
+        projectId,
+        connectionId,
         sessionKey: "ph:db-se-domain-b-1",
         identityEmailDomain: "other.example",
         startedAt: MIDDLE,
       });
 
-      const result = await repo.listSessionsForDomain(projectId, "acme.example", { limit: 50 });
+      const result = await repo.listSessions(
+        { projectId, lane: "real", identityEmailDomain: "acme.example" },
+        { limit: 50 },
+      );
 
       expect(result.sessions.map((session) => session.sessionKey)).toEqual([
         "ph:db-se-domain-a-2",
         "ph:db-se-domain-a-1",
       ]);
       expect(result.truncated).toBe(false);
+
+      const excluded = await repo.listSessions(
+        { projectId, lane: "excluded", identityEmailDomain: "acme.example" },
+        { limit: 50 },
+      );
+      expect(excluded.sessions.map((session) => session.sessionKey)).toEqual([
+        "ph:db-se-domain-a-internal",
+      ]);
     });
 
-    it("listSessionsForDomain sets truncated:true when one domain's session count exceeds cap", async () => {
+    it("sets truncated:true when one domain's session count exceeds cap", async () => {
       const { ctx, projectId, connectionId } = await setUp(db, "domain-truncate");
       const repo = createSessionsRepo(db, ctx);
       const limit = 2;
@@ -292,7 +335,10 @@ describe("sessions repository", () => {
         });
       }
 
-      const result = await repo.listSessionsForDomain(projectId, "acme.example", { limit });
+      const result = await repo.listSessions(
+        { projectId, lane: "real", identityEmailDomain: "acme.example" },
+        { limit },
+      );
 
       expect(result.sessions).toHaveLength(limit);
       expect(result.truncated).toBe(true);

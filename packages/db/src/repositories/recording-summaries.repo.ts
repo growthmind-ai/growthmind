@@ -2,6 +2,7 @@ import {
   DETECTOR_CORPUS_MAX_SESSIONS,
   readPersistedTranscript,
   type PersistedSessionAction,
+  type ReplayRowSummary,
 } from "@growthmind/core";
 import { summarySourceSchema, type SummarySource, type TenantContext } from "@growthmind/shared";
 import type { ReplaySourceKind } from "@growthmind/shared";
@@ -145,6 +146,14 @@ export interface RecordingSummariesRepo {
   refreshFailedPull(input: RefreshFailedPullInput): Promise<RecordingSummaryRecord | null>;
 
   latestStartedAt(projectId: string): Promise<Date | null>;
+
+  // What the replay list needs and nothing else: a headline and a page list per recording, for
+  // the rows on one screen. Keyed by recording id rather than session key, because a summary
+  // written before 0021 has no session key and would otherwise be invisible to the list.
+  storiesFor(
+    projectId: string,
+    recordingIds: readonly string[],
+  ): Promise<ReadonlyMap<string, ReplayRowSummary>>;
 
   citationsFor(
     projectId: string,
@@ -378,6 +387,49 @@ export function createRecordingSummariesRepo(
         .limit(1);
 
       return row?.startedAt ?? null;
+    },
+
+    async storiesFor(
+      projectId: string,
+      recordingIds: readonly string[],
+    ): Promise<ReadonlyMap<string, ReplayRowSummary>> {
+      if (recordingIds.length === 0) {
+        return new Map<string, ReplayRowSummary>();
+      }
+
+      const rows = await db
+        .select({
+          recordingId: recordingSummaries.recordingId,
+          headline: recordingSummaries.headline,
+          context: recordingSummaries.context,
+          pages: recordingSummaries.pages,
+        })
+        .from(recordingSummaries)
+        .where(
+          s.owned(
+            recordingSummaries,
+            eq(recordingSummaries.projectId, projectId),
+            inArray(recordingSummaries.recordingId, [...recordingIds]),
+          ),
+        );
+
+      const stories = new Map<string, ReplayRowSummary>();
+
+      for (const row of rows) {
+        const text = readFindingText(row);
+
+        // safeParse, not parse: one row holding a page list from an older shape must cost that
+        // row its tags, never the whole screen (D5).
+        const pages = pagesSchema.safeParse(row.pages);
+
+        stories.set(row.recordingId, {
+          headline: text.held ? null : text.headline,
+          held: text.held,
+          pages: pages.success ? pages.data : [],
+        });
+      }
+
+      return stories;
     },
 
     async citationsFor(

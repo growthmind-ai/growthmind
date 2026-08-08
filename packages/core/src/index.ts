@@ -386,6 +386,11 @@ export {
   ROLE_ATTRIBUTE,
   TEST_ID_ATTRIBUTE,
   TYPE_ATTRIBUTE,
+  LABEL_FOR_ATTRIBUTE,
+  LABEL_TAG_NAME,
+  ARIA_HIDDEN_ATTRIBUTE,
+  ARIA_HIDDEN_VALUE,
+  UNNAMED_TAG_NAMES,
   indexDomSegments,
   segmentAt,
   resolveIdentity,
@@ -400,10 +405,14 @@ export {
 } from "./replay/nodes";
 export {
   DESCRIBE_ATTRIBUTE_PRECEDENCE,
+  DESCRIBE_SEMANTIC_PRECEDENCE,
+  DESCRIBE_NAME_LABEL,
   DESCRIBE_MAX_CLASSES,
   DESCRIBE_VALUE_MAX_LENGTH,
   DESCRIBE_TRUNCATION_MARKER,
+  DESCRIBE_IDENTIFIER_VALUE,
   describeElement,
+  type SemanticSource,
 } from "./replay/describe";
 export {
   RAGE_CLICK_MIN_CLICKS,
@@ -471,6 +480,44 @@ export { gradeOf } from "./divergence/grade";
 export { sampleSessionIds } from "./divergence/sample";
 
 export { funnelDropoffCohorts, type FunnelDropoffCohort } from "./detect/funnel-dropoff-cohorts";
+
+export { LANE_BY_EXCLUSION_REASON, laneOf } from "./replay-filters/lanes";
+export {
+  listFacet,
+  companyFacet,
+  entryFacet,
+  laneFacet,
+  type FacetInput,
+  type FacetOption,
+  type FacetAccessor,
+  type FacetUniverse,
+  type ReplayFacet,
+} from "./replay-filters/facets";
+export {
+  selectReplaySessions,
+  toReplayRow,
+  type ReplayListRow,
+  type ReplayProvenance,
+  type ReplaySelection,
+} from "./replay-filters/select";
+export {
+  REPLAY_ROW_PAGE_TAG_CAP,
+  replayRowStory,
+  type ReplayRowNarration,
+  type ReplayRowStory,
+  type ReplayRowSummary,
+} from "./replay-filters/row-story";
+export {
+  wayOut,
+  wayOutAction,
+  wayOutBody,
+  type ReplayRelaxTarget,
+  type ReplayWayOut,
+  type ReplayOutcome,
+  type WayOutInput,
+} from "./replay-filters/way-out";
+export { provenanceSentence, tailNote } from "./replay-filters/provenance";
+export { fill } from "./replay-filters/template";
 
 export { type CauseBeatEvidence, type CauseClaim } from "./cause/types";
 export { guardCauseText, type CauseGuardVerdict } from "./cause/guard";

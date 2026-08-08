@@ -6,6 +6,10 @@ export type ElementIdentity = {
   readonly role?: string;
   readonly testId?: string;
 
+  // What a person would call this control, taken from developer-authored text bound to it and
+  // held to the same one clean token an attribute value is (B-052). No element key reads it.
+  readonly accessibleName?: string;
+
   readonly attributes: Readonly<Record<string, string>>;
 };
 

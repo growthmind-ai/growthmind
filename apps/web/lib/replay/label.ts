@@ -1,3 +1,5 @@
+import type { RecordingMetaStamp } from "@growthmind/shared";
+
 export const MAX_LABEL_CHARS = 72;
 
 export interface RecordingLabel {
@@ -10,8 +12,11 @@ export interface TimeOnPage {
   readonly total: string | null;
 }
 
-function duration(value: unknown): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+// Negatives and non-finite values only: a measured zero is a real reading — a tab opened and
+// never touched — and rejecting it would render it identically to the null that says we never
+// measured. Both columns are seconds, so the arithmetic below is unchanged.
+function duration(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value) || value < 0) {
     return null;
   }
   const minutes = Math.floor(value / 60);
@@ -20,9 +25,11 @@ function duration(value: unknown): string | null {
 
 // `total` comes back only when it says something the badge does not: absent when there is
 // no active time to compare it against, and absent when a session was active throughout.
-export function timeOnPage(meta: Record<string, unknown>): TimeOnPage | null {
-  const total = duration(meta.recording_duration);
-  const active = duration(meta.active_seconds);
+export function timeOnPage(
+  meta: Pick<RecordingMetaStamp, "durationSeconds" | "activeSeconds">,
+): TimeOnPage | null {
+  const total = duration(meta.durationSeconds);
+  const active = duration(meta.activeSeconds);
 
   if (active === null) {
     return total === null ? null : { badge: total, total: null };

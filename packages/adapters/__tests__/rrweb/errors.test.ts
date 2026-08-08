@@ -81,9 +81,13 @@ describe("mapRrwebFailure", () => {
     expect(map(500, { detail: "Internal Server Error" }, "events").code).toBe("unreachable");
   });
 
-  test("the missing_read_scope message names app.rrweb.com/api-keys and never the vendor's own wording", () => {
+  // Updated with the behaviour, not softened: O-050 D-10 removed the app.rrweb.com address this
+  // row used to demand, because the shipped source is PostHog. What the row is really for — our
+  // own sentence replacing the vendor's — is unchanged and still asserted.
+  test("the missing_read_scope message names the action, no vendor address, and never the vendor's own wording", () => {
     const failure = map(401, AD_MISSING_SCOPE_TEXT_BODY, "events");
-    expect(failure.message).toContain("app.rrweb.com/api-keys");
+    expect(failure.message).toContain("read access");
+    expect(failure.message).not.toMatch(/\b[a-z0-9-]+\.(?:com|io|net|dev|org|ai|app)\b/i);
     expect(failure.message).not.toBe(AD_MISSING_SCOPE_TEXT_BODY);
     expect(failure.message).not.toContain("missing scope read:recordingMetadata");
   });

@@ -2,7 +2,7 @@ import { REPLAY_FAILURE_MESSAGES, REPLAY_NO_CONNECTION } from "@growthmind/share
 
 import type { ReplaySourceRefusal } from "./deps";
 
-const SIGNED_OUT_MESSAGE = "Sign in to watch your recordings.";
+const SIGNED_OUT_MESSAGE = "Sign in to watch your replays.";
 
 export function listRefusal(code: "signed_out"): Response {
   return Response.json({ code, message: SIGNED_OUT_MESSAGE }, { status: 401 });

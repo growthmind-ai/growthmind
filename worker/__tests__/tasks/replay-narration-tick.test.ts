@@ -2,11 +2,15 @@ import { describe, expect, test } from "bun:test";
 
 import type { ReplaySource } from "@growthmind/adapters";
 import { NARRATION_MAX_ACTIONS, buildTranscript, compactTranscript } from "@growthmind/core";
+import type { ReplayRowSummary } from "@growthmind/core";
 import type {
   PersistRecordingSummaryInput,
+  RecordingMetaStamp,
   RecordingSummariesRepo,
   RecordingSummaryRecord,
   RefreshFailedPullInput,
+  SessionRecord,
+  SessionsRepo,
 } from "@growthmind/db";
 import type {
   ReplayEventsResult,
@@ -30,13 +34,85 @@ const LANE: ReplayLane = {
 
 const CTX = { organizationId: "org-1", actorId: "system" } as unknown as TenantContext;
 
-function recording(id: string, startedAt = "2026-08-05T09:00:00.000Z"): ReplayRecordingSummary {
+function recording(
+  id: string,
+  startedAt = "2026-08-05T09:00:00.000Z",
+  meta: Record<string, unknown> = {},
+): ReplayRecordingSummary {
   return {
     recordingId: id,
     startedAt: new Date(startedAt),
     lastActivityAt: new Date(startedAt),
-    meta: {},
+    meta,
   };
+}
+
+// The four values the listing carries for the ratified columns (decision 0020, amended
+// 2026-08-07). `recording_duration` is seconds and the column is seconds: pass-through.
+const LISTED_META = {
+  recording_duration: 42,
+  active_seconds: 30,
+  click_count: 7,
+  keypress_count: 3,
+  mouse_activity_count: 11,
+  console_error_count: 2,
+  start_url: "https://example.com/pricing",
+};
+
+const STAMPED_META: RecordingMetaStamp = {
+  durationSeconds: 42,
+  activeSeconds: 30,
+  clickCount: 7,
+  keypressCount: 3,
+  consoleErrorCount: 2,
+};
+
+// A x1000 on either seconds field would store 42000 for a measured 42 — three digits of
+// precision the source never had, which is the amendment's whole argument. Both columns
+// take the source value unchanged, so a conversion fails by name rather than by rounding.
+const converted = (seconds: number): readonly number[] => [seconds * 1000, seconds / 1000];
+
+interface Stamp {
+  readonly projectId: string;
+  readonly sessionKey: string;
+  readonly meta: RecordingMetaStamp;
+}
+
+// One home for the fake's identity scope, so the write and the read cannot drift apart and
+// turn a missed stamp into a missed lookup.
+const stampKey = (projectId: string, sessionKey: string): string =>
+  `${projectId}::${sessionKey}`;
+
+const unused =
+  (name: string) =>
+  (): never => {
+    throw new Error(`fakeSessions: the narration tick must not call ${name}`);
+  };
+
+// The repository returns the row it updated, and null when the key matched none. A fake that
+// always returned null would hide the tick's report of exactly that.
+const MATCHED_ROW = { id: "session-row" } as SessionRecord;
+
+// Loud on every method the tick has no business calling: a silent stub here would let the
+// stamp land through a path D-13 never described.
+function fakeSessions(onStamp?: () => SessionRecord | null) {
+  const stamps: Stamp[] = [];
+  const rows = new Map<string, RecordingMetaStamp>();
+
+  const repo: SessionsRepo = {
+    upsertMany: unused("upsertMany"),
+    listForProject: unused("listForProject"),
+    findByKey: unused("findByKey"),
+    listSessions: unused("listSessions"),
+    stampRecordingMeta: (projectId, sessionKey, meta) => {
+      const stamped = onStamp === undefined ? MATCHED_ROW : onStamp();
+      stamps.push({ projectId, sessionKey, meta });
+      rows.set(stampKey(projectId, sessionKey), meta);
+      return Promise.resolve(stamped);
+    },
+  };
+
+  return { repo, stamps, rows };
 }
 
 // A meta snapshot then a click: enough for the transcript to have something to say.
@@ -143,6 +219,19 @@ function fakeRepo() {
 
       return Promise.resolve(newest);
     },
+    // Built from the rows this fake actually holds: the tick never reads it, and a stub that
+    // returned an empty map would agree with a broken persist just as happily.
+    storiesFor: (projectId, recordingIds) => {
+      const stories = new Map<string, ReplayRowSummary>();
+
+      for (const id of recordingIds) {
+        const row = rowFor(id);
+        if (row === undefined || row.projectId !== projectId) continue;
+        stories.set(id, { headline: row.headline, held: false, pages: row.pages });
+      }
+
+      return Promise.resolve(stories);
+    },
     citationsFor: () => Promise.resolve([]),
   };
 
@@ -164,11 +253,13 @@ type Overrides = Partial<ReplayNarrationDeps> & { readonly narrate?: () => Summa
 function depsFor(rows: ReturnType<typeof fakeRepo>, overrides: Overrides = {}) {
   const logs: string[] = [];
   const narrate = overrides.narrate ?? okNarration;
+  const sessions = fakeSessions();
 
   const deps: ReplayNarrationDeps = {
     lanes: { listDueLanes: () => Promise.resolve([LANE]) },
     sourceFor: () => Promise.resolve({ ok: true, source: fakeSource() }),
     summariesFor: () => rows.repo,
+    sessionsFor: () => sessions.repo,
     contextFor: () => CTX,
     narrator: { port: { narrate: () => Promise.resolve(narrate()) }, resolvedModelId: MODEL_ID },
     perProjectCap: 10,
@@ -182,7 +273,7 @@ function depsFor(rows: ReturnType<typeof fakeRepo>, overrides: Overrides = {}) {
     ...overrides,
   };
 
-  return { deps, logs };
+  return { deps, logs, sessions };
 }
 
 describe("a recording always ends with a summary", () => {
@@ -1091,5 +1182,260 @@ describe("the tick carries a ceiling of its own, because the lane list carries n
     expect(pulled.every((recordingId) => recordingId.startsWith(LANE.projectId))).toBe(true);
     expect(outcome.lanesRead).toBe(1);
     expect(logs.join(" ")).toContain("reached its ceiling");
+  });
+});
+
+// The stamp is a side effect on a running task (ADD D-13): D4 says it must survive a replay
+// and a missing session row, D8 says its failure must not cost a narration.
+describe("the session row is stamped with the recording's meta", () => {
+  const METERED = recording("rec-1", "2026-08-05T09:00:00.000Z", LISTED_META);
+
+  function meteredDeps(store: ReturnType<typeof fakeRepo>, overrides: Overrides = {}) {
+    return depsFor(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({ listRecordings: () => Promise.resolve(listOk([METERED])) }),
+        }),
+      ...overrides,
+    });
+  }
+
+  test("should stamp the session row and persist the recording summary in one pass", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store);
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.summarised).toBe(1);
+    expect(store.rows).toHaveLength(1);
+    expect(sessions.stamps).toEqual([
+      { projectId: LANE.projectId, sessionKey: "ph:rec-1", meta: STAMPED_META },
+    ]);
+  });
+
+  test("should carry the listed duration through as seconds, converting nothing", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store);
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta.durationSeconds;
+    expect(stamped).toBe(LISTED_META.recording_duration);
+    expect(converted(LISTED_META.recording_duration)).not.toContain(stamped);
+  });
+
+  test("should carry the listed active seconds through as seconds, converting nothing", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store);
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta.activeSeconds;
+    expect(stamped).toBe(LISTED_META.active_seconds);
+    expect(converted(LISTED_META.active_seconds)).not.toContain(stamped);
+  });
+
+  test("should stamp on a retry attempt as well as a first attempt", async () => {
+    const store = fakeRepo();
+    let pulls = 0;
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk([METERED])),
+            pullEvents: () => {
+              pulls += 1;
+              return Promise.resolve(
+                pulls === 1 ? partialPull(eventsFor()) : eventsOk(manyEvents(4)),
+              );
+            },
+          }),
+        }),
+    });
+
+    const first = await runReplayNarrationTick(deps);
+    const second = await runReplayNarrationTick(deps);
+
+    expect(first.summarised).toBe(1);
+    expect(second.retried).toBe(1);
+    expect(sessions.stamps.map((stamp) => stamp.sessionKey)).toEqual(["ph:rec-1", "ph:rec-1"]);
+    expect(sessions.stamps[1]?.meta).toEqual(STAMPED_META);
+  });
+
+  // The stamp is hoisted out of the narration path, so it survives a narration that never
+  // reaches a persisted row — the recordings whose meta is most worth having.
+  test("should stamp the session row for a recording whose narration throws", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk([METERED])),
+            pullEvents: () => Promise.reject(new Error("the source hung up")),
+          }),
+        }),
+    });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.failed).toBe(1);
+    expect(outcome.summarised).toBe(0);
+    expect(store.rows).toHaveLength(0);
+    expect(sessions.stamps).toEqual([
+      { projectId: LANE.projectId, sessionKey: "ph:rec-1", meta: STAMPED_META },
+    ]);
+  });
+
+  // The allowlist is per key: an omitted key is unmeasured on that column alone, and a zero
+  // there would report a session nobody measured as one where nothing happened.
+  test("should stamp active seconds as null when the listing omits it", async () => {
+    const store = fakeRepo();
+    const withoutActiveSeconds = Object.fromEntries(
+      Object.entries(LISTED_META).filter(([key]) => key !== "active_seconds"),
+    );
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () =>
+              Promise.resolve(listOk([recording("rec-1", undefined, withoutActiveSeconds)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.durationSeconds).toBe(LISTED_META.recording_duration);
+    expect(stamped?.clickCount).toBe(LISTED_META.click_count);
+  });
+
+  test("should stamp a fractional count as null, because the column is an integer", async () => {
+    const store = fakeRepo();
+    const fractional = { ...LISTED_META, active_seconds: 22.5, click_count: 7.5 };
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () =>
+              Promise.resolve(listOk([recording("rec-1", undefined, fractional)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.clickCount).toBeNull();
+    expect(stamped?.durationSeconds).toBe(LISTED_META.recording_duration);
+  });
+
+  test("should stamp a negative count as null, because no session had fewer than none", async () => {
+    const store = fakeRepo();
+    const negative = { ...LISTED_META, active_seconds: -1, console_error_count: -3 };
+
+    const { deps, sessions } = meteredDeps(store, {
+      sourceFor: () =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            listRecordings: () => Promise.resolve(listOk([recording("rec-1", undefined, negative)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    const stamped = sessions.stamps[0]?.meta;
+    expect(stamped?.activeSeconds).toBeNull();
+    expect(stamped?.consoleErrorCount).toBeNull();
+    expect(stamped?.keypressCount).toBe(LISTED_META.keypress_count);
+  });
+
+  test("should say so when the stamp matched no session row", async () => {
+    const store = fakeRepo();
+    const unmatched = fakeSessions(() => null);
+
+    const { deps, logs } = meteredDeps(store, { sessionsFor: () => unmatched.repo });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(outcome.summarised).toBe(1);
+    expect(unmatched.stamps).toHaveLength(1);
+    expect(logs.join(" ")).toContain("no session row under ph:rec-1");
+    expect(logs.join(" ")).toContain("rec-1");
+  });
+
+  test("should persist the recording summary and complete the lane when the meta stamp throws", async () => {
+    const store = fakeRepo();
+    let attempts = 0;
+    const failing = fakeSessions(() => {
+      attempts += 1;
+      throw new Error("session row locked");
+    });
+
+    const { deps, logs } = meteredDeps(store, { sessionsFor: () => failing.repo });
+
+    const outcome = await runReplayNarrationTick(deps);
+
+    expect(attempts).toBe(1);
+    expect(outcome.summarised).toBe(1);
+    expect(outcome.failed).toBe(0);
+    expect(store.rows).toHaveLength(1);
+    expect(await store.repo.latestStartedAt(LANE.projectId)).toEqual(
+      new Date("2026-08-05T09:00:00.000Z"),
+    );
+    expect(logs.join(" ")).toContain("rec-1");
+    expect(logs.join(" ")).toContain(LANE.projectId);
+  });
+
+  test("should produce the same session row when the tick is replayed over the same recording", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = meteredDeps(store);
+
+    await runReplayNarrationTick(deps);
+    await runReplayNarrationTick(deps);
+
+    expect([...sessions.rows.keys()]).toHaveLength(1);
+    expect(sessions.rows.get(stampKey(LANE.projectId, "ph:rec-1"))).toEqual(STAMPED_META);
+  });
+
+  // Two lanes, two providers, one tick: a bare "nothing was stamped" would pass against a
+  // tick that stamps nothing at all, so the mapped provider is the control.
+  test("should never write meta for a recording whose provider yields no session key", async () => {
+    const store = fakeRepo();
+    const { deps, sessions } = depsFor(store, {
+      lanes: { listDueLanes: () => Promise.resolve([LANE, SECOND_LANE]) },
+      sourceFor: (_ctx, projectId) =>
+        Promise.resolve({
+          ok: true,
+          source: fakeSource({
+            kind: projectId === LANE.projectId ? "posthog" : "rrweb",
+            listRecordings: () =>
+              Promise.resolve(listOk([recording(`rec-${projectId}`, undefined, LISTED_META)])),
+          }),
+        }),
+    });
+
+    await runReplayNarrationTick(deps);
+
+    expect(store.rows).toHaveLength(2);
+    expect(sessions.stamps).toEqual([
+      {
+        projectId: LANE.projectId,
+        sessionKey: `ph:rec-${LANE.projectId}`,
+        meta: STAMPED_META,
+      },
+    ]);
   });
 });

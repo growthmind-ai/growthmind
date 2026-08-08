@@ -1,1 +1,0 @@
-ALTER TABLE "notification_mutes" ADD CONSTRAINT "notification_mutes_class_check" CHECK ("notification_mutes"."class" in ('work', 'record'));

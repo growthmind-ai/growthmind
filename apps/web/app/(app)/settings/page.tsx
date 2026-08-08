@@ -9,20 +9,27 @@ import {
 } from "@growthmind/db";
 import {
   ANALYTICS_STEP,
+  buildAnalyticsCard,
+  buildDeliveryCard,
+  buildProductCard,
   isAnalyticsAttached,
   MUTABLE_NOTIFICATION_CLASSES,
   ONBOARDING_MESSAGES,
   PAGES_SECTION_TITLE,
   BUSINESS_SECTION_TITLE,
+  productActionLabel,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
+  type ConnectionCardView,
   type MutableNotificationClass,
   type StepView,
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
+import { ProviderChips } from "@/components/first-run/ProviderChips";
 import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { BusinessContext } from "@/components/settings/BusinessContext";
+import { ConnectionCard } from "@/components/settings/ConnectionCard";
 import { NotificationPreferences } from "@/components/settings/NotificationPreferences";
 import { PageRoles } from "@/components/settings/PageRoles";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
@@ -38,6 +45,10 @@ import { readSettingsView, type SettingsView } from "@/lib/settings/view";
 import { requireTenantContext } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
+
+// The business section owns the control that states the address; the product card names
+// the address and sends a reader here rather than offering a second field for one value.
+const BUSINESS_ANCHOR = "business";
 
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
@@ -62,78 +73,86 @@ function analyticsView(attached: boolean): StepView {
   };
 }
 
-function Source({ view }: { view: SettingsView }) {
+function Product({ card, action }: { card: ConnectionCardView; action: string }) {
+  return (
+    <ConnectionCard view={card}>
+      <AnchorLink href={`${ROUTES.settings}#${BUSINESS_ANCHOR}`} size="sm">
+        {action}
+      </AnchorLink>
+    </ConnectionCard>
+  );
+}
+
+function Source({ view, card }: { view: SettingsView; card: ConnectionCardView }) {
   const attached = isAnalyticsAttached(view.source.status);
 
   return (
-    <Section title={ONBOARDING_MESSAGES.settingsSourceGroup}>
-      {attached && view.source.host !== null && view.source.sourceProjectId !== null ? (
-        <Text>
-          {ONBOARDING_MESSAGES.settingsSourceConnectedTemplate
-            .replaceAll("{host}", view.source.host)
-            .replaceAll("{project}", view.source.sourceProjectId)}
-        </Text>
-      ) : (
-        <Text c="dimmed">{ONBOARDING_MESSAGES.settingsSourceNone}</Text>
-      )}
-
+    <ConnectionCard view={card}>
       {/* The Disconnect control has existed and worked since setup shipped, on a screen
           that redirects away the moment setup is dismissed. This mount is its entry
           point — the whole of it (D11). */}
       <ConnectAnalyticsForm
         step={ANALYTICS_STEP}
         view={analyticsView(attached)}
-        connectionMessage={view.connectionMessage}
+        connectionMessage={null}
         providerInterest={view.providerInterest}
         interestPingAvailable={view.interestPingAvailable}
       />
-    </Section>
+    </ConnectionCard>
   );
 }
 
 function Delivery({
   view,
+  card,
   digest,
   shown,
 }: {
   view: SettingsView;
+  card: ConnectionCardView;
   digest: NotificationSettingsRow;
   shown: readonly MutableNotificationClass[];
 }) {
   const { slack } = view;
 
   return (
-    <Section title={ONBOARDING_MESSAGES.settingsDeliveryGroup}>
+    <ConnectionCard view={card}>
       {slack.channelId === null ? (
-        <>
-          <Text c="dimmed">{ONBOARDING_MESSAGES.settingsNoDelivery}</Text>
-
-          {/* `skippable={false}`: skipping settles a STEP, and there is no step here. */}
-          <SlackConnection
-            fields={SLACK_CONNECTION_FIELDS}
-            settled={false}
-            interactive
-            skippable={false}
-            skipped={false}
-            channelId={slack.channelId}
-            slackWorkspaceAttached={slack.workspaceAttached}
-            slackWorkspaceName={slack.workspaceName}
-            slackOAuthAvailable={slack.oauthAvailable}
-          />
-        </>
+        /* `skippable={false}`: skipping settles a STEP, and there is no step here. */
+        <SlackConnection
+          fields={SLACK_CONNECTION_FIELDS}
+          settled={false}
+          interactive
+          skippable={false}
+          skipped={false}
+          channelId={slack.channelId}
+          slackWorkspaceAttached={slack.workspaceAttached}
+          slackWorkspaceName={slack.workspaceName}
+          slackOAuthAvailable={slack.oauthAvailable}
+        />
       ) : (
         <SlackDeliveryControls channelId={slack.channelId} channelLabel={slack.channelLabel} />
       )}
 
-      {/* One section, not two: on this page a card IS a Section, and the seam inside the
-          card is the org/personal boundary (UX Variant 1). */}
+      {/* Renders nothing while Slack is the only place findings can go. It is here so the
+          second destination is a catalogue entry rather than a change to this page. */}
+      <ProviderChips
+        rail="delivery"
+        providerInterest={view.providerInterest}
+        interestPingAvailable={view.interestPingAvailable}
+        label={ONBOARDING_MESSAGES.providerSoonBadge}
+      />
+
+      {/* Inside the connection's own card, not beside it: the summary and the bell are how
+          you hear from this connection, and the seam below them is the org/personal
+          boundary (UX Variant 1, now hosted by main's ConnectionCard). */}
       <NotificationPreferences
         cadence={digest.digestCadence}
         day={digest.digestDay}
         shown={shown}
         channelLabel={slack.channelLabel}
       />
-    </Section>
+    </ConnectionCard>
   );
 }
 
@@ -166,9 +185,9 @@ function Pages({ view, pages }: { view: SettingsView; pages: readonly PageRoleVi
 
 function Business({ view, site }: { view: SettingsView; site: BusinessResearchView }) {
   return (
-    // Named so /audience can link the website control itself rather than the top of a page
-    // it is the last section of.
-    <Section title={BUSINESS_SECTION_TITLE} id="business">
+    // Named so /audience and the product card can link the website control itself rather
+    // than the top of a page it is the last section of.
+    <Section title={BUSINESS_SECTION_TITLE} id={BUSINESS_ANCHOR}>
       <BusinessContext view={site} sourceAttached={isAnalyticsAttached(view.source.status)} />
     </Section>
   );
@@ -189,21 +208,58 @@ export default async function SettingsPage() {
   const muted = await createNotificationMutesRepo(db, ctx).listMutedClasses();
   const shown = MUTABLE_NOTIFICATION_CLASSES.filter((entry) => !muted.includes(entry));
 
+  const nowMs = Date.now();
+  const { source, slack } = view;
+
+  const product = buildProductCard({
+    domain: site.domain,
+    researchStatus: site.status,
+    pagesSeen: pages.length,
+  });
+
+  const analytics = buildAnalyticsCard({
+    providerId: source.providerId,
+    status: source.status,
+    statement: view.connectionMessage,
+    host: source.host,
+    sourceProjectId: source.sourceProjectId,
+    eventsReceived: source.eventsReceived,
+    eventsKept: source.eventsKept,
+    eventsSetAside: source.eventsSetAside,
+    newestSessionAt: source.newestSessionAt,
+    lastCheckAt: source.lastCheckAt,
+    connectedAt: source.connectedAt,
+    pollIntervalSeconds: source.pollIntervalSeconds,
+    failure: source.failure,
+    nowMs,
+  });
+
+  const delivery = buildDeliveryCard({
+    providerId: slack.workspaceAttached ? "slack" : null,
+    workspaceAttached: slack.workspaceAttached,
+    workspaceName: slack.workspaceName,
+    channelId: slack.channelId,
+    channelLabel: slack.channelLabel,
+    connectedAt: slack.connectedAt,
+    nowMs,
+  });
+
   return (
     <Stack gap="lg" maw={640}>
-      {/* The site read finishes in a worker, minutes after the press that started it. This
-          is how the page hears about it. */}
-      <LiveRefresh topics={["business_context"]} />
+      {/* The site read finishes in a worker, minutes after the press that started it, and
+          a poll run lands whenever it lands. This is how the page hears about both. */}
+      <LiveRefresh topics={["business_context", "first_run"]} />
 
       <Title order={1} size="h3">
         {SETTINGS_TITLE}
       </Title>
 
-      {/* Source first, then delivery, then who is excluded: with nothing to read there is
-          nothing to deliver, and exclusions only mean something once both exist. */}
-      <Source view={view} />
-      <Divider />
-      <Delivery view={view} digest={digest} shown={shown} />
+      {/* The customer's own product first, then what reads it, then where what we find
+          goes: a vendor's name means nothing until the product it is attached to is named. */}
+      <Product card={product} action={productActionLabel(site.domain, site.status)} />
+      <Source view={view} card={analytics} />
+      <Delivery view={view} card={delivery} digest={digest} shown={shown} />
+
       <Divider />
       <Excluded view={view} />
       <Divider />

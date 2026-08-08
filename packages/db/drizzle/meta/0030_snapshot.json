@@ -1,6 +1,6 @@
 {
-  "id": "a31b69f8-1f44-418a-89dc-c6ddc82309f8",
-  "prevId": "b834a5ca-f3cb-4da6-9182-2301f824f047",
+  "id": "2a636743-d600-461b-b30a-6c10f3bb6214",
+  "prevId": "37997e6f-d753-4c1c-b7a2-370290f1c4f5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2643,6 +2643,36 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "recording_duration_seconds": {
+          "name": "recording_duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_active_seconds": {
+          "name": "recording_active_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_click_count": {
+          "name": "recording_click_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_keypress_count": {
+          "name": "recording_keypress_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_console_error_count": {
+          "name": "recording_console_error_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "internal_domain_at_stamp": {
           "name": "internal_domain_at_stamp",

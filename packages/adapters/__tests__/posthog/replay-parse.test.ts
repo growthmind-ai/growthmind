@@ -13,6 +13,9 @@ import {
 const PROBE_RECORDING_ID = "019fd09b-61cf-77f8-9b0a-79ea0e302420";
 const PROBE_WINDOW_ID = "019fd09b-61cf-77f8-9b0a-79eb75e0e426";
 
+const gzipField = (value: unknown): string =>
+  zlib.gzipSync(Buffer.from(JSON.stringify(value), "utf8")).toString("latin1");
+
 describe("parseRecordingsPage", () => {
   test("parses the verbatim probe fixture: id, timestamps, and the useful counters in meta", () => {
     const body = {
@@ -255,6 +258,91 @@ describe("parseSnapshotJsonl", () => {
     expect(parsed.droppedMalformed).toBe(0);
     expect(parsed.events).toHaveLength(1);
     expect(parsed.events[0]?.data).toEqual(payload);
+  });
+
+  test("gunzips the per-field form: a cv-marked mutation whose adds/removes/texts/attributes are gzip strings", () => {
+    const adds = [{ parentId: 1, nextId: null, node: { id: 9, tagName: "div" } }];
+    const removes = [{ parentId: 1, id: 4 }];
+
+    const line = JSON.stringify([
+      PROBE_WINDOW_ID,
+      {
+        timestamp: 1785911274726,
+        cv: "2024-10",
+        type: 3,
+        data: {
+          source: 0,
+          adds: gzipField(adds),
+          removes: gzipField(removes),
+          texts: gzipField([]),
+          attributes: gzipField([]),
+        },
+      },
+    ]);
+
+    const parsed = parseSnapshotJsonl(line);
+    expect(parsed.decompressionFailures).toBe(0);
+    expect(parsed.droppedMalformed).toBe(0);
+    expect(parsed.events).toEqual([
+      {
+        type: 3,
+        timestamp: 1785911274726,
+        data: { source: 0, adds, removes, texts: [], attributes: [] },
+      },
+    ]);
+  });
+
+  test("a cv-marked mutation with already-plain array fields passes through unchanged", () => {
+    const data = {
+      source: 0,
+      adds: [],
+      removes: [{ parentId: 1, id: 4 }],
+      texts: [],
+      attributes: [],
+    };
+    const line = JSON.stringify([
+      PROBE_WINDOW_ID,
+      { timestamp: 1785911274726, cv: "2024-10", type: 3, data },
+    ]);
+
+    const parsed = parseSnapshotJsonl(line);
+    expect(parsed.decompressionFailures).toBe(0);
+    expect(parsed.events[0]?.data).toEqual(data);
+  });
+
+  test("a non-mutation incremental event under a cv marker is never gunzipped", () => {
+    // Scroll events (source 3) carry plain numbers; only mutations (source 0) compress fields.
+    const data = { source: 3, id: 1, x: 0, y: 240 };
+    const line = JSON.stringify([
+      PROBE_WINDOW_ID,
+      { timestamp: 1785911274726, cv: "2024-10", type: 3, data },
+    ]);
+
+    const parsed = parseSnapshotJsonl(line);
+    expect(parsed.decompressionFailures).toBe(0);
+    expect(parsed.events[0]?.data).toEqual(data);
+  });
+
+  test("a corrupt gzip field inside a mutation is a decompression failure and the event is dropped", () => {
+    const gzipped = zlib.gzipSync(Buffer.from(JSON.stringify([]), "utf8"));
+    const corrupted = Buffer.from(gzipped);
+    corrupted[10] = (corrupted[10] ?? 0) ^ 0xff;
+
+    const line = JSON.stringify([
+      PROBE_WINDOW_ID,
+      {
+        timestamp: 1785911274726,
+        cv: "2024-10",
+        type: 3,
+        data: { source: 0, removes: corrupted.toString("latin1") },
+      },
+    ]);
+
+    expect(() => parseSnapshotJsonl(line)).not.toThrow();
+    const parsed = parseSnapshotJsonl(line);
+    expect(parsed.decompressionFailures).toBe(1);
+    expect(parsed.droppedMalformed).toBe(0);
+    expect(parsed.events).toEqual([]);
   });
 
   test("a corrupt gzip payload is a decompression failure, never a throw, and the event is dropped", () => {

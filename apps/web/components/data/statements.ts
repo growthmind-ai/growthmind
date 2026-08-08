@@ -60,7 +60,7 @@ export const DATA_GROUPS: readonly StatementGroup[] = [
       },
       {
         id: "read-recordings",
-        text: "Recordings of sessions where something looked wrong. Never all of them.",
+        text: "Replays of sessions where something looked wrong. Never all of them.",
       },
       {
         id: "read-code",
@@ -98,7 +98,7 @@ export const DATA_GROUPS: readonly StatementGroup[] = [
   },
   {
     id: "recording",
-    label: "What a recording keeps",
+    label: "What a replay keeps",
     stamp: PAGE_ADDRESS_STAMP,
     statements: [
       { id: "rec-pressed", text: "What was pressed, and what it was labelled." },

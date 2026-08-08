@@ -86,29 +86,29 @@ describe("recordingLabel", () => {
 
 describe("timeOnPage", () => {
   test("leads with active time and returns the wall-clock total to render beside it", () => {
-    expect(timeOnPage({ recording_duration: 177, active_seconds: 34 })).toEqual({
+    expect(timeOnPage({ durationSeconds: 177, activeSeconds: 34 })).toEqual({
       badge: "34s active",
       total: "2m 57s",
     });
   });
 
-  test("falls back to wall-clock when the source sends no active time", () => {
-    expect(timeOnPage({ recording_duration: 177 })).toEqual({
+  test("falls back to wall-clock when the row carries no active time", () => {
+    expect(timeOnPage({ durationSeconds: 177, activeSeconds: null })).toEqual({
       badge: "2m 57s",
       total: null,
     });
   });
 
   test("never returns the same number twice", () => {
-    const both = timeOnPage({ recording_duration: 177, active_seconds: 34 });
+    const both = timeOnPage({ durationSeconds: 177, activeSeconds: 34 });
     expect(both?.badge).not.toContain(both?.total ?? "");
 
-    const totalOnly = timeOnPage({ recording_duration: 177 });
+    const totalOnly = timeOnPage({ durationSeconds: 177, activeSeconds: null });
     expect(totalOnly?.total).toBeNull();
   });
 
   test("drops the total when the session was active throughout", () => {
-    expect(timeOnPage({ recording_duration: 7, active_seconds: 7 })).toEqual({
+    expect(timeOnPage({ durationSeconds: 7, activeSeconds: 7 })).toEqual({
       badge: "7s active",
       total: null,
     });
@@ -116,22 +116,49 @@ describe("timeOnPage", () => {
 
   test("drops the total when rounding makes the two read identically", () => {
     // 177s and 176.6s both render "2m 57s"; printing it twice is noise either way.
-    expect(timeOnPage({ recording_duration: 177, active_seconds: 176.6 })?.total).toBeNull();
+    expect(timeOnPage({ durationSeconds: 177, activeSeconds: 176.6 })?.total).toBeNull();
   });
 
   test("reports active time even when the total is missing", () => {
-    expect(timeOnPage({ active_seconds: 34 })).toEqual({
+    expect(timeOnPage({ durationSeconds: null, activeSeconds: 34 })).toEqual({
       badge: "34s active",
       total: null,
     });
   });
 
-  test("treats a zero or absent duration as nothing to show, not as 0s", () => {
-    expect(timeOnPage({})).toBeNull();
-    expect(timeOnPage({ recording_duration: 0, active_seconds: 0 })).toBeNull();
+  // Replaces the assertion that `{ recording_duration: 0, active_seconds: 0 }` reads null.
+  // The `value <= 0` guard swallowed a measured zero and rendered it identically to an
+  // unmeasured one, which is the collapse ADD D-7's render rule exists to forbid.
+  test("should render a badge for a duration or an active time measured at zero", () => {
+    expect(timeOnPage({ durationSeconds: null, activeSeconds: null })).toBeNull();
+
+    expect(timeOnPage({ durationSeconds: 0, activeSeconds: 0 })).toEqual({
+      badge: "0s active",
+      total: null,
+    });
+
+    expect(timeOnPage({ durationSeconds: 0, activeSeconds: null })).toEqual({
+      badge: "0s",
+      total: null,
+    });
+
+    // The abandoned tab the fifth column was ratified for: forty minutes of wall clock with
+    // nothing happening reads as the zero it was, not as a forty-minute session.
+    expect(timeOnPage({ durationSeconds: 2400, activeSeconds: 0 })).toEqual({
+      badge: "0s active",
+      total: "40m 0s",
+    });
   });
 
-  test("ignores a non-numeric duration rather than rendering NaN", () => {
-    expect(timeOnPage({ recording_duration: "177", active_seconds: null })).toBeNull();
+  test("should keep both arms of timeOnPage against the two columns", () => {
+    expect(timeOnPage({ durationSeconds: 177, activeSeconds: 34 })).toEqual({
+      badge: "34s active",
+      total: "2m 57s",
+    });
+    expect(timeOnPage({ durationSeconds: 177, activeSeconds: 177 })?.total).toBeNull();
+  });
+
+  test("ignores a non-finite duration rather than rendering NaN", () => {
+    expect(timeOnPage({ durationSeconds: Number.NaN, activeSeconds: null })).toBeNull();
   });
 });

@@ -223,12 +223,20 @@ describe("the save contract and the widths are pinned at source (rows 8 and the 
     expect(source).toContain("tapTargetStyle");
   });
 
-  test("the section title on the settings page stays the registry constant", () => {
+  // The claim was "the section keeps its registry title", written when Delivery was a
+  // titled Section. That section is now a ConnectionCard that names itself, so the title
+  // constant is gone from main. What survives is the structural half: these controls live
+  // inside the Slack connection's own card — one card, not a second one beside it.
+  test("the preferences mount inside the delivery connection's card, not beside it", () => {
     const page = readSourceUnderConstruction({
       repoRelativePath: PAGE_SOURCE,
       ownedBy: CARD_OWNER,
     });
 
-    expect(page).toContain("ONBOARDING_MESSAGES.settingsDeliveryGroup");
+    const delivery = page.slice(page.indexOf("function Delivery"));
+    const card = delivery.slice(0, delivery.indexOf("</ConnectionCard>"));
+
+    expect(card).toContain("<NotificationPreferences");
+    expect(page).not.toContain("settingsDeliveryGroup");
   });
 });
