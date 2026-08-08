@@ -13,6 +13,10 @@ COPY packages/sdk-js/package.json packages/sdk-js/
 COPY packages/adapters/package.json packages/adapters/
 COPY packages/core/package.json packages/core/
 COPY worker/package.json worker/
+# Dev-only tooling, copied anyway: --frozen-lockfile compares against every
+# workspace bun.lock knows about, so an omitted manifest fails the install
+# rather than merely leaving something out.
+COPY evals/find-problems/package.json evals/find-problems/
 RUN bun install --frozen-lockfile
 
 COPY . .
