@@ -2,7 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { analyserSystemPrompt, buildAnalyserPrompt, renderFacts } from "../src/analyse/analyse";
+import {
+  CORPUS_DELIMITER,
+  analyserSystemPrompt,
+  buildAnalyserPrompt,
+  renderFacts,
+} from "../src/analyse/analyse";
 import { corpusAnalysisInputSchema } from "../src/analyse/types";
 import { buildCorpusFacts } from "../src/facts/build";
 import { renderReport } from "../src/report";
@@ -11,6 +16,15 @@ import type { AnswerKey } from "../src/scenario/types";
 import { scoreCorpus } from "../src/score/score";
 
 const BASELINE_RUN = join(import.meta.dir, "..", "runs", "corpus-3");
+// Built by the current replay path. corpus-3 predates the token fix, so its own beats still
+// carry the raw OAuth URL — historical data cannot prove what today’s pipeline emits.
+const CURRENT_RUN = join(import.meta.dir, "..", "runs", "corpus-3-b");
+
+/** The corpus half of a prompt: what the analyser was shown, with the counts block excluded. */
+function sessionsIn(prompt: string): string {
+  const parts = prompt.split(CORPUS_DELIMITER);
+  return parts[parts.length - 2] ?? "";
+}
 
 const CORPUS = corpusAnalysisInputSchema.parse({
   scenarioId: "activation-from-sign-in",
@@ -120,17 +134,38 @@ describe("withholding the counts moves the prompt and nothing else", () => {
     for (const line of withheld) expect(given).toContain(line);
   });
 
-  it.skipIf(!existsSync(join(BASELINE_RUN, "analysis.json")))(
-    "reproduces word for word the prompt the run before the counts was sent",
+  // Anchored on the invariant rather than on a stored prompt. The stored one was retired when
+  // the URL trail started being labelled — a signed token with our own org id was reaching the
+  // analyser through it — and a frozen string cannot tell a security fix from a drifting prompt.
+  it.skipIf(!existsSync(join(BASELINE_RUN, "corpus.json")))(
+    "shows both arms byte-identical sessions, so only the counts are the variable",
     () => {
-      const baseline = JSON.parse(readFileSync(join(BASELINE_RUN, "analysis.json"), "utf8")) as {
-        readonly prompt: string;
-      };
       const corpus = corpusAnalysisInputSchema.parse(
         JSON.parse(readFileSync(join(BASELINE_RUN, "corpus.json"), "utf8")),
       );
 
-      expect(buildAnalyserPrompt(corpus, null)).toBe(baseline.prompt);
+      const withheld = buildAnalyserPrompt(corpus, null);
+      const given = buildAnalyserPrompt(corpus, buildCorpusFacts(corpus));
+
+      expect(sessionsIn(withheld)).toBe(sessionsIn(given));
+      expect(sessionsIn(withheld).length).toBeGreaterThan(0);
+    },
+  );
+
+  it.skipIf(!existsSync(join(CURRENT_RUN, "corpus.json")))(
+    "never puts a signed token in front of the analyser, whichever arm is running",
+    () => {
+      const corpus = corpusAnalysisInputSchema.parse(
+        JSON.parse(readFileSync(join(CURRENT_RUN, "corpus.json"), "utf8")),
+      );
+
+      for (const prompt of [
+        buildAnalyserPrompt(corpus, null),
+        buildAnalyserPrompt(corpus, buildCorpusFacts(corpus)),
+      ]) {
+        expect(prompt).not.toContain("eyJ");
+        expect(prompt).not.toContain("state=");
+      }
     },
   );
 });

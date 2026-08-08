@@ -19,7 +19,7 @@ const OUTCOME_ORDER: readonly SessionSummary["outcome"][] = [
 /** The transcript's own form for what the screen said back; see render.ts in packages/core. */
 const REACTION_LINE = /(?:^|\s)saw (.+)$/;
 
-function originOf(url: string): string | null {
+export function originOf(url: string): string | null {
   try {
     return new URL(url).origin;
   } catch {

@@ -1,6 +1,6 @@
 import { generateObject, type LanguageModel } from "ai";
 
-import { buildCorpusFacts, factLine } from "../facts/build";
+import { buildCorpusFacts, factLine, originOf, pageLabel } from "../facts/build";
 import type { CorpusFacts } from "../facts/types";
 import { assessProblems } from "./support";
 import {
@@ -58,7 +58,7 @@ function delimit(value: string): string {
   return `${CORPUS_DELIMITER}${stripped}${CORPUS_DELIMITER}`;
 }
 
-function renderSession(session: SessionSummary): string {
+function renderSession(session: SessionSummary, productOrigin: string | null): string {
   const counts = [
     `clicks ${String(session.counts.clicks)}`,
     `dead clicks ${String(session.counts.deadClicks)}`,
@@ -78,7 +78,9 @@ function renderSession(session: SessionSummary): string {
     `  ended: ${session.outcome}`,
     session.exitReason === null ? null : `  what they said on leaving: ${session.exitReason}`,
     `  length: ${String(Math.round(session.durationMs / MS_PER_SECOND))}s`,
-    `  pages they reached, in order: ${session.urlTrail.length === 0 ? "(none recorded)" : session.urlTrail.join(" → ")}`,
+    // Labelled, never raw: a URL the driver recorded carries whatever the app put in its
+    // query string, and an OAuth round trip puts a signed token with our own org id there.
+    `  pages they reached, in order: ${session.urlTrail.length === 0 ? "(none recorded)" : session.urlTrail.map((url) => pageLabel(url, productOrigin)).join(" → ")}`,
     `  signals: ${counts}`,
     `  browser errors on the page: ${String(session.consoleErrorCount)}`,
     ...(session.consoleErrors.length === 0
@@ -92,7 +94,8 @@ function renderSession(session: SessionSummary): string {
 }
 
 export function renderCorpus(input: CorpusAnalysisInput): string {
-  return input.sessions.map(renderSession).join("\n\n");
+  const productOrigin = originOf(input.startUrl);
+  return input.sessions.map((session) => renderSession(session, productOrigin)).join("\n\n");
 }
 
 export function renderFacts(facts: CorpusFacts): string {
