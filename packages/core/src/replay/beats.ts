@@ -39,7 +39,7 @@ export function beatKindOf(kind: SessionActionKind): TranscriptBeatKind {
 }
 
 // The stored beat carries no attribute map (persisted-transcript.ts), so a
-// rehydrated element describes itself from the six allow-listed fields only —
+// rehydrated element describes itself from the allow-listed fields only —
 // same conversion persisted-transcript.ts's own rehydration performs.
 function identityOf(element: PersistedElement): ElementIdentity {
   return {
@@ -50,6 +50,7 @@ function identityOf(element: PersistedElement): ElementIdentity {
     ...(element.id === undefined ? {} : { id: element.id }),
     ...(element.role === undefined ? {} : { role: element.role }),
     ...(element.testId === undefined ? {} : { testId: element.testId }),
+    ...(element.accessibleName === undefined ? {} : { accessibleName: element.accessibleName }),
   };
 }
 

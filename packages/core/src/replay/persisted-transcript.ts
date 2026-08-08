@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { deliverableName } from "./describe-value";
 import type { ElementIdentity, SessionAction, SessionActionKind } from "./types";
 
 export const PERSISTED_TRANSCRIPT_VERSION = 1;
@@ -12,6 +13,7 @@ export type PersistedElement = {
   readonly id?: string;
   readonly testId?: string;
   readonly role?: string;
+  readonly accessibleName?: string;
   readonly classes: readonly string[];
 };
 
@@ -42,6 +44,7 @@ type ElementFields = {
   readonly id?: string | undefined;
   readonly role?: string | undefined;
   readonly testId?: string | undefined;
+  readonly accessibleName?: string | undefined;
 };
 
 type ActionFields = {
@@ -57,7 +60,15 @@ type ActionFields = {
 
 // Both directions build through these two, so an absent field is an absent key rather than an
 // explicit undefined — which canonicalJson refuses, and a citation's identity rests on it.
+// Both directions run the name back through the delivery scan rather than trusting it: a stored
+// row was written by whatever version wrote it, and the cap is the same one a rendered value has.
+function persistedName(name: string | undefined): string | null {
+  return name === undefined ? null : deliverableName(name);
+}
+
 function persistedElement(fields: ElementFields): PersistedElement {
+  const accessibleName = persistedName(fields.accessibleName);
+
   return {
     nodeId: fields.nodeId,
     tag: fields.tag,
@@ -65,6 +76,7 @@ function persistedElement(fields: ElementFields): PersistedElement {
     ...(fields.id === undefined ? {} : { id: fields.id }),
     ...(fields.role === undefined ? {} : { role: fields.role }),
     ...(fields.testId === undefined ? {} : { testId: fields.testId }),
+    ...(accessibleName === null ? {} : { accessibleName }),
   };
 }
 
@@ -82,7 +94,8 @@ function persistedAction(fields: ActionFields): PersistedSessionAction {
 }
 
 // ElementIdentity.attributes is never carried across: an open map copied off a live DOM can hold
-// an email address, a title, or a URL with a token in it (ADD §1.4).
+// an email address, a title, or a URL with a token in it (ADD §1.4). Every other field is named
+// here one at a time, so a field added to the identity reaches a stored row only by decision.
 function fieldsOf(element: ElementIdentity): ElementFields {
   return {
     nodeId: element.nodeId,
@@ -91,6 +104,7 @@ function fieldsOf(element: ElementIdentity): ElementFields {
     id: element.id,
     role: element.role,
     testId: element.testId,
+    accessibleName: element.accessibleName,
   };
 }
 
@@ -186,6 +200,7 @@ const persistedElementSchemaV1 = z.object({
   id: z.string().optional(),
   testId: z.string().optional(),
   role: z.string().optional(),
+  accessibleName: z.string().optional(),
   classes: z.array(z.string()),
 });
 
@@ -232,6 +247,7 @@ function identityOf(element: PersistedElement): ElementIdentity {
     ...(element.id === undefined ? {} : { id: element.id }),
     ...(element.role === undefined ? {} : { role: element.role }),
     ...(element.testId === undefined ? {} : { testId: element.testId }),
+    ...(element.accessibleName === undefined ? {} : { accessibleName: element.accessibleName }),
   };
 }
 
@@ -264,7 +280,7 @@ function rehydrateAction(action: PersistedSessionAction): SessionAction | null {
 }
 
 // The stored beat carries no attribute map, so a rehydrated element describes itself from the
-// six allow-listed fields and nothing else. An action missing a field its kind requires is
+// allow-listed fields and nothing else. An action missing a field its kind requires is
 // dropped rather than defaulted, which would invent a beat the recording never held.
 export function rehydratePersistedActions(
   actions: readonly PersistedSessionAction[],

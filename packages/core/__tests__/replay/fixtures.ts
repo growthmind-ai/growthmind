@@ -22,10 +22,16 @@ export function element(
   return { type: RRWEB_NODE_TYPE.element, id, tagName, attributes, childNodes };
 }
 
-// Every text node in a Growthmind recording is asterisks: it is here so tests can
-// prove nothing reads it, never so a fixture can smuggle meaning into one.
+// What rrweb writes for a text node under a mask: every non-space character replaced with an
+// asterisk. It is here so tests can prove nothing reads it.
 export function maskedText(id: number, textContent = "*****"): Node {
-  return { type: 3, id, textContent };
+  return { type: RRWEB_NODE_TYPE.text, id, textContent };
+}
+
+// Text as rrweb records it with masking off, which is the shipped posture (B-050): page chrome
+// a developer wrote, verbatim.
+export function textNode(id: number, textContent: string): Node {
+  return { type: RRWEB_NODE_TYPE.text, id, textContent };
 }
 
 export function documentNode(childNodes: readonly Node[]): Node {
@@ -167,6 +173,65 @@ export function controlsSnapshot(offsetMs = 0): RrwebEvent {
           element(LINK_NODE_ID, "A", { href: "/billing" }, [maskedText(LINK_TEXT_NODE_ID)]),
           element(BARE_DIV_NODE_ID, "DIV", { class: "gm-plain" }),
           deeplyWrappedButton(),
+        ]),
+      ]),
+    ]),
+  );
+}
+
+// The shapes Mantine actually renders, taken from apps/web/app/(auth)/sign-in/sign-in-form.tsx
+// and the digest of a real recording of it: a hash class and a generated id on every control,
+// the field's name only in the label bound to it, and the button's text two spans down.
+export const SIGN_IN_LABEL_NODE_ID = 61;
+export const SIGN_IN_EMAIL_NODE_ID = 62;
+export const SIGN_IN_BUTTON_NODE_ID = 63;
+export const SIGN_IN_HEADING_NODE_ID = 64;
+export const SIGN_IN_DIVIDER_NODE_ID = 65;
+
+export const SIGN_IN_EMAIL_ELEMENT_ID = "mantine-0zhpcizrb";
+export const SIGN_IN_EMAIL_CLASSES = "m_8fb7ebe7 mantine-Input-input mantine-TextInput-input";
+
+export function signInSnapshot(offsetMs = 0): RrwebEvent {
+  return snapshotEvent(
+    offsetMs,
+    documentNode([
+      element(2, "HTML", {}, [
+        element(3, "BODY", {}, [
+          element(SIGN_IN_HEADING_NODE_ID, "H1", { class: "m_8a5d1357" }, [
+            textNode(101, "Sign in"),
+          ]),
+          element(
+            SIGN_IN_LABEL_NODE_ID,
+            "LABEL",
+            {
+              class: "m_8fdc1311 mantine-InputWrapper-label",
+              for: SIGN_IN_EMAIL_ELEMENT_ID,
+            },
+            [textNode(102, "Email")],
+          ),
+          element(SIGN_IN_EMAIL_NODE_ID, "INPUT", {
+            class: SIGN_IN_EMAIL_CLASSES,
+            id: SIGN_IN_EMAIL_ELEMENT_ID,
+            type: "email",
+            placeholder: "you@company.com",
+            autocomplete: "email",
+          }),
+          element(SIGN_IN_DIVIDER_NODE_ID, "DIV", { class: "mantine-Divider-label" }, [
+            textNode(103, "or"),
+          ]),
+          element(
+            SIGN_IN_BUTTON_NODE_ID,
+            "BUTTON",
+            {
+              class: "m_77c9d27d mantine-Button-root",
+              type: "submit",
+            },
+            [
+              element(104, "SPAN", { class: "mantine-Button-inner" }, [
+                element(105, "SPAN", { class: "mantine-Button-label" }, [textNode(106, "Sign in")]),
+              ]),
+            ],
+          ),
         ]),
       ]),
     ]),

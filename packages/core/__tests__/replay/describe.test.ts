@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  DESCRIBE_ATTRIBUTE_PRECEDENCE,
   DESCRIBE_MAX_CLASSES,
+  DESCRIBE_NAME_LABEL,
+  DESCRIBE_SEMANTIC_PRECEDENCE,
   DESCRIBE_TRUNCATION_MARKER,
   DESCRIBE_VALUE_MAX_LENGTH,
   describeElement,
@@ -10,11 +13,15 @@ import { resolveIdentity, unknownIdentity } from "../../src/replay/nodes";
 import type { ElementIdentity } from "../../src/replay/types";
 import {
   API_KEY_NODE_ID,
+  SIGN_IN_BUTTON_NODE_ID,
+  SIGN_IN_EMAIL_ELEMENT_ID,
+  SIGN_IN_EMAIL_NODE_ID,
   SUBMIT_NODE_ID,
   documentNode,
   element,
   lastSegmentIndex,
   settingsSnapshot,
+  signInSnapshot,
   snapshotEvent,
 } from "./fixtures";
 
@@ -47,10 +54,10 @@ describe("describeElement", () => {
     expect(describeElement(identityOf(node, 4))).toBe("a[data-testid=nav-settings]");
   });
 
-  test("should not add an attribute suffix once a class or id has identified the element", () => {
+  test("should lead with the semantic descriptor even when a class also identifies the element", () => {
     const node = element(4, "A", { href: "/settings", class: "gm-nav" });
 
-    expect(describeElement(identityOf(node, 4))).toBe("a.gm-nav");
+    expect(describeElement(identityOf(node, 4))).toBe("a[href=/settings].gm-nav");
   });
 
   test("should describe a bare element by its tag alone rather than inventing identity", () => {
@@ -140,5 +147,83 @@ describe("describeElement", () => {
 
   test("should mark an unresolvable node rather than describing a tag it never saw", () => {
     expect(describeElement(unknownIdentity(4242))).toBe("#unknown(4242)");
+  });
+});
+
+describe("describeElement — meaning ahead of a build tool's hash", () => {
+  test("should name the field a person filled in rather than the hash class Mantine stamped on it", () => {
+    const index = lastSegmentIndex([signInSnapshot()]);
+    const described = describeElement(resolveIdentity(index, SIGN_IN_EMAIL_NODE_ID));
+
+    expect(described).toBe(`input[label=Email]#${SIGN_IN_EMAIL_ELEMENT_ID}`);
+    expect(described).not.toContain("m_8fb7ebe7");
+  });
+
+  test("should name the submit button by the words on it, not by its type and hash class", () => {
+    const index = lastSegmentIndex([signInSnapshot()]);
+    const described = describeElement(resolveIdentity(index, SIGN_IN_BUTTON_NODE_ID));
+
+    expect(described).toBe("button[label=Sign in].m_77c9d27d");
+    expect(described).not.toBe("button[type=submit].m_77c9d27d");
+  });
+
+  test("should keep two controls sharing one name tellable apart", () => {
+    const first = element(4, "BUTTON", { "aria-label": "Copy", id: "copy-key" });
+    const second = element(5, "BUTTON", { "aria-label": "Copy", id: "copy-secret" });
+    const byClass = element(6, "BUTTON", { "aria-label": "Copy", class: "gm-row-two" });
+
+    expect(describeElement(identityOf(first, 4))).toBe("button[aria-label=Copy]#copy-key");
+    expect(describeElement(identityOf(second, 5))).toBe("button[aria-label=Copy]#copy-secret");
+    expect(describeElement(identityOf(byClass, 6))).toBe("button[aria-label=Copy].gm-row-two");
+  });
+
+  test("should carry one handle after the name, not the whole class list back again", () => {
+    const node = element(4, "BUTTON", {
+      "aria-label": "Copy",
+      class: "m_77c9d27d mantine-Button-root mantine-Button-label",
+      id: "copy-key",
+    });
+
+    expect(describeElement(identityOf(node, 4))).toBe("button[aria-label=Copy]#copy-key");
+  });
+
+  test("should fall back to tag, classes and id when nothing semantic survives the gate", () => {
+    const node = element(4, "DIV", { class: "m_8fb7ebe7 gm-card", id: "panel" });
+
+    expect(describeElement(identityOf(node, 4))).toBe("div.m_8fb7ebe7.gm-card#panel");
+  });
+
+  test("should rank an authored handle above the name and the name above a weaker attribute", () => {
+    const testId = element(4, "BUTTON", { "data-testid": "connect", "aria-label": "Connect" });
+    const named: ElementIdentity = {
+      nodeId: 5,
+      tagName: "button",
+      classes: [],
+      accessibleName: "Connect",
+      attributes: { type: "submit", placeholder: "unused" },
+    };
+
+    expect(describeElement(identityOf(testId, 4))).toBe("button[data-testid=connect]");
+    expect(describeElement(named)).toBe("button[label=Connect]");
+  });
+
+  test("should refuse a stored name the delivery scan would not pass, even from a stored row", () => {
+    const dirty: ElementIdentity = {
+      nodeId: 5,
+      tagName: "button",
+      classes: ["gm-pay"],
+      accessibleName: "ada@example.invalid",
+      attributes: {},
+    };
+
+    expect(describeElement(dirty)).toBe("button.gm-pay");
+  });
+
+  test("should keep every attribute name in DESCRIBE_ATTRIBUTE_PRECEDENCE an attribute", () => {
+    expect(DESCRIBE_ATTRIBUTE_PRECEDENCE).toContain("data-testid");
+    expect(DESCRIBE_ATTRIBUTE_PRECEDENCE).not.toContain(DESCRIBE_NAME_LABEL);
+    expect(
+      DESCRIBE_SEMANTIC_PRECEDENCE.filter((source) => source.from === "accessibleName"),
+    ).toHaveLength(1);
   });
 });

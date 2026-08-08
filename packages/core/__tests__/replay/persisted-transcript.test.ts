@@ -71,6 +71,33 @@ describe("serialisePersistedTranscript — the version dispatch and the bounded 
     expect(encoded).not.toContain(IDENTIFIER_BEARING_VALUE);
   });
 
+  test("should carry the accessible name across explicitly, and refuse one the scan would not pass", () => {
+    const named = serialiserUnderContract()(
+      [{ kind: "dead_click", atMs: 900, element: elementWith({ accessibleName: "Email" }) }],
+      1,
+    );
+    const dirty = serialiserUnderContract()(
+      [
+        {
+          kind: "dead_click",
+          atMs: 900,
+          element: elementWith({ accessibleName: IDENTIFIER_BEARING_VALUE }),
+        },
+      ],
+      1,
+    );
+
+    expect(named.actions[0]?.element?.accessibleName).toBe("Email");
+    expect(dirty.actions[0]?.element?.accessibleName).toBeUndefined();
+    expect(bytesOf(dirty)).not.toContain(IDENTIFIER_BEARING_VALUE);
+  });
+
+  test("should not add a key to a stored element that never had a name", () => {
+    const unnamed = serialiserUnderContract()(FIXTURE_ACTIONS, 1);
+
+    expect(bytesOf(unnamed)).not.toContain("accessibleName");
+  });
+
   test("should cap persisted classes at PERSISTED_TRANSCRIPT_MAX_CLASSES", () => {
     const cap = numberConstantUnderContract("PERSISTED_TRANSCRIPT_MAX_CLASSES");
     const many = Array.from({ length: 40 }, (_, index) => `gm-c${String(index).padStart(2, "0")}`);
@@ -128,6 +155,15 @@ describe("rehydratePersistedActions — the held half of a resumed pull", () => 
     const rehydrated = rehydratePersistedActions(written.actions);
 
     expect(rehydrated).toEqual(FIXTURE_ACTIONS);
+  });
+
+  test("should hand a rehydrated element the name a digest reads, not only its classes", () => {
+    const named: readonly SessionAction[] = [
+      { kind: "input", atMs: 500, element: elementWith({ accessibleName: "Email" }) },
+    ];
+    const written = serialisePersistedTranscript(named, PERSISTED_TRANSCRIPT_VERSION);
+
+    expect(rehydratePersistedActions(written.actions)).toEqual(named);
   });
 
   test("should drop an action missing the field its kind requires, rather than throw", () => {
