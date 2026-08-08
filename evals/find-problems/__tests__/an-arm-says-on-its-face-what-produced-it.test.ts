@@ -16,9 +16,11 @@ import type { AnswerKey } from "../src/scenario/types";
 import { scoreCorpus } from "../src/score/score";
 
 const BASELINE_RUN = join(import.meta.dir, "..", "runs", "corpus-3");
-// Built by the current replay path. corpus-3 predates the token fix, so its own beats still
-// carry the raw OAuth URL — historical data cannot prove what today’s pipeline emits.
-const CURRENT_RUN = join(import.meta.dir, "..", "runs", "corpus-3-b");
+
+// Shaped like the real thing the recorder caught — base64url payload, JWT-ish — with obviously
+// fake ids, so a public repo carries no signed token even an expired one.
+const SIGNED_STATE =
+  "eyJ2IjoxLCJ1IjoiRkFLRVVTRVJJRE5PVFJFQUwiLCJvIjoib3JnLTAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCJ9.ZmFrZXNpZ25hdHVyZQ";
 
 /** The corpus half of a prompt: what the analyser was shown, with the counts block excluded. */
 function sessionsIn(prompt: string): string {
@@ -152,22 +154,33 @@ describe("withholding the counts moves the prompt and nothing else", () => {
     },
   );
 
-  it.skipIf(!existsSync(join(CURRENT_RUN, "corpus.json")))(
-    "never puts a signed token in front of the analyser, whichever arm is running",
-    () => {
-      const corpus = corpusAnalysisInputSchema.parse(
-        JSON.parse(readFileSync(join(CURRENT_RUN, "corpus.json"), "utf8")),
-      );
+  // Inline, never read from runs/ — that directory is gitignored, so a fixture-backed version of
+  // this skipped silently on a clean clone and reported green having asserted nothing about the
+  // one thing it exists to prove.
+  it("never puts a signed token in front of the analyser, whichever arm is running", () => {
+    const corpus = corpusAnalysisInputSchema.parse({
+      ...CORPUS,
+      sessions: [
+        {
+          ...CORPUS.sessions[0],
+          urlTrail: [
+            "http://localhost:3000/first-run",
+            `https://slack.com/workspace-signin?redir=%2Foauth%3Fstate%3D${SIGNED_STATE}%26scope%3Dchat%253Awrite`,
+          ],
+        },
+        CORPUS.sessions[1],
+      ],
+    });
 
-      for (const prompt of [
-        buildAnalyserPrompt(corpus, null),
-        buildAnalyserPrompt(corpus, buildCorpusFacts(corpus)),
-      ]) {
-        expect(prompt).not.toContain("eyJ");
-        expect(prompt).not.toContain("state=");
-      }
-    },
-  );
+    for (const prompt of [
+      buildAnalyserPrompt(corpus, null),
+      buildAnalyserPrompt(corpus, buildCorpusFacts(corpus)),
+    ]) {
+      expect(prompt).not.toContain(SIGNED_STATE);
+      expect(prompt).not.toContain("eyJ");
+      expect(prompt).toContain("https://slack.com");
+    }
+  });
 });
 
 describe("a report says on its face which arm produced it", () => {
