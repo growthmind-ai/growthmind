@@ -1,21 +1,29 @@
 import { Divider, Stack, Text, Title } from "@mantine/core";
 import type { ReactNode } from "react";
 
-import { ensureProject } from "@growthmind/db";
+import {
+  createNotificationMutesRepo,
+  createNotificationSettingsRepo,
+  ensureProject,
+  type NotificationSettingsRow,
+} from "@growthmind/db";
 import {
   ANALYTICS_STEP,
   isAnalyticsAttached,
+  MUTABLE_NOTIFICATION_CLASSES,
   ONBOARDING_MESSAGES,
   PAGES_SECTION_TITLE,
   BUSINESS_SECTION_TITLE,
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
+  type MutableNotificationClass,
   type StepView,
 } from "@growthmind/shared";
 
 import { ConnectAnalyticsForm } from "@/components/first-run/ConnectAnalyticsForm";
 import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { BusinessContext } from "@/components/settings/BusinessContext";
+import { NotificationPreferences } from "@/components/settings/NotificationPreferences";
 import { PageRoles } from "@/components/settings/PageRoles";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { SlackConnection } from "@/components/slack/SlackConnection";
@@ -83,7 +91,15 @@ function Source({ view }: { view: SettingsView }) {
   );
 }
 
-function Delivery({ view }: { view: SettingsView }) {
+function Delivery({
+  view,
+  digest,
+  shown,
+}: {
+  view: SettingsView;
+  digest: NotificationSettingsRow;
+  shown: readonly MutableNotificationClass[];
+}) {
   const { slack } = view;
 
   return (
@@ -108,6 +124,15 @@ function Delivery({ view }: { view: SettingsView }) {
       ) : (
         <SlackDeliveryControls channelId={slack.channelId} channelLabel={slack.channelLabel} />
       )}
+
+      {/* One section, not two: on this page a card IS a Section, and the seam inside the
+          card is the org/personal boundary (UX Variant 1). */}
+      <NotificationPreferences
+        cadence={digest.digestCadence}
+        day={digest.digestDay}
+        shown={shown}
+        channelLabel={slack.channelLabel}
+      />
     </Section>
   );
 }
@@ -158,6 +183,12 @@ export default async function SettingsPage() {
   const pages = await readPageRoles(db, ctx, projectId);
   const site = await readBusinessResearch(db, ctx, projectId);
 
+  // Absence is the default (weekly, Mondays; both classes shown) — no seed row exists and
+  // none is written by rendering.
+  const digest = await createNotificationSettingsRepo(db, ctx).read();
+  const muted = await createNotificationMutesRepo(db, ctx).listMutedClasses();
+  const shown = MUTABLE_NOTIFICATION_CLASSES.filter((entry) => !muted.includes(entry));
+
   return (
     <Stack gap="lg" maw={640}>
       {/* The site read finishes in a worker, minutes after the press that started it. This
@@ -172,7 +203,7 @@ export default async function SettingsPage() {
           nothing to deliver, and exclusions only mean something once both exist. */}
       <Source view={view} />
       <Divider />
-      <Delivery view={view} />
+      <Delivery view={view} digest={digest} shown={shown} />
       <Divider />
       <Excluded view={view} />
       <Divider />

@@ -42,7 +42,68 @@ interface Allowed {
 // One entry per seam occurrence, per file — the count map below compares in both
 // directions, so a second site inside an already-blessed file fails where a presence set
 // would pass silently. Populated by task 4.3 from the scan's own output.
-const ALLOWED: readonly Allowed[] = [];
+const ALLOWED: readonly Allowed[] = [
+  {
+    file: "apps/web/app/api/first-run/slack/channel/route.ts",
+    wraps: "const result = await poster.post(",
+    why: "The channel-move receipt posts through the DeliveryPoster port into the newly chosen channel, so the person who moved delivery sees it arrive there.",
+  },
+  {
+    file: "apps/web/app/api/first-run/slack/test/route.ts",
+    wraps: "const result = await poster.post(",
+    why: "The test message a person explicitly pressed for, through the DeliveryPoster port — the one send whose whole purpose is being seen.",
+  },
+  {
+    file: "apps/web/lib/slack/acknowledge.ts",
+    wraps: 'ACKNOWLEDGEMENT_HOST = "hooks.slack.com"',
+    why: "Registered port bypass 1: answers Slack's own interactive callback at the response_url host it supplied; it acknowledges, it never authors a message (B-055).",
+  },
+  {
+    file: "apps/web/lib/slack/oauth.ts",
+    wraps: '"https://slack.com/oauth/v2/authorize"',
+    why: "A browser redirect into Slack's consent screen during connect; no message body ever crosses this seam.",
+  },
+  {
+    file: "packages/adapters/src/slack/constants.ts",
+    wraps: '"https://slack.com/api/chat.postMessage"',
+    why: "The adapter's one posting URL — the single HTTP crossing every DeliveryPoster port call funnels into.",
+  },
+  {
+    file: "packages/adapters/src/slack/constants.ts",
+    wraps: '"https://slack.com/api/oauth.v2.access"',
+    why: "The OAuth code-for-token exchange; credentials cross here during connect, words never do.",
+  },
+  {
+    file: "packages/adapters/src/slack/constants.ts",
+    wraps: '"https://slack.com/api/conversations.list"',
+    why: "A read of the workspace's channel names so a person can pick one; nothing is posted through it.",
+  },
+  {
+    file: "packages/shared/src/env.ts",
+    wraps: "INTEREST_SLACK_WEBHOOK: z.url().optional()",
+    why: "The env schema declares the internal interest-webhook address; declaring where it would go is not sending anything there.",
+  },
+  {
+    file: "packages/shared/src/env.ts",
+    wraps: "env.INTEREST_SLACK_WEBHOOK !== undefined",
+    why: "The presence check that lets the interest tick fail softly when the webhook is absent; it reads the address and posts nothing.",
+  },
+  {
+    file: "worker/src/tasks/delivery-tick.ts",
+    wraps: "result = await poster.post(prepared.request)",
+    why: "The findings delivery leg — the spine's own gated, idempotent post of a prepared finding to the org's channel.",
+  },
+  {
+    file: "worker/src/tasks/notification-dispatch.ts",
+    wraps: "result = await poster.post({",
+    why: "The notification spine's one posting seam: a claimed lease posts once and writes its receipt, and every notification (the digest included) crosses here.",
+  },
+  {
+    file: "worker/src/tasks/provider-interest-tick.ts",
+    wraps: "deps.env.INTEREST_SLACK_WEBHOOK",
+    why: "Registered port bypass 2: the provider-interest count posts to our own internal workspace webhook, never to a customer's, so the port's per-org guarantees do not apply.",
+  },
+];
 
 interface Exemption {
   readonly file: string;
