@@ -32,6 +32,10 @@ export async function listUnsettledNotificationIds(
     .where(
       and(
         eq(notificationSends.notificationId, notifications.id),
+
+        // The org, not only the notification: nothing at the schema level ties a send row
+        // to its notification's tenant, so this read defends its own answer.
+        s.org(notificationSends),
         eq(notificationSends.channel, "slack"),
         sql`(${eq(notificationSends.status, "sent")} or (${eq(
           notificationSends.status,

@@ -269,9 +269,14 @@ export async function claimNotificationSend(
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, notificationSends);
 
-  const reclaimable = (await orgConnectionRepaired(db, s))
-    ? rescueReclaimable(input.staleClaimsBefore)
-    : retryReclaimable(input.staleClaimsBefore);
+  // The conflict target carries no organization column, so the org filter goes inside the
+  // predicate: a foreign notification id then updates zero rows instead of relying on the
+  // caller having read org-scoped first. This function is barrel-exported.
+  const reclaimable = sql`(${s.org(notificationSends)} and ${
+    (await orgConnectionRepaired(db, s))
+      ? rescueReclaimable(input.staleClaimsBefore)
+      : retryReclaimable(input.staleClaimsBefore)
+  })`;
 
   const result = await c.claim(
     {
@@ -381,6 +386,9 @@ export async function recordDispatchOutcome(
       // path already counted at the claim, and doubling it spent the ratified cap of 5 in
       // three real posts.
       set: columns,
-      setWhere: sql`${storedOutcomeRank} < ${OUTCOME_RANK[outcome.status]}`,
+
+      // Org-filtered for the same reason as the claim: the conflict target names no
+      // organization, so the write defends itself rather than trusting its caller.
+      setWhere: sql`(${s.org(notificationSends)} and ${storedOutcomeRank} < ${OUTCOME_RANK[outcome.status]})`,
     });
 }

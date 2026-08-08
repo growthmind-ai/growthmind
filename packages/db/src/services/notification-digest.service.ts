@@ -97,6 +97,10 @@ export async function gatherDigestNotifications(
       .where(
         and(
           eq(notificationSends.notificationId, notifications.id),
+
+          // Scoped for the same reason the rescue's subquery is: a send row's tenant is an
+          // invariant of the writers, not of the schema.
+          s.org(notificationSends),
           eq(notificationSends.channel, "slack"),
           eq(notificationSends.status, "quiet"),
           eq(notificationSends.quietReason, "digest"),
