@@ -2,6 +2,7 @@ import {
   agentFirstContactSentence,
   ANALYSIS_FAILING_RUN_COUNT,
   analysisFailingSentence,
+  authoritativeSlackReceipt,
   backfillCompleteSentence,
   digestLeadSentence,
   findingDeliveredSentence,
@@ -151,10 +152,12 @@ function sentenceOf(row: NotificationWithReadState, seams: RenderSeams): string 
 }
 
 function chipOf(row: NotificationWithReadState): BellSnapshotChip | null {
-  const send = row.sends.find(
-    (candidate): candidate is NotificationSendFacts & { status: BellSnapshotChip["kind"] } =>
-      candidate.channel === "slack" && candidate.status !== "pending",
-  );
+  // The authoritative receipt, not the oldest one: a rescued notification holds both the
+  // quiet row from when there was no channel and the sent row from after the repair, and
+  // the first-match read told the reader forever that it was never sent.
+  const send = authoritativeSlackReceipt(
+    row.sends.filter((candidate) => candidate.channel === "slack"),
+  ) as (NotificationSendFacts & { status: BellSnapshotChip["kind"] }) | null;
 
   // No receipt yet means the dispatch job still owns the outcome — no chip beats a
   // guessed one. A `pending` row is that same state with a row attached.

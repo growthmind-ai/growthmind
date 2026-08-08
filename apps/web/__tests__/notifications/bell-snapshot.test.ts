@@ -21,6 +21,7 @@ import {
 import {
   digestChipLabel,
   FAILED_CHIP_LABEL,
+  NOTIFICATION_SEND_NO_TARGET,
   QUIET_DIGEST_OFF_CHIP_LABEL,
   QUIET_NO_CHANNEL_CHIP_LABEL,
   QUIET_UNKNOWN_REASON_CHIP_LABEL,
@@ -433,5 +434,136 @@ describe("job 2 — the chip carries its stored reason and the badge counts what
     expect(["pre_setup", "nothing_new", "nothing_new_no_slack"]).toContain(
       snapshot.emptyVariant ?? "",
     );
+  });
+});
+
+interface ReceiptRowSeed {
+  readonly status: "sent" | "failed" | "quiet";
+  readonly target: string;
+  readonly createdAt: Date;
+  readonly quietReason?: string;
+  readonly failureReason?: string;
+  readonly channelLabel?: string;
+  readonly messageRef?: string;
+  readonly sentAt?: Date;
+}
+
+async function seedReceiptRow(
+  org: SeededOrgWithOwner,
+  notificationId: string,
+  row: ReceiptRowSeed,
+): Promise<void> {
+  await db.insert(schema.notificationSends).values({
+    organizationId: org.organizationId,
+    notificationId,
+    channel: "slack",
+    target: row.target,
+    status: row.status,
+    quietReason: row.quietReason ?? null,
+    failureReason: row.failureReason ?? null,
+    channelLabel: row.channelLabel ?? null,
+    messageRef: row.messageRef ?? null,
+    sentAt: row.sentAt ?? null,
+    createdAt: row.createdAt,
+  });
+}
+
+async function chipOfSeeded(org: SeededOrgWithOwner, notificationId: string) {
+  const snapshot = await readBellSnapshot(db, org.ctx, OPTIONS);
+  const row = snapshot.rows.find((candidate) => candidate.id === notificationId);
+  if (!row) throw new Error("the seeded notification fell out of the snapshot");
+  if (!row.chip) throw new Error("the seeded receipts rendered no chip at all");
+  return row.chip;
+}
+
+// O-051 job 2 regression: chipOf once took the oldest settled row via first-match over a
+// createdAt-ascending read, so a rescued notification wore its stranded receipt forever.
+describe("the chip is the authoritative receipt across the whole send history (AC-7)", () => {
+  test("a rescue leaves both receipts and the chip is the sent one, carrying the send row's stored label", async () => {
+    const org = await seedOrg("rescued-chip");
+    const seeded = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "keys_revoked",
+      actorUserId: org.userId,
+      createdAt: minutesFromNow(-30),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "quiet",
+      quietReason: "no_channel",
+      target: NOTIFICATION_SEND_NO_TARGET,
+      createdAt: minutesFromNow(-25),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "sent",
+      target: "C0RESCUED1",
+      channelLabel: "growth",
+      messageRef: "1785481299.000600",
+      sentAt: minutesFromNow(-5),
+      createdAt: minutesFromNow(-5),
+    });
+
+    const chip = await chipOfSeeded(org, seeded.id);
+    expect(chip.kind).toBe("sent");
+    expect(chip.channelLabel).toBe("growth");
+    expect(chip.quietReason ?? null).toBeNull();
+    expect(bellChipViewModel(chip).label).toBe(sentChipLabel("growth"));
+  });
+
+  test("a failed receipt from before the repair loses to the later sent one", async () => {
+    const org = await seedOrg("failed-then-sent");
+    const seeded = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "keys_revoked",
+      actorUserId: org.userId,
+      createdAt: minutesFromNow(-30),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "failed",
+      failureReason: "not_authorised",
+      target: "C0BROKEN01",
+      createdAt: minutesFromNow(-20),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "sent",
+      target: "C0REPAIRED",
+      channelLabel: "ops",
+      messageRef: "1785481299.000601",
+      sentAt: minutesFromNow(-4),
+      createdAt: minutesFromNow(-4),
+    });
+
+    const chip = await chipOfSeeded(org, seeded.id);
+    expect(chip.kind).toBe("sent");
+    expect(chip.channelLabel).toBe("ops");
+  });
+
+  test("receipts of equal rank tie-break newest-first, so the chip names where it went last", async () => {
+    const org = await seedOrg("tie-newest");
+    const seeded = await seedNotification(db, {
+      organizationId: org.organizationId,
+      type: "keys_revoked",
+      actorUserId: org.userId,
+      createdAt: minutesFromNow(-30),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "sent",
+      target: "C0FIRST001",
+      channelLabel: "first-home",
+      messageRef: "1785481299.000602",
+      sentAt: minutesFromNow(-15),
+      createdAt: minutesFromNow(-15),
+    });
+    await seedReceiptRow(org, seeded.id, {
+      status: "sent",
+      target: "C0SECOND01",
+      channelLabel: "second-home",
+      messageRef: "1785481299.000603",
+      sentAt: minutesFromNow(-3),
+      createdAt: minutesFromNow(-3),
+    });
+
+    const chip = await chipOfSeeded(org, seeded.id);
+    expect(chip.kind).toBe("sent");
+    expect(chip.channelLabel).toBe("second-home");
   });
 });

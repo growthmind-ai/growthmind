@@ -216,14 +216,20 @@ function rescueReclaimable(staleClaimsBefore: Date): SQL {
   return sql`(${eq(notificationSends.status, "failed")} or ${abandonedPending(staleClaimsBefore)})`;
 }
 
-async function orgConnectionIsHealthy(db: ScopedExecutor, s: Scope): Promise<boolean> {
+// A live connection that is not `failing` is the signal that the world changed since a
+// failed receipt was written, so the receipt describes something no longer true and the row
+// may be claimed again. `healthy` alone was too narrow and stranded the commonest repair:
+// reconnecting the same channel leaves health at its `validating` default, and nothing sets
+// it healthy until some unrelated post happens to succeed. No connection at all is not a
+// repair — the cap keeps holding there.
+async function orgConnectionRepaired(db: ScopedExecutor, s: Scope): Promise<boolean> {
   const [row] = await db
     .select({ health: slackConnections.health })
     .from(slackConnections)
     .where(s.owned(slackConnections, eq(slackConnections.isActive, true)))
     .limit(1);
 
-  return row?.health === "healthy";
+  return row !== undefined && row.health !== "failing";
 }
 
 function toClaim(row: typeof notificationSends.$inferSelect): NotificationSendClaim {
@@ -249,7 +255,7 @@ export async function claimNotificationSend(
   const s = scoped(db, ctx);
   const c = orgCrud(db, ctx, notificationSends);
 
-  const reclaimable = (await orgConnectionIsHealthy(db, s))
+  const reclaimable = (await orgConnectionRepaired(db, s))
     ? rescueReclaimable(input.staleClaimsBefore)
     : retryReclaimable(input.staleClaimsBefore);
 

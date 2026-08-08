@@ -14,9 +14,12 @@ import {
   recordDispatchOutcome,
 } from "../../src/services/notification-dispatch.service";
 import { notificationSends } from "../../src/schema/notifications";
+import { slackConnections } from "../../src/schema/slack-connections";
 import {
   createTestDb,
   laneNames,
+  PLACEHOLDER_CREDENTIAL_CIPHERTEXT,
+  PLACEHOLDER_CREDENTIAL_KEY_ID,
   seedNotification,
   seedNotificationSend,
   seedOrgWithOwner,
@@ -259,5 +262,96 @@ describe("the notification dispatch lease", () => {
 
     expect(strandableRead?.settled).toBe(false);
     expect(deferredRead?.settled).toBe(true);
+  });
+
+  // O-051 job 2 regression: the reclaim arm once asked `health === "healthy"`, and a
+  // reconnect leaves health at its `validating` default — so non-retryable receipts stayed
+  // stranded on the commonest repair, and nothing ever set the connection healthy.
+  describe("which reclaim arm applies follows the connection's world (ADD D-4)", () => {
+    async function seedActiveConnection(
+      org: SeededOrgWithOwner,
+      health: "validating" | "healthy" | "failing",
+    ): Promise<void> {
+      await db.insert(slackConnections).values({
+        organizationId: org.organizationId,
+        channelId: TARGET,
+        channelName: "growth",
+        credentialCiphertext: PLACEHOLDER_CREDENTIAL_CIPHERTEXT,
+        credentialKeyId: PLACEHOLDER_CREDENTIAL_KEY_ID,
+        isActive: true,
+        health,
+      });
+    }
+
+    // Non-retryable AND at the cap: claimable by the rescue arm alone, never the retry arm.
+    async function seedSpentStrand(org: SeededOrgWithOwner): Promise<string> {
+      const notificationId = await seedOwedNotification(org);
+      await seedFailedSend(
+        org,
+        notificationId,
+        "not_authorised",
+        NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
+      );
+      return notificationId;
+    }
+
+    function claimInput(notificationId: string) {
+      return {
+        notificationId,
+        target: TARGET,
+        claimedAt: CLAIMED_AT,
+        staleClaimsBefore: NOTHING_EXPIRED,
+      };
+    }
+
+    test("a reconnected connection still at its validating default rescues a non-retryable failure past the cap", async () => {
+      const org = await seedOrg("rescue-validating");
+      const notificationId = await seedSpentStrand(org);
+      await seedActiveConnection(org, "validating");
+
+      const result = await claimNotificationSend(db, org.ctx, claimInput(notificationId));
+
+      expect(result.claimed).toBe(true);
+      if (!result.claimed) throw new Error("the rescue claim was not granted");
+      expect(result.row.status).toBe("pending");
+      expect(result.row.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS + 1);
+      expect(result.row.claimedAt?.getTime()).toBe(CLAIMED_AT.getTime());
+    });
+
+    test("a healthy connection rescues the same strand — the rescue arm's direct coverage", async () => {
+      const org = await seedOrg("rescue-healthy");
+      const notificationId = await seedSpentStrand(org);
+      await seedActiveConnection(org, "healthy");
+
+      const result = await claimNotificationSend(db, org.ctx, claimInput(notificationId));
+
+      expect(result.claimed).toBe(true);
+      if (!result.claimed) throw new Error("the rescue claim was not granted");
+      expect(result.row.status).toBe("pending");
+      expect(result.row.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS + 1);
+    });
+
+    test("a failing connection is no repair: the strand stays refused", async () => {
+      const org = await seedOrg("rescue-failing");
+      const notificationId = await seedSpentStrand(org);
+      await seedActiveConnection(org, "failing");
+
+      const result = await claimNotificationSend(db, org.ctx, claimInput(notificationId));
+
+      expect(result.claimed).toBe(false);
+      expect(result.claimed ? null : result.row?.status).toBe("failed");
+      expect(result.claimed ? null : result.row?.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+    });
+
+    test("no connection at all is no repair: the cap keeps holding for an org that never had a channel", async () => {
+      const org = await seedOrg("rescue-absent");
+      const notificationId = await seedSpentStrand(org);
+
+      const result = await claimNotificationSend(db, org.ctx, claimInput(notificationId));
+
+      expect(result.claimed).toBe(false);
+      expect(result.claimed ? null : result.row?.status).toBe("failed");
+      expect(result.claimed ? null : result.row?.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+    });
   });
 });
