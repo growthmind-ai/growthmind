@@ -42,6 +42,8 @@ export const SETTINGS_API = {
   businessFact: "/api/settings/business/fact",
   businessConfirm: "/api/settings/business/confirm",
   businessAudience: "/api/settings/business/audience",
+  notificationsDigest: "/api/settings/notifications/digest",
+  notificationsBell: "/api/settings/notifications/bell",
 } as const;
 
 export interface PostAnswer {

@@ -6,6 +6,7 @@ import {
   createPollRunsRepo,
   createProjectConnectionsRepo,
   describeDriverError,
+  emitBackfillComplete,
   persistPullResult,
 } from "@growthmind/db";
 import type { PollableConnection } from "@growthmind/db/system";
@@ -369,6 +370,18 @@ async function runOnePass(input: {
     );
     const finishedAt = deps.now();
 
+    // The cursor clear commits before this emit, deliberately (ADD §4.2): a lost
+    // record-class notification is cheaper than threading a transaction through a pure
+    // cursor applier, and the reverse direction — a notification claiming a drain that
+    // never happened — stays impossible. The emit itself never throws.
+    if (cursors.drained) {
+      await emitBackfillComplete(deps.db, ctx.organizationId, {
+        connectionId: connection.id,
+        sessionsTouched: counts.sessionsTouched,
+        eventsPersisted: counts.eventsPersisted,
+      });
+    }
+
     await pollRuns.finish(run.id, {
       status: "completed",
       finishedAt,
@@ -419,7 +432,15 @@ async function applyCursors(
   result: Extract<SessionSourcePullResult, { ok: true }>,
   currentWatermarkAt: Date | null,
   currentBackfillBefore: string | null,
-): Promise<{ watermarkAt: Date | null; backfillBefore: string | null; advancedTo: Date | null }> {
+): Promise<{
+  watermarkAt: Date | null;
+  backfillBefore: string | null;
+  advancedTo: Date | null;
+
+  // True only when the clear below wrote a row — the fact this function already computes
+  // and used to drop on the floor (ADD §4.2, D11).
+  drained: boolean;
+}> {
   if (result.contiguous && result.newestObservedAt !== null) {
     const advanced = await connections.advanceWatermark(connectionId, {
       watermarkAt: result.newestObservedAt,
@@ -429,8 +450,9 @@ async function applyCursors(
       return {
         watermarkAt: advanced.watermarkAt,
         backfillBefore: advanced.backfillBefore,
-         
+
         advancedTo: result.newestObservedAt,
+        drained: false,
       };
     }
   }
@@ -443,6 +465,7 @@ async function applyCursors(
         watermarkAt: held.watermarkAt,
         backfillBefore: held.backfillBefore,
         advancedTo: null,
+        drained: false,
       };
     }
   }
@@ -458,11 +481,12 @@ async function applyCursors(
         watermarkAt: cleared.watermarkAt,
         backfillBefore: cleared.backfillBefore,
         advancedTo: null,
+        drained: true,
       };
     }
   }
 
-  return { watermarkAt: currentWatermarkAt, backfillBefore: null, advancedTo: null };
+  return { watermarkAt: currentWatermarkAt, backfillBefore: null, advancedTo: null, drained: false };
 }
 
 async function finishFailed(

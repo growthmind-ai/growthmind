@@ -4,6 +4,7 @@ import {
   API_KEY_DISPLAY_PREFIX_LENGTH,
   API_KEY_PREFIX,
   buildAgentFirstContactDedupKey,
+  buildKeyCreatedDedupKey,
   buildKeysRevokedDedupKey,
   hashApiKeyMaterial,
   isApiKeyFormat,
@@ -69,12 +70,28 @@ export function createApiKeysRepo(db: ScopedExecutor, ctx: TenantContext): ApiKe
       // The actor comes from the context, never from an argument: a `createdByUserId`
       // parameter is a wire a caller can forget, and the one value it could carry wrongly is
       // a machine principal's synthetic id, which this column's foreign key would reject.
-      const row = await c.insert({
-        name: input.name,
-        keyHash,
-        keyPrefix,
-        createdByUserId: memberUserId(ctx),
-        revokedAt: null,
+      const row = await inTransaction(db, async (tx) => {
+        const inserted = await orgCrud(tx, ctx, apiKeys).insert({
+          name: input.name,
+          keyHash,
+          keyPrefix,
+          createdByUserId: memberUserId(ctx),
+          revokedAt: null,
+        });
+
+        // The payload arm carries nothing but its discriminant, so neither the raw key nor
+        // its hash has a field to ride in (ADD §4.1, AC-11).
+        await emitNotification(tx, ctx.organizationId, {
+          type: "key_created",
+          subjectKind: "agent_key",
+          subjectId: inserted.id,
+          actorUserId: memberUserId(ctx),
+          payload: { type: "key_created", v: 1 },
+          dedupKey: buildKeyCreatedDedupKey(inserted.id),
+          slack: { kind: "owed" },
+        });
+
+        return inserted;
       });
 
       return { raw, key: toMetadata(row) };

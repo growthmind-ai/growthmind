@@ -1,13 +1,19 @@
 import { Divider, Stack, Text, Title } from "@mantine/core";
 import type { ReactNode } from "react";
 
-import { ensureProject } from "@growthmind/db";
+import {
+  createNotificationMutesRepo,
+  createNotificationSettingsRepo,
+  ensureProject,
+  type NotificationSettingsRow,
+} from "@growthmind/db";
 import {
   ANALYTICS_STEP,
   buildAnalyticsCard,
   buildDeliveryCard,
   buildProductCard,
   isAnalyticsAttached,
+  MUTABLE_NOTIFICATION_CLASSES,
   ONBOARDING_MESSAGES,
   PAGES_SECTION_TITLE,
   BUSINESS_SECTION_TITLE,
@@ -15,6 +21,7 @@ import {
   SETTINGS_TITLE,
   SLACK_CONNECTION_FIELDS,
   type ConnectionCardView,
+  type MutableNotificationClass,
   type StepView,
 } from "@growthmind/shared";
 
@@ -23,6 +30,7 @@ import { ProviderChips } from "@/components/first-run/ProviderChips";
 import { LiveRefresh } from "@/components/live/LiveRefresh";
 import { BusinessContext } from "@/components/settings/BusinessContext";
 import { ConnectionCard } from "@/components/settings/ConnectionCard";
+import { NotificationPreferences } from "@/components/settings/NotificationPreferences";
 import { PageRoles } from "@/components/settings/PageRoles";
 import { PrivacyReceipt } from "@/components/first-run/PrivacyReceipt";
 import { SlackConnection } from "@/components/slack/SlackConnection";
@@ -94,7 +102,17 @@ function Source({ view, card }: { view: SettingsView; card: ConnectionCardView }
   );
 }
 
-function Delivery({ view, card }: { view: SettingsView; card: ConnectionCardView }) {
+function Delivery({
+  view,
+  card,
+  digest,
+  shown,
+}: {
+  view: SettingsView;
+  card: ConnectionCardView;
+  digest: NotificationSettingsRow;
+  shown: readonly MutableNotificationClass[];
+}) {
   const { slack } = view;
 
   return (
@@ -123,6 +141,16 @@ function Delivery({ view, card }: { view: SettingsView; card: ConnectionCardView
         providerInterest={view.providerInterest}
         interestPingAvailable={view.interestPingAvailable}
         label={ONBOARDING_MESSAGES.providerSoonBadge}
+      />
+
+      {/* Inside the connection's own card, not beside it: the summary and the bell are how
+          you hear from this connection, and the seam below them is the org/personal
+          boundary (UX Variant 1, now hosted by main's ConnectionCard). */}
+      <NotificationPreferences
+        cadence={digest.digestCadence}
+        day={digest.digestDay}
+        shown={shown}
+        channelLabel={slack.channelLabel}
       />
     </ConnectionCard>
   );
@@ -174,6 +202,12 @@ export default async function SettingsPage() {
   const pages = await readPageRoles(db, ctx, projectId);
   const site = await readBusinessResearch(db, ctx, projectId);
 
+  // Absence is the default (weekly, Mondays; both classes shown) — no seed row exists and
+  // none is written by rendering.
+  const digest = await createNotificationSettingsRepo(db, ctx).read();
+  const muted = await createNotificationMutesRepo(db, ctx).listMutedClasses();
+  const shown = MUTABLE_NOTIFICATION_CLASSES.filter((entry) => !muted.includes(entry));
+
   const nowMs = Date.now();
   const { source, slack } = view;
 
@@ -224,7 +258,7 @@ export default async function SettingsPage() {
           goes: a vendor's name means nothing until the product it is attached to is named. */}
       <Product card={product} action={productActionLabel(site.domain, site.status)} />
       <Source view={view} card={analytics} />
-      <Delivery view={view} card={delivery} />
+      <Delivery view={view} card={delivery} digest={digest} shown={shown} />
 
       <Divider />
       <Excluded view={view} />

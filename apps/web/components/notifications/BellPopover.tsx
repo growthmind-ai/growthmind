@@ -6,6 +6,7 @@ import {
   NOTIFICATION_EMPTY_STATE_MESSAGES,
   NOTIFICATION_POPOVER_HEADING,
   UNREAD_ROW_SCREEN_READER_PREFIX,
+  type NotificationEmptyVariant,
 } from "@growthmind/shared";
 import { Anchor } from "@mantine/core";
 import Link from "next/link";
@@ -16,6 +17,14 @@ import type { BellRowViewModel, BellViewModel } from "@/lib/notifications/bell";
 import { ROUTES } from "@/lib/routes";
 
 const CONNECT_SLACK_LABEL = "Connect Slack";
+
+// The word inside the shared muted_by_you sentence that renders as the way back (UX C-11).
+const MUTED_SETTINGS_LINK_LABEL = "settings";
+
+const EMPTY_STATE_LINK_LABELS: Partial<Record<NotificationEmptyVariant, string>> = {
+  nothing_new_no_slack: CONNECT_SLACK_LABEL,
+  muted_by_you: MUTED_SETTINGS_LINK_LABEL,
+};
 
 // Recording that someone read a row must never sit between them and the page they pressed:
 // the write is sent and abandoned, and a lost one costs a dot, not a navigation.
@@ -43,8 +52,9 @@ function EmptyState({ variant }: { readonly variant: BellViewModel["emptyVariant
   }
 
   const sentence = NOTIFICATION_EMPTY_STATE_MESSAGES[variant];
+  const linkLabel = EMPTY_STATE_LINK_LABELS[variant];
 
-  if (variant !== "nothing_new_no_slack") {
+  if (linkLabel === undefined || !sentence.includes(linkLabel)) {
     return (
       <Text size="sm" c="dimmed" p="md">
         {sentence}
@@ -52,13 +62,13 @@ function EmptyState({ variant }: { readonly variant: BellViewModel["emptyVariant
     );
   }
 
-  const [before, after] = sentence.split(CONNECT_SLACK_LABEL);
+  const [before, after] = sentence.split(linkLabel);
 
   return (
     <Text size="sm" c="dimmed" p="md">
       {before}
       <AnchorLink href={ROUTES.settings} size="sm">
-        {CONNECT_SLACK_LABEL}
+        {linkLabel}
       </AnchorLink>
       {after}
     </Text>

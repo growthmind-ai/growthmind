@@ -11,9 +11,10 @@ import {
   type ModelCallStage,
   type TenantContext,
 } from "@growthmind/shared";
-import { eq, lt, sql } from "drizzle-orm";
+import { desc, eq, lt, ne, sql } from "drizzle-orm";
 
 import { publishLive } from "../live/publish";
+import { emitAnalysisFailingIfDue } from "../notifications/analysis-health";
 import { analysisModelCalls } from "../schema/analysis-model-calls";
 import { analysisRuns } from "../schema/analysis-runs";
 import { orgCrud } from "./crud";
@@ -84,6 +85,10 @@ export interface AnalysisRunsRepo {
   close(input: CloseRunInput): Promise<AnalysisRunRecord>;
 
   claimModelCall(input: ClaimModelCallInput): Promise<ClaimModelCallResult>;
+
+  // The last N runs that reached an end, newest first — `running` excluded, because a run
+  // still in flight is not evidence either way. The org filter is repo-injected.
+  recentTerminalStatuses(projectId: string, limit: number): Promise<readonly AnalysisRunStatus[]>;
 }
 
 type RawExecutor = {
@@ -142,7 +147,18 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
       lt(analysisRuns.startedAt, cutoff),
     );
 
-    return reclaimed !== null;
+    if (reclaimed === null) {
+      return false;
+    }
+
+    // The emit lives in this write, never in open()'s control flow: a detector wired only
+    // to close() is blind to every abandoned lease (ADD §4.3).
+    await emitAnalysisFailingIfDue(db, ctx, {
+      projectId: input.projectId,
+      runId: reclaimed.id,
+    });
+
+    return true;
   }
 
   return {
@@ -214,6 +230,16 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
         throw new Error(
           "analysis_runs: no run of this organization was still open to match the close",
         );
+      }
+
+      // Only a failed close can complete a failing streak, so the health read is skipped on
+      // the ordinary path. The helper reads after the update committed, on this executor,
+      // and swallows its own faults (D8).
+      if (status === "failed") {
+        await emitAnalysisFailingIfDue(db, ctx, {
+          projectId: input.projectId,
+          runId: input.runId,
+        });
       }
 
       await announce();
@@ -296,6 +322,26 @@ export function createAnalysisRunsRepo(db: ScopedExecutor, ctx: TenantContext): 
       return existing
         ? { claimed: false, reason: "already_claimed" }
         : { claimed: false, reason: "cap_exhausted" };
+    },
+
+    async recentTerminalStatuses(
+      projectId: string,
+      limit: number,
+    ): Promise<readonly AnalysisRunStatus[]> {
+      const rows = await db
+        .select({ status: analysisRuns.status })
+        .from(analysisRuns)
+        .where(
+          s.owned(
+            analysisRuns,
+            eq(analysisRuns.projectId, projectId),
+            ne(analysisRuns.status, "running"),
+          ),
+        )
+        .orderBy(desc(analysisRuns.startedAt))
+        .limit(limit);
+
+      return rows.map((row) => row.status);
     },
   };
 }

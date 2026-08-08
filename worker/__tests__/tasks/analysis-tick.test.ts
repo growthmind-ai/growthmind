@@ -414,6 +414,21 @@ function createFakeRuns(): FakeRuns {
         claims.add(key);
         return Promise.resolve({ claimed: true as const });
       },
+
+      recentTerminalStatuses(projectId: string, limit: number) {
+        return Promise.resolve(
+          [...runs.values()]
+            .filter(
+              (row) =>
+                row.organizationId === ctx.organizationId &&
+                row.projectId === projectId &&
+                row.status !== "running",
+            )
+            .toSorted((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+            .slice(0, limit)
+            .map((row) => row.status),
+        );
+      },
     }),
   };
 }

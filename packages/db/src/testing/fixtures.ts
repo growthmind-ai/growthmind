@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { reviewFindingText, type DetectorName, type ScannedText } from "@growthmind/core";
-import { summarySourceSchema, tenantContextSchema, type TenantContext } from "@growthmind/shared";
+import {
+  summarySourceSchema,
+  tenantContextSchema,
+  type NotificationSubjectKind,
+  type NotificationType,
+  type TenantContext,
+} from "@growthmind/shared";
 
 import { createAnalysisRunsRepo } from "../repositories/analysis-runs.repo";
 import type { MeasuredCountRow } from "../repositories/findings.repo";
@@ -329,9 +335,9 @@ export async function seedUnscannedFinding(
 
 export interface SeedNotificationParams {
   readonly organizationId: string;
-  readonly type?: "finding_delivered" | "keys_revoked" | "agent_first_contact";
+  readonly type?: NotificationType;
   readonly audience?: "org" | "owner";
-  readonly subjectKind?: "finding" | "agent_key";
+  readonly subjectKind?: NotificationSubjectKind;
   readonly subjectId?: string;
   readonly actorUserId?: string | null;
 

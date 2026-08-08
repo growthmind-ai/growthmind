@@ -73,7 +73,10 @@ import { runReduceAudience } from "./tasks/reduce-audience";
 import { runDeliveryTick } from "./tasks/delivery-tick";
 import { heartbeatMessage } from "./tasks/heartbeat";
 import { runOnboardingAnalysis } from "./tasks/onboarding-analysis";
+import { runNotificationDigest } from "./tasks/notification-digest";
 import { runNotificationDispatch } from "./tasks/notification-dispatch";
+import { runNotificationRescue } from "./tasks/notification-rescue";
+import { runNotificationRescueTick } from "./tasks/notification-rescue-tick";
 import { runProviderInterestTick } from "./tasks/provider-interest-tick";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
 
@@ -486,6 +489,40 @@ export const taskList: TaskList = {
       logger: helpers.logger,
     });
   },
+
+  // Enqueued by a connection write and by the tick's fan-out; both collapse on one job key.
+  [TASK.NOTIFICATION_RESCUE]: async (payload, helpers) => {
+    const { db } = resolveResources();
+
+    await runNotificationRescue(payload, {
+      db,
+      now: () => new Date(),
+      logger: taskLoggerFor(logger),
+    });
+    helpers.logger.info("notification rescue: this organization's sweep is done");
+  },
+
+  [TASK.NOTIFICATION_RESCUE_TICK]: async (_payload, helpers) => {
+    const { db } = resolveResources();
+
+    await runNotificationRescueTick({
+      db,
+      now: () => new Date(),
+      logger: taskLoggerFor(logger),
+    });
+    helpers.logger.info("notification rescue tick: every connected organization was swept");
+  },
+
+  [TASK.NOTIFICATION_DIGEST]: async (_payload, helpers) => {
+    const { db } = resolveResources();
+
+    await runNotificationDigest({
+      db,
+      now: () => new Date(),
+      logger: taskLoggerFor(logger),
+    });
+    helpers.logger.info("notification digest: every organization due today was summarised");
+  },
 };
 
 export const crontab = [
@@ -496,4 +533,13 @@ export const crontab = [
   `* * * * * ${TASK.PROVIDER_INTEREST_TICK}`,
   `30 3 * * * ${TASK.GROWTH_CONTEXT_TICK}`,
   `*/10 * * * * ${TASK.REPLAY_NARRATION_TICK}`,
+
+  // Five minutes is the dispatch claim TTL, and the sweep's period is that same horizon —
+  // an expired lease must not wait on a cadence unrelated to what declared it expired.
+  `*/5 * * * * ${TASK.NOTIFICATION_RESCUE_TICK}`,
+
+  // Hourly, because organizations pick different days and the task has to wake on each of
+  // them. The once-a-week guarantee is the dedup conflict plus the since-the-last-summary
+  // window, so the other twenty-three runs of a due day write nothing.
+  `0 * * * * ${TASK.NOTIFICATION_DIGEST}`,
 ].join("\n");

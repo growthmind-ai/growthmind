@@ -25,6 +25,11 @@ const NOTIFICATION_TYPES = [
   "finding_delivered",
   "keys_revoked",
   "agent_first_contact",
+  "key_created",
+  "backfill_complete",
+  "slack_disconnected",
+  "analysis_failing",
+  "digest",
 ] as const satisfies readonly [NotificationType, ...NotificationType[]];
 
 const NOTIFICATION_AUDIENCES = ["org", "owner"] as const satisfies readonly [
@@ -32,20 +37,26 @@ const NOTIFICATION_AUDIENCES = ["org", "owner"] as const satisfies readonly [
   ...NotificationAudience[],
 ];
 
-const NOTIFICATION_SUBJECT_KINDS = ["finding", "agent_key"] as const satisfies readonly [
-  NotificationSubjectKind,
-  ...NotificationSubjectKind[],
-];
+const NOTIFICATION_SUBJECT_KINDS = [
+  "finding",
+  "agent_key",
+  "slack_connection",
+  "source_connection",
+  "project",
+  "organization",
+] as const satisfies readonly [NotificationSubjectKind, ...NotificationSubjectKind[]];
 
 const NOTIFICATION_CHANNELS = ["slack", "web_push"] as const satisfies readonly [
   NotificationChannel,
   ...NotificationChannel[],
 ];
 
-const NOTIFICATION_SEND_STATUSES = ["sent", "failed", "quiet"] as const satisfies readonly [
-  NotificationSendStatus,
-  ...NotificationSendStatus[],
-];
+const NOTIFICATION_SEND_STATUSES = [
+  "pending",
+  "sent",
+  "failed",
+  "quiet",
+] as const satisfies readonly [NotificationSendStatus, ...NotificationSendStatus[]];
 
 // The fact, stored once; every renderer reads this row rather than a copy of it.
 export const notifications = pgTable(
@@ -83,6 +94,16 @@ export const notifications = pgTable(
     uniqueIndex("notifications_org_dedup_key_uidx").on(table.organizationId, table.dedupKey),
 
     index("notifications_org_created_at_idx").on(table.organizationId, table.createdAt),
+
+    // Serves the per-subject emit cooldown and the digest's since-the-last-summary read:
+    // both ask "the newest row of this type for this subject", and neither may fall back
+    // to the org-wide index and scan the record's tail.
+    index("notifications_org_type_subject_created_at_idx").on(
+      table.organizationId,
+      table.type,
+      table.subjectId,
+      table.createdAt,
+    ),
   ],
 );
 
@@ -113,9 +134,18 @@ export const notificationSends = pgTable(
     // A closed-union CODE, never prose and never vendor text; the sentence renders at read.
     failureReason: text("failure_reason"),
 
+    // Written beside `target` at send time from the connection's channel name, so a
+    // repoint or a disconnect cannot relabel a receipt that has already happened — and no
+    // channel id can reach a customer-facing string.
+    channelLabel: text("channel_label"),
+
     messageRef: text("message_ref"),
 
     sentAt: timestamp("sent_at", { withTimezone: true }),
+
+    // The lease. A claim older than the dispatch TTL is a crashed process, not a slow one,
+    // and the claim statement's own predicate is what decides that — never a read.
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
 
     attempts: integer("attempts").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

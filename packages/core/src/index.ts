@@ -528,5 +528,37 @@ export {
   keysRevokedSentence,
   agentFirstContactSentence,
   genericNotificationSentence,
+  keyCreatedSentence,
+  backfillCompleteSentence,
+  slackDisconnectedSentence,
+  analysisFailingSentence,
   type KeysRevokedSentenceInput,
+  type KeyCreatedSentenceInput,
+  type BackfillCompleteSentenceInput,
+  type AnalysisFailingSentenceInput,
 } from "./notifications/sentence";
+export { authoritativeSlackReceipt } from "./notifications/receipt";
+export {
+  NOTIFICATION_DISPATCH_CLAIM_TTL_MS,
+  NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
+  NOTIFICATION_RESCUE_TICK_INTERVAL_MS,
+  dispatchClaimsExpireBefore,
+} from "./notifications/dispatch";
+export {
+  NOTIFICATION_DIGEST_TICK_INTERVAL_MS,
+  DIGEST_EVALUATION_TIME_ZONE,
+  digestDayMatches,
+  digestWindowEnd,
+  digestWindowStart,
+} from "./notifications/digest";
+export {
+  SLACK_HEALTH_ALERT_COOLDOWN_SECONDS,
+  ANALYSIS_HEALTH_ALERT_COOLDOWN_SECONDS,
+  ANALYSIS_FAILING_RUN_COUNT,
+} from "./notifications/health";
+export {
+  digestLeadSentence,
+  buildDigestMessage,
+  type DigestMessageInput,
+  type DigestMessage,
+} from "./notifications/digest-message";

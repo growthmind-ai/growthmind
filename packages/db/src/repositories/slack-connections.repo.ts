@@ -1,16 +1,29 @@
-import type { CredentialKey, DecryptResult, TenantContext } from "@growthmind/shared";
+import { randomUUID } from "node:crypto";
+
+import { SLACK_HEALTH_ALERT_COOLDOWN_SECONDS } from "@growthmind/core";
+import type {
+  CredentialKey,
+  DecryptResult,
+  PostFailureCode,
+  TenantContext,
+} from "@growthmind/shared";
 import {
+  buildSlackDisconnectedDedupKey,
   decryptSecret,
   isDeliveryAddress,
   memberUserId,
   NON_ADDRESS_VALUES,
+  NOTIFICATION_RESCUE_TASK,
   TRIMMED_WHITESPACE,
 } from "@growthmind/shared";
 import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 
+import { enqueueJob } from "../jobs/enqueue";
 import { publishLive } from "../live/publish";
+import { emitNotification } from "../notifications/emit";
 import { slackConnections, slackCredentialAad } from "../schema/slack-connections";
-import { orgCrud } from "./crud";
+import { isDeliveryTarget } from "../services/delivery-channel-guard";
+import { inTransaction, orgCrud } from "./crud";
 import { RepoWriteError, rethrowScrubbed } from "./driver-error";
 import type { ScopedExecutor } from "./types";
 
@@ -59,10 +72,26 @@ export interface InsertActiveSlackConnectionInput {
   readonly connectedAt: Date;
 }
 
+// ADD D-3: `reasonMessage` is stored and never rendered — the CODE is what a sentence is
+// built from.
+export interface RecordSlackHealthInput {
+  readonly health: "healthy" | "failing";
+  readonly reasonCode: PostFailureCode | null;
+  readonly reasonMessage: string | null;
+  readonly checkedAt: Date;
+}
+
+export type SlackHealthTransition = "entered_failing" | "recovered" | "none";
+
 export interface SlackConnectionsRepo {
   getActiveForOrg(): Promise<SlackConnectionSummary | null>;
 
   insertActive(input: InsertActiveSlackConnectionInput): Promise<SlackConnectionSummary>;
+
+  // Both health edges in one conditional update whose returned row is the gate (D-3):
+  // entering failing emits the alert, recovering enqueues the rescue, and a repeat of
+  // either state refreshes the badge columns without telling anyone twice.
+  recordHealth(input: RecordSlackHealthInput): Promise<SlackHealthTransition>;
 
   // Fills the org's own active row: no connection id parameter exists, so one organization
   // cannot name another's. Once-only (see the guard below); `null` means nothing was updated.
@@ -160,6 +189,24 @@ export function createSlackConnectionsRepo(
     return row;
   }
 
+  // ADD D-4 producer 1, inside the write so every future caller inherits it. The jobKey
+  // collapses repeated triggers; a summary with no address queues nothing because there is
+  // still nothing to deliver through.
+  async function rescueQueued(
+    executor: ScopedExecutor,
+    summary: SlackConnectionSummary | null,
+  ): Promise<SlackConnectionSummary | null> {
+    if (summary !== null && isDeliveryTarget(summary)) {
+      await enqueueJob(executor, {
+        task: NOTIFICATION_RESCUE_TASK,
+        payload: { organizationId: ctx.organizationId },
+        jobKey: `${NOTIFICATION_RESCUE_TASK}:${ctx.organizationId}`,
+      });
+    }
+
+    return summary;
+  }
+
   return {
     async getActiveForOrg(): Promise<SlackConnectionSummary | null> {
       const row = await c.maybe(activeRow());
@@ -179,12 +226,95 @@ export function createSlackConnectionsRepo(
           connectedAt: input.connectedAt,
         });
 
+        await rescueQueued(db, toSlackConnectionSummary(row));
         await announce();
 
         return toSlackConnectionSummary(row);
       } catch (error) {
         rethrowWithoutParameters(error, [input.credentialCiphertext, input.credentialKeyId]);
       }
+    },
+
+    async recordHealth(input: RecordSlackHealthInput): Promise<SlackHealthTransition> {
+      return inTransaction(db, async (tx) => {
+        const t = orgCrud(tx, ctx, slackConnections);
+
+        if (input.health === "failing") {
+          const entered = await t.update(
+            {
+              health: "failing",
+              healthReasonCode: input.reasonCode,
+              healthReasonMessage: input.reasonMessage,
+              healthCheckedAt: input.checkedAt,
+            },
+            activeRow(),
+            ne(slackConnections.health, "failing"),
+          );
+
+          if (entered === null) {
+            // The badge stays truthful even when nobody is told.
+            await t.update(
+              {
+                healthReasonCode: input.reasonCode,
+                healthReasonMessage: input.reasonMessage,
+                healthCheckedAt: input.checkedAt,
+              },
+              activeRow(),
+            );
+
+            return "none";
+          }
+
+          await emitNotification(tx, ctx.organizationId, {
+            type: "slack_disconnected",
+            subjectKind: "slack_connection",
+            subjectId: entered.id,
+            actorUserId: null,
+            payload: { type: "slack_disconnected", v: 1 },
+            dedupKey: buildSlackDisconnectedDedupKey(randomUUID()),
+            slack: { kind: "owed" },
+            cooldownSeconds: SLACK_HEALTH_ALERT_COOLDOWN_SECONDS,
+          });
+
+          return "entered_failing";
+        }
+
+        const recovered = await t.update(
+          {
+            health: "healthy",
+            healthReasonCode: null,
+            healthReasonMessage: null,
+            healthCheckedAt: input.checkedAt,
+          },
+          activeRow(),
+          eq(slackConnections.health, "failing"),
+        );
+
+        if (recovered === null) {
+          // `validating → healthy` is not a repair, so nothing is enqueued for it.
+          await t.update(
+            {
+              health: "healthy",
+              healthReasonCode: null,
+              healthReasonMessage: null,
+              healthCheckedAt: input.checkedAt,
+            },
+            activeRow(),
+          );
+
+          return "none";
+        }
+
+        // Unlike the connection writes, recovery queues without the delivery-target gate:
+        // the row that just left `failing` was being posted to, and the sweep is cheap.
+        await enqueueJob(tx, {
+          task: NOTIFICATION_RESCUE_TASK,
+          payload: { organizationId: ctx.organizationId },
+          jobKey: `${NOTIFICATION_RESCUE_TASK}:${ctx.organizationId}`,
+        });
+
+        return "recovered";
+      });
     },
 
     async attachChannel(
@@ -200,7 +330,7 @@ export function createSlackConnectionsRepo(
       // identity. Filling a sentinel forks nothing; moving is `repointChannel`'s job.
       const row = await c.update({ channelId, channelName }, activeRow(), noAddressYet());
 
-      return announced(row ? toSlackConnectionSummary(row) : null);
+      return announced(await rescueQueued(db, row ? toSlackConnectionSummary(row) : null));
     },
 
     async repointChannel(input: RepointChannelInput): Promise<SlackConnectionSummary | null> {
@@ -220,7 +350,7 @@ export function createSlackConnectionsRepo(
         ne(slackConnections.channelId, input.channelId),
       );
 
-      return announced(row ? toSlackConnectionSummary(row) : null);
+      return announced(await rescueQueued(db, row ? toSlackConnectionSummary(row) : null));
     },
 
     async deactivate(id: string): Promise<SlackConnectionSummary | null> {

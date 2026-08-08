@@ -211,6 +211,13 @@
       "when": 1786128893399,
       "tag": "0029_loving_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786205704877,
+      "tag": "0030_rainy_green_goblin",
+      "breakpoints": true
     }
   ]
 }

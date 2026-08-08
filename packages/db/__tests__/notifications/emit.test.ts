@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { SLACK_HEALTH_ALERT_COOLDOWN_SECONDS } from "@growthmind/core";
 import {
   buildAgentFirstContactDedupKey,
   buildFindingDeliveredDedupKey,
   buildKeysRevokedDedupKey,
+  buildSlackDisconnectedDedupKey,
   credentialAad,
   encryptSecret,
   keyIdOf,
@@ -314,6 +316,135 @@ describe("the owed arm resolves the Slack leg at emit time", () => {
   });
 });
 
+// O-051 job 2 (ADD §3.2): one guard for every per-subject cooldown, applied only when the
+// caller asks for one. Typed as an intersection until wave 2 lands the optional field on
+// EmitNotificationInput itself.
+type CooldownEmitInput = EmitNotificationInput & { readonly cooldownSeconds?: number };
+
+function slackHealthInput(subjectId: string, cooldownSeconds?: number): CooldownEmitInput {
+  return {
+    type: "slack_disconnected",
+    subjectKind: "slack_connection",
+    subjectId,
+    actorUserId: null,
+    payload: { type: "slack_disconnected", v: 1 },
+    dedupKey: buildSlackDisconnectedDedupKey(randomUUID()),
+    slack: { kind: "owed" },
+    ...(cooldownSeconds === undefined ? {} : { cooldownSeconds }),
+  };
+}
+
+describe("the per-subject cooldown suppresses a repeat inside the window (ADD §3.2)", () => {
+  test("a second emit for the same subject inside the window changes nothing — no row, no receipt, no NOTIFY", async () => {
+    const db = await openDb();
+    const org = await seedOrg(db, "cooldown-suppressed");
+    await stubGraphileAddJob(db);
+    const recorder = recordPublishedTopics(db);
+    const subjectId = randomUUID();
+
+    // Different dedup keys on purpose: the once-ever mechanism cannot be what suppresses
+    // this, so the cooldown is the only guard standing.
+    const first = await emitNotification(
+      recorder.db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+    const second = await emitNotification(
+      recorder.db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+
+    expect(first).toEqual({ emitted: true });
+    expect(second).toEqual({ emitted: false });
+
+    const rows = await notificationRowsFor(db, org.organizationId);
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    if (!row) throw new Error("the first emit left no notification row");
+
+    // One quiet receipt from the first emit; the suppressed one added nothing anywhere.
+    expect(await sendRowsFor(db, row.id)).toHaveLength(1);
+    expect(await capturedJobs(db)).toEqual([]);
+    expect(recorder.published).toEqual([
+      { organizationId: org.organizationId, topic: "notifications" },
+    ]);
+  });
+
+  test("a suppressed emit queues no second dispatch job when a channel is connected", async () => {
+    const db = await openDb();
+    const org = await seedOrg(db, "cooldown-no-second-job");
+    await connectSlack(db, org);
+    await stubGraphileAddJob(db);
+    const subjectId = randomUUID();
+
+    await emitNotification(
+      db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+    const second = await emitNotification(
+      db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+
+    expect(second).toEqual({ emitted: false });
+    expect(await notificationRowsFor(db, org.organizationId)).toHaveLength(1);
+    expect(await capturedJobs(db)).toHaveLength(1);
+  });
+
+  test("a backdated first row lets the second through — the guard is the window, not existence", async () => {
+    const db = await openDb();
+    const org = await seedOrg(db, "cooldown-elapsed");
+    await stubGraphileAddJob(db);
+    const subjectId = randomUUID();
+
+    const first = await emitNotification(
+      db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+    expect(first).toEqual({ emitted: true });
+
+    const seeded = await notificationRowsFor(db, org.organizationId);
+    const firstRow = seeded[0];
+    if (!firstRow) throw new Error("the first emit left no notification row");
+
+    await db
+      .update(notifications)
+      .set({
+        createdAt: new Date(Date.now() - (SLACK_HEALTH_ALERT_COOLDOWN_SECONDS + 120) * 1_000),
+      })
+      .where(eq(notifications.id, firstRow.id));
+
+    const second = await emitNotification(
+      db,
+      org.organizationId,
+      slackHealthInput(subjectId, SLACK_HEALTH_ALERT_COOLDOWN_SECONDS),
+    );
+
+    expect(second).toEqual({ emitted: true });
+    expect(await notificationRowsFor(db, org.organizationId)).toHaveLength(2);
+  });
+
+  test("without a cooldown a second same-subject notification still lands — the guard is opt-in", async () => {
+    // The four job-1 arms above are the rest of this contract: the default path is
+    // byte-for-byte what it was before the cooldown existed.
+    const db = await openDb();
+    const org = await seedOrg(db, "cooldown-opt-in");
+    await stubGraphileAddJob(db);
+    const subjectId = randomUUID();
+
+    const first = await emitNotification(db, org.organizationId, slackHealthInput(subjectId));
+    const second = await emitNotification(db, org.organizationId, slackHealthInput(subjectId));
+
+    expect(first).toEqual({ emitted: true });
+    expect(second).toEqual({ emitted: true });
+    expect(await notificationRowsFor(db, org.organizationId)).toHaveLength(2);
+  });
+});
+
 // The edge sweep's blocking pair: before the savepoint landed, a fault on the notification
 // side rolled back the caller's write — a successful Slack post re-posted forever, and
 // "revoke every key" left the keys live. The harms are not symmetric, so the emit is the
@@ -343,10 +474,17 @@ describe("a notification fault never undoes the fact it announces (D8)", () => {
         .where(and(eq(apiKeys.organizationId, org.organizationId), isNull(apiKeys.revokedAt)));
       expect(live).toEqual([]);
 
+      // The revoke's own emit, not the org's total: minting the fixture key is a separate
+      // act_now emit with a real actor, so it lands and should.
       const emitted = await db
         .select()
         .from(notifications)
-        .where(eq(notifications.organizationId, org.organizationId));
+        .where(
+          and(
+            eq(notifications.organizationId, org.organizationId),
+            eq(notifications.type, "keys_revoked"),
+          ),
+        );
       expect(emitted).toEqual([]);
     } finally {
       await close();

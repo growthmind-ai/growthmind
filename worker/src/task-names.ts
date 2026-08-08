@@ -2,7 +2,10 @@ import {
   AUDIENCE_REDUCE_TASK,
   BUSINESS_RESEARCH_TASK,
   BUSINESS_RESEARCH_TASK_BEFORE_RENAME,
+  NOTIFICATION_DIGEST_TASK,
   NOTIFICATION_DISPATCH_TASK,
+  NOTIFICATION_RESCUE_TASK,
+  NOTIFICATION_RESCUE_TICK_TASK,
 } from "@growthmind/shared";
 
 export const TASK = {
@@ -27,6 +30,12 @@ export const TASK = {
   REDUCE_AUDIENCE: AUDIENCE_REDUCE_TASK,
 
   NOTIFICATION_DISPATCH: NOTIFICATION_DISPATCH_TASK,
+
+  NOTIFICATION_RESCUE: NOTIFICATION_RESCUE_TASK,
+
+  NOTIFICATION_RESCUE_TICK: NOTIFICATION_RESCUE_TICK_TASK,
+
+  NOTIFICATION_DIGEST: NOTIFICATION_DIGEST_TASK,
 
   // A job queued under the old name before this deploy has to find a handler, or it retries
   // against nothing until it exhausts its attempts (D9). Removable once none are left.

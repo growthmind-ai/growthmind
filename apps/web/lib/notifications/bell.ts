@@ -1,12 +1,30 @@
 import type { BellSnapshot, BellSnapshotChip } from "@growthmind/db";
 import {
+  digestChipLabel,
   FAILED_CHIP_LABEL,
+  QUIET_UNKNOWN_REASON_CHIP_LABEL,
+  QUIET_DIGEST_OFF_CHIP_LABEL,
   quietChipLabel,
   sentChipLabel,
+  weekdayName,
+  type DigestCadence,
   type NotificationEmptyVariant,
+  type Weekday,
 } from "@growthmind/shared";
 
 import { ROUTES } from "../routes";
+
+export interface BellDigestView {
+  readonly cadence: DigestCadence;
+  readonly day: Weekday;
+}
+
+// Intersections, not new interfaces: they stay assignable from the shipped DTO today and
+// from the ADD D-5a shape once the service carries the stored reason and the org's digest
+// setting. Until then a quiet chip has no reason and keeps job 1's no_channel rendering.
+export type BellChipFacts = BellSnapshotChip & { readonly quietReason?: string | null };
+
+export type BellSnapshotFacts = BellSnapshot & { readonly digest?: BellDigestView };
 
 // Client DTO: strings, booleans and numbers only — it crosses the server→client prop
 // boundary, and the client never recomputes any of it (no client clock, no second
@@ -85,15 +103,33 @@ export function bellTimeLabel(createdAtIso: string, now: Date): string {
   return at.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-export function bellChipViewModel(chip: BellSnapshotChip): BellChipViewModel {
+export function bellChipViewModel(chip: BellChipFacts, digest?: BellDigestView): BellChipViewModel {
   switch (chip.kind) {
     case "sent":
       // Nothing to attend to, so nothing to press.
       return { kind: "sent", label: sentChipLabel(chip.channelLabel), href: null };
     case "failed":
       return { kind: "failed", label: FAILED_CHIP_LABEL, href: ROUTES.settings };
-    case "quiet":
-      return { kind: "quiet", label: quietChipLabel("no_channel"), href: ROUTES.settings };
+    case "quiet": {
+      const reason = chip.quietReason ?? "no_channel";
+
+      if (reason !== "digest") {
+        return { kind: "quiet", label: quietChipLabel(reason), href: ROUTES.settings };
+      }
+
+      // The digest entry in the quiet record is a template; it must never render raw, so
+      // with no org cadence in hand the honest label is the unknown-reason degrade.
+      if (digest === undefined) {
+        return { kind: "quiet", label: QUIET_UNKNOWN_REASON_CHIP_LABEL, href: ROUTES.settings };
+      }
+
+      if (digest.cadence === "off") {
+        return { kind: "quiet", label: QUIET_DIGEST_OFF_CHIP_LABEL, href: ROUTES.settings };
+      }
+
+      // Inert: "in Monday's summary" names an arrival, not a repair (UX C-12).
+      return { kind: "digest", label: digestChipLabel(weekdayName(digest.day)), href: null };
+    }
   }
 }
 
@@ -101,7 +137,7 @@ function badgeLabelOf(count: number): string {
   return count > BADGE_DISPLAY_CAP ? `${String(BADGE_DISPLAY_CAP)}+` : String(count);
 }
 
-export function toBellViewModel(snapshot: BellSnapshot, now: Date): BellViewModel {
+export function toBellViewModel(snapshot: BellSnapshotFacts, now: Date): BellViewModel {
   return {
     badgeCount: snapshot.badgeCount,
     badgeLabel: badgeLabelOf(snapshot.badgeCount),
@@ -111,7 +147,7 @@ export function toBellViewModel(snapshot: BellSnapshot, now: Date): BellViewMode
       subjectHref: subjectHrefFor(row.subjectKind),
       timeLabel: bellTimeLabel(row.createdAtIso, now),
       unread: row.unread,
-      chip: row.chip === null ? null : bellChipViewModel(row.chip),
+      chip: row.chip === null ? null : bellChipViewModel(row.chip, snapshot.digest),
     })),
     emptyVariant: snapshot.emptyVariant,
   };
