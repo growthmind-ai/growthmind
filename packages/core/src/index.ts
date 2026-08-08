@@ -386,6 +386,11 @@ export {
   ROLE_ATTRIBUTE,
   TEST_ID_ATTRIBUTE,
   TYPE_ATTRIBUTE,
+  LABEL_FOR_ATTRIBUTE,
+  LABEL_TAG_NAME,
+  ARIA_HIDDEN_ATTRIBUTE,
+  ARIA_HIDDEN_VALUE,
+  UNNAMED_TAG_NAMES,
   indexDomSegments,
   segmentAt,
   resolveIdentity,
@@ -400,10 +405,14 @@ export {
 } from "./replay/nodes";
 export {
   DESCRIBE_ATTRIBUTE_PRECEDENCE,
+  DESCRIBE_SEMANTIC_PRECEDENCE,
+  DESCRIBE_NAME_LABEL,
   DESCRIBE_MAX_CLASSES,
   DESCRIBE_VALUE_MAX_LENGTH,
   DESCRIBE_TRUNCATION_MARKER,
+  DESCRIBE_IDENTIFIER_VALUE,
   describeElement,
+  type SemanticSource,
 } from "./replay/describe";
 export {
   RAGE_CLICK_MIN_CLICKS,

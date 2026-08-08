@@ -9,6 +9,7 @@ export type PersistedElement = {
   readonly id?: string;
   readonly testId?: string;
   readonly role?: string;
+  readonly accessibleName?: string;
   readonly classes: readonly string[];
 };
 

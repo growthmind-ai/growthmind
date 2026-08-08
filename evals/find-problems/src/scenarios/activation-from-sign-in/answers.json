@@ -1,0 +1,102 @@
+{
+  "scenarioId": "activation-from-sign-in",
+  "derivedFromRun": "corpus-3",
+  "problems": [
+    {
+      "id": "A1",
+      "title": "First-time visitors land on sign-in and try to sign in with an account they never created",
+      "statement": "Three of the four sessions open the sign-in page, fill in an email and a password, press Sign in, and only then go looking for the sign-up link. The screen a new visitor is given is the one for people who already have an account, and the route for people who do not is discovered by failing first. A 401 is recorded on the product's own origin in three of the four sessions.",
+      "observedIn": [
+        "s-vibe-builder beats 2-7, then a 401 in its console errors",
+        "s-just-looking beats 2-6, ends on /sign-in with a 401",
+        "s-engineer-in-a-hurry urlTrail /sign-in then /sign-up, with a 401"
+      ],
+      "matchAny": [
+        "sign in with an account they",
+        "before creating an account",
+        "before they have an account",
+        "land on the sign-in page",
+        "attempt to sign in before",
+        "try to sign in first"
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "A2",
+      "title": "No session got the product connected to anything",
+      "statement": "Across four sessions, zero reached the point where Growthmind was watching a product. Every session ends unresolved, either by leaving or by running out of attempts. The furthest any of them travelled was the first of the setup steps.",
+      "observedIn": ["all four sessions, outcome is gave_up or step_cap, none completed"],
+      "matchAny": [
+        "no session completed the setup",
+        "none of the sessions completed",
+        "not one session reached",
+        "no session got the product",
+        "zero of the four sessions"
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "A3",
+      "title": "The analytics connection is where every session that reaches setup stops",
+      "statement": "Two of the four sessions reach the first-run page, type into an API key field and a host field, press the same button two or three times, and end there. A 400 from the server is recorded on the product's own origin in three of the four sessions. Connecting an analytics account is the first thing asked of a new account and it is where the furthest-travelling sessions stop.",
+      "observedIn": [
+        "s-vibe-builder beats 20-26 then session ended, with a 400 in its console errors",
+        "s-sceptical-founder beats 15-21 including a 10s wait, then session ended, with a 400"
+      ],
+      "matchAny": [
+        "the analytics connection step",
+        "connecting an analytics account",
+        "connect analytics is where",
+        "the analytics step is where",
+        "stall on the analytics",
+        "posthog api key field"
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "A4",
+      "title": "The sign-up form is submitted before it can succeed, then has to be filled in again",
+      "statement": "One session pressed the submit button, then filled in the name and email fields, then pressed submit a second time. The form accepted a press it could not act on, and what was still missing became clear only after the press.",
+      "observedIn": ["s-vibe-builder beats 12-17"],
+      "matchAny": [
+        "submitted before it could",
+        "press submit a second time",
+        "validation only after the press",
+        "fill in the form again",
+        "submitted the form twice"
+      ],
+      "severity": "medium"
+    },
+    {
+      "id": "A5",
+      "title": "The Slack step sends the session onto slack.com and it does not come back",
+      "statement": "One session's page trail leaves the product for slack.com's workspace sign-in and ends there. The setup step hands the person to another company's login, and the session neither returns to Growthmind nor completes the step.",
+      "observedIn": [
+        "s-engineer-in-a-hurry urlTrail ends at slack.com/workspace-signin, beats 1-6 are all on slack.com"
+      ],
+      "matchAny": [
+        "sends the session to slack.com",
+        "leaves the product for slack",
+        "hands the person to slack",
+        "another company's login page",
+        "does not come back to the product",
+        "never returns to the product"
+      ],
+      "severity": "medium"
+    },
+    {
+      "id": "A6",
+      "title": "A visitor can leave from the sign-in page having seen nothing of what the product does",
+      "statement": "One session's entire page trail is the sign-in page. It fills the form, presses Sign in, gets a 401, and ends. There is nothing on that screen that shows what the product does, so a visitor who will not create an account first leaves knowing nothing.",
+      "observedIn": ["s-just-looking urlTrail is /sign-in only, 7 beats, outcome gave_up"],
+      "matchAny": [
+        "never sees what the product does",
+        "nothing about what the product does",
+        "no way to evaluate the product",
+        "leaves from the sign-in page",
+        "without creating an account first"
+      ],
+      "severity": "medium"
+    }
+  ]
+}

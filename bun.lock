@@ -9,6 +9,7 @@
       },
       "devDependencies": {
         "@modelcontextprotocol/client": "2.0.0",
+        "@rrweb/record": "2.1.1",
         "@types/bun": "^1.3.14",
         "@types/node": "^26.0.0",
         "oxlint": "^1.76.0",
@@ -49,6 +50,23 @@
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "happy-dom": "^20.11.1",
+      },
+    },
+    "evals/find-problems": {
+      "name": "@growthmind/eval-find-problems",
+      "version": "0.0.0",
+      "dependencies": {
+        "@ai-sdk/amazon-bedrock": "^5.0.47",
+        "@growthmind/adapters": "workspace:*",
+        "@growthmind/core": "workspace:*",
+        "@growthmind/shared": "workspace:*",
+        "ai": "^7.0.42",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@rrweb/record": "2.1.1",
+        "@types/bun": "^1.3.14",
+        "playwright-core": "^1.62.1",
       },
     },
     "packages/adapters": {
@@ -243,6 +261,8 @@
 
     "@growthmind/db": ["@growthmind/db@workspace:packages/db"],
 
+    "@growthmind/eval-find-problems": ["@growthmind/eval-find-problems@workspace:evals/find-problems"],
+
     "@growthmind/sdk-js": ["@growthmind/sdk-js@workspace:packages/sdk-js"],
 
     "@growthmind/shared": ["@growthmind/shared@workspace:packages/shared"],
@@ -334,6 +354,8 @@
     "@noble/ciphers": ["@noble/ciphers@2.2.0", "", {}, "sha512-Z6pjIZ/8IJcCGzb2S/0Px5J81yij85xASuk1teLNeg75bfT07MV3a/O2Mtn1I2se43k3lkVEcFaR10N4cgQcZA=="],
 
     "@noble/hashes": ["@noble/hashes@2.2.0", "", {}, "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg=="],
+
+    "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
 

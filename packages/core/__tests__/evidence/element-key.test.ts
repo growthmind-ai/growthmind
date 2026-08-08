@@ -179,6 +179,45 @@ describe("stableElementKey", () => {
     expect(keyOf(afterRestyle)).toBe(keyOf(beforeRender));
   });
 
+  // D12: a display field must not move a key. The name is rendered into a digest and carried
+  // through a stored row, so an element that gains one is the same element it was before.
+  test("should not fork a key when an element gains or renames an accessible name", () => {
+    const stableBase: ElementIdentity = {
+      nodeId: 21,
+      tagName: "input",
+      classes: ["m_8fb7ebe7"],
+      id: "mantine-0zhpcizrb",
+      attributes: {},
+    };
+    const structuralBase: ElementIdentity = {
+      nodeId: 22,
+      tagName: "button",
+      classes: ["gm-submit"],
+      role: "button",
+      attributes: {},
+    };
+
+    for (const base of [stableBase, structuralBase]) {
+      const named: ElementIdentity = { ...base, accessibleName: "Email" };
+      const renamed: ElementIdentity = { ...base, accessibleName: "Address" };
+
+      expect(keyOf(named)).toBe(keyOf(base));
+      expect(keyOf(renamed)).toBe(keyOf(base));
+      expect(stableElementKey(named)?.tier).toBe(stableElementKey(base)?.tier);
+    }
+
+    const anonymousButNamed: ElementIdentity = {
+      nodeId: 23,
+      tagName: "button",
+      classes: [],
+      accessibleName: "Save",
+      attributes: {},
+    };
+
+    expect(isStructurallyAnonymous(anonymousButNamed)).toBe(true);
+    expect(stableElementKey(anonymousButNamed)).toBeNull();
+  });
+
   test("should never read attributes into an element key", () => {
     const stableBase: ElementIdentity = {
       nodeId: 21,

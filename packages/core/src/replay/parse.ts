@@ -22,6 +22,7 @@ export const RRWEB_MOUSE_INTERACTION = {
 
 export const RRWEB_NODE_TYPE = {
   element: 2,
+  text: 3,
 } as const;
 
 export type UnknownRecord = Readonly<Record<string, unknown>>;
