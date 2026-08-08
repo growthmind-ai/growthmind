@@ -163,6 +163,10 @@ export const REPLAY_ROW_MORE_PAGES_TEMPLATE = "+{count} more";
 // which of the two a reader is looking at without spending a badge on it.
 export const REPLAY_ROW_UNNARRATED_HINT = "No write-up yet";
 
+// The short form of RECORDING_SUMMARY_HELD. A held narration was written and withheld, and
+// saying "no write-up yet" here would contradict the card the row links to.
+export const REPLAY_ROW_HELD_HINT = "Write-up can't be shown";
+
 // The axis names each descriptor heads its panel and summarises its pill with, and the bar's own
 // group label. They live here rather than beside the descriptors so the rename sweep covers them.
 export const REPLAY_COMPANY_AXIS = "Company";
@@ -257,6 +261,7 @@ export const ALL_REPLAY_SOURCE_MESSAGES: readonly string[] = [
   REPLAY_OPTION_COUNT_TEMPLATE,
   REPLAY_ROW_MORE_PAGES_TEMPLATE,
   REPLAY_ROW_UNNARRATED_HINT,
+  REPLAY_ROW_HELD_HINT,
   REPLAY_COMPANY_AXIS,
   REPLAY_ENTRY_AXIS,
   REPLAY_WHO_AXIS,
