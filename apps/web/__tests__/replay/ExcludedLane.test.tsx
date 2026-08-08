@@ -59,6 +59,7 @@ function excludedRow(reason: StampedExclusionReason, index: number): ReplayListR
 const EXCLUDED_LANE: ReplayScreen = {
   kind: "screen",
   rows: STAMPED.map(excludedRow),
+  stories: new Map(),
   provenance: { replays: 4, sessions: 4 },
   tailNote: null,
   facets: {

@@ -492,6 +492,12 @@ export {
   type ReplaySelection,
 } from "./replay-filters/select";
 export {
+  REPLAY_ROW_PAGE_TAG_CAP,
+  replayRowStory,
+  type ReplayRowStory,
+  type ReplayRowSummary,
+} from "./replay-filters/row-story";
+export {
   wayOut,
   wayOutAction,
   wayOutBody,

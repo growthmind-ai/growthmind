@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ReplaySource } from "@growthmind/adapters";
 import { NARRATION_MAX_ACTIONS, buildTranscript, compactTranscript } from "@growthmind/core";
+import type { ReplayRowSummary } from "@growthmind/core";
 import type {
   PersistRecordingSummaryInput,
   RecordingMetaStamp,
@@ -217,6 +218,19 @@ function fakeRepo() {
       }
 
       return Promise.resolve(newest);
+    },
+    // Built from the rows this fake actually holds: the tick never reads it, and a stub that
+    // returned an empty map would agree with a broken persist just as happily.
+    storiesFor: (projectId, recordingIds) => {
+      const stories = new Map<string, ReplayRowSummary>();
+
+      for (const id of recordingIds) {
+        const row = rowFor(id);
+        if (row === undefined || row.projectId !== projectId) continue;
+        stories.set(id, { headline: row.headline, pages: row.pages });
+      }
+
+      return Promise.resolve(stories);
     },
     citationsFor: () => Promise.resolve([]),
   };

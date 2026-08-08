@@ -9,9 +9,11 @@ import {
   type ReplayListRow,
   type ReplayOutcome,
   type ReplayProvenance,
+  type ReplayRowSummary,
 } from "@growthmind/core";
 import {
   createProjectConnectionsRepo,
+  createRecordingSummariesRepo,
   createSessionsRepo,
   findFirstProjectForOrg,
   type SessionRecord,
@@ -51,6 +53,7 @@ export type ReplayScreen =
   | {
       readonly kind: "screen";
       readonly rows: readonly ReplayListRow[];
+      readonly stories: ReadonlyMap<string, ReplayRowSummary>;
       readonly provenance: ReplayProvenance;
       readonly tailNote: string | null;
       readonly facets: ReplayFacets;
@@ -107,6 +110,28 @@ async function read(
       code: error instanceof Error ? error.name : "unknown",
     });
     return null;
+  }
+}
+
+// The narration is what the row says happened, and it is decoration on a list that already
+// renders without it. A read that fails costs every row its headline and its page tags, and
+// nothing else (D8).
+async function storiesFor(
+  deps: ReplayRouteDeps,
+  ctx: TenantContext,
+  projectId: string,
+  rows: readonly ReplayListRow[],
+): Promise<ReadonlyMap<string, ReplayRowSummary>> {
+  try {
+    return await createRecordingSummariesRepo(deps.db, ctx).storiesFor(
+      projectId,
+      rows.map((row) => row.recordingId),
+    );
+  } catch (error) {
+    logger.error("replays: the narrations for the replay list could not be read", {
+      code: error instanceof Error ? error.name : "unknown",
+    });
+    return new Map<string, ReplayRowSummary>();
   }
 }
 
@@ -231,6 +256,7 @@ export async function readReplayScreen(
   return {
     kind: "screen",
     rows,
+    stories: await storiesFor(deps, ctx, project.id, rows),
     provenance,
     tailNote: tailNote(provenance),
     facets,

@@ -1,6 +1,6 @@
 import { Button, Stack, Text } from "@mantine/core";
 
-import { provenanceSentence, wayOutAction, wayOutBody } from "@growthmind/core";
+import { provenanceSentence, replayRowStory, wayOutAction, wayOutBody } from "@growthmind/core";
 import {
   REPLAY_CLEAR_ALL_ACTION,
   REPLAY_CLEAR_COMPANY_ACTION,
@@ -201,7 +201,11 @@ export function ReplayListBody({ screen, filters }: ReplayListBodyProps) {
       {terminal === null ? (
         <Stack gap="sm">
           {screen.rows.map((row) => (
-            <ReplayRow key={row.sessionKey} row={row} />
+            <ReplayRow
+              key={row.sessionKey}
+              row={row}
+              story={replayRowStory(row, screen.stories.get(row.recordingId) ?? null)}
+            />
           ))}
         </Stack>
       ) : (

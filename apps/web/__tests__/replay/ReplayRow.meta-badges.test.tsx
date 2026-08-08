@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MantineProvider } from "@mantine/core";
-import type { ReplayListRow } from "@growthmind/core";
+import { replayRowStory, type ReplayListRow } from "@growthmind/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -32,9 +32,15 @@ const TIME_BADGE = /^\d+(m \d+)?s( active)?$/;
 // A stand-in for a measurement is the same collapse as a zero: it says something happened.
 const PLACEHOLDERS = ["—", "–", "n/a", "N/A", "unknown", "Unknown", "not measured"];
 
+// Un-narrated, so the badges under test are the meta's alone: the page tags this row does render
+// are Code, not Badge, and cannot reach BADGE_LABEL.
 function markupOf(row: ReplayListRow): string {
   return renderToStaticMarkup(
-    createElement(MantineProvider, null, createElement(ReplayRow, { row })),
+    createElement(
+      MantineProvider,
+      null,
+      createElement(ReplayRow, { row, story: replayRowStory(row, null) }),
+    ),
   );
 }
 
