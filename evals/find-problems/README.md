@@ -8,7 +8,13 @@ A negative result here is worth as much as a positive one, provided it is attrib
 
 ## Running it
 
-Everything runs from the **repo root**, because bun reads `.env` from the current working directory and not from the repo root. Run any of these from `evals/find-problems/` and `AWS_BEARER_TOKEN_BEDROCK` arrives `undefined`.
+Once per machine, install the browser. `playwright-core` is deliberate — it never downloads one — so without this the recorder dies with `Executable doesn't exist at …ms-playwright…`:
+
+```bash
+bunx playwright install chromium
+```
+
+Everything else runs from the **repo root**, because bun reads `.env` from the current working directory and not from the repo root. Run any of these from `evals/find-problems/` and `AWS_BEARER_TOKEN_BEDROCK` arrives `undefined`.
 
 ```bash
 bun evals/find-problems/src/run.ts all                       # record, analyse, score
