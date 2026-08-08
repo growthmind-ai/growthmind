@@ -264,7 +264,9 @@ export const SETTINGS_NO_DELIVERY_LINE =
 // everything downstream moot, and who is excluded only means something once both exist.
 export const SETTINGS_SOURCE_GROUP_TITLE = "What it reads";
 
-export const SETTINGS_DELIVERY_GROUP_TITLE = "Where findings go";
+// The section holds more than delivery now: the channel, the weekly summary, the
+// always-on health line and the viewer's own bell (O-051 job 2).
+export const SETTINGS_DELIVERY_GROUP_TITLE = "How you hear about things";
 
 export const SETTINGS_EXCLUDED_GROUP_TITLE = "Who is not counted";
 

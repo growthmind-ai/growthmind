@@ -4,9 +4,19 @@ import { Checkbox, Divider, Group, Select, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 
 import {
+  ALWAYS_LINE,
+  BELL_BODY,
+  BELL_LABEL,
+  CADENCE_SELECT_LABEL,
+  DAY_SELECT_LABEL,
+  HEALTH_BODY,
+  HEALTH_LABEL,
   MUTABLE_NOTIFICATION_CLASSES,
   PAGES_SAVE_FAILED,
   PAGES_SAVED,
+  SUMMARY_NO_SLACK_TEMPLATE,
+  SUMMARY_OFF,
+  SUMMARY_WEEKLY_TEMPLATE,
   WEEKDAYS,
   type DigestCadence,
   type MutableNotificationClass,
@@ -17,22 +27,6 @@ import { LeadIn } from "@/components/ui/Eyebrow";
 import { tapTargetStyle } from "@/components/ui/tap-target";
 
 import { SETTINGS_API, postJson } from "../first-run/api";
-
-// UX o-051 §Copy C-2..C-10, PROPOSED, built against verbatim. Their home is the shared
-// onboarding registry beside the other settings copy; that registry is backend-owned this
-// sprint, so they live here until it gains them and this block becomes imports.
-const SUMMARY_WEEKLY_TEMPLATE = "A summary of the week goes to #{channel} every {Day}.";
-const SUMMARY_NO_SLACK_TEMPLATE =
-  "A summary of the week is set for every {Day}. It will go to Slack once a channel is connected.";
-const SUMMARY_OFF = "No weekly summary. Anything urgent still arrives straight away.";
-const CADENCE_SELECT_LABEL = "How often";
-const DAY_SELECT_LABEL = "Which day";
-const HEALTH_LABEL = "Health and security";
-const HEALTH_BODY =
-  "Always sent, to everyone in this workspace. A broken Slack connection or a new key is not something to find out about late.";
-const BELL_LABEL = "Your bell";
-const BELL_BODY = "Only you see this. Turning something off here changes nothing for anyone else.";
-const ALWAYS_LINE = "Health and security always show here, whichever of these is off.";
 
 const CLASS_COPY: Record<
   MutableNotificationClass,
@@ -53,7 +47,11 @@ function weekdayName(day: Weekday): string {
 
 const DAY_CHOICES = WEEKDAYS.map((day) => ({ value: day, label: `${weekdayName(day)}s` }));
 
-function summarySentence(cadence: DigestCadence, day: Weekday, channelLabel: string | null): string {
+function summarySentence(
+  cadence: DigestCadence,
+  day: Weekday,
+  channelLabel: string | null,
+): string {
   if (cadence === "off") {
     return SUMMARY_OFF;
   }

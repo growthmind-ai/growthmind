@@ -134,7 +134,9 @@ function agentStrings(namespace: Record<string, unknown>): string[] {
 
 const DURATION = /\d+\s*(s|secs?|seconds?|m|mins?|minutes?|h|hours?)\b/i;
 
-const HEDGE = /\babout\b|\busually\b|\btypically\b|\bapprox|~/i;
+// "about" hedges only in front of a quantity. As a preposition it is ordinary English —
+// banning it outright refused "How you hear about things" while catching nothing.
+const HEDGE = /\babout\s+(a|an|half|\d)|\busually\b|\btypically\b|\bapprox|~/i;
 
 const ENGINEERING_JARGON = [
   "tenant",
@@ -234,6 +236,11 @@ describe("the onboarding copy audit — AD-4, FR-O22", () => {
 
     expect("Events usually arrive within 85 seconds.").toMatch(DURATION);
     expect("This usually takes about half a minute.").toMatch(HEDGE);
+
+    // The narrowing keeps the quantity case and lets the preposition through — without
+    // both halves asserted, a later widening or loosening passes unnoticed.
+    expect("It takes about 5 minutes.").toMatch(HEDGE);
+    expect("How you hear about things").not.toMatch(HEDGE);
 
     expect("Watching for what you just did.").not.toMatch(DURATION);
 
