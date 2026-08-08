@@ -2,6 +2,7 @@ import { NOTIFICATION_DISPATCH_MAX_ATTEMPTS } from "@growthmind/core";
 import {
   NOTIFICATION_SEND_FAILURE_REASONS,
   NOTIFICATION_SEND_NO_TARGET,
+  isConnectionShapedFailure,
   isRetryableSendFailure,
   type NotificationSendFailureReason,
 } from "@growthmind/shared";
@@ -218,7 +219,10 @@ describe("the notification dispatch lease", () => {
     expect(afterSent[0]?.status).toBe("sent");
     expect(afterSent[0]?.sentAt).not.toBeNull();
     expect(afterSent[0]?.failureReason).toBeNull();
-    expect(afterSent[0]?.attempts).toBe(2);
+
+    // `attempts` counts claims and nothing else (CR-3): the supersede leaves it where the
+    // claim put it, or the ratified cap of 5 quietly becomes ~3 real posts.
+    expect(afterSent[0]?.attempts).toBe(1);
 
     await recordDispatchOutcome(db, org.ctx, {
       notificationId,
@@ -233,6 +237,7 @@ describe("the notification dispatch lease", () => {
     expect(afterLateFailure[0]?.sentAt?.getTime()).toBe(afterSent[0]?.sentAt?.getTime());
     expect(afterLateFailure[0]?.failureReason).toBeNull();
     expect(afterLateFailure[0]?.messageRef).toBe("1785481299.000200");
+    expect(afterLateFailure[0]?.attempts).toBe(1);
   });
 
   test("settled is reason-aware: no_channel is not settled, digest is (AC-1/AC-2's precondition)", async () => {
@@ -352,6 +357,26 @@ describe("the notification dispatch lease", () => {
       expect(result.claimed).toBe(false);
       expect(result.claimed ? null : result.row?.status).toBe("failed");
       expect(result.claimed ? null : result.row?.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+    });
+
+    // CR-2: a connection repair cannot fix a message our own renderer built wrong — a
+    // reclaimed `rejected` row would repost the same refused message on every recovery,
+    // and its next failure would raise a false slack_disconnected into a working channel.
+    test("a repaired connection reclaims only connection-shaped failures — driven through isConnectionShapedFailure, not a restated list", async () => {
+      const org = await seedOrg("rescue-shape");
+      await seedActiveConnection(org, "healthy");
+
+      for (const reason of NOTIFICATION_SEND_FAILURE_REASONS) {
+        const notificationId = await seedOwedNotification(org);
+        await seedFailedSend(org, notificationId, reason, NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+
+        const result = await claimNotificationSend(db, org.ctx, claimInput(notificationId));
+
+        expect({ reason, claimed: result.claimed }).toEqual({
+          reason,
+          claimed: reason === "queue_unavailable" || isConnectionShapedFailure(reason),
+        });
+      }
     });
   });
 });

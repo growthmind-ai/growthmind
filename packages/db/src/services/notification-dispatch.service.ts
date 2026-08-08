@@ -2,6 +2,7 @@ import { NOTIFICATION_DISPATCH_MAX_ATTEMPTS } from "@growthmind/core";
 import {
   NOTIFICATION_SEND_NO_TARGET,
   NOTIFICATION_SEND_FAILURE_REASONS,
+  isConnectionShapedFailure,
   isRetryableSendFailure,
   type NotificationSendFailureReason,
   type NotificationSendStatus,
@@ -9,7 +10,7 @@ import {
   type PostFailureCode,
   type TenantContext,
 } from "@growthmind/shared";
-import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 
 import { orgCrud } from "../repositories/crud";
 import { scoped, type Scope } from "../repositories/scope";
@@ -209,11 +210,24 @@ function retryReclaimable(staleClaimsBefore: Date): SQL {
   )})`;
 }
 
-// The rescue arm (ADD D-4): once the org's connection is currently healthy, every failed
-// receipt describes a world that no longer exists — the code and the spent cap gated a
-// retry loop that is over, so neither may strand the row past the recovery.
+// A repaired connection cures only what the connection broke (CR-2): a message-shaped
+// failure is our own renderer's, and reclaiming it would repost the same refused message
+// after every recovery. A null reason is reclaimable so an unknown code cannot strand a row.
+const CONNECTION_CURABLE_FAILURE_REASONS = NOTIFICATION_SEND_FAILURE_REASONS.filter(
+  (reason) => reason === "queue_unavailable" || isConnectionShapedFailure(reason),
+);
+
+// The rescue arm (ADD D-4): once the org's connection is currently healthy, a
+// connection-shaped failed receipt describes a world that no longer exists — the code and
+// the spent cap gated a retry loop that is over, so neither may strand the row past the
+// recovery.
 function rescueReclaimable(staleClaimsBefore: Date): SQL {
-  return sql`(${eq(notificationSends.status, "failed")} or ${abandonedPending(staleClaimsBefore)})`;
+  return sql`((${eq(notificationSends.status, "failed")} and (${isNull(
+    notificationSends.failureReason,
+  )} or ${inArray(
+    notificationSends.failureReason,
+    CONNECTION_CURABLE_FAILURE_REASONS,
+  )})) or ${abandonedPending(staleClaimsBefore)})`;
 }
 
 // A live connection that is not `failing` is the signal that the world changed since a
@@ -363,10 +377,10 @@ export async function recordDispatchOutcome(
         notificationSends.channel,
         notificationSends.target,
       ],
-      set: {
-        ...columns,
-        attempts: sql`${notificationSends.attempts} + 1`,
-      },
+      // No attempts increment here (CR-3): the column counts claims alone. Every claimed
+      // path already counted at the claim, and doubling it spent the ratified cap of 5 in
+      // three real posts.
+      set: columns,
       setWhere: sql`${storedOutcomeRank} < ${OUTCOME_RANK[outcome.status]}`,
     });
 }

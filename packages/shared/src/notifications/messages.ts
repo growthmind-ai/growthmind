@@ -1,3 +1,4 @@
+import type { DigestCadence, MutableNotificationClass, Weekday } from "./settings";
 import type { NotificationQuietReason, NotificationSendFailureReason } from "./types";
 
 // Copy is UX §Copy #1–#14 verbatim. CONTRACT strings are fixed by the ratified spec or
@@ -132,6 +133,46 @@ export const BELL_BODY =
 
 export const ALWAYS_LINE = "Health and security always show here, whichever of these is off.";
 
+// PROPOSED (o-051 CR-6): the card's words for the two mutable classes, moved out of the
+// component so the jargon and completeness audits walk them. Flat records, label and
+// description apart — the completeness inversion derives only string-valued exports.
+export const NOTIFICATION_CLASS_CARD_LABELS: Record<MutableNotificationClass, string> = {
+  work: "The work",
+  record: "The record",
+};
+
+export const NOTIFICATION_CLASS_CARD_DESCRIPTIONS: Record<MutableNotificationClass, string> = {
+  work: "Findings and fixes, and anything waiting on you.",
+  record: "Things that happened that need nothing from you.",
+};
+
+// PROPOSED (o-051 CR-6): the cadence picker's two choices.
+export const DIGEST_CADENCE_CHOICE_LABELS: Record<DigestCadence, string> = {
+  weekly: "Every week",
+  off: "Off",
+};
+
+// PROPOSED (o-051 CR-6): one home for the day's display name — the summary sentence, the
+// day picker and the bell's digest chip all read it here.
+export const WEEKDAY_NAMES: Record<Weekday, string> = {
+  monday: "Monday",
+  tuesday: "Tuesday",
+  wednesday: "Wednesday",
+  thursday: "Thursday",
+  friday: "Friday",
+  saturday: "Saturday",
+  sunday: "Sunday",
+};
+
+export function weekdayName(day: Weekday): string {
+  return WEEKDAY_NAMES[day];
+}
+
+// The day picker shows the plural ("Mondays"), derived from the registered name.
+export function weekdayChoiceLabel(day: Weekday): string {
+  return `${WEEKDAY_NAMES[day]}s`;
+}
+
 export const ALL_NOTIFICATION_MESSAGES: readonly string[] = [
   ...new Set([
     NOTIFICATION_POPOVER_HEADING,
@@ -154,6 +195,10 @@ export const ALL_NOTIFICATION_MESSAGES: readonly string[] = [
     BELL_LABEL,
     BELL_BODY,
     ALWAYS_LINE,
+    ...Object.values(NOTIFICATION_CLASS_CARD_LABELS),
+    ...Object.values(NOTIFICATION_CLASS_CARD_DESCRIPTIONS),
+    ...Object.values(DIGEST_CADENCE_CHOICE_LABELS),
+    ...Object.values(WEEKDAY_NAMES),
     ...Object.values(NOTIFICATION_EMPTY_STATE_MESSAGES),
     ...Object.values(NOTIFICATION_FAILURE_SENTENCES),
     ...Object.values(NOTIFICATION_QUIET_SENTENCES),

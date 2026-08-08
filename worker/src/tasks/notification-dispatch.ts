@@ -27,6 +27,7 @@ import {
 import { SYSTEM_ACTOR, systemContextForOrganizationId } from "@growthmind/db/system";
 import {
   describeError,
+  isConnectionShapedFailure,
   isRetryableSendFailure,
   notificationDispatchPayloadSchema,
   parseNotificationPayload,
@@ -319,14 +320,20 @@ export async function runNotificationDispatch(
       outcome: { status: "failed", target: notification.channelId, failureReason: failure },
       now,
     });
-    await recordHealthEdge(
-      deps.db,
-      ctx,
-      deps.logger,
-      notificationId,
-      { health: "failing", reasonCode: failure === "queue_unavailable" ? null : failure },
-      now,
-    );
+
+    // Only a connection-shaped failure moves the badge (CR-2): a message our own renderer
+    // built wrong says nothing about the connection, and a failing edge here would raise
+    // slack_disconnected into a channel that is working.
+    if (failure !== "queue_unavailable" && isConnectionShapedFailure(failure)) {
+      await recordHealthEdge(
+        deps.db,
+        ctx,
+        deps.logger,
+        notificationId,
+        { health: "failing", reasonCode: failure },
+        now,
+      );
+    }
 
     // The receipt is already committed, so what Graphile retries is honest — and the
     // thrown message carries the closed-union code, never vendor text (D-2).

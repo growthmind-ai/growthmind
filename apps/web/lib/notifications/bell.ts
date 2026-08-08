@@ -6,6 +6,7 @@ import {
   QUIET_DIGEST_OFF_CHIP_LABEL,
   quietChipLabel,
   sentChipLabel,
+  weekdayName,
   type DigestCadence,
   type NotificationEmptyVariant,
   type Weekday,
@@ -102,10 +103,6 @@ export function bellTimeLabel(createdAtIso: string, now: Date): string {
   return at.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-function weekdayDisplayName(day: Weekday): string {
-  return day.charAt(0).toUpperCase() + day.slice(1);
-}
-
 export function bellChipViewModel(chip: BellChipFacts, digest?: BellDigestView): BellChipViewModel {
   switch (chip.kind) {
     case "sent":
@@ -131,7 +128,7 @@ export function bellChipViewModel(chip: BellChipFacts, digest?: BellDigestView):
       }
 
       // Inert: "in Monday's summary" names an arrival, not a repair (UX C-12).
-      return { kind: "digest", label: digestChipLabel(weekdayDisplayName(digest.day)), href: null };
+      return { kind: "digest", label: digestChipLabel(weekdayName(digest.day)), href: null };
     }
   }
 }

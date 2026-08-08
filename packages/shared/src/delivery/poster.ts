@@ -15,6 +15,19 @@ export function isRetryablePostFailure(code: PostFailureCode): boolean {
   return code === "call_failed";
 }
 
+// `rejected` is the renderer's failure, not the connection's: Slack accepted the call and
+// refused the message, so it must move no health badge and no reconnect can repair it.
+const CONNECTION_SHAPED_POST_FAILURES = {
+  call_failed: true,
+  rejected: false,
+  not_authorised: true,
+  channel_unavailable: true,
+} as const satisfies Record<PostFailureCode, boolean>;
+
+export function isConnectionShapedFailure(code: PostFailureCode): boolean {
+  return CONNECTION_SHAPED_POST_FAILURES[code];
+}
+
 export const postResultSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),

@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 
 import { notificationSettings } from "../../src/schema/notification-settings";
 import { notifications } from "../../src/schema/notifications";
+import { gatherDigestNotifications } from "../../src/services/notification-digest.service";
 import {
   createTestDb,
   laneNames,
@@ -37,6 +38,7 @@ const COLD_BOOT_BUDGET_MS = 60_000;
 // 2026-09-07 is a Monday; the run instants sit mid-morning inside their due day, the way
 // an hourly cron lands, and every fixture instant is fixed so the suite cannot drift with
 // the wall clock.
+const WEEK_START = new Date("2026-08-31T00:00:00.000Z");
 const MONDAY_BOUNDARY = new Date("2026-09-07T00:00:00.000Z");
 const MONDAY_RUN = new Date("2026-09-07T09:30:00.000Z");
 const MONDAY_LATER_RUN = new Date("2026-09-07T11:30:00.000Z");
@@ -128,6 +130,74 @@ function payloadIdsOf(row: { payload: unknown } | undefined): readonly string[] 
   }
   return parsed.payload.notificationIds;
 }
+
+async function seedRowWithReceipt(
+  org: SeededOrgWithOwner,
+  createdAt: Date,
+  receipt: {
+    readonly status: "sent" | "failed" | "quiet";
+    readonly quietReason?: string;
+    readonly failureReason?: string;
+  },
+): Promise<string> {
+  const seeded = await seedNotification(db, {
+    organizationId: org.organizationId,
+    type: "backfill_complete",
+    subjectKind: "source_connection",
+    subjectId: randomUUID(),
+    payload: { type: "backfill_complete", v: 1, sessionsTouched: 3, eventsPersisted: 12 },
+    createdAt,
+  });
+  await seedNotificationSend(db, {
+    organizationId: org.organizationId,
+    notificationId: seeded.id,
+    status: receipt.status,
+    quietReason: receipt.quietReason ?? null,
+    failureReason: receipt.failureReason ?? null,
+    target: receipt.status === "quiet" ? NOTIFICATION_SEND_NO_TARGET : CHANNEL,
+  });
+  return seeded.id;
+}
+
+// CR-4: the status filter is what stands between the summary and P-1's same-thing-twice
+// deal-breaker — a window-only gather would re-summarise notifications Slack already
+// posted, and count rows the summary never carries.
+test("the gather takes only quiet-digest receipts, and totalCount counts only them", async () => {
+  const org = await seedOrg("gather-status");
+
+  const deferredOne = await seedQuietDigestRow(org, WEEK_ONE_ROW);
+  const deferredTwo = await seedQuietDigestRow(org, MONDAY_BOUNDARY);
+
+  // Same window, wrong population: posted, failed, silenced-for-no-channel, unsettled.
+  await seedRowWithReceipt(org, WEEK_ONE_ROW, { status: "sent" });
+  await seedRowWithReceipt(org, WEEK_ONE_ROW, { status: "failed", failureReason: "call_failed" });
+  await seedRowWithReceipt(org, WEEK_ONE_ROW, { status: "quiet", quietReason: "no_channel" });
+  await seedNotification(db, {
+    organizationId: org.organizationId,
+    type: "backfill_complete",
+    subjectKind: "source_connection",
+    subjectId: randomUUID(),
+    payload: { type: "backfill_complete", v: 1, sessionsTouched: 1, eventsPersisted: 4 },
+    createdAt: WEEK_ONE_ROW,
+  });
+
+  // Another org's deferred row in the same window is not this org's summary (D7).
+  const other = await seedOrg("gather-status-other");
+  await seedQuietDigestRow(other, WEEK_ONE_ROW);
+
+  const window = { windowStart: WEEK_START, windowEnd: MONDAY_BOUNDARY };
+
+  const gathered = await gatherDigestNotifications(db, org.ctx, { ...window, limit: 10 });
+  expect([...gathered.notificationIds].toSorted()).toEqual(
+    [deferredOne, deferredTwo].toSorted(),
+  );
+  expect(gathered.totalCount).toBe(2);
+
+  // The denominator describes the window's deferred population, never the capped list.
+  const capped = await gatherDigestNotifications(db, org.ctx, { ...window, limit: 1 });
+  expect(capped.notificationIds).toHaveLength(1);
+  expect(capped.totalCount).toBe(2);
+}, COLD_BOOT_BUDGET_MS);
 
 test("a second digest never repeats what the first one carried, and the boundary row rides exactly once", async () => {
   const org = await seedOrg("no-repeat");

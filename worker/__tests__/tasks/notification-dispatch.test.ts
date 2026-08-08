@@ -6,7 +6,11 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { backfillCompleteSentence, keysRevokedSentence } from "@growthmind/core";
+import {
+  backfillCompleteSentence,
+  keysRevokedSentence,
+  NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
+} from "@growthmind/core";
 import { schema } from "@growthmind/db";
 import {
   createTestDb,
@@ -160,6 +164,13 @@ async function bedFor(label: string, options: { readonly slack: boolean }): Prom
 async function sendRowsFor(notificationId: string) {
   const rows = await db.select().from(schema.notificationSends);
   return rows.filter((row) => row.notificationId === notificationId);
+}
+
+async function slackDisconnectedRowsFor(organizationId: string) {
+  const rows = await db.select().from(schema.notifications);
+  return rows.filter(
+    (row) => row.organizationId === organizationId && row.type === "slack_disconnected",
+  );
 }
 
 describe("notification:dispatch posts the shared sentence once and records the honest receipt", () => {
@@ -393,15 +404,15 @@ describe("job 2 — the lease, the retry contract and the health edges (ADD §4.
     expect(statuses).toEqual(["quiet"]);
   });
 
-  test("a failed post records the failing health edge with the closed-union code (D-3)", async () => {
+  test("a connection-shaped failure records the failing health edge with the closed-union code (D-3)", async () => {
     const bed = await bedFor("health-failing", { slack: true });
-    const poster = loudPoster({ fails: "rejected" });
+    const poster = loudPoster({ fails: "channel_unavailable" });
 
     await bed.run(poster);
 
     const connection = await slackConnectionRowFor(db, bed.org.organizationId);
     expect(connection.health).toBe("failing");
-    expect(connection.healthReasonCode).toBe("rejected");
+    expect(connection.healthReasonCode).toBe("channel_unavailable");
   });
 
   test("a successful post records the healthy edge and clears the stored reason (D-3)", async () => {
@@ -418,6 +429,67 @@ describe("job 2 — the lease, the retry contract and the health edges (ADD §4.
     const connection = await slackConnectionRowFor(db, bed.org.organizationId);
     expect(connection.health).toBe("healthy");
     expect(connection.healthReasonCode).toBeNull();
+  });
+
+  // CR-2, the north star inverted: `rejected` means our own renderer built a message the
+  // channel refused. It must not move the health badge, must not raise slack_disconnected
+  // into a channel that is working, and no recovery may repost it — only a code change can.
+  test("a rejected post raises no slack_disconnected and is never reposted by a recovery", async () => {
+    const bed = await bedFor("rejected-no-loop", { slack: true });
+
+    await bed.run(loudPoster({ fails: "rejected" }));
+
+    const afterRejected = await slackConnectionRowFor(db, bed.org.organizationId);
+    expect(afterRejected.health).not.toBe("failing");
+    expect(await slackDisconnectedRowsFor(bed.org.organizationId)).toHaveLength(0);
+
+    const rejectedSends = await sendRowsFor(bed.notificationId);
+    expect(rejectedSends.map((send) => [send.status, send.failureReason])).toEqual([
+      ["failed", "rejected"],
+    ]);
+
+    // The next notification posts fine — the connection was never broken.
+    const second = await seedNotification(db, {
+      organizationId: bed.org.organizationId,
+      type: "key_created",
+      subjectKind: "agent_key",
+      actorUserId: bed.org.userId,
+    });
+    const secondPoster = loudPoster();
+    const run = await loadDispatch();
+    await run(
+      { organizationId: bed.org.organizationId, notificationId: second.id },
+      { db, posterFor: () => Promise.resolve(secondPoster), logger: silentLogger },
+    );
+    expect(secondPoster.posted).toHaveLength(1);
+
+    // The rescue re-runs the rejected row's job against the now-recorded-healthy world.
+    const rescuePoster = loudPoster();
+    await bed.run(rescuePoster);
+
+    expect(rescuePoster.posted).toEqual([]);
+    const finalSends = await sendRowsFor(bed.notificationId);
+    expect(finalSends.map((send) => [send.status, send.failureReason])).toEqual([
+      ["failed", "rejected"],
+    ]);
+    expect(await slackDisconnectedRowsFor(bed.org.organizationId)).toHaveLength(0);
+  });
+
+  test("the ratified cap of 5 yields five real post attempts, then the claim refuses (CR-3)", async () => {
+    const bed = await bedFor("five-real-posts", { slack: true });
+    const poster = loudPoster({ fails: "call_failed" });
+
+    // Two drives past the cap, so the count below proves the refusal, not the loop's end.
+    for (let drive = 0; drive < NOTIFICATION_DISPATCH_MAX_ATTEMPTS + 2; drive += 1) {
+      await bed.run(poster).catch(() => undefined);
+    }
+
+    expect(poster.posted).toHaveLength(NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+
+    const sends = await sendRowsFor(bed.notificationId);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.attempts).toBe(NOTIFICATION_DISPATCH_MAX_ATTEMPTS);
+    expect(sends[0]?.status).toBe("failed");
   });
 
   test("a health write that throws is logged and cannot break the post — the receipt is already committed (D8)", async () => {

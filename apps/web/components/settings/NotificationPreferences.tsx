@@ -9,15 +9,21 @@ import {
   BELL_LABEL,
   CADENCE_SELECT_LABEL,
   DAY_SELECT_LABEL,
+  DIGEST_CADENCES,
+  DIGEST_CADENCE_CHOICE_LABELS,
   HEALTH_BODY,
   HEALTH_LABEL,
   MUTABLE_NOTIFICATION_CLASSES,
+  NOTIFICATION_CLASS_CARD_DESCRIPTIONS,
+  NOTIFICATION_CLASS_CARD_LABELS,
   PAGES_SAVE_FAILED,
   PAGES_SAVED,
   SUMMARY_NO_SLACK_TEMPLATE,
   SUMMARY_OFF,
   SUMMARY_WEEKLY_TEMPLATE,
   WEEKDAYS,
+  weekdayChoiceLabel,
+  weekdayName,
   type DigestCadence,
   type MutableNotificationClass,
   type Weekday,
@@ -28,24 +34,14 @@ import { tapTargetStyle } from "@/components/ui/tap-target";
 
 import { SETTINGS_API, postJson } from "../first-run/api";
 
-const CLASS_COPY: Record<
-  MutableNotificationClass,
-  { readonly label: string; readonly description: string }
-> = {
-  work: { label: "The work", description: "Findings and fixes, and anything waiting on you." },
-  record: { label: "The record", description: "Things that happened that need nothing from you." },
-};
+// Every customer-facing word here comes from the shared registry, so the jargon and
+// completeness audits walk it (CR-6); this file only shapes choices for the pickers.
+const CADENCE_CHOICES = DIGEST_CADENCES.map((value) => ({
+  value,
+  label: DIGEST_CADENCE_CHOICE_LABELS[value],
+}));
 
-const CADENCE_CHOICES = [
-  { value: "weekly", label: "Every week" },
-  { value: "off", label: "Off" },
-];
-
-function weekdayName(day: Weekday): string {
-  return day.charAt(0).toUpperCase() + day.slice(1);
-}
-
-const DAY_CHOICES = WEEKDAYS.map((day) => ({ value: day, label: `${weekdayName(day)}s` }));
+const DAY_CHOICES = WEEKDAYS.map((day) => ({ value: day, label: weekdayChoiceLabel(day) }));
 
 function summarySentence(
   cadence: DigestCadence,
@@ -212,8 +208,8 @@ export function NotificationPreferences({
               onChange={(event) => {
                 void saveBell(muteClass, event.currentTarget.checked);
               }}
-              label={CLASS_COPY[muteClass].label}
-              description={CLASS_COPY[muteClass].description}
+              label={NOTIFICATION_CLASS_CARD_LABELS[muteClass]}
+              description={NOTIFICATION_CLASS_CARD_DESCRIPTIONS[muteClass]}
               style={tapTargetStyle}
             />
             <SaveNotice state={notice[muteClass]} />
