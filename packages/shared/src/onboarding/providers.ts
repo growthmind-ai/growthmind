@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { AGENT_PROVIDER_IDS, type AgentProviderId } from "./agent-blocks";
 
-export const PROVIDER_RAILS = ["analytics", "code", "coding-assistant"] as const;
+export const PROVIDER_RAILS = ["analytics", "code", "coding-assistant", "delivery"] as const;
 
 export type ProviderRail = (typeof PROVIDER_RAILS)[number];
 
@@ -25,7 +25,7 @@ export const INTEREST_PROVIDER_IDS = [
 
 export type InterestProviderId = (typeof INTEREST_PROVIDER_IDS)[number];
 
-export type ProviderId = InterestProviderId | "posthog";
+export type ProviderId = InterestProviderId | "posthog" | "slack";
 
 export type ProviderDescriptor = {
   readonly id: ProviderId;
@@ -38,6 +38,7 @@ export type ProviderDescriptor = {
 // with no name here is a compile error, not a chip labelled with its own id.
 const PROVIDER_DISPLAY_NAMES = {
   posthog: "PostHog",
+  slack: "Slack",
   github: "GitHub",
   gitlab: "GitLab",
   "claude-code": "Claude Code",
@@ -50,10 +51,11 @@ const PROVIDER_DISPLAY_NAMES = {
   "growthmind-analytics": "Growthmind AI Analytics",
 } as const satisfies Record<ProviderId, string>;
 
-// The one compile-time home for the eleven identities (AD-4). No second
+// The one compile-time home for the twelve identities (AD-4). No second
 // provider list may exist anywhere.
 export const PROVIDER_CATALOGUE: readonly ProviderDescriptor[] = Object.freeze([
   { id: "posthog", displayName: PROVIDER_DISPLAY_NAMES.posthog, rail: "analytics", live: true },
+  { id: "slack", displayName: PROVIDER_DISPLAY_NAMES.slack, rail: "delivery", live: true },
   { id: "github", displayName: PROVIDER_DISPLAY_NAMES.github, rail: "code", live: false },
   { id: "gitlab", displayName: PROVIDER_DISPLAY_NAMES.gitlab, rail: "code", live: false },
   {
@@ -106,6 +108,15 @@ const LIVE_PROVIDER_IDS: ReadonlySet<string> = new Set(
 
 export function isLiveProvider(id: ProviderId): boolean {
   return LIVE_PROVIDER_IDS.has(id);
+}
+
+// What a rail can be connected to today. A rail with exactly one is a rail whose empty
+// state can name the product it is offering rather than only saying nothing is there;
+// with two or more the name is a choice, and naming one of them would presume it.
+export function soleLiveProviderOn(rail: ProviderRail): ProviderDescriptor | null {
+  const live = PROVIDER_CATALOGUE.filter((entry) => entry.rail === rail && entry.live);
+
+  return live.length === 1 ? (live[0] ?? null) : null;
 }
 
 // Membership only — never the order the rows came back in (UX §3.7). An

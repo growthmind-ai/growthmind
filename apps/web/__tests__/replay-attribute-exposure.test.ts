@@ -37,7 +37,10 @@ const REVIEWED: Record<string, { readonly bindings: number; readonly kind: Kind 
   "app/(app)/agent/page.tsx": { bindings: 1, kind: "our-copy" },
   // The page title, a constant of ours. The counts /data renders never reach an attribute.
   "app/(app)/data/page.tsx": { bindings: 1, kind: "our-copy" },
-  "app/(app)/settings/page.tsx": { bindings: 5, kind: "our-copy" },
+  // Three section titles, all constants of ours. The connection cards took the other two:
+  // what they render — the domain, the workspace, the channel — is text, which rrweb masks,
+  // and none of it reaches an attribute.
+  "app/(app)/settings/page.tsx": { bindings: 3, kind: "our-copy" },
   "components/settings/BusinessContext.tsx": { bindings: 1, kind: "our-copy" },
   // The inline fact editor has no visible label, so it names itself with a constant of
   // ours. B-049's rule holds: what reaches the attribute is our copy, never the fact.

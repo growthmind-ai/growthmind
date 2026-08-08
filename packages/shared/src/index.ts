@@ -394,6 +394,37 @@ export {
 } from "./counter/lag";
 
 export {
+  CONNECTION_TONES,
+  type ConnectionTone,
+  type ConnectionFact,
+  type ConnectionCardView,
+} from "./connections/types";
+export {
+  buildProductCard,
+  buildAnalyticsCard,
+  buildDeliveryCard,
+  productActionLabel,
+  describeCadence,
+  describeEventVolume,
+  type ProductCardInput,
+  type AnalyticsCardInput,
+  type DeliveryCardInput,
+} from "./connections/cards";
+export {
+  ALL_CONNECTION_MESSAGES,
+  ANALYTICS_CARD_TITLE,
+  ANALYTICS_STATUS_LABELS,
+  ANALYTICS_STATUS_TONES,
+  CONNECTION_FACT_LABELS,
+  DELIVERY_CARD_TITLE,
+  PRODUCT_CARD_TITLE,
+  PRODUCT_SET_ACTION,
+  PRODUCT_READ_ACTION,
+  PRODUCT_REREAD_ACTION,
+  PRODUCT_EDIT_ACTION,
+} from "./connections/messages";
+
+export {
   analysisRunStatusSchema,
   analysisOutcomeSchema,
   analysisStopReasonSchema,
@@ -711,12 +742,8 @@ export {
   SETTINGS_SETTLED_LINE,
   SETTINGS_NO_DELIVERY_LINE,
   SETTINGS_BACK_LABEL,
-  SETTINGS_SOURCE_GROUP_TITLE,
-  SETTINGS_DELIVERY_GROUP_TITLE,
   SETTINGS_EXCLUDED_GROUP_TITLE,
   SETTINGS_EXCLUDED_PENDING_LINE,
-  SETTINGS_SOURCE_CONNECTED_TEMPLATE,
-  SETTINGS_SOURCE_NONE_LINE,
   SETTINGS_CHANNEL_CHANGE_LABEL,
   SETTINGS_CHANNEL_CHANGE_CANCEL,
   SETTINGS_CHANNEL_CHANGE_CONSEQUENCE,
@@ -922,6 +949,7 @@ export {
   INTEREST_PROVIDER_IDS,
   providerDisplayName,
   isLiveProvider,
+  soleLiveProviderOn,
   agentProviderOrder,
   interestProviderIdSchema,
   firstRunInterestInputSchema,

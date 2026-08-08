@@ -14,6 +14,8 @@ export interface SlackSettingsView {
   readonly workspaceAttached: boolean;
   readonly workspaceName: string | null;
   readonly oauthAvailable: boolean;
+
+  readonly connectedAt: Date | null;
 }
 
 // Org-scoped, so a teammate who did not run setup can finish the connection.
@@ -38,6 +40,7 @@ export async function readSlackSettings(
       workspaceAttached: slack !== null,
       workspaceName: slack?.workspaceName ?? null,
       oauthAvailable,
+      connectedAt: slack?.connectedAt ?? null,
     };
   } catch (error) {
     logger.error("settings: the Slack connection could not be read", {
@@ -51,6 +54,7 @@ export async function readSlackSettings(
       workspaceAttached: false,
       workspaceName: null,
       oauthAvailable,
+      connectedAt: null,
     };
   }
 }

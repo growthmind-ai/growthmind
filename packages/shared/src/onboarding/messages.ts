@@ -260,23 +260,12 @@ export const SETTINGS_SETTLED_LINE =
 export const SETTINGS_NO_DELIVERY_LINE =
   "No Slack channel is connected, so what we find has nowhere to arrive. Connect one below and it goes where your team already works.";
 
-// The three things setup configured, in the order they matter: nothing to read makes
-// everything downstream moot, and who is excluded only means something once both exist.
-export const SETTINGS_SOURCE_GROUP_TITLE = "What it reads";
-
-export const SETTINGS_DELIVERY_GROUP_TITLE = "Where findings go";
-
 export const SETTINGS_EXCLUDED_GROUP_TITLE = "Who is not counted";
 
 // The group still renders with nothing attached: an absent section reads as a thing that
 // went missing, and this says what will fill it without claiming it already has.
 export const SETTINGS_EXCLUDED_PENDING_LINE =
   "Once analytics is connected we work out which sign-ins are yours, and leave them out of every count.";
-
-export const SETTINGS_SOURCE_CONNECTED_TEMPLATE = "Reading {host}, project {project}.";
-
-export const SETTINGS_SOURCE_NONE_LINE =
-  "No analytics account is attached, so there are no sessions to find anything in. Connect one below.";
 
 export const SETTINGS_CHANNEL_CHANGE_LABEL = "Change channel";
 
@@ -633,12 +622,8 @@ export const ONBOARDING_MESSAGES = {
   settingsSettled: SETTINGS_SETTLED_LINE,
   settingsNoDelivery: SETTINGS_NO_DELIVERY_LINE,
   settingsBack: SETTINGS_BACK_LABEL,
-  settingsSourceGroup: SETTINGS_SOURCE_GROUP_TITLE,
-  settingsDeliveryGroup: SETTINGS_DELIVERY_GROUP_TITLE,
   settingsExcludedGroup: SETTINGS_EXCLUDED_GROUP_TITLE,
   settingsExcludedPending: SETTINGS_EXCLUDED_PENDING_LINE,
-  settingsSourceConnectedTemplate: SETTINGS_SOURCE_CONNECTED_TEMPLATE,
-  settingsSourceNone: SETTINGS_SOURCE_NONE_LINE,
   settingsChannelChange: SETTINGS_CHANNEL_CHANGE_LABEL,
   settingsChannelChangeCancel: SETTINGS_CHANNEL_CHANGE_CANCEL,
   settingsChannelChangeConsequence: SETTINGS_CHANNEL_CHANGE_CONSEQUENCE,
@@ -813,12 +798,8 @@ export const ALL_ONBOARDING_MESSAGES: readonly string[] = [
   SETTINGS_SETTLED_LINE,
   SETTINGS_NO_DELIVERY_LINE,
   SETTINGS_BACK_LABEL,
-  SETTINGS_SOURCE_GROUP_TITLE,
-  SETTINGS_DELIVERY_GROUP_TITLE,
   SETTINGS_EXCLUDED_GROUP_TITLE,
   SETTINGS_EXCLUDED_PENDING_LINE,
-  SETTINGS_SOURCE_CONNECTED_TEMPLATE,
-  SETTINGS_SOURCE_NONE_LINE,
   SETTINGS_CHANNEL_CHANGE_LABEL,
   SETTINGS_CHANNEL_CHANGE_CANCEL,
   SETTINGS_CHANNEL_CHANGE_CONSEQUENCE,
