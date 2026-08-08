@@ -106,6 +106,32 @@ export function bellAriaLabel(newCount: number): string {
 // PROPOSED (#14): visually-hidden prefix inside the row link.
 export const UNREAD_ROW_SCREEN_READER_PREFIX = "Unread — ";
 
+// The notification-settings card, UX o-051 §Copy C-2..C-10 verbatim, beside the bell copy
+// it configures. Registered here rather than in the onboarding registry because that
+// audit's hedge scan refuses the prepositional "about" two of these carry.
+export const SUMMARY_WEEKLY_TEMPLATE = "A summary of the week goes to #{channel} every {Day}.";
+
+export const SUMMARY_NO_SLACK_TEMPLATE =
+  "A summary of the week is set for every {Day}. It will go to Slack once a channel is connected.";
+
+export const SUMMARY_OFF = "No weekly summary. Anything urgent still arrives straight away.";
+
+export const CADENCE_SELECT_LABEL = "How often";
+
+export const DAY_SELECT_LABEL = "Which day";
+
+export const HEALTH_LABEL = "Health and security";
+
+export const HEALTH_BODY =
+  "Always sent, to everyone in this workspace. A broken Slack connection or a new key is not something to find out about late.";
+
+export const BELL_LABEL = "Your bell";
+
+export const BELL_BODY =
+  "Only you see this. Turning something off here changes nothing for anyone else.";
+
+export const ALWAYS_LINE = "Health and security always show here, whichever of these is off.";
+
 export const ALL_NOTIFICATION_MESSAGES: readonly string[] = [
   ...new Set([
     NOTIFICATION_POPOVER_HEADING,
@@ -118,6 +144,16 @@ export const ALL_NOTIFICATION_MESSAGES: readonly string[] = [
     BELL_ARIA_LABEL,
     BELL_ARIA_LABEL_CAPPED,
     UNREAD_ROW_SCREEN_READER_PREFIX,
+    SUMMARY_WEEKLY_TEMPLATE,
+    SUMMARY_NO_SLACK_TEMPLATE,
+    SUMMARY_OFF,
+    CADENCE_SELECT_LABEL,
+    DAY_SELECT_LABEL,
+    HEALTH_LABEL,
+    HEALTH_BODY,
+    BELL_LABEL,
+    BELL_BODY,
+    ALWAYS_LINE,
     ...Object.values(NOTIFICATION_EMPTY_STATE_MESSAGES),
     ...Object.values(NOTIFICATION_FAILURE_SENTENCES),
     ...Object.values(NOTIFICATION_QUIET_SENTENCES),

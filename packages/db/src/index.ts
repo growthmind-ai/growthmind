@@ -371,6 +371,7 @@ export {
   type BellSnapshot,
   type BellSnapshotRow,
   type BellSnapshotChip,
+  type BellSnapshotDigest,
   type ReadBellSnapshotOptions,
 } from "./services/notification-bell.service";
 
