@@ -501,6 +501,7 @@ export {
   NOTIFICATION_DIGEST_TICK_INTERVAL_MS,
   DIGEST_EVALUATION_TIME_ZONE,
   digestDayMatches,
+  digestWindowEnd,
   digestWindowStart,
 } from "./notifications/digest";
 export {

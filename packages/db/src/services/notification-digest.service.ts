@@ -129,8 +129,8 @@ export async function gatherDigestNotifications(
   };
 }
 
-// The org's most recent summary, which is where the next window starts (D-8): a fixed
-// lookback would double-report the overlap when an org moves its day.
+// The org's most recent summary; its due-day boundary is where the next window starts
+// (D-8): a fixed lookback would double-report the overlap when an org moves its day.
 export async function findLastDigestAt(
   db: ScopedExecutor,
   ctx: TenantContext,

@@ -35,6 +35,7 @@ import {
   loadDigest,
   loudPoster,
   runAllDispatchJobs,
+  setNotificationCreatedAt,
   silentLogger,
 } from "../../../packages/db/__tests__/helpers/o051-contracts";
 import { crontab } from "../../src/index";
@@ -107,6 +108,7 @@ async function seedDigestFodder(
   db: TestDb,
   org: SeededOrgWithOwner,
   count: number,
+  at: Date = FODDER_AT,
 ): Promise<readonly string[]> {
   const ids: string[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -116,7 +118,7 @@ async function seedDigestFodder(
       subjectKind: "source_connection",
       subjectId: randomUUID(),
       payload: { type: "backfill_complete", v: 1, sessionsTouched: 3 + index, eventsPersisted: 40 + index },
-      createdAt: FODDER_AT,
+      createdAt: at,
     });
     await seedNotificationSend(db, {
       organizationId: org.organizationId,
@@ -264,6 +266,67 @@ test("twenty-four runs of a due day produce one summary, one receipt and one pos
   );
   expect(receipts).toHaveLength(1);
   expect(receipts[0]?.status).toBe("sent");
+}, COLD_BOOT_BUDGET_MS);
+
+test("a quiet row arriving between two runs of the same due day does not mint a second summary", async () => {
+  const db = await openDb();
+
+  const org = await seedOrg(db, "between-runs");
+  await connectSlackChannel(db, org, CHANNEL);
+  await setSettings(db, org.organizationId, "weekly", "monday");
+  await seedDigestFodder(db, org, 2);
+
+  await runDigest(db, MONDAY);
+  expect(await digestRowsFor(db, org.organizationId)).toHaveLength(1);
+
+  // Lands mid-due-day, after the first run has already summarised. The 24-run fixture
+  // above seeds everything before the first run, so it cannot see this arrival; a later
+  // run of the SAME day gathering it is the org told twice on one Monday.
+  await seedDigestFodder(db, org, 1, new Date(MONDAY.getTime() + 30 * 60_000));
+
+  await runDigest(db, new Date(MONDAY.getTime() + 2 * HOUR_MS));
+
+  const summaries = await digestRowsFor(db, org.organizationId);
+  expect(summaries).toHaveLength(1);
+
+  const summaryIds = new Set(summaries.map((row) => row.id));
+  const dispatched = dispatchJobsOf(await capturedJobs(db))
+    .map(dispatchPayloadOf)
+    .filter((payload) => summaryIds.has(payload.notificationId));
+  expect(dispatched).toHaveLength(1);
+}, COLD_BOOT_BUDGET_MS);
+
+test("a row stamped between the gather's end and the summary's insert is carried by the next digest", async () => {
+  const db = await openDb();
+
+  const org = await seedOrg(db, "sliver");
+  await connectSlackChannel(db, org, CHANNEL);
+  await setSettings(db, org.organizationId, "weekly", "monday");
+  await seedDigestFodder(db, org, 2);
+
+  await runDigest(db, MONDAY);
+  const [first] = await digestRowsFor(db, org.organizationId);
+  if (!first) {
+    throw new Error("the first run emitted no summary");
+  }
+
+  await setNotificationCreatedAt(db, first.id, new Date(MONDAY.getTime() + 5_000));
+  const sliver = await seedDigestFodder(db, org, 1, new Date(MONDAY.getTime() + 2_000));
+
+  await runDigest(db, new Date(MONDAY.getTime() + 7 * 24 * HOUR_MS));
+
+  const summaries = await digestRowsFor(db, org.organizationId);
+  expect(summaries).toHaveLength(2);
+
+  const second = summaries.find((row) => row.id !== first.id);
+  const parsed = parseNotificationPayload(second?.payload);
+  if (!parsed.ok || parsed.payload.type !== "digest") {
+    throw new Error("the second summary's payload is not the digest arm");
+  }
+
+  // Exactly the sliver row: carried once, and nothing the first summary already carried.
+  expect([...parsed.payload.notificationIds]).toEqual([...sliver]);
+  expect(parsed.payload.totalCount).toBe(1);
 }, COLD_BOOT_BUDGET_MS);
 
 test("the digest's cadence in the crontab is the digest-tick constant: hourly, on every day", () => {

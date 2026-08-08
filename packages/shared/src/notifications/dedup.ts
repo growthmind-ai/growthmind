@@ -43,8 +43,8 @@ export function buildAnalysisFailingDedupKey(projectId: string, runId: string): 
   return `analysis_failing:${projectId}:${runId}`;
 }
 
-// The window's own end instant — derived, stable, and the reason a second run inside the
-// same hour cannot mint a second summary.
+// The window's own end — the due day's UTC boundary, identical across every hourly run of
+// that day, which is why a later run of the same day cannot mint a second summary.
 export function buildDigestDedupKey(organizationId: string, windowEndIso: string): string {
   return `digest:${organizationId}:${windowEndIso}`;
 }

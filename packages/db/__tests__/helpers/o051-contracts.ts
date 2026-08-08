@@ -26,6 +26,7 @@ import {
   underConstructionSpecifier,
 } from "../../../shared/__tests__/onboarding/module-under-construction";
 import { createSlackConnectionsRepo } from "../../src/repositories/slack-connections.repo";
+import { notifications } from "../../src/schema/notifications";
 import { slackConnections } from "../../src/schema/slack-connections";
 import { capturedJobs, type CapturedJob, type TestDb } from "../../src/testing";
 import type { SeededOrgWithOwner } from "../../src/testing";
@@ -221,6 +222,17 @@ export async function setSlackConnectionFields(
     .update(slackConnections)
     .set(set)
     .where(eq(slackConnections.organizationId, organizationId));
+}
+
+// Production stamps a summary row on the DB clock, after the worker-clock instant its
+// gather ended at; a suite recreates that ordering by restamping, because the test DB's
+// own clock sits days from the simulated due day.
+export async function setNotificationCreatedAt(
+  db: TestDb,
+  notificationId: string,
+  createdAt: Date,
+): Promise<void> {
+  await db.update(notifications).set({ createdAt }).where(eq(notifications.id, notificationId));
 }
 
 // A fault every recordHealth edge must hit — the column each health write stamps — without

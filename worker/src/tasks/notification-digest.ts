@@ -1,4 +1,4 @@
-import { digestWindowStart } from "@growthmind/core";
+import { digestWindowEnd, digestWindowStart } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import {
   emitDigestSummary,
@@ -24,6 +24,10 @@ export interface NotificationDigestDeps {
 export async function runNotificationDigest(deps: NotificationDigestDeps): Promise<void> {
   const at = deps.now();
 
+  // The due day's own boundary, never `at`: all 24 hourly runs of the day agree on the
+  // gather and the dedup key, and next week's window starts exactly where this one ends.
+  const windowEnd = digestWindowEnd(at);
+
   const due = await listOrganizationsDueForDigest(deps.db, at);
 
   for (const org of due) {
@@ -37,8 +41,8 @@ export async function runNotificationDigest(deps: NotificationDigestDeps): Promi
         const lastDigestAt = await findLastDigestAt(deps.db, ctx);
 
         const gathered = await gatherDigestNotifications(deps.db, ctx, {
-          windowStart: digestWindowStart(lastDigestAt, at),
-          windowEnd: at,
+          windowStart: digestWindowStart(lastDigestAt, windowEnd),
+          windowEnd,
           limit: NOTIFICATION_LIST_LIMIT,
         });
 
@@ -49,7 +53,7 @@ export async function runNotificationDigest(deps: NotificationDigestDeps): Promi
         await emitDigestSummary(deps.db, ctx, {
           notificationIds: gathered.notificationIds,
           totalCount: gathered.totalCount,
-          windowEnd: at,
+          windowEnd,
         });
       },
     );

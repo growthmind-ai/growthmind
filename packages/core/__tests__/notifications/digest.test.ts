@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import {
   DIGEST_EVALUATION_TIME_ZONE,
   digestDayMatches,
+  digestWindowEnd,
   digestWindowStart,
 } from "../../src/notifications/digest";
 
@@ -34,23 +35,40 @@ describe("the digest day is decided in UTC and nowhere else", () => {
   });
 });
 
-describe("the digest window runs from the last summary and is floored at thirty days", () => {
-  const now = new Date("2026-08-10T00:00:00.000Z");
-  const floor = new Date(now.getTime() - NOTIFICATION_WINDOW_DAYS * 24 * 60 * 60 * 1_000);
+describe("the window ends at the due day's own boundary, whatever instant the run lands", () => {
+  test("every hourly run of a due day computes the same end, and the next day computes another", () => {
+    expect(digestWindowEnd(MONDAY_FIRST_MS).getTime()).toBe(MONDAY_FIRST_MS.getTime());
+    expect(digestWindowEnd(new Date("2026-08-10T09:30:00.000Z")).getTime()).toBe(
+      MONDAY_FIRST_MS.getTime(),
+    );
+    expect(digestWindowEnd(MONDAY_LAST_MS).getTime()).toBe(MONDAY_FIRST_MS.getTime());
 
-  test("a recent summary is the window start — a day change cannot double-report the overlap", () => {
-    const lastAt = new Date("2026-08-03T00:00:00.000Z");
+    expect(digestWindowEnd(TUESDAY_FIRST_MS).getTime()).toBe(TUESDAY_FIRST_MS.getTime());
+  });
+});
 
-    expect(digestWindowStart(lastAt, now).getTime()).toBe(lastAt.getTime());
+describe("the digest window runs from the last summary's boundary and is floored at thirty days", () => {
+  const windowEnd = new Date("2026-08-10T00:00:00.000Z");
+  const floor = new Date(windowEnd.getTime() - NOTIFICATION_WINDOW_DAYS * 24 * 60 * 60 * 1_000);
+
+  test("consecutive windows tile: the next start is the last summary's boundary, not its insert instant", () => {
+    // The summary row is stamped on the DB clock, after the instant its own gather ended
+    // at; a window starting there would strand whatever arrived in between.
+    const lastAt = new Date("2026-08-03T09:30:05.123Z");
+
+    expect(digestWindowStart(lastAt, windowEnd).getTime()).toBe(digestWindowEnd(lastAt).getTime());
+    expect(digestWindowStart(lastAt, windowEnd).getTime()).toBe(
+      new Date("2026-08-03T00:00:00.000Z").getTime(),
+    );
   });
 
   test("no summary yet floors at the bell's own window", () => {
-    expect(digestWindowStart(null, now).getTime()).toBe(floor.getTime());
+    expect(digestWindowStart(null, windowEnd).getTime()).toBe(floor.getTime());
   });
 
   test("a summary older than the window floors the same way — a long-dead worker cannot emit a quarter-long digest", () => {
     const lastAt = new Date("2026-04-01T00:00:00.000Z");
 
-    expect(digestWindowStart(lastAt, now).getTime()).toBe(floor.getTime());
+    expect(digestWindowStart(lastAt, windowEnd).getTime()).toBe(floor.getTime());
   });
 });
