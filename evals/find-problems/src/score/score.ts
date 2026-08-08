@@ -1,8 +1,11 @@
 import { statedOutOf } from "../analyse/support";
 import type { AssessedProblem } from "../analyse/types";
+import type { CorpusFacts } from "../facts/types";
 import type { AnswerKey } from "../scenario/types";
+import { findContradictions } from "./facts";
 import type {
   FoundRow,
+  LeadVerdict,
   MatchVerdict,
   MissedRow,
   ProposalRow,
@@ -24,6 +27,8 @@ export interface ScoreInput {
   readonly proposals: readonly AssessedProblem[];
   readonly matchVerdicts: readonly MatchVerdict[];
   readonly recommendationVerdicts: readonly RecommendationVerdict[];
+  readonly facts: CorpusFacts;
+  readonly lead: LeadVerdict;
 }
 
 export function scoreCorpus(input: ScoreInput): Scorecard {
@@ -69,6 +74,11 @@ export function scoreCorpus(input: ScoreInput): Scorecard {
     claimsOverstatingTheCorpus: input.proposals
       .filter((proposal) => proposal.claimedMoreThanCorpus)
       .map(rowOf),
+    headlineFact: input.facts.headline.statement,
+    ledWithHeadlineFact: input.lead.led,
+    leadProposalId: input.lead.proposalId,
+    leadMethod: input.lead.method,
+    claimsContradictingAFact: findContradictions(input.facts, input.proposals),
     actionableRecommendations: input.recommendationVerdicts.filter((verdict) => verdict.actionable)
       .length,
     recommendationsJudged: input.recommendationVerdicts.filter(

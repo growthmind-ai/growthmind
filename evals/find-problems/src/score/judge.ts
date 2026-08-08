@@ -2,8 +2,10 @@ import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 
 import type { AssessedProblem } from "../analyse/types";
+import type { CorpusFacts } from "../facts/types";
 import type { AnswerKey } from "../scenario/types";
-import type { MatchVerdict, RecommendationVerdict } from "./types";
+import { leadDeterministically } from "./facts";
+import type { LeadVerdict, MatchVerdict, RecommendationVerdict } from "./types";
 
 const matchJudgementSchema = z.object({
   verdicts: z.array(
@@ -90,6 +92,50 @@ export async function judgeUnresolvedMatches(
       method: "judged" as const,
       note: verdict.why,
     }));
+}
+
+const leadJudgementSchema = z.object({
+  proposalId: z
+    .string()
+    .nullable()
+    .describe("The proposal that is about that fact, or null if none is."),
+  why: z.string(),
+});
+
+/** The one row a string cannot always settle: whether the opening problem is the headline one. */
+export async function judgeHeadlineLead(
+  model: LanguageModel,
+  input: { readonly facts: CorpusFacts; readonly proposals: readonly AssessedProblem[] },
+): Promise<LeadVerdict> {
+  const settled = leadDeterministically(input.facts, input.proposals);
+  if (settled !== null) return settled;
+
+  const prompt = [
+    `A fact counted from the recordings: ${input.facts.headline.statement}`,
+    "",
+    "What the model proposed, in the order it proposed them:",
+    describeProposals(input.proposals),
+    "",
+    "Which proposal, if any, is about that fact? Null if none of them is.",
+  ].join("\n");
+
+  const { object } = await generateObject({
+    model,
+    schema: leadJudgementSchema,
+    system: JUDGE_SYSTEM,
+    prompt,
+  });
+
+  const known = new Set(input.proposals.map((proposal) => proposal.id));
+  const proposalId =
+    object.proposalId !== null && known.has(object.proposalId) ? object.proposalId : null;
+
+  return {
+    led: proposalId !== null && proposalId === input.proposals[0]?.id,
+    proposalId,
+    method: "judged",
+    note: object.why,
+  };
 }
 
 export async function judgeRecommendations(

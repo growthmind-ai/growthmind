@@ -16,7 +16,10 @@ export type ElementIdentity = {
 export type PageAction = {
   readonly kind: "page";
   readonly atMs: number;
-  readonly href: string;
+
+  // Absent when no part of the address survived the delivery scan. The beat stays either way:
+  // a session that appears not to have gone anywhere is a worse lie than a redacted URL (B-060).
+  readonly href?: string;
 };
 
 export type ClickAction = {
@@ -76,6 +79,19 @@ export type WaitAction = {
   readonly durationMs: number;
 };
 
+export const REACTION_KINDS = ["error", "message"] as const;
+
+export type ReactionKind = (typeof REACTION_KINDS)[number];
+
+// What the screen said back. `text` is absent when the delivery gate refused the words, which
+// still renders as a beat: a dropped reaction is indistinguishable from a page that said nothing.
+export type ReactionAction = {
+  readonly kind: "reaction";
+  readonly atMs: number;
+  readonly reaction: ReactionKind;
+  readonly text?: string;
+};
+
 export type EndedAction = {
   readonly kind: "ended";
   readonly atMs: number;
@@ -91,6 +107,7 @@ export type SessionAction =
   | FieldRefocusAction
   | FieldAbandonedAction
   | ScrollBackAction
+  | ReactionAction
   | WaitAction
   | EndedAction;
 

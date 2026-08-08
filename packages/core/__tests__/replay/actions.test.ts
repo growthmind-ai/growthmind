@@ -9,7 +9,6 @@ import {
   WAIT_THRESHOLD_MS,
   toActions,
 } from "../../src/replay/actions";
-import { UNKNOWN_TAG_NAME } from "../../src/replay/nodes";
 import type { SessionAction, SessionActionKind } from "../../src/replay/types";
 import {
   API_KEY_NODE_ID,
@@ -438,14 +437,15 @@ describe("toActions — element identity", () => {
     });
   });
 
-  test("should degrade a node id the recording never described rather than throwing", () => {
+  test("should drop a beat for a node id the recording never described rather than naming it", () => {
     const actions = toActions([
       metaEvent(0, SETTINGS_PAGE),
       clickEvent(1_000, 4_242),
       mutationEvent(1_050),
     ]);
 
-    expect(only(actions, "click")[0]?.element.tagName).toBe(UNKNOWN_TAG_NAME);
+    expect(only(actions, "click")).toEqual([]);
+    expect(actions.map((action) => action.kind)).not.toContain("dead_click");
   });
 
   test("should read the button a masked text node sits inside, never the text node itself", () => {
@@ -517,7 +517,7 @@ describe("toActions — the DOM a click actually happened in", () => {
       settingsSnapshot(5_000),
     ]);
 
-    expect(only(actions, "click")[0]?.element.tagName).toBe(UNKNOWN_TAG_NAME);
+    expect(only(actions, "click")).toEqual([]);
   });
 });
 

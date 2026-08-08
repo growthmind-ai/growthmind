@@ -1,5 +1,5 @@
 import { describeElement } from "./describe";
-import type { SessionAction, SessionTranscript } from "./types";
+import type { ReactionKind, SessionAction, SessionTranscript } from "./types";
 
 export const MS_PER_SECOND = 1_000;
 
@@ -17,10 +17,36 @@ export function stampOf(atMs: number): string {
   return `${String(minutes)}:${String(seconds).padStart(2, "0")}`;
 }
 
-function sentence(action: SessionAction): string {
+export const REACTION_WITHHELD_ERROR = "an error";
+
+export const REACTION_WITHHELD_MESSAGE = "a message";
+
+// The words when the gate passed them, and what kind of thing it was when it did not. Never
+// nothing: a reaction that renders as no line reads as a screen that stayed silent.
+export function reactionPhrase(reaction: ReactionKind, text: string | undefined): string {
+  if (text !== undefined) return `"${text}"`;
+  return reaction === "error" ? REACTION_WITHHELD_ERROR : REACTION_WITHHELD_MESSAGE;
+}
+
+export const PAGE_WITHHELD_LOCATION = "a page whose address was withheld";
+
+const PAGE_HOST = /^[a-z][\w+.-]*:\/\/([^/?#\s]+)/i;
+
+export function hostOf(href: string): string | null {
+  return PAGE_HOST.exec(href)?.[1] ?? null;
+}
+
+function sentence(action: SessionAction, cameFrom: string | null): string {
   switch (action.kind) {
-    case "page":
-      return `opened ${action.href}`;
+    case "page": {
+      if (action.href === undefined) return `opened ${PAGE_WITHHELD_LOCATION}`;
+
+      const host = hostOf(action.href);
+      // A recording stops at the edge of its own origin, so the last thing it can say about
+      // someone who left is where they went (B-060).
+      const departed = host !== null && cameFrom !== null && host !== cameFrom;
+      return departed ? `left for ${host}` : `opened ${action.href}`;
+    }
     case "click":
       return `clicked ${describeElement(action.element)}`;
     case "double_click":
@@ -37,6 +63,8 @@ function sentence(action: SessionAction): string {
       return `left ${describeElement(action.element)} without typing`;
     case "scroll_back":
       return `scrolled back on ${describeElement(action.element)}`;
+    case "reaction":
+      return `saw ${reactionPhrase(action.reaction, action.text)}`;
     case "wait":
       return `waited ${String(Math.round(action.durationMs / MS_PER_SECOND))}s`;
     case "ended":
@@ -45,9 +73,16 @@ function sentence(action: SessionAction): string {
 }
 
 export function renderTranscript(transcript: SessionTranscript): string {
-  const lines = transcript.actions.map(
-    (action) => `${stampOf(action.atMs)}${STAMP_SEPARATOR}${sentence(action)}`,
-  );
+  let cameFrom: string | null = null;
+
+  const lines = transcript.actions.map((action) => {
+    const line = `${stampOf(action.atMs)}${STAMP_SEPARATOR}${sentence(action, cameFrom)}`;
+    if (action.kind === "page" && action.href !== undefined) {
+      cameFrom = hostOf(action.href) ?? cameFrom;
+    }
+
+    return line;
+  });
 
   if (transcript.droppedEvents > 0) {
     lines.push(`(${String(transcript.droppedEvents)} malformed events dropped)`);

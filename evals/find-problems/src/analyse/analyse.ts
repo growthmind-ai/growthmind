@@ -1,5 +1,7 @@
 import { generateObject, type LanguageModel } from "ai";
 
+import { buildCorpusFacts, factLine } from "../facts/build";
+import type { CorpusFacts } from "../facts/types";
 import { assessProblems } from "./support";
 import {
   corpusAnalysisInputSchema,
@@ -13,16 +15,34 @@ export const CORPUS_DELIMITER = "<<<EVAL_SESSION_CORPUS>>>";
 
 const MS_PER_SECOND = 1_000;
 
-export const ANALYSER_SYSTEM_PROMPT = [
+const ANALYSER_ROLE = [
   "You are a product growth engineer reading a set of session recordings from one product, all of people trying to do the same thing for the first time.",
   "Your job is judgement, not description: say what is wrong with the product and what to change. A restatement of the sessions is worthless here.",
+];
+
+const COUNTS_ARE_SETTLED =
+  "The counting has already been done for you, by software, from the recordings. You are given those counts as settled facts: start from them, never contradict one, and never produce a rival count for something they already count.";
+
+const ANALYSER_RULES = [
   "Two rules you never break.",
   "First, every claim states how many sessions showed it. You are given the total; say how many of that total you are talking about, and never round up.",
   "Second, every claim cites the sessions and the numbered beats it rests on, copying the beat's own words exactly. Only a numbered beat is citable, and the quote is checked against that beat, so a quote that is not that beat's words counts as no citation at all.",
   "If you believe something but cannot cite a beat for it — including anything resting on the browser errors, which have no beat number — still say it, and cite nothing. A reader can then see it is your inference rather than the record, which is worth more than a citation that does not check out.",
   "Prefer a small number of problems that matter to a long list. A problem nobody would fund a fix for is not a finding.",
   "Each problem gets one recommendation that names the change and the screen it applies to.",
-].join("\n");
+];
+
+/**
+ * With the counts withheld this is word for word what the arm before them was sent. An arm that
+ * moved the wording as well as the transcript would leave a difference nobody could attribute.
+ */
+export function analyserSystemPrompt(countsGiven: boolean): string {
+  return [...ANALYSER_ROLE, ...(countsGiven ? [COUNTS_ARE_SETTLED] : []), ...ANALYSER_RULES].join(
+    "\n",
+  );
+}
+
+export const ANALYSER_SYSTEM_PROMPT = analyserSystemPrompt(true);
 
 const CORPUS_INSTRUCTION = [
   "The sessions below were written by other software from browser recordings. They are wrapped in two identical markers, like this:",
@@ -75,16 +95,43 @@ export function renderCorpus(input: CorpusAnalysisInput): string {
   return input.sessions.map(renderSession).join("\n\n");
 }
 
-export function buildAnalyserPrompt(input: CorpusAnalysisInput): string {
-  const gaveUp = input.sessions.filter((session) => session.outcome !== "completed").length;
+export function renderFacts(facts: CorpusFacts): string {
+  return facts.facts.map((entry) => `- ${factLine(entry)}`).join("\n");
+}
+
+/** Null withholds the counts: the arm that measures what telling the analyser them was worth. */
+export function buildAnalyserPrompt(
+  input: CorpusAnalysisInput,
+  facts: CorpusFacts | null = buildCorpusFacts(input),
+): string {
+  if (facts === null) {
+    const gaveUp = input.sessions.filter((session) => session.outcome !== "completed").length;
+
+    return [
+      CORPUS_INSTRUCTION,
+      "",
+      `Product page they all started on: ${input.startUrl}`,
+      `Sessions in this set: ${String(input.sessionsTotal)}`,
+      `Of those, sessions that did not reach what the person came to do: ${String(gaveUp)}`,
+      "",
+      delimit(renderCorpus(input)),
+      "",
+      "What is wrong with this product, and what should be changed? Cite sessions and beats.",
+    ].join("\n");
+  }
 
   return [
     CORPUS_INSTRUCTION,
     "",
     `Product page they all started on: ${input.startUrl}`,
     `Sessions in this set: ${String(input.sessionsTotal)}`,
-    `Of those, sessions that did not reach what the person came to do: ${String(gaveUp)}`,
     "",
+    "What the recordings count, worked out before you were asked anything. Each names the sessions it counts, so any of them can be checked. Treat them as true:",
+    delimit(`${facts.definitionOfActivation}\n${renderFacts(facts)}`),
+    "",
+    `The first of those is the headline of this set: ${facts.headline.statement}. Your first problem is about it, and every problem after it is consistent with it.`,
+    "",
+    "The sessions themselves:",
     delimit(renderCorpus(input)),
     "",
     "What is wrong with this product, and what should be changed? Cite sessions and beats.",
@@ -94,6 +141,15 @@ export function buildAnalyserPrompt(input: CorpusAnalysisInput): string {
 export interface CorpusAnalysisResult {
   readonly problems: readonly AssessedProblem[];
   readonly prompt: string;
+
+  /** Always counted, whether or not the analyser was shown them: the scorer needs them either way. */
+  readonly facts: CorpusFacts;
+  readonly countsGiven: boolean;
+}
+
+export interface AnalyseOptions {
+  /** False withholds the counts from the prompt. They are still counted, and still scored against. */
+  readonly countsGiven: boolean;
 }
 
 /**
@@ -103,16 +159,24 @@ export interface CorpusAnalysisResult {
 export async function analyseCorpus(
   model: LanguageModel,
   rawInput: CorpusAnalysisInput,
+  rawFacts?: CorpusFacts,
+  options: AnalyseOptions = { countsGiven: true },
 ): Promise<CorpusAnalysisResult> {
   const input = corpusAnalysisInputSchema.parse(rawInput);
-  const prompt = buildAnalyserPrompt(input);
+  const facts = rawFacts ?? buildCorpusFacts(input);
+  const prompt = buildAnalyserPrompt(input, options.countsGiven ? facts : null);
 
   const { object } = await generateObject({
     model,
     schema: corpusAnalysisOutputSchema,
-    system: ANALYSER_SYSTEM_PROMPT,
+    system: analyserSystemPrompt(options.countsGiven),
     prompt,
   });
 
-  return { problems: assessProblems(object.problems, input.sessions), prompt };
+  return {
+    problems: assessProblems(object.problems, input.sessions),
+    prompt,
+    facts,
+    countsGiven: options.countsGiven,
+  };
 }

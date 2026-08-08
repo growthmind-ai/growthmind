@@ -1,9 +1,17 @@
 import type { RrwebEvent } from "@growthmind/shared";
 
+import { deliverableLocation, navigationDrafts } from "./navigation";
 import type { DomSegments } from "./nodes";
-import { indexDomSegments, resolveControlAt, resolveIdentityAt } from "./nodes";
+import {
+  indexDomSegments,
+  isUnknownIdentity,
+  resolveControlAt,
+  resolveIdentityAt,
+  segmentAt,
+} from "./nodes";
 import type { ReplayFact } from "./parse";
 import { RRWEB_MOUSE_INTERACTION, readReplayEvents } from "./parse";
+import { reactionDrafts } from "./reactions";
 import type { ElementIdentity, SessionAction } from "./types";
 
 // Two clicks is a mis-click or a double-click; three is a person repeating themselves.
@@ -51,16 +59,25 @@ function isFieldElement(element: ElementIdentity): boolean {
   return FIELD_TAG_NAMES.includes(element.tagName);
 }
 
+// The recorder's own Meta href is as untrusted as a link's: the address a person was on when
+// the recording started carries whatever the redirect that sent them there put in it.
 function pageDrafts(facts: readonly ReplayFact[], firstTsMs: number): readonly Draft[] {
   const drafts: Draft[] = [];
   let shown: string | null = null;
 
   for (const [order, fact] of facts.entries()) {
-    if (fact.kind !== "page" || fact.href === shown) continue;
-    shown = fact.href;
+    if (fact.kind !== "page") continue;
+
+    const href = deliverableLocation(fact.href);
+    if (href !== null && href === shown) continue;
+    shown = href;
 
     const atMs = fact.tsMs - firstTsMs;
-    drafts.push({ atMs, order, action: { kind: "page", atMs, href: fact.href } });
+    drafts.push({
+      atMs,
+      order,
+      action: { kind: "page", atMs, ...(href === null ? {} : { href }) },
+    });
   }
 
   return drafts;
@@ -147,6 +164,19 @@ function axisMove(
   return { direction: heading, reversed: direction !== 0 && heading !== direction };
 }
 
+// A field the person has not reached since it entered the DOM cannot have been typed into: the
+// value is the one it mounted with. A field the opening snapshot already held is trusted as
+// before, so a genuinely autofocused field keeps its typing (B-060).
+function isMountValue(
+  segments: DomSegments,
+  nodeId: number,
+  tsMs: number,
+  reached: ReadonlySet<number>,
+): boolean {
+  if (reached.has(nodeId)) return false;
+  return segmentAt(segments, tsMs)?.addedAt.has(nodeId) === true;
+}
+
 function sequentialDrafts(
   facts: readonly ReplayFact[],
   segments: DomSegments,
@@ -156,13 +186,25 @@ function sequentialDrafts(
   const focusCounts = new Map<number, number>();
   const openFocus = new Map<number, boolean>();
   const scrolls = new Map<number, ScrollState>();
+  const reached = new Set<number>();
   let typingNodeId: number | null = null;
 
   for (const [order, fact] of facts.entries()) {
     const atMs = fact.tsMs - firstTsMs;
 
+    // A snapshot renumbers the tree, so what the person had reached is about other elements now.
+    if (fact.kind === "snapshot") {
+      reached.clear();
+      continue;
+    }
+
     if (fact.kind === "mouse") {
       const element = resolveControlAt(segments, fact.nodeId, fact.tsMs);
+
+      if (fact.interaction !== RRWEB_MOUSE_INTERACTION.blur) {
+        reached.add(element.nodeId);
+        reached.add(fact.nodeId);
+      }
 
       if (fact.interaction === RRWEB_MOUSE_INTERACTION.doubleClick) {
         drafts.push({ atMs, order, action: { kind: "double_click", atMs, element } });
@@ -201,6 +243,8 @@ function sequentialDrafts(
 
     if (fact.kind === "input") {
       const element = resolveIdentityAt(segments, fact.nodeId, fact.tsMs);
+      if (isMountValue(segments, element.nodeId, fact.tsMs, reached)) continue;
+
       if (openFocus.has(element.nodeId)) openFocus.set(element.nodeId, true);
       if (typingNodeId === element.nodeId) continue;
 
@@ -260,6 +304,32 @@ function fromZero(action: SessionAction, originMs: number): SessionAction {
   return { ...action, atMs: action.atMs - originMs };
 }
 
+// A beat whose element cannot be placed in any snapshot names nothing a claim could cite, and
+// rendering it puts the walk's own sentinel into text a customer reads (B-060).
+function namesItsElement(action: SessionAction): boolean {
+  return !("element" in action) || !isUnknownIdentity(action.element);
+}
+
+// Two producers of a page beat now — the recorder's Meta events and a route change read off the
+// DOM — so the repeat a single producer used to filter is filtered across both.
+function withoutRepeatedPages(actions: readonly SessionAction[]): readonly SessionAction[] {
+  const kept: SessionAction[] = [];
+  let shown: string | null = null;
+
+  for (const action of actions) {
+    if (action.kind !== "page") {
+      kept.push(action);
+      continue;
+    }
+
+    if (action.href !== undefined && action.href === shown) continue;
+    shown = action.href ?? null;
+    kept.push(action);
+  }
+
+  return kept;
+}
+
 export type ActionWalk = {
   readonly actions: readonly SessionAction[];
 
@@ -280,19 +350,21 @@ export function walkActions(
   const segments = indexDomSegments(events);
   const drafts = [
     ...pageDrafts(facts, firstTsMs),
+    ...navigationDrafts(facts, segments, firstTsMs),
     ...clickDrafts(facts, segments, firstTsMs),
     ...sequentialDrafts(facts, segments, firstTsMs),
+    ...reactionDrafts(facts, segments, firstTsMs),
   ];
 
-  const ordered = drafts.toSorted(
-    (left, right) => left.atMs - right.atMs || left.order - right.order,
-  );
+  const ordered = drafts
+    .filter((draft) => namesItsElement(draft.action))
+    .toSorted((left, right) => left.atMs - right.atMs || left.order - right.order);
 
   // The clock starts at the first thing the person did, so a recording that idled for an
   // hour before its first action still reads from 0:00.
   const originMs =
     clockOriginAtMs === null ? (ordered.at(0)?.atMs ?? 0) : clockOriginAtMs - firstTsMs;
-  const actions = ordered.map((draft) => fromZero(draft.action, originMs));
+  const actions = withoutRepeatedPages(ordered.map((draft) => fromZero(draft.action, originMs)));
 
   return {
     actions: withWaitsAndEnd(actions, lastTsMs - firstTsMs - originMs),

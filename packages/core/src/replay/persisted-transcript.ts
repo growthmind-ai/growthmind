@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import { deliverableName } from "./describe-value";
-import type { ElementIdentity, SessionAction, SessionActionKind } from "./types";
+import { deliverableName, deliverableSentence } from "./describe-value";
+import type { ElementIdentity, ReactionKind, SessionAction, SessionActionKind } from "./types";
+import { REACTION_KINDS } from "./types";
 
 export const PERSISTED_TRANSCRIPT_VERSION = 1;
 
@@ -26,6 +27,8 @@ export type PersistedSessionAction = {
   readonly spanMs?: number;
   readonly focusCount?: number;
   readonly durationMs?: number;
+  readonly reaction?: ReactionKind;
+  readonly text?: string;
 };
 
 export type PersistedTranscript = {
@@ -56,6 +59,8 @@ type ActionFields = {
   readonly spanMs?: number | undefined;
   readonly focusCount?: number | undefined;
   readonly durationMs?: number | undefined;
+  readonly reaction?: ReactionKind | undefined;
+  readonly text?: string | undefined;
 };
 
 // Both directions build through these two, so an absent field is an absent key rather than an
@@ -64,6 +69,10 @@ type ActionFields = {
 // row was written by whatever version wrote it, and the cap is the same one a rendered value has.
 function persistedName(name: string | undefined): string | null {
   return name === undefined ? null : deliverableName(name);
+}
+
+function persistedText(text: string | undefined): string | null {
+  return text === undefined ? null : deliverableSentence(text);
 }
 
 function persistedElement(fields: ElementFields): PersistedElement {
@@ -81,6 +90,8 @@ function persistedElement(fields: ElementFields): PersistedElement {
 }
 
 function persistedAction(fields: ActionFields): PersistedSessionAction {
+  const text = persistedText(fields.text);
+
   return {
     kind: fields.kind,
     atMs: fields.atMs,
@@ -90,6 +101,8 @@ function persistedAction(fields: ActionFields): PersistedSessionAction {
     ...(fields.spanMs === undefined ? {} : { spanMs: fields.spanMs }),
     ...(fields.focusCount === undefined ? {} : { focusCount: fields.focusCount }),
     ...(fields.durationMs === undefined ? {} : { durationMs: fields.durationMs }),
+    ...(fields.reaction === undefined ? {} : { reaction: fields.reaction }),
+    ...(text === null ? {} : { text }),
   };
 }
 
@@ -147,6 +160,8 @@ function serialiseActionV1(action: SessionAction): PersistedSessionAction {
         element: fieldsOf(action.element),
         focusCount: action.focusCount,
       });
+    case "reaction":
+      return persistedAction({ kind, atMs, reaction: action.reaction, text: action.text });
     case "wait":
       return persistedAction({ kind, atMs, durationMs: action.durationMs });
     case "ended":
@@ -190,6 +205,7 @@ const V1_ACTION_KINDS = [
   "field_refocus",
   "field_abandoned",
   "scroll_back",
+  "reaction",
   "wait",
   "ended",
 ] as const satisfies readonly SessionActionKind[];
@@ -213,6 +229,8 @@ const persistedActionSchemaV1 = z.object({
   spanMs: z.number().int().optional(),
   focusCount: z.number().int().optional(),
   durationMs: z.number().int().optional(),
+  reaction: z.enum(REACTION_KINDS).optional(),
+  text: z.string().optional(),
 });
 
 const persistedTranscriptSchemaV1 = z.object({
@@ -252,11 +270,12 @@ function identityOf(element: PersistedElement): ElementIdentity {
 }
 
 function rehydrateAction(action: PersistedSessionAction): SessionAction | null {
-  const { kind, atMs, element, href, clicks, spanMs, focusCount, durationMs } = action;
+  const { kind, atMs, element, href, clicks, spanMs, focusCount, durationMs, reaction, text } =
+    action;
 
   switch (kind) {
     case "page":
-      return href === undefined ? null : { kind, atMs, href };
+      return { kind, atMs, ...(href === undefined ? {} : { href }) };
     case "click":
     case "double_click":
     case "dead_click":
@@ -272,6 +291,10 @@ function rehydrateAction(action: PersistedSessionAction): SessionAction | null {
       return element === undefined || focusCount === undefined
         ? null
         : { kind, atMs, element: identityOf(element), focusCount };
+    case "reaction":
+      return reaction === undefined
+        ? null
+        : { kind, atMs, reaction, ...(text === undefined ? {} : { text }) };
     case "wait":
       return durationMs === undefined ? null : { kind, atMs, durationMs };
     case "ended":
