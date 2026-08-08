@@ -494,6 +494,7 @@ export {
 export {
   REPLAY_ROW_PAGE_TAG_CAP,
   replayRowStory,
+  type ReplayRowNarration,
   type ReplayRowStory,
   type ReplayRowSummary,
 } from "./replay-filters/row-story";

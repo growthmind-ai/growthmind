@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { fill, type ReplayListRow, type ReplayRowStory } from "@growthmind/core";
 import {
+  REPLAY_ROW_HELD_HINT,
   REPLAY_ROW_MORE_PAGES_TEMPLATE,
   REPLAY_ROW_UNNARRATED_HINT,
   REPLAY_SIMULATED_BADGE,
@@ -15,6 +16,11 @@ import { timeOnPage } from "@/lib/replay/label";
 import { ROUTES } from "@/lib/routes";
 
 const STARTED_AT_FORMAT: Intl.DateTimeFormatOptions = { dateStyle: "short", timeStyle: "short" };
+
+const NARRATION_HINTS: Record<Exclude<ReplayRowStory["narration"], "written">, string> = {
+  held: REPLAY_ROW_HELD_HINT,
+  none: REPLAY_ROW_UNNARRATED_HINT,
+};
 
 // null is unmeasured and renders nothing; 0 is a measurement and renders its badge. Coalescing
 // the two would report a session nobody measured as one where nothing happened.
@@ -51,7 +57,7 @@ export function ReplayRow({ row, story }: { row: ReplayListRow; story: ReplayRow
               {new Date(row.startedAt).toLocaleString(undefined, STARTED_AT_FORMAT)}
               {row.companyDomain === null ? null : ` · ${row.companyDomain}`}
               {time?.total == null ? null : ` · ${time.total} on the page`}
-              {story.fromHeadline ? null : ` · ${REPLAY_ROW_UNNARRATED_HINT}`}
+              {story.narration === "written" ? null : ` · ${NARRATION_HINTS[story.narration]}`}
             </Text>
 
             {/* Every page the write-up saw, not just the one they landed on — the row's title is

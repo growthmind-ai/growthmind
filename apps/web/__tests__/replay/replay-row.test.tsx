@@ -88,6 +88,7 @@ describe("ReplayRow", () => {
   test("titles the row with the write-up, and lists every page beneath it", () => {
     const card = render(PROBE, {
       headline: "They read the deck examples and left without opening a template",
+      held: false,
       pages: ["/blog/best-pitch-deck-examples", "/templates", "/pricing"],
     });
 
@@ -106,15 +107,20 @@ describe("ReplayRow", () => {
   });
 
   test("does not claim a write-up exists when the narration was held", () => {
-    const card = render(PROBE, { headline: null, pages: ["/pricing"] });
+    const card = render(PROBE, { headline: null, held: true, pages: ["/pricing"] });
 
-    expect(card.text).toContain("No write-up yet");
+    expect(card.text).toContain("Write-up can't be shown");
+    expect(card.text).not.toContain("No write-up yet");
     expect(card.text).toContain("/pricing");
   });
 
   test("no attribute carries a page path either, not just the entry path", () => {
     const token = "68cd04168ebcf5211a79c43a263a90a1b89779a66b807820c1aba461e7640a85";
-    const markup = markupOf(PROBE, { headline: "They shared a link", pages: [`/share/${token}`] });
+    const markup = markupOf(PROBE, {
+      headline: "They shared a link",
+      held: false,
+      pages: [`/share/${token}`],
+    });
 
     expect(markup).not.toContain("title=");
     for (const value of attributeValues(markup)) expect(value).not.toContain(token);

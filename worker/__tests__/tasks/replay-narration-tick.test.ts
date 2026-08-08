@@ -227,7 +227,7 @@ function fakeRepo() {
       for (const id of recordingIds) {
         const row = rowFor(id);
         if (row === undefined || row.projectId !== projectId) continue;
-        stories.set(id, { headline: row.headline, pages: row.pages });
+        stories.set(id, { headline: row.headline, held: false, pages: row.pages });
       }
 
       return Promise.resolve(stories);

@@ -23,7 +23,12 @@ const ROW: ReplayListRow = {
 };
 
 function summary(over: Partial<ReplayRowSummary> = {}): ReplayRowSummary {
-  return { headline: "They stalled on the plan picker", pages: ["/pricing"], ...over };
+  return {
+    headline: "They stalled on the plan picker",
+    held: false,
+    pages: ["/pricing"],
+    ...over,
+  };
 }
 
 describe("replayRowStory", () => {
@@ -31,23 +36,23 @@ describe("replayRowStory", () => {
     const story = replayRowStory(ROW, summary());
 
     expect(story.title).toBe("They stalled on the plan picker");
-    expect(story.fromHeadline).toBe(true);
+    expect(story.narration).toBe("written");
   });
 
   it("falls back to the entry path when the recording was never narrated", () => {
     const story = replayRowStory(ROW, null);
 
     expect(story.title).toBe("/pricing");
-    expect(story.fromHeadline).toBe(false);
+    expect(story.narration).toBe("none");
   });
 
-  // A headline held for residual PII arrives here as null, and must read exactly like one that
-  // was never written: the row may not hint that text exists which it is refusing to show.
-  it("falls back to the entry path when the narration is held", () => {
-    const story = replayRowStory(ROW, summary({ headline: null }));
+  // The detail page tells the reader a held narration was written and withheld. A row calling
+  // the same recording "not written yet" contradicts the card it links to.
+  it("separates a held narration from one that was never written", () => {
+    const story = replayRowStory(ROW, summary({ headline: null, held: true }));
 
     expect(story.title).toBe("/pricing");
-    expect(story.fromHeadline).toBe(false);
+    expect(story.narration).toBe("held");
   });
 
   it("falls back to the recording id when the session has no entry path either", () => {
@@ -61,7 +66,24 @@ describe("replayRowStory", () => {
     const story = replayRowStory(ROW, summary({ headline: "   " }));
 
     expect(story.title).toBe("/pricing");
-    expect(story.fromHeadline).toBe(false);
+    expect(story.narration).toBe("none");
+  });
+
+  // The title already is the path on an un-narrated row, and a tag repeating it reads as two
+  // different facts that happen to match.
+  it("does not tag the entry path it just used as the title", () => {
+    expect(replayRowStory(ROW, null).pages).toEqual([]);
+
+    const held = replayRowStory(ROW, summary({ headline: null, held: true, pages: [] }));
+    expect(held.title).toBe("/pricing");
+    expect(held.pages).toEqual([]);
+  });
+
+  it("still tags the entry path when the title is a headline", () => {
+    const story = replayRowStory(ROW, summary({ pages: [] }));
+
+    expect(story.title).toBe("They stalled on the plan picker");
+    expect(story.pages).toEqual(["/pricing"]);
   });
 
   it("lists every page the narration recorded", () => {

@@ -42,6 +42,7 @@ describe("readReplayScreen — the narration each row carries", () => {
 
     expect(screen.stories.get("story-1")).toEqual({
       headline: "They stalled on the plan picker",
+      held: false,
       pages: ["/pricing", "/signup"],
     });
   });
