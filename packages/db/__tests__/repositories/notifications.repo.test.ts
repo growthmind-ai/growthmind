@@ -9,13 +9,21 @@ import { eq, sql } from "drizzle-orm";
 import {
   NOTIFICATION_CLASS_BY_TYPE,
   NOTIFICATION_LIST_LIMIT,
+  NOTIFICATION_SEND_NO_TARGET,
   NOTIFICATION_TYPES,
   NOTIFICATION_WINDOW_DAYS,
+  SLACK_INTERACTION_ACTOR,
+  SLACK_INTERACTION_ROLE,
   type MutableNotificationClass,
+  type NotificationSubjectKind,
   type NotificationType,
   type TenantContext,
 } from "@growthmind/shared";
 
+import {
+  loadUnderConstruction,
+  underConstructionSpecifier,
+} from "../../../shared/__tests__/onboarding/module-under-construction";
 import { inTransaction } from "../../src/repositories/crud";
 import { createNotificationMutesRepo } from "../../src/repositories/notification-mutes.repo";
 import {
@@ -575,6 +583,181 @@ describe("the watermarks are written by the database clock", () => {
       }),
     ).toBeGreaterThanOrEqual(1);
     expect(await unreadFlagOf(org.ctx, fresh.id)).toBe(true);
+  });
+});
+
+// O-053 ADD Decision 5d: a Slack interactivity payload carries only (channel, message), so
+// that pair is the ONLY source of org identity for a button press — which is why the index
+// serving it is globally unique rather than org-scoped. RED in Wave 0: neither the export
+// nor the index exists.
+const INTERACTION_OWNER =
+  "O-053 (packages/db/src/repositories/notifications.repo.ts resolveNotificationForInteraction, ADD Decision 5d)";
+
+interface NotificationInteractionPrincipal {
+  readonly context: TenantContext;
+  readonly notificationId: string;
+  readonly subjectKind: NotificationSubjectKind;
+  readonly subjectId: string;
+}
+
+type ResolveNotificationForInteraction = (
+  db: TestDb,
+  args: { readonly channelId: string; readonly messageRef: string },
+) => Promise<NotificationInteractionPrincipal | null>;
+
+const loadResolveForInteraction = (): Promise<ResolveNotificationForInteraction> =>
+  loadUnderConstruction<ResolveNotificationForInteraction>({
+    modulePath: underConstructionSpecifier("packages/db/src/repositories/notifications.repo"),
+    exportName: "resolveNotificationForInteraction",
+    ownedBy: INTERACTION_OWNER,
+  });
+
+describe("a posted message routes a button press back to its organization and nowhere else", () => {
+  const CHANNEL_A = "C0SHIPPEDA";
+  const CHANNEL_B = "C0SHIPPEDB";
+  const REF_A = "1786000000.111111";
+  const REF_B = "1786000000.222222";
+
+  async function seedPostedNotification(params: {
+    readonly organizationId: string;
+    readonly channelId: string;
+    readonly messageRef: string;
+    readonly subjectId: string;
+  }) {
+    const row = await seedNotification(db, {
+      organizationId: params.organizationId,
+      subjectKind: "shipped_change",
+      subjectId: params.subjectId,
+      createdAt: minutesFromNow(-5),
+    });
+    await seedNotificationSend(db, {
+      organizationId: params.organizationId,
+      notificationId: row.id,
+      status: "sent",
+      target: params.channelId,
+      messageRef: params.messageRef,
+      sentAt: minutesFromNow(-5),
+    });
+    return row;
+  }
+
+  test("each pair resolves to its own organization's context, and a crossed pair resolves to nothing", async () => {
+    const orgA = await seedOrg("interaction-a");
+    const orgB = await seedOrg("interaction-b");
+    const changeA = randomUUID();
+    const changeB = randomUUID();
+
+    const postedA = await seedPostedNotification({
+      organizationId: orgA.organizationId,
+      channelId: CHANNEL_A,
+      messageRef: REF_A,
+      subjectId: changeA,
+    });
+    const postedB = await seedPostedNotification({
+      organizationId: orgB.organizationId,
+      channelId: CHANNEL_B,
+      messageRef: REF_B,
+      subjectId: changeB,
+    });
+
+    const resolve = await loadResolveForInteraction();
+
+    const fromA = await resolve(db, { channelId: CHANNEL_A, messageRef: REF_A });
+    expect(fromA?.context.organizationId).toBe(orgA.organizationId);
+    expect(fromA?.context.organizationName).toBe(orgA.organizationName);
+    expect(fromA?.context.userId).toBe(SLACK_INTERACTION_ACTOR);
+    expect(fromA?.context.role).toBe(SLACK_INTERACTION_ROLE);
+    expect(fromA?.notificationId).toBe(postedA.id);
+    expect(fromA?.subjectKind).toBe("shipped_change");
+    expect(fromA?.subjectId).toBe(changeA);
+
+    const fromB = await resolve(db, { channelId: CHANNEL_B, messageRef: REF_B });
+    expect(fromB?.context.organizationId).toBe(orgB.organizationId);
+    expect(fromB?.notificationId).toBe(postedB.id);
+    expect(fromB?.subjectId).toBe(changeB);
+
+    // One org's channel under the other org's message timestamp is not a row anybody wrote.
+    expect(await resolve(db, { channelId: CHANNEL_A, messageRef: REF_B })).toBeNull();
+    expect(await resolve(db, { channelId: CHANNEL_B, messageRef: REF_A })).toBeNull();
+  });
+
+  test("an unknown pair resolves to nothing rather than to somebody's organization", async () => {
+    const org = await seedOrg("interaction-unknown");
+    await seedPostedNotification({
+      organizationId: org.organizationId,
+      channelId: CHANNEL_A,
+      messageRef: REF_A,
+      subjectId: randomUUID(),
+    });
+
+    const resolve = await loadResolveForInteraction();
+
+    // The control beside the null: the same call against a pair we did write resolves, so
+    // the null below is about the unknown pair and not about a stub returning null.
+    expect(await resolve(db, { channelId: CHANNEL_A, messageRef: REF_A })).not.toBeNull();
+    expect(
+      await resolve(db, { channelId: "C0NOBODY", messageRef: "1786000000.999999" }),
+    ).toBeNull();
+    expect(await resolve(db, { channelId: CHANNEL_A, messageRef: "" })).toBeNull();
+  });
+
+  test("the channel and message index refuses a second send row for one posted message and exempts a null message", async () => {
+    const org = await seedOrg("interaction-index");
+    const posted = await seedNotification(db, {
+      organizationId: org.organizationId,
+      subjectKind: "shipped_change",
+      createdAt: minutesFromNow(-5),
+    });
+    const other = await seedNotification(db, {
+      organizationId: org.organizationId,
+      subjectKind: "shipped_change",
+      createdAt: minutesFromNow(-4),
+    });
+
+    await seedNotificationSend(db, {
+      organizationId: org.organizationId,
+      notificationId: posted.id,
+      status: "sent",
+      target: CHANNEL_A,
+      messageRef: REF_A,
+      sentAt: minutesFromNow(-5),
+    });
+
+    // A second notification claiming the same posted message would make the press ambiguous,
+    // and the resolve above reads one row by that pair.
+    await expect(
+      seedNotificationSend(db, {
+        organizationId: org.organizationId,
+        notificationId: other.id,
+        status: "sent",
+        target: CHANNEL_A,
+        messageRef: REF_A,
+        sentAt: minutesFromNow(-4),
+      }),
+    ).rejects.toThrow();
+
+    // The exemption: a quiet receipt has no message to be ambiguous about, and every org
+    // with no channel writes one against the same target.
+    const quietA = await seedNotification(db, { organizationId: org.organizationId });
+    const quietB = await seedNotification(db, { organizationId: org.organizationId });
+    for (const notificationId of [quietA.id, quietB.id]) {
+      await seedNotificationSend(db, {
+        organizationId: org.organizationId,
+        notificationId,
+        status: "quiet",
+        quietReason: "no_channel",
+        target: NOTIFICATION_SEND_NO_TARGET,
+        messageRef: null,
+      });
+    }
+
+    const quietRows = await db
+      .select({ id: notificationSends.id })
+      .from(notificationSends)
+      .where(
+        sql`${eq(notificationSends.organizationId, org.organizationId)} and ${eq(notificationSends.target, NOTIFICATION_SEND_NO_TARGET)}`,
+      );
+    expect(quietRows).toHaveLength(2);
   });
 });
 
