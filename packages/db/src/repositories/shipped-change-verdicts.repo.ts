@@ -16,8 +16,12 @@ export interface RecordVerdictInput {
   readonly recordedBySlackUserId?: string | null;
 }
 
+// `abandoned` is its own answer rather than folded into `not_read_out`: a change closed with a
+// reason may well have been read out, so telling the founder we have not read it out yet would
+// be false. Nothing posts buttons on a row that reaches this state, so it is unreachable from
+// Slack today and the caller still has a true sentence for it.
 export type RecordVerdictResult = {
-  readonly kind: "recorded" | "already_recorded" | "not_read_out";
+  readonly kind: "recorded" | "already_recorded" | "not_read_out" | "abandoned";
 };
 
 export interface ShippedChangeVerdictsRepo {
@@ -51,6 +55,10 @@ export function createShippedChangeVerdictsRepo(
           return { kind: "not_read_out" };
         }
 
+        if (change.state === "abandoned") {
+          return { kind: "abandoned" };
+        }
+
         // This repository takes no project id, so the ownership guard resolves the change
         // row's own project. A change whose project is gone keeps its verdict path open.
         if (change.projectId !== null) {
@@ -66,7 +74,10 @@ export function createShippedChangeVerdictsRepo(
         if (closed === null) {
           const current = await changes.maybe(eq(shippedChanges.id, input.changeId));
 
-          return { kind: current?.state === "closed" ? "already_recorded" : "not_read_out" };
+          if (current?.state === "closed") return { kind: "already_recorded" };
+          if (current?.state === "abandoned") return { kind: "abandoned" };
+
+          return { kind: "not_read_out" };
         }
 
         const claim = await verdicts.claim(

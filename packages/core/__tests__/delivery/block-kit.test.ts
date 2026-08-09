@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { escapeMrkdwn, toBlockKit } from "../../src/delivery/block-kit";
+import { toBlockKit, toPostRequest } from "../../src/delivery/block-kit";
 import type { SlackBlock } from "../../src/delivery/slack-message";
 
 const SECTION_TEXT = "ad-fake finding body";
+
+const CHANNEL_ID = "C0BLOCKKIT1";
 
 // The shape Slack documents, taken verbatim from packages/adapters/__tests__/slack/fixtures.ts.
 const DOCUMENTED_SECTION = {
@@ -56,9 +58,7 @@ describe("caller free text cannot speak mrkdwn in Growthmind's voice", () => {
       {
         kind: "actions",
         blockId: "block-1",
-        actions: [
-          { actionId: "a", label: PHISHING_LINK, value: "v", style: null },
-        ],
+        actions: [{ actionId: "a", label: PHISHING_LINK, value: "v", style: null }],
       },
     ]);
 
@@ -70,17 +70,43 @@ describe("caller free text cannot speak mrkdwn in Growthmind's voice", () => {
   });
 });
 
-describe("escapeMrkdwn", () => {
-  test("an ampersand in an ordinary sentence still reads as an ampersand", () => {
-    expect(escapeMrkdwn("Search & filter on /reports")).toBe("Search &amp; filter on /reports");
+// `fallbackText` is mrkdwn too — it is the notification preview, the sidebar entry, the search
+// result, and what a client ignoring blocks renders. A test asserting only on `blocks` proves
+// nothing about the field Slack shows first.
+describe("the request the poster is handed carries no raw mrkdwn in either frame", () => {
+  test("a crafted link in the fallback text posts no clickable link", () => {
+    const body = `CSV export ${PHISHING_LINK}`;
+
+    const request = toPostRequest({
+      channelId: CHANNEL_ID,
+      blocks: [{ kind: "section", text: body }],
+      fallbackText: body,
+    });
+
+    expect(request.fallbackText).not.toContain("<https://attacker.example");
+    expect(request.fallbackText).toContain("&lt;https://attacker.example|Reset your password&gt;");
+    expect(sectionTextOf(request.blocks[0])).toBe(request.fallbackText);
   });
 
-  test("escapes each character once, so an escape is never escaped again", () => {
-    expect(escapeMrkdwn("&lt;")).toBe("&amp;lt;");
-    expect(escapeMrkdwn("<a & b>")).toBe("&lt;a &amp; b&gt;");
+  test("a channel broadcast in the fallback text posts no broadcast", () => {
+    const request = toPostRequest({
+      channelId: CHANNEL_ID,
+      blocks: [{ kind: "context", text: `Heads up ${BROADCAST}` }],
+      fallbackText: `Heads up ${BROADCAST}`,
+    });
+
+    expect(request.fallbackText).toBe("Heads up &lt;!channel&gt;");
   });
 
-  test("leaves text with none of the three untouched", () => {
-    expect(escapeMrkdwn(SECTION_TEXT)).toBe(SECTION_TEXT);
+  test("the channel is carried through and ordinary text is left as written", () => {
+    const request = toPostRequest({
+      channelId: CHANNEL_ID,
+      blocks: [{ kind: "section", text: SECTION_TEXT }],
+      fallbackText: SECTION_TEXT,
+    });
+
+    expect(request.channelId).toBe(CHANNEL_ID);
+    expect(request.fallbackText).toBe(SECTION_TEXT);
+    expect(request.blocks).toEqual([DOCUMENTED_SECTION]);
   });
 });

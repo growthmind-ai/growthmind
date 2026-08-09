@@ -97,7 +97,7 @@ const ALLOWED: readonly Allowed[] = [
   },
   {
     file: "worker/src/tasks/notification-dispatch.ts",
-    wraps: "result = await poster.post({",
+    wraps: "result = await poster.post(",
     why: "The notification spine's one posting seam: a claimed lease posts once and writes its receipt, and every notification (the digest included) crosses here.",
   },
   {

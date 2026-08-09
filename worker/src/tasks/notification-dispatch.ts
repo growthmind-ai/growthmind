@@ -12,7 +12,7 @@ import {
   keysRevokedSentence,
   NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
   slackDisconnectedSentence,
-  toBlockKit,
+  toPostRequest,
   type ShippedReadoutAction,
   type SlackBlock,
 } from "@growthmind/core";
@@ -154,8 +154,10 @@ async function sentenceFor(
   }
 }
 
+// Growthmind's intermediate model, not Slack's wire format: the escape belongs to the one
+// builder that constructs the request, so no arm of this file can add a raw field.
 interface RenderedPost {
-  readonly blocks: unknown[];
+  readonly blocks: readonly SlackBlock[];
   readonly fallbackText: string;
 }
 
@@ -174,7 +176,7 @@ function shippedPost(rendered: ShippedMessage, changeId: string): RenderedPost {
     },
   ];
 
-  return { blocks: toBlockKit(blocks), fallbackText: rendered.body };
+  return { blocks, fallbackText: rendered.body };
 }
 
 // The two shipped-change arms and `digest` are the multi-block shapes; every other type keeps
@@ -229,13 +231,13 @@ async function messageFor(
 
       const message = buildDigestMessage({ sentences, totalCount: parsed.payload.totalCount });
 
-      return { blocks: toBlockKit(message.blocks), fallbackText: message.fallbackText };
+      return { blocks: message.blocks, fallbackText: message.fallbackText };
     }
   }
 
   const sentence = await sentenceFor(db, ctx, notification, notification.healthReasonCode);
 
-  return { blocks: toBlockKit([{ kind: "section", text: sentence }]), fallbackText: sentence };
+  return { blocks: [{ kind: "section", text: sentence }], fallbackText: sentence };
 }
 
 // The customer-facing reason is composed from the closed union the poster returns, never
@@ -365,11 +367,13 @@ export async function runNotificationDispatch(
   let failure: NotificationSendFailureReason | null = null;
   let result: PostResult | null = null;
   try {
-    result = await poster.post({
-      channelId: notification.channelId,
-      blocks: message.blocks,
-      fallbackText: message.fallbackText,
-    });
+    result = await poster.post(
+      toPostRequest({
+        channelId: notification.channelId,
+        blocks: message.blocks,
+        fallbackText: message.fallbackText,
+      }),
+    );
   } catch (error) {
     // The Slack HTTP port, never the database — the driver-safe describer is for the writes
     // around it (worker/__tests__/driver-error-discipline.test.ts).

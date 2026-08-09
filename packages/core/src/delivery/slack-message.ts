@@ -19,6 +19,8 @@ import type { MeasuredCount } from "../counts/measured-count";
 import { floorSummarySourceSchema } from "../summary/types";
 import type { FloorSummarySource } from "../summary/types";
 
+import { mrkdwnLength, mrkdwnPrefixLength } from "./mrkdwn";
+
 export const SLACK_MESSAGE_CHARACTER_BUDGET = 900;
 
 export const SLACK_MESSAGE_LINE_BUDGET = 12;
@@ -310,8 +312,8 @@ type MessageParts = {
 };
 
 // citesHref is null only when D5 degraded it upstream (mask/withheld) — the same fallback
-// apps/web's own citation control renders, never a dead link. The href is a path rather than a
-// URL, which Slack does not linkify, and block-kit.ts escapes mrkdwn on the way out.
+// apps/web's own citation control renders, never a dead link. block-kit.ts escapes every mrkdwn
+// body, so this reaches the reader as text and never as a live link, whatever the href holds.
 function claimLine(claim: DeliveredCauseClaim): string {
   const cite =
     claim.citesHref === null ? claim.citesLabel : `<${claim.citesHref}|${claim.citesLabel}>`;
@@ -371,10 +373,13 @@ function plainTextOf(blocks: readonly SlackTextBlock[]): string {
     .replaceAll("*", "");
 }
 
+// The character budget is measured on the escaped form, because that is what Slack is handed:
+// an ampersand costs five characters on the wire, so a ladder settled before escaping can post
+// four times the string it was told would fit.
 function fits(blocks: readonly SlackTextBlock[]): boolean {
   const text = plainTextOf(blocks);
   return (
-    text.length <= SLACK_MESSAGE_CHARACTER_BUDGET &&
+    mrkdwnLength(text) <= SLACK_MESSAGE_CHARACTER_BUDGET &&
     text.split("\n").length <= SLACK_MESSAGE_LINE_BUDGET
   );
 }
@@ -389,9 +394,12 @@ function clampToBudget(blocks: readonly SlackTextBlock[]): SlackTextBlock[] {
   const last = kept[kept.length - 1];
   if (last && !fits(kept)) {
     const others = kept.slice(0, -1);
-    const overheadCharacters = others.length === 0 ? 0 : plainTextOf(others).length + 1;
+    const overheadCharacters = others.length === 0 ? 0 : mrkdwnLength(plainTextOf(others)) + 1;
     const remaining = Math.max(0, SLACK_MESSAGE_CHARACTER_BUDGET - overheadCharacters);
-    kept[kept.length - 1] = { kind: last.kind, text: truncateEnd(last.text, remaining) };
+    kept[kept.length - 1] = {
+      kind: last.kind,
+      text: truncateEnd(last.text, mrkdwnPrefixLength(last.text, remaining)),
+    };
   }
 
   return kept;

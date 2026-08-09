@@ -5,7 +5,7 @@ import {
   renderSlackMessage,
   renderedMessageOf,
   scanResidualPii,
-  toBlockKit,
+  toPostRequest,
 } from "@growthmind/core";
 import type { DeliveriesRepo, DeliveryDecisionsRepo, SignatureHex } from "@growthmind/db";
 import { describeDriverError } from "@growthmind/db";
@@ -143,13 +143,13 @@ function prepare(
       DELIVERY_VOCABULARY,
     );
     rendered = renderedMessageOf(message);
-    request = {
+    // Slack is handed Block Kit, never Growthmind's intermediate model, and the fallback text
+    // is escaped by the same builder rather than by this caller remembering to.
+    request = toPostRequest({
       channelId: lane.channelId,
-      // Slack is handed Block Kit, never Growthmind's intermediate model.
-      blocks: toBlockKit(message.blocks),
-
+      blocks: message.blocks,
       fallbackText: message.text,
-    };
+    });
   } catch (error) {
     logger.error(
       `delivery tick: finding ${finding.findingId} could not be rendered — ${describeError(error)}`,

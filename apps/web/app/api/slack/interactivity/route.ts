@@ -264,6 +264,10 @@ async function recordVerdictFor(
   if (result.kind === "recorded") return SHIPPED_VERDICT_RECORDED;
   if (result.kind === "not_read_out") return SHIPPED_VERDICT_TOO_EARLY_REFUSAL;
 
+  // An abandoned row was closed with a reason, and may well have been read out first, so the
+  // too-early sentence would be false. Closed is the one thing true of every way it gets here.
+  if (result.kind === "abandoned") return SHIPPED_VERDICT_TOO_LATE_REFUSAL;
+
   const standing = await verdicts.findForChange(subject.changeId);
 
   return alreadyRecordedSentence(standing?.verdict ?? null);

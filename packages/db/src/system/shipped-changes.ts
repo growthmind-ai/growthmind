@@ -32,11 +32,15 @@ const SCHEDULED_COLUMNS = {
 };
 
 // Only `sent` counts. A quiet receipt means there was no channel to ask in, and a failed one
-// means the ask never landed; neither is a question the founder declined to answer.
+// means the ask never landed; neither is a question the founder declined to answer. The join
+// carries the org as well as the notification id because nothing at the schema level ties a send
+// row to its notification's tenant.
 const READOUT_WAS_DELIVERED = sql<boolean>`exists (
   select 1
   from ${notifications}
-  join ${notificationSends} on ${notificationSends.notificationId} = ${notifications.id}
+  join ${notificationSends}
+    on ${notificationSends.notificationId} = ${notifications.id}
+    and ${notificationSends.organizationId} = ${notifications.organizationId}
   where ${notifications.organizationId} = ${shippedChanges.organizationId}
     and ${notifications.subjectId} = ${shippedChanges.id}
     and ${notifications.type} = 'change_readout'

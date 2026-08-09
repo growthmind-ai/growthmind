@@ -260,7 +260,8 @@ export {
   type SlackMessage,
   renderedMessageOf,
 } from "./delivery/slack-message";
-export { escapeMrkdwn, toBlockKit } from "./delivery/block-kit";
+export { toBlockKit, toPostRequest, type PostRequestInput } from "./delivery/block-kit";
+export { escapeMrkdwn } from "./delivery/mrkdwn";
 
 export {
   renderFixSpec,

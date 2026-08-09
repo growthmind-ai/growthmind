@@ -77,6 +77,11 @@ const CHANNEL = "C0READOUT01";
 
 const FAULT_PAGE = "/o053-fault";
 
+// The two constructs a prompt-injected coding agent reaches for through report_shipped's
+// description, mirrored from packages/core/__tests__/delivery/block-kit.test.ts.
+const PHISHING_LINK = "<https://attacker.example|Reset your password>";
+const BROADCAST = "<!channel>";
+
 // The product's own window (FIX_RESULTS_WINDOW_DAYS), stated as instants so the fixtures can
 // seed sessions inside it without recomputing a rule the product owns.
 const REPORTED_AT = new Date("2026-08-09T09:00:00.000Z");
@@ -194,10 +199,12 @@ function shippedTable(name: string): AnyTable {
 interface ShippedCopy {
   readonly nobody: string;
   readonly pageReach: string;
+  readonly pageReachAfterLead: string;
   readonly promise: string;
   readonly reach: string;
   readonly readOut: string;
   readonly repeat: string;
+  readonly repeatLead: string;
   readonly spellingChanged: string;
   readonly spineCorpus: string;
   readonly unverified: string;
@@ -218,10 +225,12 @@ function shippedCopy(): Promise<ShippedCopy> {
     return {
       nobody: await one("SHIPPED_NOBODY_TEMPLATE"),
       pageReach: await one("SHIPPED_PAGE_REACH_TEMPLATE"),
+      pageReachAfterLead: await one("SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE"),
       promise: await one("SHIPPED_PROMISE_TEMPLATE"),
       reach: await one("SHIPPED_REACH_TEMPLATE"),
       readOut: await one("SHIPPED_READ_OUT_TEMPLATE"),
       repeat: await one("SHIPPED_REPEAT_TEMPLATE"),
+      repeatLead: await one("SHIPPED_REPEAT_LEAD_TEMPLATE"),
       spellingChanged: await one("SHIPPED_SPELLING_CHANGED_TEMPLATE"),
       spineCorpus: await one("SHIPPED_SPINE_CORPUS_LINE"),
       unverified: await one("SHIPPED_UNVERIFIED_LINE"),
@@ -915,6 +924,20 @@ describe("the readout reaches the org's channel through the real dispatch path (
       expect(rendersTemplate(body, copy.verdictQuestion)).toBe(false);
       expect(rendersTemplate(body, copy.readOut)).toBe(false);
       expect(body).not.toContain('"type":"actions"');
+
+      // The half a receipt cannot carry: the send says `sent`, so a lapse pass reading delivery
+      // alone would call this silence a verdict on a question that was never put.
+      const sends = await sendRowsFor(db, (await readoutRowsFor(db, change.id))[0]?.id ?? "");
+      expect(sends.map((send) => String(send.status))).toEqual(["sent"]);
+
+      await runTick(db, new Date(READOUT_DUE_AT.getTime() + 8 * DAY_MS), recordingLogger());
+
+      const row = (await changeRowsFor(db, change.id))[0];
+      expect(row?.state).toBe("abandoned");
+      expect(row?.abandonedReason).toBe("project_gone");
+      expect(row?.closedAt).not.toBeNull();
+      expect(await verdictRowsFor(db, change.id)).toHaveLength(0);
+      expect(await changeRowsInState(db, "read_out")).toEqual([]);
     },
     COLD_BOOT_BUDGET_MS,
   );
@@ -940,7 +963,34 @@ describe("the readout reaches the org's channel through the real dispatch path (
   );
 
   test(
-    "a change asked to lead with repeat puts the repeat sentence before the reach sentence",
+    "a crafted description reaches Slack as text in every field, the preview one included",
+    async () => {
+      const db = await openDb();
+      const fixture = await seedOrgAndProject(db, "crafted-description");
+      await connectSlackChannel(db, fixture.org, CHANNEL);
+      await seedAtPageCohort(db, fixture, ELIGIBLE_SESSIONS);
+      await reportChange(db, fixture, { description: `CSV export ${PHISHING_LINK} ${BROADCAST}` });
+
+      await runTick(db, READOUT_DUE_AT, recordingLogger());
+
+      const posted = await postedFor(db);
+      expect(posted).toHaveLength(1);
+      const request = posted[0] as PostRequest;
+
+      // `fallbackText` is the notification preview, the sidebar entry and what a client ignoring
+      // blocks renders, so asserting on `blocks` alone leaves the payload live where it is read
+      // first.
+      expect(request.fallbackText).toContain("CSV export");
+      expect(request.fallbackText).not.toContain("<https://attacker.example");
+      expect(request.fallbackText).not.toContain("<!channel>");
+      expect(JSON.stringify(request.blocks)).not.toContain("<https://attacker.example");
+      expect(JSON.stringify(request.blocks)).not.toContain("<!channel>");
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
+
+  test(
+    "a change asked to lead with repeat opens on what it is about, then states reach",
     async () => {
       const db = await openDb();
       const copy = await shippedCopy();
@@ -955,18 +1005,26 @@ describe("the readout reaches the org's channel through the real dispatch path (
 
       const posted = await postedFor(db);
       expect(posted).toHaveLength(1);
-      const body = bodyOf(posted[0] as PostRequest);
+      const request = posted[0] as PostRequest;
+      const body = bodyOf(request);
 
-      // Both sentences are still there; what the lead decides is which one the founder reads
-      // first, and only a rendered body can show the order.
-      expect(rendersTemplate(body, copy.repeat)).toBe(true);
-      expect(rendersTemplate(body, copy.pageReach)).toBe(true);
+      // Both counts are still there; what the lead decides is which one the founder reads first.
+      expect(rendersTemplate(body, copy.repeatLead)).toBe(true);
+      expect(rendersTemplate(body, copy.pageReachAfterLead)).toBe(true);
 
       const repeatAt = body.indexOf(leadSegment(copy.repeat));
-      const reachAt = body.indexOf(leadSegment(copy.pageReach));
+      const reachAt = body.indexOf(leadSegment(copy.pageReachAfterLead));
       expect(repeatAt).toBeGreaterThan(-1);
       expect(reachAt).toBeGreaterThan(-1);
       expect(repeatAt).toBeLessThan(reachAt);
+
+      // The prose itself, not only the order: leading on repeat used to open on "N of the M
+      // people … came back to it", where "it" had nothing behind it and the change was unnamed
+      // until the third sentence. Read the fallback text, which is one sentence run.
+      expect(request.fallbackText.startsWith(`${CHANGE} on ${PAGE} —`)).toBe(true);
+
+      // And the change is announced once: the reach sentence after a lead carries no heading.
+      expect(request.fallbackText.split(CHANGE)).toHaveLength(2);
     },
     COLD_BOOT_BUDGET_MS,
   );

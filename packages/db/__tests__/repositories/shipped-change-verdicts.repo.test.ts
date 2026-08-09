@@ -76,6 +76,13 @@ async function markReadOut(changeId: string): Promise<void> {
     .where(eq(schema.shippedChanges.id, changeId));
 }
 
+async function markAbandoned(changeId: string): Promise<void> {
+  await db
+    .update(schema.shippedChanges)
+    .set({ state: "abandoned", abandonedReason: "project_gone", closedAt: LAPSED_AT })
+    .where(eq(schema.shippedChanges.id, changeId));
+}
+
 // Queried directly for the full change scope: a "most recent verdict" helper would report
 // success on a second row that overwrote the founder's answer (.ai/patterns.md #1).
 async function verdictRowsFor(organizationId: string, changeId: string) {
@@ -148,6 +155,25 @@ describe("a verdict is recorded once per change", () => {
     expect(result.kind).toBe("not_read_out");
     expect(await verdictRowsFor(org.organizationId, changeId)).toHaveLength(0);
     expect((await changeRow(changeId))?.state).toBe("reported");
+  });
+
+  test("a press on an abandoned change is not answered with the not-yet-read-out refusal", async () => {
+    // An abandoned row may well have been read out first, so `not_read_out` would tell the
+    // founder something false. Nothing posts buttons on a row that reaches this state, and the
+    // caller still needs a true sentence for the press that arrives anyway.
+    const { org, changeId, verdicts } = await seedReadOutChange("abandoned-press");
+    await markReadOut(changeId);
+    await markAbandoned(changeId);
+
+    const result = await verdicts.recordVerdict({
+      changeId,
+      verdict: "keep",
+      recordedAt: PRESSED_AT,
+    });
+
+    expect(result.kind).toBe("abandoned");
+    expect(await verdictRowsFor(org.organizationId, changeId)).toHaveLength(0);
+    expect((await changeRow(changeId))?.state).toBe("abandoned");
   });
 });
 

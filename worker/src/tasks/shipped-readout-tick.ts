@@ -65,6 +65,27 @@ async function lapse(deps: ShippedReadoutTickDeps, change: LapsedShippedChange, 
     return;
   }
 
+  // A readout rendered without its project carries no counts and no buttons — it reached the
+  // channel and asked nothing, which `notification_sends` cannot tell apart from a real question.
+  // `renderChangeReadout` refuses on exactly this condition and a deleted project never returns,
+  // so a null here cannot prove the founder was asked. The row closes on what is true of it
+  // rather than on a verdict it would be inventing.
+  if (change.projectId === null) {
+    const abandoned = await createShippedChangesService(deps.db, contextFor(change)).abandon({
+      changeId: change.changeId,
+      reason: "project_gone",
+      at,
+    });
+
+    if (abandoned.kind !== "abandoned") {
+      deps.logger.warn(
+        `shipped readout: change ${change.changeId} lost its project and could not be closed this run`,
+      );
+    }
+
+    return;
+  }
+
   await createShippedChangeVerdictsRepo(deps.db, contextFor(change)).recordVerdict({
     changeId: change.changeId,
     verdict: "no_verdict_given",
