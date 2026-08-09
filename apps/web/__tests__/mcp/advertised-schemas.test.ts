@@ -183,14 +183,17 @@ describe("WIRE-J3 — no advertised schema carries the standard-schema key", () 
 });
 
 describe("WIRE-J4 — registering every tool with its shared Zod schemas does not throw", () => {
-  test("should build the handler, register all four tools with both schemas, and answer tools/list", async () => {
+  test("should build the handler, register every tool with both schemas, and answer tools/list", async () => {
     const ad = await readAdvertisement();
 
     expect(ad.status).toBe(200);
     expect(ad.contentType).toBe(SDK_RENDERED_CONTENT_TYPE);
     expect(ad.body).not.toContain(UNAVAILABLE.message);
 
-    expect(ad.tools).toHaveLength(4);
+    // Tracks the registry rather than a literal, because O-053 adds the first write tool and a
+    // pinned 4 here would be a count of the read tools wearing the name of every tool.
+    expect(MCP_TOOL_NAMES.length).toBeGreaterThan(0);
+    expect(ad.tools).toHaveLength(MCP_TOOL_NAMES.length);
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 
     for (const tool of ad.tools) {
@@ -206,7 +209,8 @@ describe("WIRE-J5 — the advertised dialect is draft 2020-12 and needs no conve
     expect(advertisedNames(ad)).toEqual([...MCP_TOOL_NAMES]);
 
     const documents = everyDocument(ad);
-    expect(documents).toHaveLength(8);
+    expect(documents).toHaveLength(MCP_TOOL_NAMES.length * 2);
+    expect(documents.length).toBeGreaterThan(0);
 
     for (const document of documents) {
       expect(document).not.toBeNull();
