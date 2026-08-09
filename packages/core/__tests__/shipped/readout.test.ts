@@ -1,4 +1,6 @@
+import type { ShippedLeadCount } from "@growthmind/shared";
 import {
+  SHIPPED_LEAD_COUNTS,
   SHIPPED_NO_IDENTITY_LINE,
   SHIPPED_RECORDED_CORPUS_LINE,
   SHIPPED_SPINE_CORPUS_LINE,
@@ -25,14 +27,21 @@ const PAGE = "/reports";
 // A real minted id, so the assertion that no id reaches the body has something to find.
 const CHANGE_ID = "0f3a9c21-6b4d-4a17-9e52-1c8b7d4e6a90";
 
-function readoutOf(result: ShippedReadoutResult): ShippedReadout {
+function readoutLeadingOn(
+  result: ShippedReadoutResult,
+  leadCount: ShippedLeadCount,
+): ShippedReadout {
   return renderShippedReadout({
     changeId: CHANGE_ID,
     change: CHANGE,
     page: PAGE,
-    leadCount: "reach",
+    leadCount,
     result,
   });
+}
+
+function readoutOf(result: ShippedReadoutResult): ShippedReadout {
+  return readoutLeadingOn(result, "reach");
 }
 
 function recordedCorpus(spec: {
@@ -103,6 +112,16 @@ const PAGE_CLAIM_GROUPS: readonly number[] = [
 
 const PAGE_CLAIM_CORPUS = pageCorpus({ atPage: 32, identityGroups: PAGE_CLAIM_GROUPS });
 
+// Fifteen recorded sessions across four people and three visits nobody can be told apart by: the
+// ordinary shape of real identity coverage, and the only corpus that renders the unidentified
+// sentence at all. Without it the anaphora guard below scans five bodies that never contain it.
+const MIXED_IDENTITY_CORPUS = recordedCorpus({
+  atPage: 20,
+  recorded: 15,
+  touched: 6,
+  identityGroups: [0, 1, null, 2, 3],
+});
+
 const NOBODY_CORPUS = recordedCorpus({
   atPage: 20,
   recorded: 12,
@@ -114,11 +133,15 @@ const BELOW_FLOOR_CORPUS = pageCorpus({ atPage: 4 });
 
 const EVERY_BRANCH: readonly ShippedReadoutResult[] = [
   claimOf(RECORDED_CLAIM_CORPUS),
+  claimOf(MIXED_IDENTITY_CORPUS),
+  claimOf(PAGE_CLAIM_CORPUS),
   claimOf(NOBODY_CORPUS),
   { kind: "too_few", corpus: BELOW_FLOOR_CORPUS },
   { kind: "stale_page_spelling" },
   { kind: "corpus_predates_who_counts" },
 ];
+
+const BRANCH_COUNT = 7;
 
 describe("the readout says which corpus answered", () => {
   test("should name the recorded corpus on a control-level claim", () => {
@@ -159,18 +182,21 @@ describe("AC-G8 — a denominator drawn from a truncated corpus says so", () => 
 describe("AC-G12 — every branch ends in the question and never in a grade", () => {
   test("should end every readout branch in the verdict question with all three options", () => {
     // A vacuous pass here would be an empty branch list agreeing with itself.
-    expect(EVERY_BRANCH.length).toBe(5);
+    expect(EVERY_BRANCH.length).toBe(BRANCH_COUNT);
+    expect(SHIPPED_LEAD_COUNTS.length).toBe(2);
 
     for (const result of EVERY_BRANCH) {
-      const readout = readoutOf(result);
+      for (const lead of SHIPPED_LEAD_COUNTS) {
+        const readout = readoutLeadingOn(result, lead);
 
-      expect(readout.body.trimEnd().endsWith(SHIPPED_VERDICT_QUESTION)).toBe(true);
-      expect(readout.actions.map((action) => action.actionId)).toEqual([
-        SHIPPED_VERDICT_KEEP_ACTION_ID,
-        SHIPPED_VERDICT_KILL_ACTION_ID,
-        SHIPPED_VERDICT_LEAVE_ACTION_ID,
-      ]);
-      expect(readout.actions.filter((action) => action.label.trim().length > 0)).toHaveLength(3);
+        expect(readout.body.trimEnd().endsWith(SHIPPED_VERDICT_QUESTION)).toBe(true);
+        expect(readout.actions.map((action) => action.actionId)).toEqual([
+          SHIPPED_VERDICT_KEEP_ACTION_ID,
+          SHIPPED_VERDICT_KILL_ACTION_ID,
+          SHIPPED_VERDICT_LEAVE_ACTION_ID,
+        ]);
+        expect(readout.actions.filter((action) => action.label.trim().length > 0)).toHaveLength(3);
+      }
     }
   });
 });
@@ -234,12 +260,53 @@ describe("each count names its own unit and its own denominator", () => {
 
   test("should never point one count's denominator back at the other's", () => {
     // "of those N people" read as an anaphor onto the reach denominator while carrying the
-    // repeat one, so the two numbers described the same set and were different sizes.
+    // repeat one, so the two numbers described the same set and were different sizes. Walked over
+    // both leads, because a pronoun is only wrong in the order that puts its referent behind it.
+    expect(EVERY_BRANCH.length).toBe(BRANCH_COUNT);
+
     for (const result of EVERY_BRANCH) {
-      expect(readoutOf(result).body).not.toMatch(/\bthose\b/i);
+      for (const lead of SHIPPED_LEAD_COUNTS) {
+        expect(readoutLeadingOn(result, lead).body).not.toMatch(/\bthose\b/i);
+      }
     }
   });
+
+  test("should render the unidentified sentence, so the guard above is not scanning bodies without one", () => {
+    const corpus = MIXED_IDENTITY_CORPUS;
+    const counts = shippedCounts(corpus);
+    const repeat = counts.repeat;
+    if (repeat === null) throw new Error("four identified people must yield a repeat count");
+
+    expect(corpus.unidentifiedEligible).toBe(3);
+    expect(corpus.basis.kept).toBe(15);
+
+    const body = readoutOf(claimOf(corpus)).body;
+    const said = sentencesIn(body).find((sentence) => sentence.includes("could not be tied"));
+
+    expect(said).toBeDefined();
+
+    // Its own denominator, stated in the sentence: 3 out of the 15 visits, never "those visits".
+    expect(numbersIn(said ?? "")).toEqual(["3", "15"]);
+    expect(said).toContain("visits");
+    expect(numbersIn(body).every((value) => entitledNumbers(corpus, counts).has(value))).toBe(true);
+  });
 });
+
+function entitledNumbers(
+  corpus: AtPageCorpus,
+  counts: ReturnType<typeof shippedCounts>,
+): Set<string> {
+  const repeat = counts.repeat;
+
+  return new Set(
+    [
+      counts.reach.numerator,
+      counts.reach.denominator,
+      ...(repeat === null ? [] : [repeat.numerator, repeat.denominator]),
+      corpus.unidentifiedEligible,
+    ].map((value) => String(value)),
+  );
+}
 
 describe("every number the readout states says out of how many", () => {
   test("should state no number the claim cannot account for", () => {
@@ -292,12 +359,66 @@ describe("every number the readout states says out of how many", () => {
   });
 });
 
+describe("the sentence that opens the readout names what it is about", () => {
+  test("should open a repeat-led readout on the change and the page, never on a bare pronoun", () => {
+    const body = readoutLeadingOn(claimOf(RECORDED_CLAIM_CORPUS), "repeat").body;
+    const first = sentencesIn(body)[0] ?? "";
+
+    expect(first.startsWith(`${CHANGE} on ${PAGE}`)).toBe(true);
+    expect(first).toContain("came back to it");
+
+    // The change is announced once. Leading on repeat and then re-heading the reach sentence
+    // would say the change's name twice in two consecutive sentences.
+    expect(body.split(CHANGE)).toHaveLength(2);
+  });
+
+  test("should open a reach-led readout on the change, and put the reach sentence first", () => {
+    const body = readoutOf(claimOf(RECORDED_CLAIM_CORPUS)).body;
+    const first = sentencesIn(body)[0] ?? "";
+
+    expect(first.startsWith(CHANGE)).toBe(true);
+    expect(first).toContain("visits");
+    expect(body.split(CHANGE)).toHaveLength(2);
+  });
+
+  test("should say the same two counts under either lead, and only reverse their order", () => {
+    const counts = shippedCounts(RECORDED_CLAIM_CORPUS);
+    const repeat = counts.repeat;
+    if (repeat === null) throw new Error("three identified people must yield a repeat count");
+
+    for (const lead of SHIPPED_LEAD_COUNTS) {
+      const stated = numbersIn(readoutLeadingOn(claimOf(RECORDED_CLAIM_CORPUS), lead).body);
+
+      expect(new Set(stated)).toEqual(
+        new Set(
+          [
+            counts.reach.numerator,
+            counts.reach.denominator,
+            repeat.numerator,
+            repeat.denominator,
+          ].map((value) => String(value)),
+        ),
+      );
+    }
+  });
+
+  test("should lead on reach anyway when there is no repeat count to lead on", () => {
+    // Nobody touched the change, so the repeat sentence does not render; a lead on a sentence
+    // that is not there would open the readout on the corpus line.
+    const body = readoutLeadingOn(claimOf(NOBODY_CORPUS), "repeat").body;
+    const first = sentencesIn(body)[0] ?? "";
+
+    expect(first.startsWith(CHANGE)).toBe(true);
+    expect(first).toContain("none of them used it");
+  });
+});
+
 describe("FR-9.5 — no id and no key-shaped string reaches the reader", () => {
   test("should render no id and no key-shaped substring in any branch", () => {
     const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
     const hexRun = /\b[0-9a-f]{32,}\b/i;
 
-    expect(EVERY_BRANCH.length).toBe(5);
+    expect(EVERY_BRANCH.length).toBe(BRANCH_COUNT);
     expect(CHANGE_ID).toMatch(uuid);
 
     for (const result of EVERY_BRANCH) {

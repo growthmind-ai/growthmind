@@ -134,9 +134,9 @@ export function createShippedChangesService(
           changeId: claimed.id,
         });
 
-        // Here the notification IS the readout, so a swallowed emit must take the transition
-        // with it. Committing read_out with nothing announced drops the row out of the due scan
-        // forever and lets the lapse pass record a silence the founder was never asked to break.
+        // The notification is the readout rather than a side effect of it, so a swallowed emit
+        // takes the transition with it. Committing read_out with nothing announced drops the row
+        // out of the due scan and lets the lapse pass record a silence nobody was asked to break.
         if (!emitted) {
           throw new Error(
             `shipped_changes.recordReadout: ${claimed.id} could not be announced, so it is not being recorded as read out`,

@@ -8,8 +8,8 @@ import {
   NO_CONTROL_LABEL,
   SHIPPED_CHANGE_CONFLICT_TARGET,
   SHIPPED_CHANGE_STATES,
-  SHIPPED_CHANGE_VERDICTS,
   SHIPPED_READOUT_TASK,
+  SHIPPED_VERDICTS,
 } from "../../src/shipped/types";
 
 describe("a reported change is in exactly one of four states", () => {
@@ -30,18 +30,13 @@ describe("a reported change is in exactly one of four states", () => {
 
 describe("the founder's answer is one of four, and silence is one of them", () => {
   test("the four verdicts are keep, kill, leave and no verdict given", () => {
-    expect([...SHIPPED_CHANGE_VERDICTS].toSorted()).toEqual([
-      "keep",
-      "kill",
-      "leave",
-      "no_verdict_given",
-    ]);
+    expect([...SHIPPED_VERDICTS].toSorted()).toEqual(["keep", "kill", "leave", "no_verdict_given"]);
   });
 
   test("a window that lapses records an answer rather than nothing", () => {
-    const verdicts: readonly string[] = SHIPPED_CHANGE_VERDICTS;
+    const verdicts: readonly string[] = SHIPPED_VERDICTS;
     expect(verdicts).toContain("no_verdict_given");
-    expect(SHIPPED_CHANGE_VERDICTS.length).toBe(4);
+    expect(SHIPPED_VERDICTS.length).toBe(4);
   });
 });
 

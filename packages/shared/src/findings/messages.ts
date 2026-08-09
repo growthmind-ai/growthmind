@@ -120,11 +120,24 @@ export const SHIPPED_PAGE_REACH_TEMPLATE =
 export const SHIPPED_REPEAT_TEMPLATE =
   "{numerator} of the {denominator} people I could tell apart came back to it.";
 
+// Leading on repeat puts this sentence first, where "it" has nothing behind it, so the lead form
+// names the change and the page and the two sentences below drop the heading they would repeat.
+export const SHIPPED_REPEAT_LEAD_TEMPLATE =
+  "{change} on {page} — {numerator} of the {denominator} people I could tell apart came back to it.";
+
+export const SHIPPED_REACH_AFTER_LEAD_TEMPLATE =
+  "I could watch {denominator} visits to that page, and {numerator} of them used it.";
+
+export const SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE =
+  "There were {denominator} visits to that page while I was watching.";
+
 export const SHIPPED_NO_IDENTITY_LINE =
   "Nobody could be told apart between visits, so I cannot say who came back.";
 
+// Restating the reach denominator rather than pointing back at it: this sentence renders on
+// either side of the repeat one, so a pronoun here lands on whichever count happens to precede it.
 export const SHIPPED_UNIDENTIFIED_TEMPLATE =
-  "{count} of those visits could not be tied to a person, and are counted on their own.";
+  "{count} of the {denominator} visits could not be tied to a person, and are counted on their own.";
 
 export const SHIPPED_RECORDED_CORPUS_LINE =
   "I counted that off the visits that were recorded, not off everyone who was there.";
@@ -221,6 +234,9 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_NOBODY_TEMPLATE,
   SHIPPED_PAGE_REACH_TEMPLATE,
   SHIPPED_REPEAT_TEMPLATE,
+  SHIPPED_REPEAT_LEAD_TEMPLATE,
+  SHIPPED_REACH_AFTER_LEAD_TEMPLATE,
+  SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE,
   SHIPPED_NO_IDENTITY_LINE,
   SHIPPED_UNIDENTIFIED_TEMPLATE,
   SHIPPED_RECORDED_CORPUS_LINE,

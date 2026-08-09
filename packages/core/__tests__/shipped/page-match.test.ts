@@ -32,6 +32,29 @@ describe("a page address becomes the one spelling the spine holds, or nothing", 
     expect(normalisedPageAddress("?utm=x")).toBeNull();
   });
 
+  test("should refuse prose rather than root it into a page address nothing can match", () => {
+    // The caller is a coding agent, so an answer in words is the likeliest wrong input. Rooted
+    // and accepted, each of these books a change key no visit can ever join, and the mistake
+    // only surfaces on the day the readout answers out of nothing.
+    for (const written of ["Reports page", "the reports page", "/reports and /settings"]) {
+      expect({ written, path: normalisedPageAddress(written) }).toEqual({ written, path: null });
+    }
+  });
+
+  test("should refuse an address that is not a web one, rather than redact it into a path", () => {
+    expect(normalisedPageAddress("mailto:someone@example.test")).toBeNull();
+    expect(normalisedPageAddress("javascript:alert(1)")).toBeNull();
+    expect(normalisedPageAddress("tel:+15550100")).toBeNull();
+  });
+
+  test("should keep accepting the three spellings a page is honestly written in", () => {
+    // The refusals above are not allowed to cost the normalise-and-accept behaviour above them.
+    expect(normalisedPageAddress("/Reports")).toBe("/reports");
+    expect(normalisedPageAddress("/reports/")).toBe("/reports");
+    expect(normalisedPageAddress("https://app.example.test/reports?t=1")).toBe("/reports");
+    expect(normalisedPageAddress("HTTPS://app.example.test/Reports")).toBe("/reports");
+  });
+
   test("should be its own fixed point, so a second pass cannot re-spell it", () => {
     const once = normalisedPageAddress("/Reports/Archive/");
     expect(once).toBe("/reports/archive");

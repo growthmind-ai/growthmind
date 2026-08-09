@@ -2,9 +2,12 @@ import type { ShippedLeadCount } from "@growthmind/shared";
 import {
   SHIPPED_NOBODY_TEMPLATE,
   SHIPPED_NO_IDENTITY_LINE,
+  SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE,
   SHIPPED_PAGE_REACH_TEMPLATE,
+  SHIPPED_REACH_AFTER_LEAD_TEMPLATE,
   SHIPPED_REACH_TEMPLATE,
   SHIPPED_RECORDED_CORPUS_LINE,
+  SHIPPED_REPEAT_LEAD_TEMPLATE,
   SHIPPED_REPEAT_TEMPLATE,
   SHIPPED_SPELLING_CHANGED_TEMPLATE,
   SHIPPED_SPINE_CORPUS_LINE,
@@ -59,7 +62,11 @@ function corpusLines(corpus: AtPageCorpus): readonly string[] {
   return corpus.truncated ? [named, SHIPPED_TRUNCATED_LINE] : [named];
 }
 
-function reachSentence(input: ShippedReadoutInput, result: ShippedReadoutResult): string {
+function reachSentence(
+  input: ShippedReadoutInput,
+  result: ShippedReadoutResult,
+  afterLead: boolean,
+): string {
   if (result.kind !== "claim") return "";
 
   const values = {
@@ -71,49 +78,78 @@ function reachSentence(input: ShippedReadoutInput, result: ShippedReadoutResult)
 
   // The page is the change, so "touched it" and "reached it" are the same set and a fraction of
   // itself would say nothing. Repeat carries the fraction against the same denominator.
-  if (result.corpus.kind === "page") return fill(SHIPPED_PAGE_REACH_TEMPLATE, values);
+  if (result.corpus.kind === "page") {
+    return fill(
+      afterLead ? SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE : SHIPPED_PAGE_REACH_TEMPLATE,
+      values,
+    );
+  }
 
   if (result.corpus.touchedSessions === 0) return fill(SHIPPED_NOBODY_TEMPLATE, values);
 
-  return fill(SHIPPED_REACH_TEMPLATE, values);
+  return fill(afterLead ? SHIPPED_REACH_AFTER_LEAD_TEMPLATE : SHIPPED_REACH_TEMPLATE, values);
 }
 
-function repeatSentences(corpus: AtPageCorpus, counts: ShippedCounts): readonly string[] {
+function repeatSentence(
+  input: ShippedReadoutInput,
+  corpus: AtPageCorpus,
+  counts: ShippedCounts,
+  leads: boolean,
+): string | null {
   const repeat = counts.repeat;
-  if (repeat === null) return [SHIPPED_NO_IDENTITY_LINE];
+  if (repeat === null) return SHIPPED_NO_IDENTITY_LINE;
 
-  if (corpus.touchedSessions === 0) return [];
+  if (corpus.touchedSessions === 0) return null;
 
-  const came = fill(SHIPPED_REPEAT_TEMPLATE, {
+  const values = {
     numerator: String(repeat.numerator),
     denominator: String(repeat.denominator),
+  };
+
+  return leads
+    ? fill(SHIPPED_REPEAT_LEAD_TEMPLATE, { ...values, change: input.change, page: input.page })
+    : fill(SHIPPED_REPEAT_TEMPLATE, values);
+}
+
+function unidentifiedSentence(corpus: AtPageCorpus, counts: ShippedCounts): string | null {
+  if (counts.repeat === null) return null;
+  if (corpus.touchedSessions === 0) return null;
+  if (corpus.unidentifiedEligible === 0) return null;
+
+  return fill(SHIPPED_UNIDENTIFIED_TEMPLATE, {
+    count: String(corpus.unidentifiedEligible),
+    denominator: String(corpus.basis.kept),
   });
-
-  if (corpus.unidentifiedEligible > 0) {
-    return [
-      came,
-      fill(SHIPPED_UNIDENTIFIED_TEMPLATE, { count: String(corpus.unidentifiedEligible) }),
-    ];
-  }
-
-  return [came];
 }
 
 function claimSentences(
   input: ShippedReadoutInput,
   result: ShippedReadoutResult,
-): readonly string[] {
+): readonly (string | null)[] {
   if (result.kind !== "claim") return [];
 
-  const reach = reachSentence(input, result);
-  const repeat = repeatSentences(result.corpus, result.counts);
+  const { corpus, counts } = result;
 
-  const counted = input.leadCount === "repeat" ? [...repeat, reach] : [reach, ...repeat];
+  // A count that renders nothing cannot lead: with nobody touching the change there is no repeat
+  // sentence for the reach one to follow.
+  const leads =
+    input.leadCount === "repeat" && counts.repeat !== null && corpus.touchedSessions > 0;
 
-  return [...counted, ...corpusLines(result.corpus)];
+  const counted = [
+    reachSentence(input, result, leads),
+    repeatSentence(input, corpus, counts, leads),
+  ];
+
+  return [
+    ...(leads ? counted.toReversed() : counted),
+
+    // A caveat on the denominator both counts stand on, so it trails whichever of them leads.
+    unidentifiedSentence(corpus, counts),
+    ...corpusLines(corpus),
+  ];
 }
 
-function sentencesFor(input: ShippedReadoutInput): readonly string[] {
+function sentencesFor(input: ShippedReadoutInput): readonly (string | null)[] {
   const result = input.result;
   const values = { change: input.change, page: input.page };
 
@@ -159,7 +195,9 @@ function verdictActions(changeId: string): readonly ShippedReadoutAction[] {
 }
 
 export function renderShippedReadout(input: ShippedReadoutInput): ShippedReadout {
-  const said = sentencesFor(input).filter((sentence) => sentence.length > 0);
+  const said = sentencesFor(input).filter(
+    (sentence): sentence is string => sentence !== null && sentence.length > 0,
+  );
 
   return {
     body: [...said, SHIPPED_VERDICT_QUESTION].join(" "),

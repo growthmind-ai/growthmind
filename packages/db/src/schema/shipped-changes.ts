@@ -24,7 +24,7 @@ export const shippedChanges = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
 
     // Nullable, and `set null` rather than cascade: a cascade would delete the very row whose
-    // terminal state records that the project is gone (tasks/o-053-report-shipped/resolutions.md R8).
+    // terminal state records that the project is gone, and `restrict` would stop it ever going.
     projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
 
     page: text("page").notNull(),
@@ -47,7 +47,7 @@ export const shippedChanges = pgTable(
 
     state: text("state", { enum: SHIPPED_CHANGE_STATES }).notNull().default("reported"),
 
-    // A closed-union CODE, never prose, after notification_sends.failure_reason.
+    // A closed union of codes, never prose, after notification_sends.failure_reason.
     abandonedReason: text("abandoned_reason", { enum: SHIPPED_ABANDONED_REASONS }),
 
     reportedAt: timestamp("reported_at", { withTimezone: true }).notNull(),

@@ -24,7 +24,9 @@ const RATIFIED_MAGNITUDES = [30, 10, 7] as const;
 // Structural literals a count-free file cannot avoid: an index, a length, a first element.
 const STRUCTURAL = new Set(["0", "1"]);
 
-const ADR_POINTER = /0027/;
+// The attribution and not only the record: a bare path reads as a citation, and what the clause
+// has to carry is that a person chose the number rather than that it is written down somewhere.
+const ADR_POINTER = /Chosen by Tom: see .*0027/;
 
 const DECLARATION = /^export\s+const\s+[A-Z][A-Z0-9_]*(?::\s*number)?\s*=\s*(\d+)\s*;?$/;
 

@@ -4,8 +4,6 @@ export type ShippedChangeState = (typeof SHIPPED_CHANGE_STATES)[number];
 export const SHIPPED_VERDICTS = ["keep", "kill", "leave", "no_verdict_given"] as const;
 export type ShippedVerdict = (typeof SHIPPED_VERDICTS)[number];
 
-export const SHIPPED_CHANGE_VERDICTS = SHIPPED_VERDICTS;
-
 // `never_asked` is what keeps `no_verdict_given` honest: a founder whose readout never reached
 // them declined nothing, so their silence is recorded as a change we abandoned rather than as
 // an answer they gave.
@@ -38,7 +36,7 @@ export type ShippedChangeKeyColumn = (typeof SHIPPED_CHANGE_CONFLICT_TARGET)[num
 // page-level re-report insert a second row and start a second clock.
 export const NO_CONTROL_LABEL = "";
 
-// .ai/decisions/0027-o-053-report-shipped-human-calls.md
+// Chosen by Tom: see .ai/decisions/0027-o-053-report-shipped-human-calls.md
 export const VERDICT_WINDOW_DAYS_DEFAULT = 7;
 
 export const SHIPPED_READOUT_TASK = "shipped:readout-tick";

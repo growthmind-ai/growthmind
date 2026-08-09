@@ -365,6 +365,25 @@ describe("the page is written down the way the spine writes it", () => {
 
     expect(await changeRowsFor(org.organizationId)).toHaveLength(0);
   });
+
+  test("an answer in words is refused out loud at report time, and writes nothing", async () => {
+    // The caller is an LLM, so prose is the likeliest wrong input and the one a normalise-and-
+    // accept policy cannot see: `/reports page` books a change key no visit ever joins, and the
+    // agent learns nothing until the readout answers out of nothing a fortnight later.
+    const org = await freshOrg("page-prose");
+
+    for (const page of ["Reports page", "the reports page", "mailto:someone@example.test"]) {
+      const answer = await report(org.key, { description: CHANGE, page, projectId: org.projectId });
+
+      expect({ page, isError: answer.isError }).toEqual({ page, isError: true });
+
+      // Errors instruct: the refusal names the field and shows the shape it wanted.
+      expect(answer.text).toContain("page");
+      expect(answer.text).toContain("/reports");
+    }
+
+    expect(await changeRowsFor(org.organizationId)).toHaveLength(0);
+  });
 });
 
 describe("the agent may not choose the date it is marked on", () => {
