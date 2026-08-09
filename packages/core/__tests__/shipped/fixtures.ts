@@ -354,14 +354,12 @@ export function atPageInput(
     page: overrides.page ?? SHIPPED_PAGE,
     controlLabel:
       overrides.controlLabel ?? (kind === "page" ? PAGE_LEVEL_CONTROL_LABEL : CONTROL_LABEL),
-    pageNormalisationVersion:
-      overrides.pageNormalisationVersion ?? URL_PATH_NORMALISATION_VERSION,
+    pageNormalisationVersion: overrides.pageNormalisationVersion ?? URL_PATH_NORMALISATION_VERSION,
   };
 }
 
 export type BuildOutcome<TCorpus> =
-  | { readonly ok: true; readonly corpus: TCorpus }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true; readonly corpus: TCorpus } | { readonly ok: false; readonly reason: string };
 
 export function mustBuild<TCorpus>(result: BuildOutcome<TCorpus>): TCorpus {
   if (!result.ok) {

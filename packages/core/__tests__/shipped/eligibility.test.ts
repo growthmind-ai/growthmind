@@ -30,9 +30,7 @@ describe("the basis is rebuilt over the sessions that reached the page", () => {
     expect(built.basis.totalInWindow).toBe(18);
     expect(built.basis.kept).toBe(13);
     expect(setAsideTotal(built.basis.setAside)).toBe(5);
-    expect(built.basis.kept + setAsideTotal(built.basis.setAside)).toBe(
-      built.basis.totalInWindow,
-    );
+    expect(built.basis.kept + setAsideTotal(built.basis.setAside)).toBe(built.basis.totalInWindow);
   });
 
   test("should carry the at-page set-aside reasons rather than the window's", () => {
@@ -104,9 +102,10 @@ describe("the readout refuses rather than guesses", () => {
 
     expect(URL_PATH_NORMALISATION_VERSION).not.toBe(2);
 
-    expect(
-      buildAtPageCorpus(atPageInput(corpus, { pageNormalisationVersion: 2 })),
-    ).toEqual({ ok: false, reason: "stale_page_spelling" });
+    expect(buildAtPageCorpus(atPageInput(corpus, { pageNormalisationVersion: 2 }))).toEqual({
+      ok: false,
+      reason: "stale_page_spelling",
+    });
   });
 
   test("should build when the stored page normalisation version is current", () => {
@@ -183,7 +182,11 @@ describe("D10 — the declared fail direction is over-count eligibility", () => 
 
   test("FAIL_DIRECTION: should count a recorded session whose control cannot be named in the denominator only", () => {
     const named = shippedSession({ id: "named", atPage: true, whoCountsUnchecked: false });
-    const unnameable = shippedSession({ id: "unnameable", atPage: true, whoCountsUnchecked: false });
+    const unnameable = shippedSession({
+      id: "unnameable",
+      atPage: true,
+      whoCountsUnchecked: false,
+    });
 
     const corpus = corpusOfSessions({
       sessions: [named, unnameable],
@@ -217,9 +220,7 @@ describe("D5 — a recording that exists and one that never did are not the same
     });
 
     // All three reached the page on the spine; only two were recorded.
-    expect(
-      mustBuild(buildAtPageCorpus(atPageInput(corpus, { kind: "page" }))).basis.kept,
-    ).toBe(3);
+    expect(mustBuild(buildAtPageCorpus(atPageInput(corpus, { kind: "page" }))).basis.kept).toBe(3);
 
     const built = mustBuild(buildAtPageCorpus(atPageInput(corpus, { kind: "recorded" })));
     expect(built.basis.kept).toBe(2);

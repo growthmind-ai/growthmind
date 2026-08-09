@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { sessionWalk } from "../../src/spine/walk";
-import {
-  matchReplayPages,
-  matchesSpineWalk,
-  pageMatches,
-} from "../../src/shipped/page-match";
+import { matchReplayPages, matchesSpineWalk, pageMatches } from "../../src/shipped/page-match";
 import { OTHER_PAGE, SHIPPED_PAGE, SHIPPED_PAGE_HREF, shippedSession } from "./fixtures";
 
 describe("the replay page strings are not the spine's spelling, so the join normalises", () => {
