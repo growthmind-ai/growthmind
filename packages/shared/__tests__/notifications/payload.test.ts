@@ -19,6 +19,8 @@ const V1_PAYLOADS = {
   slack_disconnected: { type: "slack_disconnected", v: 1 },
   analysis_failing: { type: "analysis_failing", v: 1 },
   digest: { type: "digest", v: 1, notificationIds: ["n-1", "n-2"], totalCount: 7 },
+  change_reported: { type: "change_reported", v: 1 },
+  change_readout: { type: "change_readout", v: 1 },
 } satisfies Record<NotificationType, NotificationPayload>;
 
 describe("every v1 arm parses", () => {

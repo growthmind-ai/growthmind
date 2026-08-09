@@ -43,6 +43,18 @@ export function buildAnalysisFailingDedupKey(projectId: string, runId: string): 
   return `analysis_failing:${projectId}:${runId}`;
 }
 
+// The change row's own id, which the upsert holds fixed across a re-report — so a second
+// report of the same change cannot mint a second acknowledgement or a second clock.
+export function buildChangeReportedDedupKey(changeId: string): string {
+  return `change_reported:${changeId}`;
+}
+
+// One readout per change for as long as the row exists: a re-run of the tick over a row
+// already read out hits this key and writes nothing.
+export function buildChangeReadoutDedupKey(changeId: string): string {
+  return `change_readout:${changeId}`;
+}
+
 // The window's own end — the due day's UTC boundary, identical across every hourly run of
 // that day, which is why a later run of the same day cannot mint a second summary.
 export function buildDigestDedupKey(organizationId: string, windowEndIso: string): string {

@@ -24,6 +24,8 @@ export const notificationPayloadSchema = z.discriminatedUnion("type", [
     notificationIds: z.array(z.string().min(1)),
     totalCount: z.number().int().nonnegative(),
   }),
+  z.strictObject({ type: z.literal("change_reported"), v: z.literal(1) }),
+  z.strictObject({ type: z.literal("change_readout"), v: z.literal(1) }),
 ]);
 export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
 

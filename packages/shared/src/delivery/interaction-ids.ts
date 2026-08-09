@@ -9,6 +9,27 @@ export const NOT_USEFUL_ACTION_ID = "growthmind.not_useful.v1";
 
 export const NOT_USEFUL_LABEL = "Not useful";
 
+// One action id per verdict, so the router stays an exact match with no value to parse.
+export const SHIPPED_VERDICT_KEEP_ACTION_ID = "growthmind.shipped_verdict.keep.v1";
+
+export const SHIPPED_VERDICT_KEEP_LABEL = "Keep it";
+
+export const SHIPPED_VERDICT_KILL_ACTION_ID = "growthmind.shipped_verdict.kill.v1";
+
+export const SHIPPED_VERDICT_KILL_LABEL = "Kill it";
+
+export const SHIPPED_VERDICT_LEAVE_ACTION_ID = "growthmind.shipped_verdict.leave.v1";
+
+export const SHIPPED_VERDICT_LEAVE_LABEL = "Leave it";
+
+export const SHIPPED_LEAD_REACH_ACTION_ID = "growthmind.shipped_lead.reach.v1";
+
+export const SHIPPED_LEAD_REACH_LABEL = "Lead with how many used it";
+
+export const SHIPPED_LEAD_REPEAT_ACTION_ID = "growthmind.shipped_lead.repeat.v1";
+
+export const SHIPPED_LEAD_REPEAT_LABEL = "Lead with how many came back";
+
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
 
 export const SLACK_INTERACTION_ACTOR = "slack:interaction";

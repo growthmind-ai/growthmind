@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { reportShippedInputSchema, reportShippedOutputSchema } from "./report-shipped";
 import {
   getFindingInputSchema,
   getFindingOutputSchema,
@@ -16,6 +17,7 @@ export const MCP_TOOL = {
   GET_FIX: "get_fix",
   GET_FINDING: "get_finding",
   GET_GROWTH_CONTEXT: "get_growth_context",
+  REPORT_SHIPPED: "report_shipped",
 } as const;
 
 export type McpToolName = (typeof MCP_TOOL)[keyof typeof MCP_TOOL];
@@ -25,13 +27,14 @@ export const MCP_TOOL_NAMES = [
   MCP_TOOL.GET_FIX,
   MCP_TOOL.GET_FINDING,
   MCP_TOOL.GET_GROWTH_CONTEXT,
+  MCP_TOOL.REPORT_SHIPPED,
 ] as const satisfies readonly [McpToolName, ...McpToolName[]];
 
 export const MCP_TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 export const mcpToolNameSchema = z.enum(MCP_TOOL_NAMES);
 
-export interface McpToolDescriptor {
+interface McpToolBase {
   readonly name: McpToolName;
 
   readonly title: string;
@@ -39,11 +42,21 @@ export interface McpToolDescriptor {
   readonly description: string;
   readonly inputSchema: z.ZodObject;
   readonly outputSchema: z.ZodType;
+}
 
+// The hint is a literal on each arm rather than a boolean on one interface, so a read tool
+// cannot become a write by editing one character.
+export interface McpReadToolDescriptor extends McpToolBase {
   readonly readOnlyHint: true;
 }
 
-const listOpenFixesTool: McpToolDescriptor = {
+export interface McpWriteToolDescriptor extends McpToolBase {
+  readonly readOnlyHint: false;
+}
+
+export type McpToolDescriptor = McpReadToolDescriptor | McpWriteToolDescriptor;
+
+const listOpenFixesTool: McpReadToolDescriptor = {
   name: MCP_TOOL.LIST_OPEN_FIXES,
   title: "Open fixes",
   description:
@@ -58,7 +71,7 @@ const listOpenFixesTool: McpToolDescriptor = {
   readOnlyHint: true,
 };
 
-const getFixTool: McpToolDescriptor = {
+const getFixTool: McpReadToolDescriptor = {
   name: MCP_TOOL.GET_FIX,
   title: "Fix instructions",
   description:
@@ -73,7 +86,7 @@ const getFixTool: McpToolDescriptor = {
   readOnlyHint: true,
 };
 
-const getFindingTool: McpToolDescriptor = {
+const getFindingTool: McpReadToolDescriptor = {
   name: MCP_TOOL.GET_FINDING,
   title: "Evidence behind a problem",
   description:
@@ -87,7 +100,7 @@ const getFindingTool: McpToolDescriptor = {
   readOnlyHint: true,
 };
 
-const getGrowthContextTool: McpToolDescriptor = {
+const getGrowthContextTool: McpReadToolDescriptor = {
   name: MCP_TOOL.GET_GROWTH_CONTEXT,
   title: "What we know about a page",
   description:
@@ -104,12 +117,31 @@ const getGrowthContextTool: McpToolDescriptor = {
   readOnlyHint: true,
 };
 
-export const MCP_TOOLS: readonly McpToolDescriptor[] = [
+const reportShippedTool: McpWriteToolDescriptor = {
+  name: MCP_TOOL.REPORT_SHIPPED,
+  title: "Say what you just shipped",
+  description:
+    "Tells us about a change you have just built and put live, so it comes back to you later " +
+    "with how it went. Name what you changed and the page address it lives on, plus the label " +
+    "on the button or link if you added one rather than a whole page. You get back the date we " +
+    "will answer on, which we choose and you cannot: on that date we say how many of the people " +
+    "who reached that page used it, and how many came back to it. Call it once a change is " +
+    "live. We take your word that it is — nobody here reads your code.",
+  inputSchema: reportShippedInputSchema,
+  outputSchema: reportShippedOutputSchema,
+  readOnlyHint: false,
+};
+
+export const MCP_READ_TOOLS: readonly McpReadToolDescriptor[] = [
   listOpenFixesTool,
   getFixTool,
   getFindingTool,
   getGrowthContextTool,
 ];
+
+export const MCP_WRITE_TOOLS: readonly McpWriteToolDescriptor[] = [reportShippedTool];
+
+export const MCP_TOOLS: readonly McpToolDescriptor[] = [...MCP_READ_TOOLS, ...MCP_WRITE_TOOLS];
 
 export type McpToolResolution =
   | { readonly ok: true; readonly tool: McpToolDescriptor }

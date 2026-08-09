@@ -82,6 +82,74 @@ export const EVIDENCE_COPY_FOR_AGENT = "Copy this for your coding agent";
 export const EVIDENCE_NOT_FOUND =
   "We don't have anything under that address. It may have been dismissed.";
 
+export const SHIPPED_NOTED_TEMPLATE = "Noted — {change} on {page}.";
+
+export const SHIPPED_PROMISE_TEMPLATE =
+  "On {date} I'll tell you how many of the people who reach that page used it, and how many came back to it.";
+
+export const SHIPPED_UNVERIFIED_LINE =
+  "I have not read your code, so I am taking your word that it is live.";
+
+export const SHIPPED_LEAD_OFFER_LINE =
+  "If you would rather I led with how many came back than with how many used it, say so before that date.";
+
+export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
+  "{change} on {page} again — the date I answer on has not moved: {date}.";
+
+export const SHIPPED_REACH_TEMPLATE =
+  "{change} — of the {denominator} people I could watch on {page}, {numerator} used it.";
+
+export const SHIPPED_NOBODY_TEMPLATE =
+  "{change} — none of the {denominator} people I could watch on {page} used it.";
+
+// A whole page's reach would render as N of N, so the count stands on its own and repeat
+// carries the fraction against the same denominator.
+export const SHIPPED_PAGE_REACH_TEMPLATE =
+  "{change} — {denominator} people reached {page} while I was watching.";
+
+export const SHIPPED_REPEAT_TEMPLATE = "{numerator} of those {denominator} people came back to it.";
+
+export const SHIPPED_NO_IDENTITY_LINE =
+  "Nobody could be told apart between visits, so I cannot say who came back.";
+
+export const SHIPPED_UNIDENTIFIED_TEMPLATE =
+  "{count} of them could not be told apart between visits, and are counted on their own.";
+
+export const SHIPPED_RECORDED_CORPUS_LINE =
+  "That count is off the sessions that were recorded, not off everyone who was there.";
+
+export const SHIPPED_SPINE_CORPUS_LINE =
+  "That count is off everyone who reached the page while I was watching.";
+
+export const SHIPPED_TRUNCATED_LINE =
+  "I hit my limit on how many sessions I read, so that is not the whole total.";
+
+export const SHIPPED_TOO_FEW_TEMPLATE =
+  "{change} — only {denominator} people reached {page} in that time. Not enough to tell you anything, so I'm not going to pretend otherwise.";
+
+export const SHIPPED_SPELLING_CHANGED_TEMPLATE =
+  "{change} — the way page addresses are written down changed part-way through, so I cannot put an honest number on {page}.";
+
+export const SHIPPED_UNREADABLE_TEMPLATE =
+  "{change} — I could not read enough of what happened on {page} to tell you anything.";
+
+export const SHIPPED_VERDICT_QUESTION = "Keep it, kill it, or leave it?";
+
+export const SHIPPED_VERDICT_RECORDED = "Noted — that is what the next brief reads.";
+
+export const SHIPPED_VERDICT_ALREADY_RECORDED =
+  "You have already answered that one, so nothing changed.";
+
+export const SHIPPED_VERDICT_TOO_EARLY_REFUSAL =
+  "I have not read that one out yet, so there is nothing to answer.";
+
+export const SHIPPED_VERDICT_TOO_LATE_REFUSAL = "That one is already closed.";
+
+export const SHIPPED_LEAD_CHANGED_TEMPLATE = "I'll lead with {lead} when I answer on that one.";
+
+export const SHIPPED_LEAD_TOO_LATE_REFUSAL =
+  "I have already given you the answer on that one, so what it is judged on cannot move now.";
+
 export const FINDINGS_MESSAGES = {
   overviewTitle: OVERVIEW_TITLE,
   exampleNotice: EXAMPLE_CONTENT_NOTICE,
@@ -127,6 +195,30 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   EVIDENCE_COVERAGE_TITLE,
   EVIDENCE_BACK_LABEL,
   EVIDENCE_NOT_FOUND,
+  SHIPPED_NOTED_TEMPLATE,
+  SHIPPED_PROMISE_TEMPLATE,
+  SHIPPED_UNVERIFIED_LINE,
+  SHIPPED_LEAD_OFFER_LINE,
+  SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
+  SHIPPED_REACH_TEMPLATE,
+  SHIPPED_NOBODY_TEMPLATE,
+  SHIPPED_PAGE_REACH_TEMPLATE,
+  SHIPPED_REPEAT_TEMPLATE,
+  SHIPPED_NO_IDENTITY_LINE,
+  SHIPPED_UNIDENTIFIED_TEMPLATE,
+  SHIPPED_RECORDED_CORPUS_LINE,
+  SHIPPED_SPINE_CORPUS_LINE,
+  SHIPPED_TRUNCATED_LINE,
+  SHIPPED_TOO_FEW_TEMPLATE,
+  SHIPPED_SPELLING_CHANGED_TEMPLATE,
+  SHIPPED_UNREADABLE_TEMPLATE,
+  SHIPPED_VERDICT_QUESTION,
+  SHIPPED_VERDICT_RECORDED,
+  SHIPPED_VERDICT_ALREADY_RECORDED,
+  SHIPPED_VERDICT_TOO_EARLY_REFUSAL,
+  SHIPPED_VERDICT_TOO_LATE_REFUSAL,
+  SHIPPED_LEAD_CHANGED_TEMPLATE,
+  SHIPPED_LEAD_TOO_LATE_REFUSAL,
 ];
 
 function fill(template: string, values: Readonly<Record<string, string | number>>): string {

@@ -30,6 +30,8 @@ const NOTIFICATION_TYPES = [
   "slack_disconnected",
   "analysis_failing",
   "digest",
+  "change_reported",
+  "change_readout",
 ] as const satisfies readonly [NotificationType, ...NotificationType[]];
 
 const NOTIFICATION_AUDIENCES = ["org", "owner"] as const satisfies readonly [
@@ -44,6 +46,7 @@ const NOTIFICATION_SUBJECT_KINDS = [
   "source_connection",
   "project",
   "organization",
+  "shipped_change",
 ] as const satisfies readonly [NotificationSubjectKind, ...NotificationSubjectKind[]];
 
 const NOTIFICATION_CHANNELS = ["slack", "web_push"] as const satisfies readonly [
