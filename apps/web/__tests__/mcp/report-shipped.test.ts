@@ -131,6 +131,16 @@ async function notificationRowsFor(organizationId: string) {
   return rows.filter((row) => row.organizationId === organizationId);
 }
 
+// The change's own notifications, not the org's. Minting the fixture's key emits `key_created`
+// and the first authenticated call by a coding agent emits `agent_first_contact`, both before
+// any report — so a count over the whole org counts the fixture. Every assertion below pairs
+// this with the unfiltered count, so the narrowing is never over an empty set.
+async function changeNotificationsFor(organizationId: string) {
+  return (await notificationRowsFor(organizationId)).filter(
+    (row) => String(row.subjectKind) === "shipped_change",
+  );
+}
+
 interface SeededOrg {
   readonly ctx: TenantContext;
   readonly organizationId: string;
@@ -235,11 +245,17 @@ describe("the coding agent reports a change through the real MCP route", () => {
 
     // D1: the acknowledgement is the org's, addressed by the change and not by the key that
     // reported it. One row, so a second emitter would fail here rather than pass quietly.
-    const notifications = await notificationRowsFor(org.organizationId);
+    const notifications = await changeNotificationsFor(org.organizationId);
     expect(notifications).toHaveLength(1);
     expect(notifications[0]?.audience).toBe("org");
     expect(String(notifications[0]?.subjectKind)).toBe("shipped_change");
     expect(notifications[0]?.subjectId).toBe(row.id);
+
+    // Non-vacuity: the filter above narrows a real set, so "one row" is a claim about this
+    // report rather than about a predicate that matches nothing.
+    expect((await notificationRowsFor(org.organizationId)).length).toBeGreaterThan(
+      notifications.length,
+    );
   });
 });
 
@@ -263,7 +279,8 @@ describe("the agent may not choose the date it is marked on", () => {
     }
 
     expect(await changeRowsFor(org.organizationId)).toHaveLength(0);
-    expect(await notificationRowsFor(org.organizationId)).toHaveLength(0);
+    expect(await changeNotificationsFor(org.organizationId)).toHaveLength(0);
+    expect((await notificationRowsFor(org.organizationId)).length).toBeGreaterThan(0);
   });
 
   test("the refusal is a 400 that names the rule in plain English", async () => {
@@ -308,7 +325,8 @@ describe("a report that names no page is refused with the field named", () => {
     expect(answer.text).toContain(reportShippedToolName());
 
     expect(await changeRowsFor(org.organizationId)).toHaveLength(0);
-    expect(await notificationRowsFor(org.organizationId)).toHaveLength(0);
+    expect(await changeNotificationsFor(org.organizationId)).toHaveLength(0);
+    expect((await notificationRowsFor(org.organizationId)).length).toBeGreaterThan(0);
   });
 });
 

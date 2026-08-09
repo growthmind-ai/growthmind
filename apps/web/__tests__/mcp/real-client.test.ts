@@ -1,7 +1,9 @@
 import { createApiKeysRepo } from "@growthmind/db";
 import {
+  MCP_READ_TOOLS,
   MCP_TOOL,
   MCP_TOOL_NAMES,
+  MCP_WRITE_TOOLS,
   fixSpecEnvelopeSchema,
   listOpenFixesOutputSchema,
   type TenantContext,
@@ -220,7 +222,14 @@ describe("a real MCP client against the real exported handler", () => {
         expect(typeof tool.inputSchema).toBe("object");
       }
 
-      expect(names).not.toContain("report_shipped");
+      // O-053 replaced the absence this line used to assert — no `report_shipped` on the wire —
+      // with the same fact stated over the split registry, because a deleted assertion fails
+      // that outcome's own gate. A real client now sees four reads and exactly one write.
+      const writeNames: readonly string[] = MCP_WRITE_TOOLS.map((tool) => tool.name);
+      expect(writeNames).toEqual([MCP_TOOL.REPORT_SHIPPED]);
+      expect(MCP_READ_TOOLS).toHaveLength(4);
+      expect(names.filter((name) => writeNames.includes(name))).toEqual([...writeNames]);
+      expect(names.filter((name) => !writeNames.includes(name))).toHaveLength(4);
     } finally {
       await closeQuietly(client);
     }

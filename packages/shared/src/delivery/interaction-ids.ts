@@ -30,6 +30,12 @@ export const SHIPPED_LEAD_REPEAT_ACTION_ID = "growthmind.shipped_lead.repeat.v1"
 
 export const SHIPPED_LEAD_REPEAT_LABEL = "Lead with how many came back";
 
+// Fragments rather than sentences, so they live beside the labels instead of in `messages.ts`.
+export const SHIPPED_LEAD_NAMES = {
+  reach: "how many used it",
+  repeat: "how many came back",
+} as const;
+
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
 
 // Slack never renders a block id, so the change travels here as well as in each button's value.

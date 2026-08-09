@@ -94,6 +94,24 @@ export const NO_PROJECT: McpRefusal = Object.freeze({
   status: 404,
 });
 
+// A 404 rather than a 403, and it names no id: a forbidden, or an id echoed back, would confirm
+// that the guess belongs to somebody.
+export const NOT_OUR_PROJECT: McpRefusal = Object.freeze({
+  code: "not_found",
+  message:
+    "There is no product here under that id, so nothing was written down. Leave it out and ask " +
+    "again, and we will use the one this key belongs to.",
+  status: 404,
+});
+
+export const DATE_IS_OURS: McpRefusal = Object.freeze({
+  code: "malformed_request",
+  message:
+    "We pick the date we answer on, not you, so send that again with no date in it. It is a set " +
+    "run of days from the moment you tell us, and what comes back says which day it lands.",
+  status: 400,
+});
+
 // Errors instruct. Naming the ids is what turns a refusal into the caller's next call.
 export function ambiguousProject(projectIds: readonly string[]): McpRefusal {
   return {

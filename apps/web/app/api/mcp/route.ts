@@ -2,6 +2,7 @@ import type { ScopedDb } from "@growthmind/db";
 
 import { createApiKeyMcpCredentials } from "@/lib/mcp/credentials";
 import { createLiveReadPort } from "@/lib/mcp/read-port-live";
+import { createLiveWritePort } from "@/lib/mcp/write-port-live";
 import { handleMcpRequest, type McpServerDeps } from "@/lib/mcp/server";
 import { getDb } from "@/lib/db";
 
@@ -12,6 +13,8 @@ export function resolveMcpDeps(db: ScopedDb = getDb()): McpServerDeps {
     credentials: createApiKeyMcpCredentials(db),
 
     reads: createLiveReadPort(db),
+
+    writes: createLiveWritePort(db),
   };
 }
 

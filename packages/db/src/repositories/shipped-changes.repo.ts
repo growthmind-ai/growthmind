@@ -2,6 +2,7 @@ import {
   NO_CONTROL_LABEL,
   URL_PATH_NORMALISATION_VERSION,
   type ShippedCorpusKind,
+  type ShippedLeadCount,
   type TenantContext,
 } from "@growthmind/shared";
 import { eq } from "drizzle-orm";
@@ -27,8 +28,19 @@ export interface ReportShippedChangeInput {
   readonly control?: string;
 }
 
+export interface ChooseLeadCountInput {
+  readonly changeId: string;
+  readonly leadCount: ShippedLeadCount;
+}
+
+export type ChooseLeadCountResult = { readonly kind: "chosen" | "already_read_out" };
+
 export interface ShippedChangesRepo {
   reportShipped(input: ReportShippedChangeInput): Promise<ShippedChangeRow>;
+
+  // The state is the condition, so a press that lands after the readout moves nothing and says
+  // so rather than editing what has already been answered.
+  chooseLeadCount(input: ChooseLeadCountInput): Promise<ChooseLeadCountResult>;
 
   findById(id: string): Promise<ShippedChangeRow | null>;
 }
@@ -96,6 +108,16 @@ export function createShippedChangesRepo(
           ],
         },
       );
+    },
+
+    async chooseLeadCount(input: ChooseLeadCountInput): Promise<ChooseLeadCountResult> {
+      const moved = await c.update(
+        { leadCount: input.leadCount },
+        eq(shippedChanges.id, input.changeId),
+        eq(shippedChanges.state, "reported"),
+      );
+
+      return { kind: moved === null ? "already_read_out" : "chosen" };
     },
 
     async findById(id: string): Promise<ShippedChangeRow | null> {

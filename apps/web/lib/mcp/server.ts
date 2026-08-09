@@ -12,6 +12,7 @@ import {
   refusalResponse,
 } from "./refusals";
 import { readBoundedBody } from "../http/bounded-body";
+import type { McpWritePort } from "./write-port";
 import { renderMcpWire } from "./wire";
 import { MCP_HEADER } from "./wire-constants";
 
@@ -19,6 +20,7 @@ import { logger } from "@growthmind/shared";
 export interface McpServerDeps {
   readonly credentials: McpCredentialSource;
   readonly reads: McpReadPort;
+  readonly writes?: McpWritePort;
 }
 
 const SERVED_METHOD = "POST";
@@ -59,6 +61,7 @@ export async function handleMcpRequest(request: Request, deps: McpServerDeps): P
 
     return await renderMcpWire(replayable(request, body.bytes), {
       reads: deps.reads,
+      ...(deps.writes === undefined ? {} : { writes: deps.writes }),
       credential,
     });
   } catch (error) {

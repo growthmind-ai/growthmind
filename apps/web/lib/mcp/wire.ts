@@ -11,6 +11,7 @@ import { callTool, type McpToolOutcome } from "./call-tool";
 import type { McpCredential } from "./credentials";
 import type { McpReadPort } from "./read-port";
 import { refusalToolResult } from "./refusals";
+import type { McpWritePort } from "./write-port";
 
 const SERVER_NAME = "growthmind";
 const SERVER_VERSION = "0.0.0";
@@ -19,6 +20,10 @@ const TOOLS_CALL = "tools/call";
 
 export interface McpWireDeps {
   readonly reads: McpReadPort;
+
+  // Absent on an installation with nothing behind the write, which answers and says so rather
+  // than pretending the report landed.
+  readonly writes?: McpWritePort;
   readonly credential: McpCredential;
 }
 
@@ -79,7 +84,7 @@ function buildServer(deps: McpWireDeps): McpServer {
     const outcome = await callTool(
       request.params.name,
       request.params.arguments ?? {},
-      deps.reads,
+      { reads: deps.reads, ...(deps.writes === undefined ? {} : { writes: deps.writes }) },
       deps.credential,
     );
     return renderOutcome(outcome);

@@ -364,6 +364,8 @@ export {
 } from "./notifications/backfill-complete";
 export {
   createNotificationsRepo,
+  resolveNotificationForInteraction,
+  type NotificationInteractionPrincipal,
   type NotificationsRepo,
   type NotificationWithReadState,
   type NotificationSendFacts,
@@ -417,6 +419,8 @@ export {
 } from "./repositories/notification-mutes.repo";
 export {
   createShippedChangesRepo,
+  type ChooseLeadCountInput,
+  type ChooseLeadCountResult,
   type ReportShippedChangeInput,
   type ShippedChangeRow,
   type ShippedChangesRepo,
@@ -436,6 +440,8 @@ export { emitChangeReported, type EmitChangeReportedInput } from "./notification
 export { emitChangeReadout, type EmitChangeReadoutInput } from "./notifications/change-readout";
 export {
   createShippedChangesService,
+  type AbandonChangeInput,
+  type AbandonChangeResult,
   type RecordReadoutInput,
   type RecordReadoutResult,
   type ReportShippedInput,
