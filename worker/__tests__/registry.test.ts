@@ -11,7 +11,11 @@ import {
   NOTIFICATION_RESCUE_TICK_TASK,
 } from "@growthmind/shared";
 
-import { assertUnderConstruction } from "../../packages/shared/__tests__/onboarding/module-under-construction";
+import {
+  assertUnderConstruction,
+  loadValueUnderConstruction,
+  underConstructionSpecifier,
+} from "../../packages/shared/__tests__/onboarding/module-under-construction";
 import { crontab, taskList } from "../src/index";
 import { GRAPHILE_TASK_NAME_PATTERN, TASK } from "../src/task-names";
 
@@ -285,6 +289,100 @@ test("the two ticks are each cronned exactly once, and the two enqueued tasks ar
   // either would be a fourth producer nothing designed (D-4 names exactly three).
   expect(scheduled).not.toContain(TASK.NOTIFICATION_DISPATCH);
   expect(scheduled).not.toContain(TASK.NOTIFICATION_RESCUE);
+});
+
+// O-053 D9/D13: the readout tick is queued by a cron line and by nothing else, so the name in
+// the crontab and the name in the registry have to be one constant rather than two strings
+// that happen to agree today.
+const SHIPPED_READOUT_OWNER =
+  "O-053 wave 1 (packages/shared/src/shipped/types.ts) and wave 4 (worker/src/task-names.ts + worker/src/index.ts)";
+
+const SHIPPED_READOUT_TASK_HOME = "packages/shared/src/shipped/types.ts";
+
+function shippedReadoutTaskName(): string {
+  const name = (TASK as Record<string, string | undefined>)["SHIPPED_READOUT"];
+  assertUnderConstruction(name !== undefined, {
+    contract: "TASK.SHIPPED_READOUT",
+    ownedBy: SHIPPED_READOUT_OWNER,
+  });
+  return name;
+}
+
+// Loaded rather than statically imported: a missing export takes the whole module down with
+// it, and the twenty registrations this file already guards would go red with it.
+const sharedReadoutTaskName = (): Promise<string> =>
+  loadValueUnderConstruction<string>({
+    modulePath: underConstructionSpecifier(SHIPPED_READOUT_TASK_HOME),
+    exportName: "SHIPPED_READOUT_TASK",
+    ownedBy: SHIPPED_READOUT_OWNER,
+  });
+
+test("the shipped readout task name is the shared constant, not a look-alike string", async () => {
+  const name = shippedReadoutTaskName();
+
+  expect(name).toBe(await sharedReadoutTaskName());
+  expect(GRAPHILE_TASK_NAME_PATTERN.test(name)).toBe(true);
+});
+
+test("the shipped readout tick is registered and cronned exactly once, hourly on every day", () => {
+  const name = shippedReadoutTaskName();
+
+  expect(taskList[name]).toBeDefined();
+
+  const tickLines = crontab
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.split(/\s+/)[5] === name);
+  expect(tickLines).toHaveLength(1);
+
+  const fields = (tickLines[0] ?? "").split(/\s+/);
+  expect(/^\d+$/.test(fields[0] ?? "")).toBe(true);
+  expect(fields[1]).toBe("*");
+  expect(fields.slice(2, 5)).toEqual(["*", "*", "*"]);
+});
+
+test("the crontab schedules the readout by interpolating the constant, never by a literal", () => {
+  // Asserted as a boolean: a `toContain` failure prints the whole composition file.
+  expect(indexCode().includes("${TASK.SHIPPED_READOUT}")).toBe(true);
+});
+
+const REPO_ROOT = path.join(WORKER_ROOT, "..");
+
+const REPO_SCAN_SKIPPED = [
+  /(^|\/)node_modules\//,
+  /(^|\/)\.next\//,
+  /(^|\/)__tests__\//,
+  /^packages\/db\/drizzle\//,
+  /\.d\.ts$/,
+];
+
+function repoTypeScriptFiles(): readonly string[] {
+  const found: string[] = [];
+  for (const entry of new Bun.Glob("{apps,packages,scripts,worker}/**/*.{ts,tsx}").scanSync({
+    cwd: REPO_ROOT,
+  })) {
+    const file = entry.replaceAll("\\", "/");
+    if (REPO_SCAN_SKIPPED.some((pattern) => pattern.test(file))) continue;
+    found.push(file);
+  }
+  return found.toSorted();
+}
+
+test("the readout task name appears as a raw string in no file but the one that defines it", async () => {
+  const needle = await sharedReadoutTaskName();
+  const files = repoTypeScriptFiles();
+
+  // Without this the scan can pass having read nothing at all — the register's own failure.
+  expect(files.length).toBeGreaterThan(100);
+  expect(files).toContain(SHIPPED_READOUT_TASK_HOME);
+
+  const offenders = files.filter((file) => {
+    if (file === SHIPPED_READOUT_TASK_HOME) return false;
+    const source = stripComments(readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    return stringLiteralsIn(source).includes(needle);
+  });
+
+  expect(offenders).toEqual([]);
 });
 
 test("every crontab line's command is a registered, well-formed task name", () => {

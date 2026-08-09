@@ -33,6 +33,8 @@ const INTEREST_BYPASS = "worker/src/tasks/provider-interest-tick.ts";
 
 const DIGEST_TASK = "worker/src/tasks/notification-digest.ts";
 
+const SHIPPED_READOUT_TASK_FILE = "worker/src/tasks/shipped-readout-tick.ts";
+
 interface Allowed {
   readonly file: string;
   readonly wraps: string;
@@ -318,5 +320,21 @@ describe("the weekly digest added no Slack seam (ADD D-8 — the register's firs
     // to forbid; the digest's Slack leg is the ordinary dispatch arm instead.
     expect(seamsIn(DIGEST_TASK, source)).toEqual([]);
     expect(ALLOWED.some((entry) => entry.file === DIGEST_TASK)).toBe(false);
+  });
+});
+
+describe("the change readout added no Slack seam (O-053 Decision 1)", () => {
+  test("the readout tick is walked, posts nothing itself, and holds no entry in the register", () => {
+    // Non-vacuous by construction: the file must exist and be part of the walked tree before
+    // its absence from the seam list means anything.
+    expect(sourceFiles()).toContain(SHIPPED_READOUT_TASK_FILE);
+
+    const source = read(SHIPPED_READOUT_TASK_FILE);
+    expect(source.length).toBeGreaterThan(0);
+
+    // FR-9.1 read literally would have opened a per-org poster here, which the count-exact
+    // register turns into a failing build. Both messages ride the notification spine instead.
+    expect(seamsIn(SHIPPED_READOUT_TASK_FILE, source)).toEqual([]);
+    expect(ALLOWED.some((entry) => entry.file === SHIPPED_READOUT_TASK_FILE)).toBe(false);
   });
 });
