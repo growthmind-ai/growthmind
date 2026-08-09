@@ -12,8 +12,8 @@ export interface ScheduledShippedChange {
   readonly organizationId: string;
   readonly organizationName: string;
 
-  // Null once the project is deleted; the row outlives it so `abandoned` stays reachable
-  // (tasks/o-053-report-shipped/resolutions.md R8).
+  // Null once the project is deleted: a cascade would delete the very row whose terminal state
+  // records that the project is gone, and `restrict` would stop it ever going.
   readonly projectId: string | null;
 }
 
