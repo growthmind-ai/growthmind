@@ -24,10 +24,15 @@ export type CountBasis = {
   readonly keptUnchecked: number;
 };
 
+// Repeat counts people rather than sessions, so this is one widened field on the same type
+// rather than a second count type beside it.
+export const COUNT_UNITS = ["sessions", "people"] as const;
+export type CountUnit = (typeof COUNT_UNITS)[number];
+
 export type MeasuredCount = {
   readonly numerator: number;
   readonly denominator: number;
-  readonly unit: "sessions";
+  readonly unit: CountUnit;
   readonly timeframe: { readonly start: Date; readonly end: Date };
   readonly basis: CountBasis;
   readonly [MEASURED]: true;
@@ -36,7 +41,7 @@ export type MeasuredCount = {
 export type MeasuredCountInput = {
   readonly numerator: number;
   readonly denominator: number;
-  readonly unit: "sessions";
+  readonly unit: CountUnit;
   readonly timeframe: { readonly start: Date; readonly end: Date };
   readonly basis: CountBasis;
 };
@@ -59,7 +64,7 @@ export const countBasisSchema = z.object({
 export const measuredCountInputSchema = z.object({
   numerator: z.number().int().nonnegative(),
   denominator: z.number().int().nonnegative(),
-  unit: z.literal("sessions"),
+  unit: z.enum(COUNT_UNITS),
   timeframe: z.object({ start: z.date(), end: z.date() }),
   basis: countBasisSchema,
 });
@@ -139,9 +144,13 @@ export function measuredCount(input: MeasuredCountInput): MeasuredCount {
   };
 }
 
+// `rateOf` returns only `zero_denominator`; `no_identity_coverage` has one constructor of its
+// own in shipped/counts.ts, which is what lets every existing `no_rate` reader stay as written.
+export type NoRateReason = "zero_denominator" | "no_identity_coverage";
+
 export type Rate =
   | { readonly kind: "rate"; readonly value: number }
-  | { readonly kind: "no_rate"; readonly reason: "zero_denominator" };
+  | { readonly kind: "no_rate"; readonly reason: NoRateReason };
 
 export function rateOf(count: MeasuredCount): Rate {
   if (count.denominator === 0) {

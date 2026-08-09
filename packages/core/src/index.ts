@@ -1,4 +1,5 @@
 export {
+  COUNT_UNITS,
   measuredCount,
   rateOf,
   isMeasuredCount,
@@ -6,12 +7,19 @@ export {
   measuredCountInputSchema,
   countBasisSchema,
   setAsideBasisSchema,
+  type CountUnit,
   type MeasuredCount,
   type MeasuredCountInput,
   type CountBasis,
   type SetAsideBasis,
+  type NoRateReason,
   type Rate,
 } from "./counts/measured-count";
+export {
+  buildSetAsideBreakdown,
+  type SetAsideTally,
+  type SetAsideUnit,
+} from "./counts/set-aside-breakdown";
 
 export {
   canonicalJson,
@@ -569,3 +577,32 @@ export {
   type DigestMessageInput,
   type DigestMessage,
 } from "./notifications/digest-message";
+
+export {
+  pageMatches,
+  matchReplayPages,
+  matchesSpineWalk,
+  type ReplayPageMatch,
+} from "./shipped/page-match";
+export {
+  buildAtPageCorpus,
+  type AtPageCorpus,
+  type AtPageRefusal,
+  type BuildAtPageCorpusInput,
+  type BuildAtPageCorpusResult,
+} from "./shipped/corpus";
+export { shippedCounts, noRateForIdentity, type ShippedCounts } from "./shipped/counts";
+export {
+  SHIPPED_SPINE_ELIGIBILITY_FLOOR,
+  SHIPPED_RECORDED_ELIGIBILITY_FLOOR,
+  eligibilityFloorFor,
+  shippedClaimGate,
+  type ShippedClaimGate,
+} from "./shipped/floors";
+export {
+  renderShippedReadout,
+  type ShippedReadout,
+  type ShippedReadoutAction,
+  type ShippedReadoutInput,
+  type ShippedReadoutResult,
+} from "./shipped/readout";

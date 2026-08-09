@@ -353,6 +353,10 @@ const BARE_NUMBER_EXEMPTIONS: ReadonlyMap<string, string> = new Map([
     "a duration, not a quantity of anything",
   ],
   ["counts/measured-count.ts :: Rate.value", "a ratio derived by rateOf from a MeasuredCount"],
+  [
+    "detect/types.ts :: SessionTimeline.identityGroup",
+    "an equality class interned per read, not a quantity of anything and never rendered",
+  ],
 
   // Not "allowed" — known, and visible here rather than hidden behind a word list. Both reach
   // a customer-facing sentence as a number with no denominator, which is what the commitment

@@ -30,6 +30,14 @@ export type SessionTimeline = {
   // Derived at the corpus boundary. There is deliberately no raw user-agent field here, so no
   // detector, artifact or payload downstream can carry the string these were classified from.
   readonly cohortCuts?: SessionCohortCuts;
+
+  // Derived at the corpus boundary, like cohortCuts. The window total on CountBasis cannot be
+  // recomputed over a subset without it.
+  readonly whoCountsUnchecked?: boolean;
+
+  // An equality class, not a key: dense integers interned per read, so no derived per-person key
+  // value ever leaves packages/db. `null` is a session nobody can be told apart by.
+  readonly identityGroup?: number | null;
 };
 
 export type AnalysisWindow = {
