@@ -6,6 +6,7 @@ import {
   NOTIFICATION_DISPATCH_TASK,
   NOTIFICATION_RESCUE_TASK,
   NOTIFICATION_RESCUE_TICK_TASK,
+  SHIPPED_READOUT_TASK,
 } from "@growthmind/shared";
 
 export const TASK = {
@@ -36,6 +37,8 @@ export const TASK = {
   NOTIFICATION_RESCUE_TICK: NOTIFICATION_RESCUE_TICK_TASK,
 
   NOTIFICATION_DIGEST: NOTIFICATION_DIGEST_TASK,
+
+  SHIPPED_READOUT: SHIPPED_READOUT_TASK,
 
   // A job queued under the old name before this deploy has to find a handler, or it retries
   // against nothing until it exhausts its attempts (D9). Removable once none are left.

@@ -1,4 +1,8 @@
-import { FIX_RESULTS_WINDOW_DAYS, type TenantContext } from "@growthmind/shared";
+import {
+  FIX_RESULTS_WINDOW_DAYS,
+  type ShippedAbandonedReason,
+  type TenantContext,
+} from "@growthmind/shared";
 import { eq } from "drizzle-orm";
 
 import { emitChangeReadout } from "../notifications/change-readout";
@@ -33,12 +37,24 @@ export type RecordReadoutResult = {
   readonly kind: "read_out" | "already_read_out" | "not_reportable";
 };
 
+export interface AbandonChangeInput {
+  readonly changeId: string;
+  readonly reason: ShippedAbandonedReason;
+  readonly at: Date;
+}
+
+export type AbandonChangeResult = {
+  readonly kind: "abandoned" | "not_reportable";
+};
+
 export interface ShippedChangesService {
   // No readout date in the input, deliberately: the product sets it from the results window, so
   // the assistant cannot choose the date it is marked on and this stays a forecast.
   reportShipped(input: ReportShippedInput): Promise<ShippedChangeRow>;
 
   recordReadout(input: RecordReadoutInput): Promise<RecordReadoutResult>;
+
+  abandon(input: AbandonChangeInput): Promise<AbandonChangeResult>;
 }
 
 function notOurProject(): Error {
@@ -101,6 +117,18 @@ export function createShippedChangesService(
 
         return { kind: "read_out" };
       });
+    },
+
+    async abandon(input: AbandonChangeInput): Promise<AbandonChangeResult> {
+      // One conditional statement, and no notification: there is nothing honest to say about a
+      // change whose project is gone, and the state is what stops the row being read out later.
+      const claimed = await orgCrud(db, ctx, shippedChanges).update(
+        { state: "abandoned", abandonedReason: input.reason, closedAt: input.at },
+        eq(shippedChanges.id, input.changeId),
+        eq(shippedChanges.state, "reported"),
+      );
+
+      return { kind: claimed === null ? "not_reportable" : "abandoned" };
     },
   };
 }
