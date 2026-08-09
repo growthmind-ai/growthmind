@@ -618,6 +618,14 @@ describe("a posted message routes a button press back to its organization and no
   const REF_A = "1786000000.111111";
   const REF_B = "1786000000.222222";
 
+  // The index this suite asserts is globally unique, and the whole file shares one database,
+  // so a pair may be written by exactly one test. Reusing (CHANNEL_A, REF_A) below would be
+  // the suite writing the ambiguity the index exists to forbid.
+  const CHANNEL_C = "C0SHIPPEDC";
+  const CHANNEL_D = "C0SHIPPEDD";
+  const REF_C = "1786000000.333333";
+  const REF_D = "1786000000.444444";
+
   async function seedPostedNotification(params: {
     readonly organizationId: string;
     readonly channelId: string;
@@ -685,8 +693,8 @@ describe("a posted message routes a button press back to its organization and no
     const org = await seedOrg("interaction-unknown");
     await seedPostedNotification({
       organizationId: org.organizationId,
-      channelId: CHANNEL_A,
-      messageRef: REF_A,
+      channelId: CHANNEL_C,
+      messageRef: REF_C,
       subjectId: randomUUID(),
     });
 
@@ -694,11 +702,11 @@ describe("a posted message routes a button press back to its organization and no
 
     // The control beside the null: the same call against a pair we did write resolves, so
     // the null below is about the unknown pair and not about a stub returning null.
-    expect(await resolve(db, { channelId: CHANNEL_A, messageRef: REF_A })).not.toBeNull();
+    expect(await resolve(db, { channelId: CHANNEL_C, messageRef: REF_C })).not.toBeNull();
     expect(
       await resolve(db, { channelId: "C0NOBODY", messageRef: "1786000000.999999" }),
     ).toBeNull();
-    expect(await resolve(db, { channelId: CHANNEL_A, messageRef: "" })).toBeNull();
+    expect(await resolve(db, { channelId: CHANNEL_C, messageRef: "" })).toBeNull();
   });
 
   test("the channel and message index refuses a second send row for one posted message and exempts a null message", async () => {
@@ -718,8 +726,8 @@ describe("a posted message routes a button press back to its organization and no
       organizationId: org.organizationId,
       notificationId: posted.id,
       status: "sent",
-      target: CHANNEL_A,
-      messageRef: REF_A,
+      target: CHANNEL_D,
+      messageRef: REF_D,
       sentAt: minutesFromNow(-5),
     });
 
@@ -730,8 +738,8 @@ describe("a posted message routes a button press back to its organization and no
         organizationId: org.organizationId,
         notificationId: other.id,
         status: "sent",
-        target: CHANNEL_A,
-        messageRef: REF_A,
+        target: CHANNEL_D,
+        messageRef: REF_D,
         sentAt: minutesFromNow(-4),
       }),
     ).rejects.toThrow();

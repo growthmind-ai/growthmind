@@ -1,5 +1,5 @@
 import type { DigestCadence, Weekday } from "@growthmind/shared";
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
 
@@ -30,6 +30,11 @@ export const notificationSettings = pgTable("notification_settings", {
   digestCadence: text("digest_cadence", { enum: DIGEST_CADENCES }).notNull().default("weekly"),
 
   digestDay: text("digest_day", { enum: WEEKDAYS }).notNull().default("monday"),
+
+  // Nullable with no database default, because absence is the default: the reader applies
+  // VERDICT_WINDOW_DAYS_DEFAULT and the lapse scan coalesces to the same constant, so a row
+  // that configures only the digest still holds no opinion about the verdict window.
+  verdictWindowDays: integer("verdict_window_days"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })

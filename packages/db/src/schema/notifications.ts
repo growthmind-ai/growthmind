@@ -8,6 +8,7 @@ import type {
   NotificationSubjectKind,
   NotificationType,
 } from "@growthmind/shared";
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -162,6 +163,13 @@ export const notificationSends = pgTable(
     ),
 
     index("notification_sends_organization_id_idx").on(table.organizationId),
+
+    // Globally unique, not org-scoped: a Slack (channel, message) pair is the only key an
+    // interactivity payload carries, and it must resolve to exactly one organization.
+    // Partial, because a receipt with no message posted still has a null message_ref.
+    uniqueIndex("notification_sends_channel_message_uidx")
+      .on(table.target, table.messageRef)
+      .where(sql`${table.messageRef} is not null`),
   ],
 );
 

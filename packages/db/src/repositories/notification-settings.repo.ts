@@ -1,6 +1,7 @@
 import {
   DIGEST_CADENCE_DEFAULT,
   DIGEST_DAY_DEFAULT,
+  VERDICT_WINDOW_DAYS_DEFAULT,
   type DigestCadence,
   type TenantContext,
   type Weekday,
@@ -13,6 +14,10 @@ import type { ScopedExecutor } from "./types";
 export interface NotificationSettingsRow {
   readonly digestCadence: DigestCadence;
   readonly digestDay: Weekday;
+
+  // Always a number outward: a null column is an organization that has not configured the
+  // window, which is the default rather than an absence the caller has to interpret.
+  readonly verdictWindowDays: number;
 }
 
 export interface SaveNotificationSettingsInput {
@@ -32,8 +37,13 @@ export interface NotificationSettingsRepo {
 function toRow(row: {
   readonly digestCadence: DigestCadence;
   readonly digestDay: Weekday;
+  readonly verdictWindowDays: number | null;
 }): NotificationSettingsRow {
-  return { digestCadence: row.digestCadence, digestDay: row.digestDay };
+  return {
+    digestCadence: row.digestCadence,
+    digestDay: row.digestDay,
+    verdictWindowDays: row.verdictWindowDays ?? VERDICT_WINDOW_DAYS_DEFAULT,
+  };
 }
 
 // The primary key is the organization, so there is no parameter through which one org
@@ -49,7 +59,11 @@ export function createNotificationSettingsRepo(
       const row = await c.maybe();
 
       return row === null
-        ? { digestCadence: DIGEST_CADENCE_DEFAULT, digestDay: DIGEST_DAY_DEFAULT }
+        ? {
+            digestCadence: DIGEST_CADENCE_DEFAULT,
+            digestDay: DIGEST_DAY_DEFAULT,
+            verdictWindowDays: VERDICT_WINDOW_DAYS_DEFAULT,
+          }
         : toRow(row);
     },
 

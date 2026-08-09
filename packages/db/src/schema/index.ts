@@ -35,3 +35,6 @@ export * from "./first-run-state";
 export * from "./first-run-dismissals";
 export * from "./provider-interest";
 export { growthContext } from "./growth-context";
+
+export { shippedChanges } from "./shipped-changes";
+export { shippedChangeVerdicts } from "./shipped-change-verdicts";

@@ -1,6 +1,8 @@
 import {
   memberUserId,
   NOTIFICATION_BADGE_COUNT_CAP,
+  SLACK_INTERACTION_ACTOR,
+  SLACK_INTERACTION_ROLE,
   type NotificationSubjectKind,
   type NotificationType,
   type SlackReceiptFacts,
@@ -8,6 +10,7 @@ import {
 } from "@growthmind/shared";
 import { and, desc, eq, gte, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 
+import { organization } from "../schema/auth";
 import {
   notificationBellState,
   notificationReads,
@@ -15,7 +18,7 @@ import {
   notificationSends,
 } from "../schema/notifications";
 import { scoped } from "./scope";
-import type { ScopedExecutor } from "./types";
+import type { ScopedDb, ScopedExecutor } from "./types";
 
 // The receipt shape is declared once, in shared, so the pure precedence rule and the row
 // this repository hands out cannot come to disagree about what a receipt is.
@@ -295,5 +298,60 @@ export function createNotificationsRepo(db: ScopedExecutor, ctx: TenantContext):
 
       return visible !== undefined;
     },
+  };
+}
+
+export interface NotificationInteractionPrincipal {
+  readonly context: TenantContext;
+  readonly notificationId: string;
+  readonly subjectKind: NotificationSubjectKind;
+  readonly subjectId: string;
+}
+
+// A Slack interactivity payload names only the channel and the message it was posted to, so
+// that pair is the only source of org identity for a button press — which is why the index
+// serving it is globally unique rather than org-scoped. Nothing the payload carries reaches
+// the context.
+export async function resolveNotificationForInteraction(
+  db: ScopedDb,
+  args: { readonly channelId: string; readonly messageRef: string },
+): Promise<NotificationInteractionPrincipal | null> {
+  if (args.channelId === "" || args.messageRef === "") {
+    return null;
+  }
+
+  const [row] = await db
+    .select({
+      notificationId: notifications.id,
+      subjectKind: notifications.subjectKind,
+      subjectId: notifications.subjectId,
+      organizationId: notifications.organizationId,
+      organizationName: organization.name,
+    })
+    .from(notificationSends)
+    .innerJoin(notifications, eq(notificationSends.notificationId, notifications.id))
+    .innerJoin(organization, eq(notifications.organizationId, organization.id))
+    .where(
+      and(
+        eq(notificationSends.target, args.channelId),
+        eq(notificationSends.messageRef, args.messageRef),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    context: {
+      userId: SLACK_INTERACTION_ACTOR,
+      organizationId: row.organizationId,
+      organizationName: row.organizationName,
+      role: SLACK_INTERACTION_ROLE,
+    },
+    notificationId: row.notificationId,
+    subjectKind: row.subjectKind,
+    subjectId: row.subjectId,
   };
 }
