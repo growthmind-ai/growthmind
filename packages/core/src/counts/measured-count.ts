@@ -144,15 +144,20 @@ export function measuredCount(input: MeasuredCountInput): MeasuredCount {
   };
 }
 
-// `rateOf` returns only `zero_denominator`; `no_identity_coverage` has one constructor of its
-// own in shipped/counts.ts, which is what lets every existing `no_rate` reader stay as written.
 export type NoRateReason = "zero_denominator" | "no_identity_coverage";
 
 export type Rate =
   | { readonly kind: "rate"; readonly value: number }
   | { readonly kind: "no_rate"; readonly reason: NoRateReason };
 
-export function rateOf(count: MeasuredCount): Rate {
+// The narrowed codomain is what lets every existing `no_rate` reader stay as written under the
+// widened reason: `no_identity_coverage` has its own constructor in shipped/counts.ts and cannot
+// come back from here.
+export type MeasuredRate =
+  | Extract<Rate, { readonly kind: "rate" }>
+  | { readonly kind: "no_rate"; readonly reason: "zero_denominator" };
+
+export function rateOf(count: MeasuredCount): MeasuredRate {
   if (count.denominator === 0) {
     return { kind: "no_rate", reason: "zero_denominator" };
   }

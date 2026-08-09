@@ -179,7 +179,12 @@ interface MirrorReportShippedInput {
 type CreateShippedChangesRepo = (
   db: TestDb,
   ctx: TenantContext,
-) => { reportShipped(input: MirrorReportShippedInput): Promise<{ readonly id: string }> };
+) => {
+  reportShipped(input: MirrorReportShippedInput): Promise<{
+    readonly claim: string;
+    readonly change: { readonly id: string };
+  }>;
+};
 
 const loadShippedChangesRepo = (): Promise<CreateShippedChangesRepo> =>
   loadUnderConstruction<CreateShippedChangesRepo>({
@@ -258,7 +263,7 @@ async function seedPostedChange(
   });
 
   const createRepo = await loadShippedChangesRepo();
-  const change = await createRepo(handle.db, org.ctx).reportShipped({
+  const reported = await createRepo(handle.db, org.ctx).reportShipped({
     projectId: project.id,
     page: PAGE,
     control: CONTROL,
@@ -266,6 +271,7 @@ async function seedPostedChange(
     reportedAt: REPORTED_AT,
     readoutDueAt: READOUT_DUE_AT,
   });
+  const change = reported.change;
 
   if (options.readOut === true) {
     await handle.db.execute(

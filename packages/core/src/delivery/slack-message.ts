@@ -310,7 +310,8 @@ type MessageParts = {
 };
 
 // citesHref is null only when D5 degraded it upstream (mask/withheld) — the same fallback
-// apps/web's own citation control renders, never a dead link.
+// apps/web's own citation control renders, never a dead link. The href is a path rather than a
+// URL, which Slack does not linkify, and block-kit.ts escapes mrkdwn on the way out.
 function claimLine(claim: DeliveredCauseClaim): string {
   const cite =
     claim.citesHref === null ? claim.citesLabel : `<${claim.citesHref}|${claim.citesLabel}>`;

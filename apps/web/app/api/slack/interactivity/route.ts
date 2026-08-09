@@ -11,7 +11,6 @@ import {
   resolveNotificationForInteraction,
   type ChooseLeadCountResult,
   type OpenFixResult,
-  type RecordVerdictResult,
   type ScopedDb,
 } from "@growthmind/db";
 import {
@@ -26,6 +25,7 @@ import {
   SHIPPED_LEAD_CHANGED_TEMPLATE,
   SHIPPED_LEAD_NAMES,
   SHIPPED_LEAD_TOO_LATE_REFUSAL,
+  SHIPPED_VERDICT_ALREADY_RECORDED,
   SHIPPED_VERDICT_RECORDED,
   SHIPPED_VERDICT_TOO_EARLY_REFUSAL,
   SHIPPED_VERDICT_TOO_LATE_REFUSAL,
@@ -230,15 +230,14 @@ async function shippedSubjectOf(
   return { context: principal.context, changeId: principal.subjectId };
 }
 
-function verdictSentenceFor(kind: RecordVerdictResult["kind"]): string {
-  switch (kind) {
-    case "recorded":
-      return SHIPPED_VERDICT_RECORDED;
-    case "already_recorded":
-      return SHIPPED_VERDICT_TOO_LATE_REFUSAL;
-    case "not_read_out":
-      return SHIPPED_VERDICT_TOO_EARLY_REFUSAL;
-  }
+// A press that changed nothing has two causes the founder tells apart from the outside: they
+// answered already, or the window lapsed and the absence was recorded for them. The stored
+// verdict is what separates them, so the repository's one `already_recorded` reaches two
+// sentences rather than the wrong one twice.
+function alreadyRecordedSentence(standing: ShippedVerdict | null): string {
+  return standing === "no_verdict_given"
+    ? SHIPPED_VERDICT_TOO_LATE_REFUSAL
+    : SHIPPED_VERDICT_ALREADY_RECORDED;
 }
 
 async function recordVerdictFor(
@@ -251,7 +250,9 @@ async function recordVerdictFor(
     return null;
   }
 
-  const result = await createShippedChangeVerdictsRepo(db, subject.context).recordVerdict({
+  const verdicts = createShippedChangeVerdictsRepo(db, subject.context);
+
+  const result = await verdicts.recordVerdict({
     changeId: subject.changeId,
     verdict,
     recordedAt: new Date(),
@@ -260,7 +261,12 @@ async function recordVerdictFor(
 
   logger.info("slack interactivity: a verdict press was served", { outcome: result.kind });
 
-  return verdictSentenceFor(result.kind);
+  if (result.kind === "recorded") return SHIPPED_VERDICT_RECORDED;
+  if (result.kind === "not_read_out") return SHIPPED_VERDICT_TOO_EARLY_REFUSAL;
+
+  const standing = await verdicts.findForChange(subject.changeId);
+
+  return alreadyRecordedSentence(standing?.verdict ?? null);
 }
 
 function leadSentenceFor(kind: ChooseLeadCountResult["kind"], leadCount: ShippedLeadCount): string {

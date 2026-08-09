@@ -207,6 +207,40 @@ describe("Decision 6f — a page-level reach is never a fraction of itself", () 
   });
 });
 
+describe("each count names its own unit and its own denominator", () => {
+  test("should call the count of sessions visits and the count of people people", () => {
+    const counts = shippedCounts(RECORDED_CLAIM_CORPUS);
+    const repeat = counts.repeat;
+    if (repeat === null) throw new Error("three identified people must yield a repeat count");
+
+    // The pair is only misreadable when the two denominators differ, which is the ordinary case.
+    expect(counts.reach.unit).toBe("sessions");
+    expect(repeat.unit).toBe("people");
+    expect(counts.reach.denominator).not.toBe(repeat.denominator);
+
+    const sentences = sentencesIn(readoutOf(claimOf(RECORDED_CLAIM_CORPUS)).body);
+    const reachSentence = sentences.find((sentence) =>
+      numbersIn(sentence).includes(String(counts.reach.denominator)),
+    );
+    const repeatSentence = sentences.find((sentence) =>
+      numbersIn(sentence).includes(String(repeat.denominator)),
+    );
+
+    expect(reachSentence).toContain("visits");
+    expect(reachSentence).not.toContain("people");
+    expect(repeatSentence).toContain("people");
+    expect(repeatSentence).not.toContain("visits");
+  });
+
+  test("should never point one count's denominator back at the other's", () => {
+    // "of those N people" read as an anaphor onto the reach denominator while carrying the
+    // repeat one, so the two numbers described the same set and were different sizes.
+    for (const result of EVERY_BRANCH) {
+      expect(readoutOf(result).body).not.toMatch(/\bthose\b/i);
+    }
+  });
+});
+
 describe("every number the readout states says out of how many", () => {
   test("should state no number the claim cannot account for", () => {
     const counts = shippedCounts(RECORDED_CLAIM_CORPUS);

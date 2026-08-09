@@ -84,8 +84,10 @@ export const EVIDENCE_NOT_FOUND =
 
 export const SHIPPED_NOTED_TEMPLATE = "Noted — {change} on {page}.";
 
+// Reach is counted in visits and repeat in people, so the promise names both units rather than
+// promising one and answering in the other.
 export const SHIPPED_PROMISE_TEMPLATE =
-  "On {date} I'll tell you how many of the people who reach that page used it, and how many came back to it.";
+  "On {date} I'll tell you how many of the visits to that page used it, and how many people came back to it.";
 
 export const SHIPPED_UNVERIFIED_LINE =
   "I have not read your code, so I am taking your word that it is live.";
@@ -96,36 +98,40 @@ export const SHIPPED_LEAD_OFFER_LINE =
 export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
   "{change} on {page} again — the date I answer on has not moved: {date}.";
 
+// Reach counts visits and not people, and it names its own denominator rather than leaving the
+// repeat sentence to point back at it: the two denominators are different sizes and different
+// units, so one pronoun across both was two wrong numbers in one breath.
 export const SHIPPED_REACH_TEMPLATE =
-  "{change} — of the {denominator} people I could watch on {page}, {numerator} used it.";
+  "{change} — I could watch {denominator} visits to {page}, and {numerator} of them used it.";
 
 export const SHIPPED_NOBODY_TEMPLATE =
-  "{change} — none of the {denominator} people I could watch on {page} used it.";
+  "{change} — I could watch {denominator} visits to {page}, and none of them used it.";
 
 // A whole page's reach would render as N of N, so the count stands on its own and repeat
-// carries the fraction against the same denominator.
+// carries the fraction against its own denominator.
 export const SHIPPED_PAGE_REACH_TEMPLATE =
-  "{change} — {denominator} people reached {page} while I was watching.";
+  "{change} — there were {denominator} visits to {page} while I was watching.";
 
-export const SHIPPED_REPEAT_TEMPLATE = "{numerator} of those {denominator} people came back to it.";
+export const SHIPPED_REPEAT_TEMPLATE =
+  "{numerator} of the {denominator} people I could tell apart came back to it.";
 
 export const SHIPPED_NO_IDENTITY_LINE =
   "Nobody could be told apart between visits, so I cannot say who came back.";
 
 export const SHIPPED_UNIDENTIFIED_TEMPLATE =
-  "{count} of them could not be told apart between visits, and are counted on their own.";
+  "{count} of those visits could not be tied to a person, and are counted on their own.";
 
 export const SHIPPED_RECORDED_CORPUS_LINE =
-  "That count is off the sessions that were recorded, not off everyone who was there.";
+  "I counted that off the visits that were recorded, not off everyone who was there.";
 
 export const SHIPPED_SPINE_CORPUS_LINE =
-  "That count is off everyone who reached the page while I was watching.";
+  "I counted that off every visit to the page, not only the ones that were recorded.";
 
 export const SHIPPED_TRUNCATED_LINE =
-  "I hit my limit on how many sessions I read, so that is not the whole total.";
+  "I hit my limit on how many visits I read, so that is not the whole total.";
 
 export const SHIPPED_TOO_FEW_TEMPLATE =
-  "{change} — only {denominator} people reached {page} in that time. Not enough to tell you anything, so I'm not going to pretend otherwise.";
+  "{change} — there were only {denominator} visits to {page} in that time. Not enough to tell you anything, so I'm not going to pretend otherwise.";
 
 export const SHIPPED_SPELLING_CHANGED_TEMPLATE =
   "{change} — the way page addresses are written down changed part-way through, so I cannot put an honest number on {page}.";

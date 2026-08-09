@@ -60,8 +60,9 @@ export const WRONG_CONTENT_TYPE: McpRefusal = Object.freeze({
 export const WRONG_METHOD: McpRefusal = Object.freeze({
   code: "wrong_method",
   message:
-    "This server only reads, and it only answers a POST carrying a single JSON-RPC message. " +
-    "Send tools/list that way to see what it can do. Nothing here changes anything.",
+    "This server only answers a POST carrying a single JSON-RPC message. Send tools/list that " +
+    "way to see what it can do. Everything here reads, apart from the one tool you tell us " +
+    "what you shipped with, and nothing here touches your product or your code.",
   status: 405,
 });
 

@@ -13,7 +13,10 @@ const SCANNED_GLOBS = [
   "packages/shared/src/shipped/**/*.ts",
 ] as const;
 
-const SCANNED_FILES = ["worker/src/tasks/shipped-readout-tick.ts"] as const;
+const SCANNED_FILES = [
+  "worker/src/tasks/shipped-readout-tick.ts",
+  "packages/db/src/services/shipped-readout.service.ts",
+] as const;
 
 // The three Tom ratified, and nothing else may join them.
 const RATIFIED_MAGNITUDES = [30, 10, 7] as const;
@@ -25,19 +28,61 @@ const ADR_POINTER = /0027/;
 
 const DECLARATION = /^export\s+const\s+[A-Z][A-Z0-9_]*(?::\s*number)?\s*=\s*(\d+)\s*;?$/;
 
-// An identifier naming the thing a grade would judge — as against the denominator, which is what
-// an eligibility floor gates on.
-const GRADE_OPERAND = /numerator|rate|repeat|share|percent|adoption/i;
+// The words naming the thing a grade would judge — as against the denominator, which is what an
+// eligibility floor gates on. Matched word by word rather than as substrings: "ratio" sits inside
+// duration, iteration and generation, and "rate" inside generated and accurate.
+const GRADE_WORDS = new Set([
+  "numerator",
+  "rate",
+  "rates",
+  "ratio",
+  "ratios",
+  "repeat",
+  "repeats",
+  "share",
+  "shares",
+  "percent",
+  "percentage",
+  "adoption",
+]);
+
+function wordsIn(operand: string): readonly string[] {
+  return operand
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z]+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.toLowerCase());
+}
+
+function isGradeOperand(operand: string): boolean {
+  return wordsIn(operand).some((word) => GRADE_WORDS.has(word));
+}
 
 const COMPARISON_OPERATOR = "(?:<=|>=|===|!==|==|!=|<|>)";
 
+const OPERAND = "[A-Za-z_$][A-Za-z0-9_$.\\[\\]\\s/*+\\-]";
+
+// A named constant is a magnitude someone chose, so a grade read off one is the same offence as a
+// grade read off a literal — and it is the spelling that leaves no digit behind to find.
+const SCREAMING_CASE = "[A-Z][A-Z0-9_]{2,}(?:\\.[A-Z][A-Z0-9_]*)*";
+
 const NUMBER_ON_THE_RIGHT = new RegExp(
-  `([A-Za-z_$][A-Za-z0-9_$.\\[\\]\\s/*+\\-]{0,79}?)\\s*${COMPARISON_OPERATOR}\\s*(\\d+(?:\\.\\d+)?)`,
+  `(${OPERAND}{0,79}?)\\s*${COMPARISON_OPERATOR}\\s*(\\d+(?:\\.\\d+)?)`,
   "g",
 );
 
 const NUMBER_ON_THE_LEFT = new RegExp(
-  `(\\d+(?:\\.\\d+)?)\\s*${COMPARISON_OPERATOR}\\s*([A-Za-z_$][A-Za-z0-9_$.\\[\\]\\s/*+\\-]{0,79})`,
+  `(\\d+(?:\\.\\d+)?)\\s*${COMPARISON_OPERATOR}\\s*(${OPERAND}{0,79})`,
+  "g",
+);
+
+const CONSTANT_ON_THE_RIGHT = new RegExp(
+  `(${OPERAND}{0,79}?)\\s*${COMPARISON_OPERATOR}\\s*(${SCREAMING_CASE})`,
+  "g",
+);
+
+const CONSTANT_ON_THE_LEFT = new RegExp(
+  `(${SCREAMING_CASE})\\s*${COMPARISON_OPERATOR}\\s*(${OPERAND}{0,79})`,
   "g",
 );
 
@@ -142,16 +187,18 @@ function gradeComparisonsIn(source: string): readonly GradeComparison[] {
   const code = codeOnly(source);
   const found: GradeComparison[] = [];
 
-  for (const match of code.matchAll(NUMBER_ON_THE_RIGHT)) {
-    const operand = match[1] ?? "";
-    if (GRADE_OPERAND.test(operand))
-      found.push({ operand: operand.trim(), literal: match[2] ?? "" });
+  for (const pattern of [NUMBER_ON_THE_RIGHT, CONSTANT_ON_THE_RIGHT]) {
+    for (const match of code.matchAll(pattern)) {
+      const operand = match[1] ?? "";
+      if (isGradeOperand(operand)) found.push({ operand: operand.trim(), literal: match[2] ?? "" });
+    }
   }
 
-  for (const match of code.matchAll(NUMBER_ON_THE_LEFT)) {
-    const operand = match[2] ?? "";
-    if (GRADE_OPERAND.test(operand))
-      found.push({ operand: operand.trim(), literal: match[1] ?? "" });
+  for (const pattern of [NUMBER_ON_THE_LEFT, CONSTANT_ON_THE_LEFT]) {
+    for (const match of code.matchAll(pattern)) {
+      const operand = match[2] ?? "";
+      if (isGradeOperand(operand)) found.push({ operand: operand.trim(), literal: match[1] ?? "" });
+    }
   }
 
   return found;
@@ -166,8 +213,15 @@ function walkedFiles(): readonly string[] {
     }
   }
 
+  // Loud rather than skipped: a rename that quietly drops a file leaves the glob arms non-empty,
+  // so the non-vacuity assertion stays green while the scan has gone blind on that path.
   for (const file of SCANNED_FILES) {
-    if (existsSync(`${ROOT}/${file}`)) found.add(file);
+    if (!existsSync(`${ROOT}/${file}`)) {
+      throw new Error(
+        `AC-G13 scans ${file} and it is not there — point SCANNED_FILES at its new home.`,
+      );
+    }
+    found.add(file);
   }
 
   return [...found].toSorted();
@@ -233,10 +287,44 @@ describe("CONTROL — the scan can tell a grade from a floor", () => {
     expect(gradeComparisonsIn("if (0.05 < repeatShare) { grade(); }").length).toBeGreaterThan(0);
   });
 
-  test("should walk a non-empty set of files", () => {
+  test("should catch a threshold read off a named constant, which leaves no literal behind", () => {
+    const planted = gradeComparisonsIn(
+      "if (counts.reach.numerator >= SHIPPED_RECORDED_ELIGIBILITY_FLOOR) { grade(); }",
+    );
+
+    expect(planted.length).toBeGreaterThan(0);
+    expect(planted[0]?.literal).toBe("SHIPPED_RECORDED_ELIGIBILITY_FLOOR");
+
+    // The mirrored spelling, and a rate against a constant, are the same offence.
+    expect(
+      gradeComparisonsIn("if (ADOPTION_FLOOR < counts.repeatRate.value) { grade(); }").length,
+    ).toBeGreaterThan(0);
+
+    // The floor this gate exists to permit still passes: the same constant against the denominator.
+    expect(
+      gradeComparisonsIn("if (corpus.basis.kept < SHIPPED_SPINE_ELIGIBILITY_FLOOR) { refuse(); }"),
+    ).toEqual([]);
+  });
+
+  test("should read the operand word by word, so ratio inside duration is not a grade", () => {
+    expect(gradeComparisonsIn("if (repeatRatio > 0.2) { grade(); }").length).toBeGreaterThan(0);
+    expect(gradeComparisonsIn("if (ratio > 0.2) { grade(); }").length).toBeGreaterThan(0);
+
+    expect(gradeComparisonsIn("if (windowDuration > 14) { wait(); }")).toEqual([]);
+    expect(gradeComparisonsIn("if (generation > 2) { migrate(); }")).toEqual([]);
+    expect(gradeComparisonsIn("if (generated > 2) { stop(); }")).toEqual([]);
+  });
+
+  test("should walk a non-empty set of files, and every named one", () => {
     // Without this arm every assertion below is green against a path the scan never reached,
     // which is how a scan goes blind and reports clean.
-    expect(walkedFiles().length).toBeGreaterThan(0);
+    const walked = walkedFiles();
+
+    expect(walked.length).toBeGreaterThan(0);
+    for (const file of SCANNED_FILES) {
+      expect(walked).toContain(file);
+    }
+    expect(walked).toContain("packages/core/src/shipped/floors.ts");
   });
 });
 

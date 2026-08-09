@@ -295,8 +295,8 @@ What comes straight back, in the same Slack channel your findings already use:
 
 > Noted — CSV export on /reports.
 >
-> On 23 August I'll tell you how many of the people who reach that page used
-> it, and how many came back to it.
+> On 23 August I'll tell you how many of the visits to that page used it, and
+> how many people came back to it.
 >
 > I have not read your code, so I am taking your word that it is live.
 
@@ -305,22 +305,24 @@ date does not move, and we say so rather than promising a second one.
 
 On the day, one message arrives with the answer:
 
-> CSV export — of the 212 people I could watch on /reports, 9 used it, and 1 of
-> those 9 came back to it. That count is off the sessions that were recorded,
-> not off everyone who was there.
+> CSV export — I could watch 212 visits to /reports, and 9 of them used it. 1 of
+> the 45 people I could tell apart came back to it. I counted that off the
+> visits that were recorded, not off everyone who was there.
 >
 > Keep it, kill it, or leave it?
 
-Three things about that message are deliberate. **Every number says out of how
-many**, and it names which people it counted — everyone who reached the page,
-or only the sessions that were recorded. It never mixes the two inside one
-claim, because a count taken from the smaller group over a total taken from the
-larger one reads as cautious and is simply wrong. **When there is not enough to
-tell, it says so** rather than dressing a small number up: _"only 4 people
-reached /reports in that time. Not enough to tell you anything, so I'm not going
-to pretend otherwise."_ And **it never grades the number**. Whether 9 of 212 is
-good is your judgement about your own product, not ours to invent a pass mark
-for.
+Four things about that message are deliberate. **Every number says out of how
+many**, and each says out of how many *of what*: the first counts visits, the
+second counts people, and the two totals are different sizes, so neither
+sentence points back at the other's. **It names which visits it counted** —
+every visit to the page, or only the ones that were recorded — and never mixes
+the two inside one claim, because a count taken from the smaller group over a
+total taken from the larger one reads as cautious and is simply wrong. **When
+there is not enough to tell, it says so** rather than dressing a small number
+up: _"there were only 4 visits to /reports in that time. Not enough to tell you
+anything, so I'm not going to pretend otherwise."_ And **it never grades the
+number**. Whether 9 of 212 is good is your judgement about your own product, not
+ours to invent a pass mark for.
 
 So it ends by asking. Press one of the three buttons and that is recorded
 against the change, and it is what the next brief reads. Answer nothing for a

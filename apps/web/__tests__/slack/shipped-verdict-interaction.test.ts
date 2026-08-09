@@ -156,7 +156,12 @@ interface MirrorReportShippedInput {
 type CreateShippedChangesRepo = (
   db: TestDb,
   ctx: TenantContext,
-) => { reportShipped(input: MirrorReportShippedInput): Promise<{ readonly id: string }> };
+) => {
+  reportShipped(input: MirrorReportShippedInput): Promise<{
+    readonly claim: string;
+    readonly change: { readonly id: string };
+  }>;
+};
 
 const loadShippedChangesRepo = (): Promise<CreateShippedChangesRepo> =>
   loadUnderConstruction<CreateShippedChangesRepo>({
@@ -240,7 +245,7 @@ async function seedPostedChange(
   });
 
   const createRepo = await loadShippedChangesRepo();
-  const change = await createRepo(handle.db, org.ctx).reportShipped({
+  const reported = await createRepo(handle.db, org.ctx).reportShipped({
     projectId: project.id,
     page: PAGE,
     control: CONTROL,
@@ -248,6 +253,7 @@ async function seedPostedChange(
     reportedAt: REPORTED_AT,
     readoutDueAt: READOUT_DUE_AT,
   });
+  const change = reported.change;
 
   if (options.readOut !== false) {
     await handle.db.execute(
@@ -280,6 +286,22 @@ async function seedPostedChange(
     channelId,
     messageRef,
   };
+}
+
+// What the lapse pass leaves behind: the row closed and the absence itself recorded as the
+// answer. Written directly so this file stays about the route rather than about the tick.
+async function lapseWithoutAVerdict(posted: PostedChange): Promise<void> {
+  const lapsedAt = new Date(READ_OUT_AT.getTime()).toISOString();
+
+  await handle.db.execute(
+    `insert into shipped_change_verdicts (id, organization_id, change_id, verdict, recorded_at) ` +
+      `values ('${randomUUID()}', '${posted.organizationId}', '${posted.changeId}', ` +
+      `'no_verdict_given', '${lapsedAt}')`,
+  );
+  await handle.db.execute(
+    `update shipped_changes set state = 'closed', closed_at = '${lapsedAt}' ` +
+      `where id = '${posted.changeId}'`,
+  );
 }
 
 interface PressInput {
@@ -444,11 +466,17 @@ describe("a verdict pressed out of order is refused and never overwrites the fir
     expect((acknowledgements[0]?.body as { text?: unknown } | undefined)?.text).toBe(tooEarly);
   });
 
-  test("a press on an already-closed row keeps one verdict row and it is the first one", async () => {
+  // Corrected in fix wave 1: this asserted "That one is already closed" for a founder answering
+  // twice, which is the lapse's sentence rather than theirs. SHIPPED_VERDICT_ALREADY_RECORDED was
+  // registered and reachable from nowhere, and the two cases are told apart below.
+  test("a second press by the founder is told they already answered, and the first answer stands", async () => {
     const keep = await actionId("SHIPPED_VERDICT_KEEP_ACTION_ID");
     const kill = await actionId("SHIPPED_VERDICT_KILL_ACTION_ID");
+    const alreadyAnswered = await sentence("SHIPPED_VERDICT_ALREADY_RECORDED");
     const tooLate = await sentence("SHIPPED_VERDICT_TOO_LATE_REFUSAL");
     const posted = await seedPostedChange("already-closed");
+
+    expect(alreadyAnswered).not.toBe(tooLate);
 
     await press({ posted, action: keep });
     const second = await press({ posted, action: kill });
@@ -460,7 +488,29 @@ describe("a verdict pressed out of order is refused and never overwrites the fir
     expect(rows[0]?.verdict).toBe("keep");
 
     const said = acknowledgements.map((call) => (call.body as { text?: unknown }).text);
+    expect(said).toContain(alreadyAnswered);
+    expect(said).not.toContain(tooLate);
+  });
+
+  test("a press after the window lapsed is told the change is closed, not that they answered", async () => {
+    const keep = await actionId("SHIPPED_VERDICT_KEEP_ACTION_ID");
+    const alreadyAnswered = await sentence("SHIPPED_VERDICT_ALREADY_RECORDED");
+    const tooLate = await sentence("SHIPPED_VERDICT_TOO_LATE_REFUSAL");
+    const posted = await seedPostedChange("lapsed");
+
+    await lapseWithoutAVerdict(posted);
+
+    const response = await press({ posted, action: keep });
+
+    expect(response.status).toBe(200);
+
+    const rows = await verdictRowsFor(posted.changeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.verdict).toBe("no_verdict_given");
+
+    const said = acknowledgements.map((call) => (call.body as { text?: unknown }).text);
     expect(said).toContain(tooLate);
+    expect(said).not.toContain(alreadyAnswered);
   });
 });
 
