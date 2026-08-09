@@ -27,6 +27,7 @@ import {
   type CloseRunInput,
 } from "../../src/repositories/analysis-runs.repo";
 import { createSlackConnectionsRepo } from "../../src/repositories/slack-connections.repo";
+import { createShippedChangesService } from "../../src/services/shipped-changes.service";
 import type { SignatureHex } from "../../src/signatures/hex";
 import { notifications, notificationSends } from "../../src/schema/notifications";
 import {
@@ -60,6 +61,10 @@ const CHANNEL = "C0INVARIANT";
 const DIGEST_MONDAY = new Date("2026-08-10T12:00:00.000Z");
 
 const POLL_NOW = new Date("2026-08-06T18:00:00.000Z");
+
+const REPORTED_AT = new Date("2026-08-09T09:00:00.000Z");
+
+const READ_OUT_AT = new Date("2026-08-23T09:00:00.000Z");
 
 const handles: TestDbHandle[] = [];
 
@@ -215,6 +220,34 @@ async function driveBackfillComplete({ db, org }: DriveBed): Promise<void> {
   await drainBackfillCursor(db, org, POLL_NOW);
 }
 
+async function reportOneChange({ db, org }: DriveBed, label: string) {
+  const project = await seedProject(db, {
+    organizationId: org.organizationId,
+    name: NAMES.projectName(label),
+  });
+  const service = createShippedChangesService(db, org.ctx);
+
+  const change = await service.reportShipped({
+    projectId: project.id,
+    page: "/reports",
+    control: "Export CSV",
+    description: "CSV export",
+    reportedAt: REPORTED_AT,
+  });
+
+  return { service, change };
+}
+
+async function driveChangeReported(bed: DriveBed): Promise<void> {
+  await reportOneChange(bed, "change-reported");
+}
+
+async function driveChangeReadout(bed: DriveBed): Promise<void> {
+  const { service, change } = await reportOneChange(bed, "change-readout");
+
+  await service.recordReadout({ changeId: change.id, readOutAt: READ_OUT_AT });
+}
+
 const EMITTER_DRIVES = {
   finding_delivered: { arm: "copied", drive: driveFindingDelivered },
   keys_revoked: { arm: "owed", drive: driveKeysRevoked },
@@ -224,6 +257,8 @@ const EMITTER_DRIVES = {
   slack_disconnected: { arm: "owed", drive: driveSlackDisconnected },
   analysis_failing: { arm: "owed", drive: driveAnalysisFailing },
   digest: { arm: "owed", drive: driveDigest },
+  change_reported: { arm: "owed", drive: driveChangeReported },
+  change_readout: { arm: "owed", drive: driveChangeReadout },
 } as const satisfies Record<NotificationType, Drive>;
 
 async function rowsOfType(db: TestDb, organizationId: string, type: NotificationType) {

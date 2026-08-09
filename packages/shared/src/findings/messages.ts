@@ -133,6 +133,11 @@ export const SHIPPED_SPELLING_CHANGED_TEMPLATE =
 export const SHIPPED_UNREADABLE_TEMPLATE =
   "{change} — I could not read enough of what happened on {page} to tell you anything.";
 
+// The record surfaces show one line per fact, so the answer itself lives in the message that
+// was pushed and this names what is waiting on the founder.
+export const SHIPPED_READ_OUT_TEMPLATE =
+  "I've answered how {change} on {page} went, and I'm waiting on your verdict.";
+
 export const SHIPPED_VERDICT_QUESTION = "Keep it, kill it, or leave it?";
 
 export const SHIPPED_VERDICT_RECORDED = "Noted — that is what the next brief reads.";
@@ -212,6 +217,7 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_TOO_FEW_TEMPLATE,
   SHIPPED_SPELLING_CHANGED_TEMPLATE,
   SHIPPED_UNREADABLE_TEMPLATE,
+  SHIPPED_READ_OUT_TEMPLATE,
   SHIPPED_VERDICT_QUESTION,
   SHIPPED_VERDICT_RECORDED,
   SHIPPED_VERDICT_ALREADY_RECORDED,

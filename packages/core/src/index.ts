@@ -547,6 +547,10 @@ export {
   backfillCompleteSentence,
   slackDisconnectedSentence,
   analysisFailingSentence,
+  changeReportedSentence,
+  changeReadOutSentence,
+  type ChangeReportedSentenceInput,
+  type ChangeReadOutSentenceInput,
   type KeysRevokedSentenceInput,
   type KeyCreatedSentenceInput,
   type BackfillCompleteSentenceInput,
@@ -606,3 +610,10 @@ export {
   type ShippedReadoutInput,
   type ShippedReadoutResult,
 } from "./shipped/readout";
+export {
+  renderShippedAcknowledgement,
+  shippedPromiseBody,
+  type ShippedAcknowledgement,
+  type ShippedAcknowledgementInput,
+  type ShippedPromise,
+} from "./shipped/acknowledgement";

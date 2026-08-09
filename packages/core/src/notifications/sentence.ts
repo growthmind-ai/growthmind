@@ -1,6 +1,9 @@
 import type { PostFailureCode } from "@growthmind/shared";
+import { SHIPPED_READ_OUT_TEMPLATE } from "@growthmind/shared";
 
 import type { FindingText } from "../delivery/finding-text";
+import { fill } from "../replay-filters/template";
+import { shippedPromiseBody, type ShippedPromise } from "../shipped/acknowledgement";
 
 // One pure builder per type; web (bell rows) and worker (Slack render) call the same
 // function — same sentence, different chrome.
@@ -88,4 +91,23 @@ export interface AnalysisFailingSentenceInput {
 
 export function analysisFailingSentence(input: AnalysisFailingSentenceInput): string {
   return `${input.failed} of the last ${input.of} checks on ${input.projectName} didn't finish. We'll keep trying, and your data is untouched.`;
+}
+
+export type ChangeReportedSentenceInput = ShippedPromise;
+
+// The same promise the channel carries, resolved from the change row rather than from anything
+// stored on the notification.
+export function changeReportedSentence(input: ChangeReportedSentenceInput): string {
+  return shippedPromiseBody(input);
+}
+
+export interface ChangeReadOutSentenceInput {
+  readonly change: string;
+  readonly page: string;
+}
+
+// The record surfaces name what is waiting rather than restating the counts: the answer and its
+// three buttons live in the message that was pushed, which is where the verdict is given.
+export function changeReadOutSentence(input: ChangeReadOutSentenceInput): string {
+  return fill(SHIPPED_READ_OUT_TEMPLATE, { change: input.change, page: input.page });
 }

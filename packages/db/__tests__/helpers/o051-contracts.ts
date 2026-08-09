@@ -125,6 +125,11 @@ export interface RecordingPoster {
   readonly posted: PostRequest[];
 }
 
+// Per process, not per poster: a Slack message reference is unique within its channel, and
+// notification_sends holds that as a unique index — a fixture that restarts its counter for
+// every test collides with the previous test's receipt in the same database.
+let mintedRefs = 0;
+
 export function loudPoster(): RecordingPoster {
   const posted: PostRequest[] = [];
   return {
@@ -132,7 +137,8 @@ export function loudPoster(): RecordingPoster {
     poster: {
       post(request: PostRequest): Promise<PostResult> {
         posted.push(request);
-        return Promise.resolve({ ok: true, messageRef: `o051-ref-${String(posted.length)}` });
+        mintedRefs += 1;
+        return Promise.resolve({ ok: true, messageRef: `o051-ref-${String(mintedRefs)}` });
       },
     },
   };

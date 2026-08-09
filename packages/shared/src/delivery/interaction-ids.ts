@@ -32,6 +32,10 @@ export const SHIPPED_LEAD_REPEAT_LABEL = "Lead with how many came back";
 
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
 
+// Slack never renders a block id, so the change travels here as well as in each button's value.
+// Nothing routes on it: the press resolves its org from the (channel, message) pair.
+export const SHIPPED_BLOCK_ID_PREFIX = "growthmind.shipped_change.v1:";
+
 export const SLACK_INTERACTION_ACTOR = "slack:interaction";
 
 export const SLACK_INTERACTION_ROLE = "slack_interaction";

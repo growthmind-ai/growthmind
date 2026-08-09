@@ -4,6 +4,8 @@ import {
   analysisFailingSentence,
   authoritativeSlackReceipt,
   backfillCompleteSentence,
+  changeReadOutSentence,
+  changeReportedSentence,
   digestLeadSentence,
   findingDeliveredSentence,
   genericNotificationSentence,
@@ -39,6 +41,7 @@ import type { ScopedDb } from "../repositories/types";
 import { analysisRuns } from "../schema/analysis-runs";
 import { user } from "../schema/auth";
 import { findings } from "../schema/findings";
+import { shippedChanges } from "../schema/shipped-changes";
 import { slackConnections } from "../schema/slack-connections";
 import { isDeliveryTarget } from "./delivery-channel-guard";
 import { findProjectNameForDispatch } from "./notification-dispatch.service";
@@ -85,10 +88,17 @@ export interface ReadBellSnapshotOptions {
   readonly windowDays: number;
 }
 
+interface ShippedChangeFacts {
+  readonly description: string;
+  readonly page: string;
+  readonly readoutDueAt: Date;
+}
+
 interface RenderSeams {
   readonly namesById: ReadonlyMap<string, string>;
   readonly findingTextRowsById: ReadonlyMap<string, { headline: string; context: unknown }>;
   readonly projectNamesById: ReadonlyMap<string, string>;
+  readonly shippedChangesById: ReadonlyMap<string, ShippedChangeFacts>;
   readonly organizationName: string;
 
   // The connection's stored code, dispatch's own source — never the vendor's message.
@@ -148,6 +158,24 @@ function sentenceOf(row: NotificationWithReadState, seams: RenderSeams): string 
     }
     case "digest":
       return digestLeadSentence(parsed.payload.notificationIds.length, parsed.payload.totalCount);
+    case "change_reported": {
+      const change = seams.shippedChangesById.get(row.subjectId);
+
+      return change === undefined
+        ? genericNotificationSentence()
+        : changeReportedSentence({
+            change: change.description,
+            page: change.page,
+            readoutDueAt: change.readoutDueAt,
+          });
+    }
+    case "change_readout": {
+      const change = seams.shippedChangesById.get(row.subjectId);
+
+      return change === undefined
+        ? genericNotificationSentence()
+        : changeReadOutSentence({ change: change.description, page: change.page });
+    }
   }
 }
 
@@ -247,10 +275,37 @@ export async function readBellSnapshot(
     }),
   );
 
+  const shippedChangeIds = [
+    ...new Set(
+      rows.filter((row) => row.subjectKind === "shipped_change").map((row) => row.subjectId),
+    ),
+  ];
+  const shippedChangesById = new Map<string, ShippedChangeFacts>();
+  if (shippedChangeIds.length > 0) {
+    const changeRows = await db
+      .select({
+        id: shippedChanges.id,
+        description: shippedChanges.description,
+        page: shippedChanges.page,
+        readoutDueAt: shippedChanges.readoutDueAt,
+      })
+      .from(shippedChanges)
+      .where(s.owned(shippedChanges, inArray(shippedChanges.id, shippedChangeIds)))
+      .limit(shippedChangeIds.length);
+    for (const row of changeRows) {
+      shippedChangesById.set(row.id, {
+        description: row.description,
+        page: row.page,
+        readoutDueAt: row.readoutDueAt,
+      });
+    }
+  }
+
   const seams: RenderSeams = {
     namesById,
     findingTextRowsById,
     projectNamesById,
+    shippedChangesById,
     organizationName: ctx.organizationName,
     healthReasonCode: connectionRow?.healthReasonCode ?? null,
   };
