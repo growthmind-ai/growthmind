@@ -21,11 +21,13 @@ import {
 // member without its emitter — the O-026 D11 dead wire — fails here by name.
 
 describe("the notification type enum is exactly the emitters that exist", () => {
-  test("the job-1 three plus the five O-051 job-2 members, and no others", () => {
+  test("the job-1 three, the five O-051 job-2 members, the two a reported change adds, and no others", () => {
     expect([...NOTIFICATION_TYPES].toSorted()).toEqual([
       "agent_first_contact",
       "analysis_failing",
       "backfill_complete",
+      "change_readout",
+      "change_reported",
       "digest",
       "finding_delivered",
       "key_created",
@@ -58,12 +60,25 @@ describe("the notification type enum is exactly the emitters that exist", () => 
     expect([...ACTIONABLE_CLASSES].toSorted()).toEqual(["act_now", "work"]);
   });
 
-  test("the subject kinds are the six the five emitters point at", () => {
+  test("both halves of a reported change are work, so both are owed a channel", () => {
+    expect(NOTIFICATION_CLASS_BY_TYPE.change_reported).toBe("work");
+    expect(NOTIFICATION_CLASS_BY_TYPE.change_readout).toBe("work");
+  });
+
+  test("a founder who never opens the app still gets both, because both are actionable", () => {
+    const actionable: readonly string[] = ACTIONABLE_CLASSES;
+
+    expect(actionable).toContain(NOTIFICATION_CLASS_BY_TYPE.change_reported);
+    expect(actionable).toContain(NOTIFICATION_CLASS_BY_TYPE.change_readout);
+  });
+
+  test("the subject kinds gain the change a report is about, and nothing else", () => {
     expect([...NOTIFICATION_SUBJECT_KINDS].toSorted()).toEqual([
       "agent_key",
       "finding",
       "organization",
       "project",
+      "shipped_change",
       "slack_connection",
       "source_connection",
     ]);

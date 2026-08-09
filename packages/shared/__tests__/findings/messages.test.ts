@@ -97,6 +97,76 @@ describe("the findings copy audit", () => {
   });
 });
 
+const REQUIRED_SHIPPED_MESSAGES = [
+  "SHIPPED_PROMISE_TEMPLATE",
+  "SHIPPED_UNVERIFIED_LINE",
+  "SHIPPED_PAGE_REACH_TEMPLATE",
+  "SHIPPED_RECORDED_CORPUS_LINE",
+  "SHIPPED_SPINE_CORPUS_LINE",
+  "SHIPPED_TRUNCATED_LINE",
+  "SHIPPED_TOO_FEW_TEMPLATE",
+  "SHIPPED_SPELLING_CHANGED_TEMPLATE",
+  "SHIPPED_VERDICT_QUESTION",
+  "SHIPPED_LEAD_TOO_LATE_REFUSAL",
+] as const;
+
+function shippedMessages(): readonly (readonly [string, string])[] {
+  const entries: (readonly [string, string])[] = [];
+
+  for (const [name, value] of Object.entries(findingsMessages)) {
+    if (name.startsWith("SHIPPED_") && typeof value === "string") {
+      entries.push([name, value]);
+    }
+  }
+
+  return entries;
+}
+
+describe("the copy a reported change speaks", () => {
+  test("every sentence the acknowledgement and the readout need is exported", () => {
+    const exported = shippedMessages().map(([name]) => name);
+
+    expect(exported.length).toBeGreaterThan(0);
+    for (const required of REQUIRED_SHIPPED_MESSAGES) {
+      expect(exported).toContain(required);
+    }
+  });
+
+  test("every one of them is registered, so the audits above can see it", () => {
+    const registered = new Set(ALL_FINDINGS_MESSAGES);
+    const unregistered = shippedMessages()
+      .filter(([, message]) => !registered.has(message))
+      .map(([name]) => name);
+
+    expect(shippedMessages().length).toBeGreaterThan(0);
+    expect(unregistered).toEqual([]);
+  });
+
+  test("a count reaches the sentence as a placeholder and never as a number", () => {
+    const templates = shippedMessages().filter(([name]) => name.endsWith("_TEMPLATE"));
+    expect(templates.length).toBeGreaterThan(0);
+
+    const withNumbers = shippedMessages()
+      .filter(([, message]) => BARE_STATUS.test(message))
+      .map(([name]) => name);
+
+    expect(withNumbers).toEqual([]);
+
+    const templatesWithoutTokens = templates
+      .filter(([, message]) => !/\{[a-z]+\}/i.test(message))
+      .map(([name]) => name);
+
+    expect(templatesWithoutTokens).toEqual([]);
+  });
+
+  test("it says page, and the word the audit bans never appears", () => {
+    const messages = shippedMessages().map(([, message]) => message.toLowerCase());
+
+    expect(messages.filter((message) => message.includes("page")).length).toBeGreaterThan(0);
+    expect(messages.filter((message) => message.includes("surface"))).toEqual([]);
+  });
+});
+
 describe("coverageSentences", () => {
   const full = {
     sessionsRead: 1104,

@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
 import {
+  MCP_READ_TOOLS,
   MCP_TOOL,
   MCP_TOOL_NAME_PATTERN,
   MCP_TOOL_NAMES,
   MCP_TOOLS,
+  MCP_WRITE_TOOLS,
   mcpToolNameSchema,
   resolveMcpTool,
+  type McpReadToolDescriptor,
 } from "../../src/mcp/tools";
 import {
   FINDING_EVIDENCE_MAX_ITEMS,
@@ -135,17 +138,26 @@ function inputKeysOf(): readonly string[] {
 }
 
 describe("MCP tool identity", () => {
-  test("exposes exactly the four read tools, by those literal names", () => {
+  test("exposes exactly the four read tools and the one write tool, by those literal names", () => {
     expect(MCP_TOOL.LIST_OPEN_FIXES).toBe("list_open_fixes");
     expect(MCP_TOOL.GET_FIX).toBe("get_fix");
     expect(MCP_TOOL.GET_FINDING).toBe("get_finding");
     expect(MCP_TOOL.GET_GROWTH_CONTEXT).toBe("get_growth_context");
+    expect(MCP_TOOL.REPORT_SHIPPED).toBe("report_shipped");
+
+    expect(MCP_READ_TOOLS.map((tool) => tool.name).toSorted()).toEqual([
+      "get_finding",
+      "get_fix",
+      "get_growth_context",
+      "list_open_fixes",
+    ]);
 
     expect(MCP_TOOLS.map((tool) => tool.name).toSorted()).toEqual([
       "get_finding",
       "get_fix",
       "get_growth_context",
       "list_open_fixes",
+      "report_shipped",
     ]);
   });
 
@@ -183,7 +195,7 @@ describe("MCP tool identity", () => {
 
 describe("resolving a tool name off the wire", () => {
   test("an unknown tool name is refused with instructions, never ignored", () => {
-    for (const unknown of ["get_fixes", "report_shipped", "", "LIST_OPEN_FIXES", "get_events"]) {
+    for (const unknown of ["get_fixes", "report_deployed", "", "LIST_OPEN_FIXES", "get_events"]) {
       const resolution = resolveMcpTool(unknown);
       expect(resolution.ok).toBe(false);
       if (resolution.ok) {
@@ -206,6 +218,16 @@ describe("resolving a tool name off the wire", () => {
       }
       expect(resolution.tool.name).toBe(name);
     }
+  });
+
+  test("the write tool resolves off the wire and resolves as a write", () => {
+    const resolution = resolveMcpTool(MCP_TOOL.REPORT_SHIPPED);
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) {
+      throw new Error("unreachable: the write tool must resolve");
+    }
+    expect(resolution.tool.name).toBe(MCP_TOOL.REPORT_SHIPPED);
+    expect(resolution.tool.readOnlyHint).toBe(false);
   });
 });
 
@@ -244,29 +266,62 @@ function mutationStemIn(text: string): string | null {
   return null;
 }
 
-describe("this surface is read-only", () => {
-  test("every tool declares itself read-only", () => {
-    expect(MCP_TOOLS.length).toBeGreaterThan(0);
-    for (const tool of MCP_TOOLS) {
+describe("this surface is read-only except where it names a write", () => {
+  test("every read tool declares itself read-only and every write tool declares itself a write", () => {
+    expect(MCP_READ_TOOLS.length).toBeGreaterThan(0);
+    expect(MCP_WRITE_TOOLS.length).toBeGreaterThan(0);
+
+    for (const tool of MCP_READ_TOOLS) {
       expect(tool.readOnlyHint).toBe(true);
     }
+    for (const tool of MCP_WRITE_TOOLS) {
+      expect(tool.readOnlyHint).toBe(false);
+    }
+
+    // A sixth tool in neither list would leave the surface unclassified.
+    expect(MCP_READ_TOOLS.length + MCP_WRITE_TOOLS.length).toBe(MCP_TOOLS.length);
   });
 
-  test("there is no write tool in the exported list", () => {
-    const names: readonly string[] = MCP_TOOLS.map((tool) => tool.name);
-    expect(names).not.toContain("report_shipped");
-    expect(MCP_TOOLS.length).toBe(4);
+  test("the write tools in the exported list are named exhaustively", () => {
+    const writeNames: readonly string[] = MCP_TOOLS.filter((tool) => !tool.readOnlyHint).map(
+      (tool) => tool.name,
+    );
+    expect(writeNames).toEqual([MCP_TOOL.REPORT_SHIPPED]);
   });
 
-  test("no tool name or description offers to change anything", () => {
-    for (const tool of MCP_TOOLS) {
+  test("four read tools, one write tool, five in total", () => {
+    expect(MCP_READ_TOOLS.length).toBe(4);
+    expect(MCP_WRITE_TOOLS.length).toBe(1);
+    expect(MCP_TOOLS.length).toBe(5);
+  });
+
+  test("no read tool offers to change anything, and every write tool says that it does", () => {
+    for (const tool of MCP_READ_TOOLS) {
       expect(mutationStemIn(tool.name)).toBeNull();
       expect(mutationStemIn(tool.title)).toBeNull();
       expect(mutationStemIn(tool.description)).toBeNull();
     }
 
+    for (const tool of MCP_WRITE_TOOLS) {
+      expect(mutationStemIn(tool.name)).not.toBeNull();
+    }
+  });
+
+  test("the mutation scanner still catches a sentence it was written against", () => {
     expect(mutationStemIn("Creates a fix and posts it to Slack.")).not.toBeNull();
-    expect(mutationStemIn("report_shipped")).not.toBeNull();
+    expect(mutationStemIn(MCP_TOOL.REPORT_SHIPPED)).not.toBeNull();
+  });
+
+  test("a read tool declaring itself a write is a compile error, not a test failure", () => {
+    const [readTool] = MCP_READ_TOOLS;
+    if (readTool === undefined) {
+      throw new Error("unreachable: there is at least one read tool");
+    }
+
+    // @ts-expect-error readOnlyHint is the literal true on a read descriptor.
+    const smuggled: McpReadToolDescriptor = { ...readTool, readOnlyHint: false };
+
+    expect(smuggled.name).toBe(readTool.name);
   });
 });
 
@@ -338,9 +393,13 @@ describe("tool inputs — the organization is never an argument", () => {
   test("the key walk reaches the keys it claims to check", () => {
     const keys = inputKeysOf();
     expect(keys.toSorted()).toEqual([
+      "control",
+      "description",
       "findingId",
       "fixId",
       "limit",
+      "page",
+      "projectId",
       "projectId",
       "projectId",
       "surface",
