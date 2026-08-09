@@ -5,7 +5,8 @@
   "description": "Does the model find the problems a growth engineer would, from real recorded sessions? Drives our own app with model-driven personas, runs the result through the production replay path, and scores what comes back against a held-out answer key.",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --pass-with-no-tests"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^5.0.47",

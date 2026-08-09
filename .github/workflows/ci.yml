@@ -90,8 +90,19 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
+      # `bun test` alone, with no argument, discovers every test file under the repo root and
+      # runs all of them in one process. That was fine at the file count this suite started at;
+      # past a few hundred files, that one process's own memory footprint outgrows the runner and
+      # the OS kills it mid-run (main went red on this exact step on 2026-08-09, no assertion
+      # failed — the kernel terminated `bun` for memory). `test:ci` runs the same discovery split
+      # into one process per workspace (`test:workspaces`, the same `--filter '*'` `typecheck`
+      # above already uses) plus one process for what owns no workspace (`test:root`, the root
+      # `__tests__/` and `scripts/`) — same tests, same count, each process's memory bounded by
+      # one workspace instead of the whole tree. `bun test` on its own is untouched and stays the
+      # documented command for a contributor's own machine (AGENTS.md), which has headroom this
+      # split exists because the runner does not.
       - name: Test
-        run: bun test
+        run: bun run test:ci
 
       - name: Build
         run: bun run build
