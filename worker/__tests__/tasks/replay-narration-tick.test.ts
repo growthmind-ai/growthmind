@@ -115,10 +115,20 @@ function fakeSessions(onStamp?: () => SessionRecord | null) {
   return { repo, stamps, rows };
 }
 
-// A meta snapshot then a click: enough for the transcript to have something to say.
+// A meta event, a full snapshot naming the clicked button, then the click: enough for the
+// transcript to have something to say, and (since ADD O-052, namesItsElement) for that click to
+// resolve to an element instead of being dropped as unplaceable.
 function eventsFor(): readonly RrwebEvent[] {
   return [
     { type: 4, timestamp: 1_000, data: { href: "/pricing", width: 800, height: 600 } },
+    {
+      type: 2,
+      timestamp: 1_500,
+      data: {
+        node: { type: 0, id: 1, childNodes: [{ type: 2, id: 5, tagName: "button", attributes: {}, childNodes: [] }] },
+        initialOffset: { top: 0, left: 0 },
+      },
+    },
     { type: 3, timestamp: 2_000, data: { source: 2, type: 2, id: 5, x: 10, y: 10 } },
   ];
 }
@@ -664,9 +674,26 @@ function transcriptRows(store: ReturnType<typeof fakeRepo>): readonly Transcript
   return store.rows as readonly TranscriptRow[];
 }
 
+// Every click needs a button in a full snapshot to resolve to: since ADD O-052, an action whose
+// element cannot be placed in any snapshot names nothing and is dropped before it reaches a
+// digest (packages/core/src/replay/actions.ts, namesItsElement), so a click on a node the
+// snapshot never mentions no longer counts as an action at all.
 function manyEvents(clicks: number): readonly RrwebEvent[] {
+  const buttons: Record<string, unknown>[] = [];
+  for (let index = 0; index < clicks; index += 1) {
+    buttons.push({ type: 2, id: 5 + index, tagName: "button", attributes: {}, childNodes: [] });
+  }
+
   const events: RrwebEvent[] = [
     { type: 4, timestamp: 1_000, data: { href: "/pricing", width: 800, height: 600 } },
+    {
+      type: 2,
+      timestamp: 1_500,
+      data: {
+        node: { type: 0, id: 1, childNodes: buttons },
+        initialOffset: { top: 0, left: 0 },
+      },
+    },
   ];
 
   for (let index = 0; index < clicks; index += 1) {
