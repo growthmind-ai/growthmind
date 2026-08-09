@@ -98,6 +98,11 @@ export const SHIPPED_LEAD_OFFER_LINE =
 export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
   "{change} on {page} again — the date I answer on has not moved: {date}.";
 
+// Composing this from the clock-unchanged and too-late sentences read as a contradiction: the
+// first promises a date that, on an answered change, is already in the past.
+export const SHIPPED_ALREADY_ANSWERED_TEMPLATE =
+  "{change} on {page} again — I already answered on that one on {date}, so I am not starting a second clock on it.";
+
 // Reach counts visits and not people, and it names its own denominator rather than leaving the
 // repeat sentence to point back at it: the two denominators are different sizes and different
 // units, so one pronoun across both was two wrong numbers in one breath.
@@ -210,6 +215,7 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_PROMISE_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
   SHIPPED_LEAD_OFFER_LINE,
+  SHIPPED_ALREADY_ANSWERED_TEMPLATE,
   SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_REACH_TEMPLATE,
   SHIPPED_NOBODY_TEMPLATE,

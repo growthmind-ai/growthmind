@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SHIPPED_ALREADY_ANSWERED_TEMPLATE,
   SHIPPED_LEAD_REACH_ACTION_ID,
   SHIPPED_LEAD_REPEAT_ACTION_ID,
   SHIPPED_LEAD_TOO_LATE_REFUSAL,
@@ -8,6 +9,7 @@ import {
   SHIPPED_UNVERIFIED_LINE,
 } from "@growthmind/shared";
 
+import { fill } from "../../src/replay-filters/template";
 import {
   renderShippedAcknowledgement,
   shippedAlreadyAnsweredBody,
@@ -55,8 +57,18 @@ describe("a change told again after it was answered is turned down, not acknowle
   test("should say the answer has already been given", () => {
     const body = shippedAlreadyAnsweredBody(PROMISE);
 
-    expect(body).toContain(SHIPPED_LEAD_TOO_LATE_REFUSAL);
+    expect(body).toBe(
+      fill(SHIPPED_ALREADY_ANSWERED_TEMPLATE, {
+        change: PROMISE.change,
+        page: PROMISE.page,
+        date: "23 August",
+      }),
+    );
     expect(body).toContain("23 August");
+
+    // The metric-change refusal is about what a change is judged on, not about whether it has
+    // been answered; composing the two read as a promise for a date already gone.
+    expect(body).not.toContain(SHIPPED_LEAD_TOO_LATE_REFUSAL);
   });
 
   test("should not read like the acknowledgement a first report gets", () => {
