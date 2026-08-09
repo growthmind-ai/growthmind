@@ -22,6 +22,7 @@ export {
 export {
   listDueShippedReadouts,
   listLapsedShippedChanges,
+  type LapsedShippedChange,
   type ScheduledShippedChange,
 } from "./shipped-changes";
 export { systemTenantContextFor } from "./system-context";

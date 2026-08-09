@@ -105,7 +105,7 @@ describe("an accepted report tells the whole organization, through the spine", (
     const { org, project } = await seedTenant(db, "accepted");
     await connectSlackChannel(db, org, "C0SHIPPED01");
 
-    const change = await createShippedChangesService(db, org.ctx).reportShipped(
+    const { change } = await createShippedChangesService(db, org.ctx).reportShipped(
       reportInput(project.id),
     );
 
@@ -138,6 +138,7 @@ describe("an accepted report tells the whole organization, through the spine", (
     const service = createShippedChangesService(db, org.ctx);
 
     const first = await service.reportShipped(reportInput(project.id));
+    expect(first.claim).toBe("reported");
 
     // The control beside the counts below: one report really did produce one acknowledgement,
     // so a second report producing none is dedup rather than an emitter that never fires.
@@ -150,14 +151,15 @@ describe("an accepted report tells the whole organization, through the spine", (
       }),
     );
 
-    expect(again.id).toBe(first.id);
+    expect(again.claim).toBe("clock_unchanged");
+    expect(again.change.id).toBe(first.change.id);
     expect(await changeRowsFor(db, project.id)).toHaveLength(1);
 
     // FR-5.5: the dedup key is the change id, so the second report cannot mint an
     // acknowledgement carrying a second readout date.
     const rows = await reportedRowsFor(db, org.organizationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.dedupKey).toBe(buildChangeReportedDedupKey(first.id));
+    expect(rows[0]?.dedupKey).toBe(buildChangeReportedDedupKey(first.change.id));
   });
 
   test("an identical report redelivered leaves one notification and one receipt", async () => {
@@ -182,7 +184,7 @@ describe("a workspace with no Slack channel still gets the fact, and the receipt
     const db = await openDb();
     const { org, project } = await seedTenant(db, "no-channel");
 
-    const change = await createShippedChangesService(db, org.ctx).reportShipped(
+    const { change } = await createShippedChangesService(db, org.ctx).reportShipped(
       reportInput(project.id),
     );
 

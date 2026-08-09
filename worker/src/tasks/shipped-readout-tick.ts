@@ -5,6 +5,7 @@ import {
   listDueShippedReadouts,
   listLapsedShippedChanges,
   systemContextFor,
+  type LapsedShippedChange,
   type ScheduledShippedChange,
 } from "@growthmind/db/system";
 
@@ -33,12 +34,37 @@ async function readOut(deps: ShippedReadoutTickDeps, change: ScheduledShippedCha
     return;
   }
 
-  await changes.recordReadout({ changeId: change.changeId, readOutAt: at });
+  const result = await changes.recordReadout({ changeId: change.changeId, readOutAt: at });
+
+  if (result.kind !== "read_out") {
+    deps.logger.warn(
+      `shipped readout: change ${change.changeId} was due and was not read out this run (${result.kind})`,
+    );
+  }
 }
 
 // A founder who never answers has told us something too, and this is where that is recorded.
 // No notification: the lapse is not news, and they already have the readout.
-async function lapse(deps: ShippedReadoutTickDeps, change: ScheduledShippedChange, at: Date) {
+async function lapse(deps: ShippedReadoutTickDeps, change: LapsedShippedChange, at: Date) {
+  // A readout that never reached a channel asked nobody anything, so recording "no verdict
+  // given" would put a decision in the founder's mouth. The change is abandoned with the reason
+  // instead — still terminal, still no orphan, and honest about which of the two happened.
+  if (!change.readoutDelivered) {
+    const abandoned = await createShippedChangesService(deps.db, contextFor(change)).abandon({
+      changeId: change.changeId,
+      reason: "never_asked",
+      at,
+    });
+
+    if (abandoned.kind !== "abandoned") {
+      deps.logger.warn(
+        `shipped readout: change ${change.changeId} was never asked and could not be closed this run`,
+      );
+    }
+
+    return;
+  }
+
   await createShippedChangeVerdictsRepo(deps.db, contextFor(change)).recordVerdict({
     changeId: change.changeId,
     verdict: "no_verdict_given",

@@ -14,6 +14,7 @@ export {
   type SetAsideBasis,
   type NoRateReason,
   type Rate,
+  type MeasuredRate,
 } from "./counts/measured-count";
 export {
   buildSetAsideBreakdown,
@@ -259,7 +260,7 @@ export {
   type SlackMessage,
   renderedMessageOf,
 } from "./delivery/slack-message";
-export { toBlockKit } from "./delivery/block-kit";
+export { escapeMrkdwn, toBlockKit } from "./delivery/block-kit";
 
 export {
   renderFixSpec,
@@ -583,6 +584,7 @@ export {
 } from "./notifications/digest-message";
 
 export {
+  normalisedPageAddress,
   pageMatches,
   matchReplayPages,
   matchesSpineWalk,
@@ -612,6 +614,8 @@ export {
 } from "./shipped/readout";
 export {
   renderShippedAcknowledgement,
+  shippedAlreadyAnsweredBody,
+  shippedClockUnchangedBody,
   shippedPromiseBody,
   type ShippedAcknowledgement,
   type ShippedAcknowledgementInput,

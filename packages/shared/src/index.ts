@@ -629,6 +629,7 @@ export {
   SHIPPED_ABANDONED_REASONS,
   SHIPPED_CORPUS_KINDS,
   SHIPPED_LEAD_COUNTS,
+  SHIPPED_REPORT_CLAIMS,
   SHIPPED_CHANGE_CONFLICT_TARGET,
   NO_CONTROL_LABEL,
   VERDICT_WINDOW_DAYS_DEFAULT,
@@ -638,6 +639,7 @@ export {
   type ShippedAbandonedReason,
   type ShippedCorpusKind,
   type ShippedLeadCount,
+  type ShippedReportClaim,
   type ShippedChangeKeyColumn,
 } from "./shipped/types";
 export {

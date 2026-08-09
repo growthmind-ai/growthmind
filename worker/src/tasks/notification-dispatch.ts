@@ -142,9 +142,12 @@ async function sentenceFor(
     case "change_readout": {
       // The counted answer and its buttons live in messageFor; this path is the summary
       // shape, and it names what is waiting rather than restating a number without them.
+      // A change whose project is gone renders no buttons there, and this sentence asks for a
+      // verdict — so it degrades with the render rather than asking a question nobody can
+      // answer.
       const change = await readShippedChangeForRender(db, ctx, notification.subjectId);
 
-      return change === null
+      return change === null || change.projectId === null
         ? genericNotificationSentence()
         : changeReadOutSentence({ change: change.description, page: change.page });
     }

@@ -105,8 +105,10 @@ describe("a report never crosses the tenant boundary", () => {
       readoutDueAt: READOUT_DUE_AT,
     });
 
-    expect(await createShippedChangesRepo(db, a.org.ctx).findById(theirs.id)).toBeNull();
-    expect(await createShippedChangesRepo(db, b.org.ctx).findById(theirs.id)).not.toBeNull();
+    expect(await createShippedChangesRepo(db, a.org.ctx).findById(theirs.change.id)).toBeNull();
+    expect(
+      await createShippedChangesRepo(db, b.org.ctx).findById(theirs.change.id),
+    ).not.toBeNull();
   });
 
   test("org A cannot read the verdict recorded against org B's change", async () => {
@@ -122,7 +124,7 @@ describe("a report never crosses the tenant boundary", () => {
     });
 
     expect(
-      await createShippedChangeVerdictsRepo(db, a.org.ctx).findForChange(theirs.id),
+      await createShippedChangeVerdictsRepo(db, a.org.ctx).findForChange(theirs.change.id),
     ).toBeNull();
   });
 });

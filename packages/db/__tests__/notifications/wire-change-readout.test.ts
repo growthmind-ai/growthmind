@@ -64,13 +64,13 @@ async function seedTenant(
 }
 
 async function reportChange(db: TestDb, org: SeededOrgWithOwner, project: SeededProject) {
-  return createShippedChangesService(db, org.ctx).reportShipped({
+  return (await createShippedChangesService(db, org.ctx).reportShipped({
     projectId: project.id,
     page: "/reports",
     control: "Export CSV",
     description: "CSV export",
     reportedAt: REPORTED_AT,
-  });
+  })).change;
 }
 
 async function readoutRowsFor(db: TestDb, organizationId: string) {

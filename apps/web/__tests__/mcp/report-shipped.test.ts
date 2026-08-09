@@ -18,6 +18,8 @@ import {
   FIX_RESULTS_WINDOW_DAYS,
   FORBIDDEN_PRODUCT_JARGON,
   MCP_TOOL,
+  SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
+  SHIPPED_PROMISE_TEMPLATE,
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -111,6 +113,7 @@ interface ChangeRow {
   readonly page: string;
   readonly description: string;
   readonly controlLabel: string;
+  readonly state: string;
   readonly reportedAt: Date;
   readonly readoutDueAt: Date;
 }
@@ -256,6 +259,111 @@ describe("the coding agent reports a change through the real MCP route", () => {
     expect((await notificationRowsFor(org.organizationId)).length).toBeGreaterThan(
       notifications.length,
     );
+  });
+});
+
+// Asserted at the rendered value rather than at the template: the placeholders carry the change,
+// the page and the date, so the literal segments around them are the sentence.
+function rendersTemplate(text: string, template: string): boolean {
+  const segments = template
+    .split(/\{[a-zA-Z]+\}/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 3);
+
+  return segments.length > 0 && segments.every((segment) => text.includes(segment));
+}
+
+async function moveToClosed(changeId: string): Promise<void> {
+  await handle.db.execute(`update shipped_changes set state = 'closed' where id = '${changeId}'`);
+}
+
+describe("a re-report is answered, and never with a second promise", () => {
+  test("the same change reported twice says the date has not moved, and starts no second clock", async () => {
+    const org = await freshOrg("re-report");
+    const input = { description: CHANGE, page: PAGE, projectId: org.projectId };
+
+    const first = await report(org.key, input);
+    expect(first.isError).toBe(false);
+    expect(rendersTemplate(first.text, SHIPPED_PROMISE_TEMPLATE)).toBe(true);
+
+    const clock = (await changeRowsFor(org.organizationId))[0]?.readoutDueAt.toISOString();
+    expect(clock).toBeDefined();
+
+    const again = await report(org.key, { ...input, description: "CSV export, with headings" });
+
+    expect(again.isError).toBe(false);
+    expect(rendersTemplate(again.text, SHIPPED_CLOCK_UNCHANGED_TEMPLATE)).toBe(true);
+
+    // FR-5.5: the sentence that promises a date belongs to the first report alone.
+    expect(rendersTemplate(again.text, SHIPPED_PROMISE_TEMPLATE)).toBe(false);
+
+    const rows = await changeRowsFor(org.organizationId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.description).toBe("CSV export, with headings");
+    expect(rows[0]?.readoutDueAt.toISOString()).toBe(clock);
+    expect(await changeNotificationsFor(org.organizationId)).toHaveLength(1);
+  });
+
+  test("a report landing after the change was answered is refused, not acknowledged", async () => {
+    const org = await freshOrg("re-report-late");
+    const input = { description: CHANGE, page: PAGE, projectId: org.projectId };
+
+    const first = await report(org.key, input);
+    expect(first.isError).toBe(false);
+
+    const changeId = (await changeRowsFor(org.organizationId))[0]?.id ?? "";
+    expect(changeId).not.toBe("");
+    await moveToClosed(changeId);
+
+    const late = await report(org.key, { ...input, description: "a different change, same page" });
+
+    // An `ok` here would hand the agent a date that has already gone, and the description the
+    // founder's verdict hangs on would have been rewritten underneath it.
+    expect(late.isError).toBe(true);
+
+    const rows = await changeRowsFor(org.organizationId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.description).toBe(CHANGE);
+    expect(rows[0]?.state).toBe("closed");
+  });
+});
+
+describe("the page is written down the way the spine writes it", () => {
+  const SPELLINGS = ["/Reports", "/reports/", "https://app.example.com/reports?t=1"] as const;
+
+  test("every spelling of one page lands on one row under the canonical path", async () => {
+    const org = await freshOrg("page-spelling");
+
+    for (const page of SPELLINGS) {
+      const answer = await report(org.key, {
+        description: CHANGE,
+        page,
+        projectId: org.projectId,
+      });
+
+      expect({ page, isError: answer.isError }).toEqual({ page, isError: false });
+    }
+
+    // One row, because a stored `/Reports` matches nothing the spine holds and forks the change
+    // key away from the same change reported with a trailing slash.
+    const rows = await changeRowsFor(org.organizationId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.page).toBe(PAGE);
+  });
+
+  test("a page address we cannot read is refused with the field named, and writes nothing", async () => {
+    const org = await freshOrg("page-unreadable");
+
+    const answer = await report(org.key, {
+      description: CHANGE,
+      page: "   ",
+      projectId: org.projectId,
+    });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("page");
+
+    expect(await changeRowsFor(org.organizationId)).toHaveLength(0);
   });
 });
 

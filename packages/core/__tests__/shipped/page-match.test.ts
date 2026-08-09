@@ -1,8 +1,43 @@
 import { describe, expect, test } from "bun:test";
 
 import { sessionWalk } from "../../src/spine/walk";
-import { matchReplayPages, matchesSpineWalk, pageMatches } from "../../src/shipped/page-match";
+import {
+  matchReplayPages,
+  matchesSpineWalk,
+  normalisedPageAddress,
+  pageMatches,
+} from "../../src/shipped/page-match";
 import { OTHER_PAGE, SHIPPED_PAGE, SHIPPED_PAGE_HREF, shippedSession } from "./fixtures";
+
+describe("a page address becomes the one spelling the spine holds, or nothing", () => {
+  test("should give the same path back for every spelling of one page", () => {
+    // The write path reports a change against a page a coding agent typed, and the readout
+    // joins on exact equality, so these four have to collapse to one string or the change
+    // measures nothing and its change key forks.
+    for (const written of [
+      "/reports",
+      "/Reports",
+      "/reports/",
+      "https://app.example.test/reports?t=1",
+    ]) {
+      expect({ written, path: normalisedPageAddress(written) }).toEqual({
+        written,
+        path: "/reports",
+      });
+    }
+  });
+
+  test("should give back nothing when there is no path in it at all", () => {
+    expect(normalisedPageAddress("   ")).toBeNull();
+    expect(normalisedPageAddress("?utm=x")).toBeNull();
+  });
+
+  test("should be its own fixed point, so a second pass cannot re-spell it", () => {
+    const once = normalisedPageAddress("/Reports/Archive/");
+    expect(once).toBe("/reports/archive");
+    expect(normalisedPageAddress(once ?? "")).toBe(once);
+  });
+});
 
 describe("the replay page strings are not the spine's spelling, so the join normalises", () => {
   test("should normalise a replay page href to the spine's path spelling", () => {

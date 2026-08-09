@@ -4,6 +4,7 @@ import { and, asc, eq, isNotNull, lte, sql } from "drizzle-orm";
 import type { ScopedDb } from "../repositories/types";
 import { organization } from "../schema/auth";
 import { notificationSettings } from "../schema/notification-settings";
+import { notifications, notificationSends } from "../schema/notifications";
 import { shippedChanges } from "../schema/shipped-changes";
 
 export interface ScheduledShippedChange {
@@ -16,12 +17,31 @@ export interface ScheduledShippedChange {
   readonly projectId: string | null;
 }
 
+export interface LapsedShippedChange extends ScheduledShippedChange {
+  // Whether the readout actually reached the org's channel. An org with no Slack connection
+  // gets a quiet receipt, so without this the lapse pass would record "no verdict given"
+  // against a founder who was never asked.
+  readonly readoutDelivered: boolean;
+}
+
 const SCHEDULED_COLUMNS = {
   changeId: shippedChanges.id,
   organizationId: shippedChanges.organizationId,
   organizationName: organization.name,
   projectId: shippedChanges.projectId,
 };
+
+// Only `sent` counts. A quiet receipt means there was no channel to ask in, and a failed one
+// means the ask never landed; neither is a question the founder declined to answer.
+const READOUT_WAS_DELIVERED = sql<boolean>`exists (
+  select 1
+  from ${notifications}
+  join ${notificationSends} on ${notificationSends.notificationId} = ${notifications.id}
+  where ${notifications.organizationId} = ${shippedChanges.organizationId}
+    and ${notifications.subjectId} = ${shippedChanges.id}
+    and ${notifications.type} = 'change_readout'
+    and ${notificationSends.status} = 'sent'
+)`;
 
 export async function listDueShippedReadouts(
   db: ScopedDb,
@@ -41,9 +61,9 @@ export async function listDueShippedReadouts(
 export async function listLapsedShippedChanges(
   db: ScopedDb,
   at: Date,
-): Promise<readonly ScheduledShippedChange[]> {
+): Promise<readonly LapsedShippedChange[]> {
   return db
-    .select(SCHEDULED_COLUMNS)
+    .select({ ...SCHEDULED_COLUMNS, readoutDelivered: READOUT_WAS_DELIVERED })
     .from(shippedChanges)
     .innerJoin(organization, eq(organization.id, shippedChanges.organizationId))
     .leftJoin(

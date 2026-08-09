@@ -1,8 +1,10 @@
 import {
   NO_CONTROL_LABEL,
   URL_PATH_NORMALISATION_VERSION,
+  isNormalisedUrlPath,
   type ShippedCorpusKind,
   type ShippedLeadCount,
+  type ShippedReportClaim,
   type TenantContext,
 } from "@growthmind/shared";
 import { eq } from "drizzle-orm";
@@ -35,8 +37,13 @@ export interface ChooseLeadCountInput {
 
 export type ChooseLeadCountResult = { readonly kind: "chosen" | "already_read_out" };
 
+export interface ReportShippedChangeResult {
+  readonly claim: ShippedReportClaim;
+  readonly change: ShippedChangeRow;
+}
+
 export interface ShippedChangesRepo {
-  reportShipped(input: ReportShippedChangeInput): Promise<ShippedChangeRow>;
+  reportShipped(input: ReportShippedChangeInput): Promise<ReportShippedChangeResult>;
 
   // The state is the condition, so a press that lands after the readout moves nothing and says
   // so rather than editing what has already been answered.
@@ -64,6 +71,19 @@ function notOurProject(): Error {
   return new Error("shipped_changes.reportShipped: that project belongs to another organization");
 }
 
+// page_normalisation_version is stamped from the current constant, so a page that is not already
+// the normaliser's own output would be stamped as normalised while matching nothing the spine
+// holds. The same posture as computeFindingSignature's surface guard.
+function assertNormalisedPage(page: string): void {
+  if (isNormalisedUrlPath(page)) return;
+
+  throw new Error(
+    "shipped_changes.reportShipped refuses a page that is not already a normaliseUrlPath fixed " +
+      "point: the row stamps the normalisation version, so the page must equal its own " +
+      "normalised form before it can be written.",
+  );
+}
+
 export function createShippedChangesRepo(
   db: ScopedExecutor,
   ctx: TenantContext,
@@ -72,17 +92,25 @@ export function createShippedChangesRepo(
   const s = scoped(db, ctx);
 
   return {
-    async reportShipped(input: ReportShippedChangeInput): Promise<ShippedChangeRow> {
+    async reportShipped(input: ReportShippedChangeInput): Promise<ReportShippedChangeResult> {
       const parsed = reportShippedChangeSchema.parse(input);
+
+      assertNormalisedPage(parsed.page);
 
       await s.assertProjectOwned(parsed.projectId, notOurProject);
 
       const controlLabel = parsed.control ?? NO_CONTROL_LABEL;
 
-      // One statement against the change-key index, never check-then-create: two concurrent
-      // reports of one change leave one row and one clock (D6). The conflict arm updates the
-      // description only, so the clock a re-report carries is discarded rather than applied.
-      return c.insertOrFetch(
+      const changeKey = [
+        eq(shippedChanges.projectId, parsed.projectId),
+        eq(shippedChanges.page, parsed.page),
+        eq(shippedChanges.controlLabel, controlLabel),
+      ];
+
+      // Insert-first against the change-key index, never check-then-create: two concurrent
+      // reports of one change leave one row and one clock (D6), and the arm that returns a row
+      // is the arm that created it.
+      const attempt = await c.claim(
         {
           projectId: parsed.projectId,
           page: parsed.page,
@@ -100,14 +128,36 @@ export function createShippedChangesRepo(
             shippedChanges.page,
             shippedChanges.controlLabel,
           ],
-          set: { description: parsed.description },
-          fetch: [
-            eq(shippedChanges.projectId, parsed.projectId),
-            eq(shippedChanges.page, parsed.page),
-            eq(shippedChanges.controlLabel, controlLabel),
-          ],
+          fetch: changeKey,
         },
       );
+
+      if (attempt.claimed && attempt.row !== null) {
+        return { claim: "reported", change: attempt.row };
+      }
+
+      // The state is the predicate, so the description a re-report carries can only land while
+      // the change is still open. Rewriting it on a row already read out would hang the
+      // founder's verdict off wording they never saw. The clock is never in the set.
+      const reworded = await c.update(
+        { description: parsed.description },
+        ...changeKey,
+        eq(shippedChanges.state, "reported"),
+      );
+
+      if (reworded !== null) {
+        return { claim: "clock_unchanged", change: reworded };
+      }
+
+      const settled = await c.maybe(...changeKey);
+
+      if (settled === null) {
+        throw new Error(
+          "shipped_changes.reportShipped: the change key conflicted and its row could not be read",
+        );
+      }
+
+      return { claim: "already_answered", change: settled };
     },
 
     async chooseLeadCount(input: ChooseLeadCountInput): Promise<ChooseLeadCountResult> {

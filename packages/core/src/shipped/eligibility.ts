@@ -7,7 +7,7 @@ import type { DetectorCorpus, SessionReplay, SessionTimeline } from "../detect/t
 import { deliverableName } from "../replay/describe-value";
 import type { SessionAction, SessionTranscript } from "../replay/types";
 import { surfaceNormalisationVersionOf } from "../spine/walk";
-import { matchReplayPages, matchesSpineWalk, normalisedReplayPage } from "./page-match";
+import { matchReplayPages, matchesSpineWalk, normalisedPageAddress } from "./page-match";
 
 export type EligibleSession = {
   readonly session: SessionTimeline;
@@ -64,7 +64,7 @@ function eligibleOnRecordings(
     if (replay === undefined) continue;
 
     const match = matchReplayPages(page, replay.transcript.pages);
-    const unreadable = replay.transcript.pages.some((href) => normalisedReplayPage(href) === null);
+    const unreadable = replay.transcript.pages.some((href) => normalisedPageAddress(href) === null);
     if (!match.matched && !unreadable) continue;
 
     eligible.push({

@@ -64,7 +64,7 @@ async function seedReadOutChange(
 
   return {
     org,
-    changeId: change.id,
+    changeId: change.change.id,
     verdicts: createShippedChangeVerdictsRepo(db, org.ctx),
   };
 }

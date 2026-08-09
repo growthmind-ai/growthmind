@@ -26,6 +26,13 @@ export interface ReportedChange {
 
 export type ReportShippedAnswer =
   | { readonly outcome: "reported"; readonly change: ReportedChange }
+
+  // The same change, told again inside its window: one row, one clock, and no second promise.
+  | { readonly outcome: "clock_unchanged"; readonly change: ReportedChange }
+
+  // Told again after it was answered. The change key is fixed at page and control, so there is
+  // no second row to open and no date left to promise.
+  | { readonly outcome: "already_answered"; readonly change: ReportedChange }
   | { readonly outcome: "no_project" }
   | { readonly outcome: "not_our_project" }
   | { readonly outcome: "ambiguous_project"; readonly projectIds: readonly string[] };

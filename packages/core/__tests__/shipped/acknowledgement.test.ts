@@ -3,11 +3,15 @@ import { describe, expect, test } from "bun:test";
 import {
   SHIPPED_LEAD_REACH_ACTION_ID,
   SHIPPED_LEAD_REPEAT_ACTION_ID,
+  SHIPPED_LEAD_TOO_LATE_REFUSAL,
+  SHIPPED_PROMISE_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
 } from "@growthmind/shared";
 
 import {
   renderShippedAcknowledgement,
+  shippedAlreadyAnsweredBody,
+  shippedClockUnchangedBody,
   shippedPromiseBody,
 } from "../../src/shipped/acknowledgement";
 
@@ -23,6 +27,43 @@ function acknowledgement() {
     readoutDueAt: READOUT_DUE_AT,
   });
 }
+
+const PROMISE = {
+  change: "CSV export",
+  page: "/reports",
+  readoutDueAt: READOUT_DUE_AT,
+};
+
+describe("a change told again gets the date it already has, never a second promise", () => {
+  test("should name the date and say it has not moved", () => {
+    const body = shippedClockUnchangedBody(PROMISE);
+
+    expect(body).toContain("23 August");
+    expect(body).toContain("CSV export");
+    expect(body).toContain("/reports");
+  });
+
+  test("should not repeat the sentence that promises an answer", () => {
+    // The first report's sentence is what makes the forecast; saying it twice reads as a second
+    // clock on a change that only has one.
+    expect(shippedClockUnchangedBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
+    expect(shippedClockUnchangedBody(PROMISE)).not.toContain(SHIPPED_PROMISE_TEMPLATE.slice(0, 20));
+  });
+});
+
+describe("a change told again after it was answered is turned down, not acknowledged", () => {
+  test("should say the answer has already been given", () => {
+    const body = shippedAlreadyAnsweredBody(PROMISE);
+
+    expect(body).toContain(SHIPPED_LEAD_TOO_LATE_REFUSAL);
+    expect(body).toContain("23 August");
+  });
+
+  test("should not read like the acknowledgement a first report gets", () => {
+    expect(shippedAlreadyAnsweredBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
+    expect(shippedAlreadyAnsweredBody(PROMISE)).not.toBe(shippedClockUnchangedBody(PROMISE));
+  });
+});
 
 describe("the promise is made at report time", () => {
   test("should name the date the answer lands, in the founder's own calendar words", () => {

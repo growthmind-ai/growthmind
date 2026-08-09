@@ -200,3 +200,64 @@ describe("WIRE-B3 — a stamp that throws never refuses an otherwise-valid call"
     }
   });
 });
+
+// The tool surface writes now, and drizzle-orm's query error carries the statement and every
+// bound parameter in its own `message` — so the caller's description and page reach the log
+// unless the catch scrubs them (worker/__tests__/driver-error-discipline.test.ts, B-041).
+const WRITTEN_DESCRIPTION = "CSV export the founder typed";
+
+const WRITTEN_PAGE = "/reports";
+
+class FakeQueryError extends Error {
+  readonly query = 'insert into "shipped_changes" ("page", "description") values ($1, $2)';
+  readonly params = [WRITTEN_PAGE, WRITTEN_DESCRIPTION];
+
+  constructor() {
+    super(
+      `Failed query: insert into "shipped_changes" ("page", "description") values ($1, $2)\n` +
+        `params: ${WRITTEN_PAGE}, ${WRITTEN_DESCRIPTION}`,
+    );
+  }
+}
+
+describe("WIRE-B4 — a write that throws logs a reason, never the row it was writing", () => {
+  test("the log carries neither the description nor the page the caller sent", async () => {
+    const logged: LogRecord[] = [];
+    const restore = setLogSink((record) => {
+      logged.push(record);
+    });
+
+    try {
+      const response = await handleMcpRequest(
+        toolCallRequest({
+          tool: MCP_TOOL.REPORT_SHIPPED,
+          input: { description: WRITTEN_DESCRIPTION, page: WRITTEN_PAGE },
+          key: KEY_A,
+        }),
+        {
+          credentials: CREDENTIALS,
+          reads: throwingReadPort(),
+          writes: {
+            reportShipped: (): Promise<never> => Promise.reject(new FakeQueryError()),
+          },
+        },
+      );
+
+      expect(await response.text()).toContain(UNAVAILABLE.message);
+
+      const errors = logged.filter((record) => record.level === "error");
+      expect(errors).toHaveLength(1);
+
+      const written = JSON.stringify(errors);
+      expect(written).not.toContain(WRITTEN_DESCRIPTION);
+      expect(written).not.toContain("params:");
+
+      // The control: the fault is still described, so scrubbing has not turned the log into
+      // a line an operator can do nothing with.
+      expect(written).toContain(MCP_TOOL.REPORT_SHIPPED);
+      expect(written.length).toBeGreaterThan(0);
+    } finally {
+      restore();
+    }
+  });
+});

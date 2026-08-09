@@ -1,9 +1,11 @@
 import {
+  SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_LEAD_OFFER_LINE,
   SHIPPED_LEAD_REACH_ACTION_ID,
   SHIPPED_LEAD_REACH_LABEL,
   SHIPPED_LEAD_REPEAT_ACTION_ID,
   SHIPPED_LEAD_REPEAT_LABEL,
+  SHIPPED_LEAD_TOO_LATE_REFUSAL,
   SHIPPED_NOTED_TEMPLATE,
   SHIPPED_PROMISE_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
@@ -61,6 +63,27 @@ export function shippedPromiseBody(input: ShippedPromise): string {
     SHIPPED_UNVERIFIED_LINE,
     SHIPPED_LEAD_OFFER_LINE,
   ].join(" ");
+}
+
+function clockUnchangedSentence(input: ShippedPromise): string {
+  return fill(SHIPPED_CLOCK_UNCHANGED_TEMPLATE, {
+    change: input.change,
+    page: input.page,
+    date: dueDateLabel(input.readoutDueAt),
+  });
+}
+
+// A second report of a change already on the clock. HC-2 makes it the same change, so the
+// answer states the date rather than promising a new one.
+export function shippedClockUnchangedBody(input: ShippedPromise): string {
+  return clockUnchangedSentence(input);
+}
+
+// A report landing after the change was answered. The change key is fixed at page and control,
+// so this can neither fork a row nor be given a date, and saying so beats a promise for a day
+// that has gone.
+export function shippedAlreadyAnsweredBody(input: ShippedPromise): string {
+  return [clockUnchangedSentence(input), SHIPPED_LEAD_TOO_LATE_REFUSAL].join(" ");
 }
 
 export function renderShippedAcknowledgement(

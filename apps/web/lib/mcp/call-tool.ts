@@ -1,4 +1,5 @@
 import { renderFixSpec } from "@growthmind/core";
+import { describeDriverError } from "@growthmind/db";
 import {
   FIX_ATTEMPT_CEILING,
   MCP_TOOL,
@@ -73,7 +74,10 @@ export async function callTool(
   } catch (error) {
     logger.error("mcp: a tool call could not be completed", {
       tool: resolution.tool.name,
-      error,
+
+      // This wraps a database write now, and the driver puts every bound parameter in the
+      // message — the caller's own description and page among them.
+      reason: describeDriverError(error),
     });
     return { ok: false, refusal: UNAVAILABLE };
   }

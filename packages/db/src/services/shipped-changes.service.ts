@@ -1,9 +1,10 @@
 import {
   FIX_RESULTS_WINDOW_DAYS,
+  logger,
   type ShippedAbandonedReason,
   type TenantContext,
 } from "@growthmind/shared";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { emitChangeReadout } from "../notifications/change-readout";
 import { emitChangeReported } from "../notifications/change-reported";
@@ -11,7 +12,7 @@ import { inTransaction, orgCrud } from "../repositories/crud";
 import { scoped } from "../repositories/scope";
 import {
   createShippedChangesRepo,
-  type ShippedChangeRow,
+  type ReportShippedChangeResult,
 } from "../repositories/shipped-changes.repo";
 import type { ScopedExecutor } from "../repositories/types";
 import { shippedChanges } from "../schema/shipped-changes";
@@ -50,7 +51,7 @@ export type AbandonChangeResult = {
 export interface ShippedChangesService {
   // No readout date in the input, deliberately: the product sets it from the results window, so
   // the assistant cannot choose the date it is marked on and this stays a forecast.
-  reportShipped(input: ReportShippedInput): Promise<ShippedChangeRow>;
+  reportShipped(input: ReportShippedInput): Promise<ReportShippedChangeResult>;
 
   recordReadout(input: RecordReadoutInput): Promise<RecordReadoutResult>;
 
@@ -66,9 +67,9 @@ export function createShippedChangesService(
   ctx: TenantContext,
 ): ShippedChangesService {
   return {
-    async reportShipped(input: ReportShippedInput): Promise<ShippedChangeRow> {
-      return inTransaction(db, async (tx): Promise<ShippedChangeRow> => {
-        const change = await createShippedChangesRepo(tx, ctx).reportShipped({
+    async reportShipped(input: ReportShippedInput): Promise<ReportShippedChangeResult> {
+      return inTransaction(db, async (tx): Promise<ReportShippedChangeResult> => {
+        const result = await createShippedChangesRepo(tx, ctx).reportShipped({
           projectId: input.projectId,
           page: input.page,
           description: input.description,
@@ -77,11 +78,27 @@ export function createShippedChangesService(
           ...(input.control === undefined ? {} : { control: input.control }),
         });
 
-        // Keyed on the change id, which the upsert holds fixed, so a re-report keys into the
-        // acknowledgement that already exists rather than promising a second date.
-        await emitChangeReported(tx, change.organizationId, { changeId: change.id });
+        // Only the report that created the row promises a date. A re-report keys into the
+        // acknowledgement that already exists, and a report landing after the readout has no
+        // date left to promise.
+        if (result.claim !== "reported") {
+          return result;
+        }
 
-        return change;
+        const change = result.change;
+        const { emitted } = await emitChangeReported(tx, change.organizationId, {
+          changeId: change.id,
+        });
+
+        // The row is the fact and survives its announcement (D8), but a promise nobody heard is
+        // worth knowing about.
+        if (!emitted) {
+          logger.warn("shipped changes: a change was recorded and its acknowledgement was not", {
+            changeId: change.id,
+          });
+        }
+
+        return result;
       });
     },
 
@@ -113,7 +130,18 @@ export function createShippedChangesService(
           return { kind: "already_read_out" };
         }
 
-        await emitChangeReadout(tx, claimed.organizationId, { changeId: claimed.id });
+        const { emitted } = await emitChangeReadout(tx, claimed.organizationId, {
+          changeId: claimed.id,
+        });
+
+        // Here the notification IS the readout, so a swallowed emit must take the transition
+        // with it. Committing read_out with nothing announced drops the row out of the due scan
+        // forever and lets the lapse pass record a silence the founder was never asked to break.
+        if (!emitted) {
+          throw new Error(
+            `shipped_changes.recordReadout: ${claimed.id} could not be announced, so it is not being recorded as read out`,
+          );
+        }
 
         return { kind: "read_out" };
       });
@@ -121,11 +149,13 @@ export function createShippedChangesService(
 
     async abandon(input: AbandonChangeInput): Promise<AbandonChangeResult> {
       // One conditional statement, and no notification: there is nothing honest to say about a
-      // change whose project is gone, and the state is what stops the row being read out later.
+      // change whose project is gone or whose readout never reached anyone, and the state is
+      // what stops the row being read out or answered later. Both open states are claimable —
+      // project_gone closes a reported row, never_asked closes one already read out.
       const claimed = await orgCrud(db, ctx, shippedChanges).update(
         { state: "abandoned", abandonedReason: input.reason, closedAt: input.at },
         eq(shippedChanges.id, input.changeId),
-        eq(shippedChanges.state, "reported"),
+        inArray(shippedChanges.state, ["reported", "read_out"]),
       );
 
       return { kind: claimed === null ? "not_reportable" : "abandoned" };

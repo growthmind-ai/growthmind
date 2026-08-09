@@ -16,7 +16,7 @@ export function createLiveWritePort(db: ScopedDb): McpWritePort {
         return resolved;
       }
 
-      const change = await createShippedChangesService(db, command.principal).reportShipped({
+      const result = await createShippedChangesService(db, command.principal).reportShipped({
         projectId: resolved.projectId,
         page: command.page,
         description: command.description,
@@ -24,14 +24,14 @@ export function createLiveWritePort(db: ScopedDb): McpWritePort {
         ...(command.control === null ? {} : { control: command.control }),
       });
 
-      return { outcome: "reported", change: reported(change) };
+      return { outcome: result.claim, change: reported(result.change) };
     },
   };
 }
 
 type ReportedRow = Awaited<
   ReturnType<ReturnType<typeof createShippedChangesService>["reportShipped"]>
->;
+>["change"];
 
 function reported(change: ReportedRow): ReportedChange {
   return {

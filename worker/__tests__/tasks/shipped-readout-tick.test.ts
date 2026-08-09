@@ -145,7 +145,15 @@ interface MirrorReportShippedInput {
 }
 
 type MirrorShippedChangesRepo = {
-  reportShipped(input: MirrorReportShippedInput): Promise<{ readonly id: string }>;
+  reportShipped(input: MirrorReportShippedInput): Promise<{
+    readonly claim: string;
+    readonly change: { readonly id: string };
+  }>;
+
+  chooseLeadCount(input: {
+    readonly changeId: string;
+    readonly leadCount: string;
+  }): Promise<{ readonly kind: string }>;
 };
 
 type CreateShippedChangesRepo = (db: TestDb, ctx: TenantContext) => MirrorShippedChangesRepo;
@@ -188,6 +196,8 @@ interface ShippedCopy {
   readonly pageReach: string;
   readonly promise: string;
   readonly reach: string;
+  readonly readOut: string;
+  readonly repeat: string;
   readonly spellingChanged: string;
   readonly spineCorpus: string;
   readonly unverified: string;
@@ -210,6 +220,8 @@ function shippedCopy(): Promise<ShippedCopy> {
       pageReach: await one("SHIPPED_PAGE_REACH_TEMPLATE"),
       promise: await one("SHIPPED_PROMISE_TEMPLATE"),
       reach: await one("SHIPPED_REACH_TEMPLATE"),
+      readOut: await one("SHIPPED_READ_OUT_TEMPLATE"),
+      repeat: await one("SHIPPED_REPEAT_TEMPLATE"),
       spellingChanged: await one("SHIPPED_SPELLING_CHANGED_TEMPLATE"),
       spineCorpus: await one("SHIPPED_SPINE_CORPUS_LINE"),
       unverified: await one("SHIPPED_UNVERIFIED_LINE"),
@@ -289,13 +301,26 @@ async function reportChange(
 ): Promise<{ readonly id: string }> {
   const createRepo = await loadShippedChangesRepo();
 
-  return createRepo(db, fixture.org.ctx).reportShipped({
+  const reported = await createRepo(db, fixture.org.ctx).reportShipped({
     projectId: fixture.project.id,
     page: overrides.page ?? PAGE,
     description: overrides.description ?? CHANGE,
     reportedAt: REPORTED_AT,
     readoutDueAt: READOUT_DUE_AT,
   });
+
+  return reported.change;
+}
+
+async function leadWithRepeat(db: TestDb, fixture: Fixture, changeId: string): Promise<void> {
+  const createRepo = await loadShippedChangesRepo();
+
+  const chosen = await createRepo(db, fixture.org.ctx).chooseLeadCount({
+    changeId,
+    leadCount: "repeat",
+  });
+
+  expect(chosen.kind).toBe("chosen");
 }
 
 // One session per person, each with a pageview at the change's page inside the window, so the
@@ -398,6 +423,19 @@ async function deleteProject(db: TestDb, projectId: string): Promise<void> {
   await db.execute(`delete from projects where id = '${projectId}'`);
 }
 
+// The emit runs inside a savepoint that swallows its own faults, so this is the only way to
+// drive "the transition committed and nobody was told".
+async function plantEmitFault(db: TestDb, changeId: string): Promise<void> {
+  await db.execute(
+    `alter table notifications add constraint o053_emit_fault ` +
+      `check (type <> 'change_readout' or subject_id <> '${changeId}')`,
+  );
+}
+
+async function liftEmitFault(db: TestDb): Promise<void> {
+  await db.execute(`alter table notifications drop constraint o053_emit_fault`);
+}
+
 // A per-row fault that fires only when the readout pass tries to claim this one row, so what
 // this asserts is `isolated()`'s per-row boundary and not a whole-table outage.
 async function plantReadoutFault(db: TestDb, page: string): Promise<void> {
@@ -422,6 +460,19 @@ function rendersTemplate(body: string, template: string): boolean {
   return segments.length > 0 && segments.every((segment) => body.includes(segment));
 }
 
+// The longest literal run of a template, which is where that sentence sits in a body holding
+// several. Order is what the lead count decides, so a substring both sentences share cannot
+// carry the assertion.
+function leadSegment(template: string): string {
+  const segments = template
+    .split(/\{[a-zA-Z]+\}/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 3)
+    .toSorted((left, right) => right.length - left.length);
+
+  return segments[0] ?? template;
+}
+
 async function postedFor(db: TestDb): Promise<readonly PostRequest[]> {
   const recorder = loudPoster();
   await runAllDispatchJobs(db, recorder.poster);
@@ -436,7 +487,7 @@ describe("the template matcher's own controls", () => {
     expect(rendersTemplate("", copy.verdictQuestion)).toBe(false);
     expect(
       rendersTemplate(
-        "CSV export — 212 people reached /reports while I was watching.",
+        "CSV export — there were 212 visits to /reports while I was watching.",
         copy.pageReach,
       ),
     ).toBe(true);
@@ -590,6 +641,35 @@ describe("the readout pass answers once per due row", () => {
     },
     COLD_BOOT_BUDGET_MS,
   );
+
+  test(
+    "a readout nobody could be told about stays due, and the next run answers it",
+    async () => {
+      const db = await openDb();
+      const fixture = await seedOrgAndProject(db, "emit-fault");
+      await connectSlackChannel(db, fixture.org, CHANNEL);
+      await seedAtPageCohort(db, fixture, ELIGIBLE_SESSIONS);
+      const change = await reportChange(db, fixture);
+
+      await plantEmitFault(db, change.id);
+
+      const logger = recordingLogger();
+      await runTick(db, READOUT_DUE_AT, logger);
+
+      // read_out with nothing announced would drop the row out of the due scan for good, and
+      // seven days later the lapse pass would record a silence nobody was asked to break.
+      expect((await changeRowsFor(db, change.id))[0]?.state).toBe("reported");
+      expect(await readoutRowsFor(db, change.id)).toHaveLength(0);
+      expect(logger.errors.length).toBeGreaterThan(0);
+
+      await liftEmitFault(db);
+      await runTick(db, new Date(READOUT_DUE_AT.getTime() + 60 * 60 * 1_000), recordingLogger());
+
+      expect((await changeRowsFor(db, change.id))[0]?.state).toBe("read_out");
+      expect(await readoutRowsFor(db, change.id)).toHaveLength(1);
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
 });
 
 describe("the lapse pass closes what the founder never answered", () => {
@@ -603,11 +683,17 @@ describe("the lapse pass closes what the founder never answered", () => {
       await seedAtPageCohort(db, lapsing, ELIGIBLE_SESSIONS);
       await seedAtPageCohort(db, open, ELIGIBLE_SESSIONS);
 
+      // Both readouts are actually delivered before the clock is moved. Without that the window
+      // is measured against a founder who was never asked, and what lapses is not a verdict.
+      await connectSlackChannel(db, lapsing.org, "C0LAPSE0008");
+      await connectSlackChannel(db, open.org, "C0LAPSE0006");
+
       const lapsed = await reportChange(db, lapsing);
       const inside = await reportChange(db, open);
 
       await runTick(db, READOUT_DUE_AT, recordingLogger());
       expect((await changeRowsFor(db, lapsed.id))[0]?.state).toBe("read_out");
+      expect(await postedFor(db)).toHaveLength(2);
 
       // Six days after the readout: inside the ratified seven-day default (HC-4).
       await runTick(db, new Date(READOUT_DUE_AT.getTime() + 6 * DAY_MS), recordingLogger());
@@ -639,6 +725,8 @@ describe("the lapse pass closes what the founder never answered", () => {
       const defaulted = await seedOrgAndProject(db, "window-default");
       await seedAtPageCohort(db, impatient, ELIGIBLE_SESSIONS);
       await seedAtPageCohort(db, defaulted, ELIGIBLE_SESSIONS);
+      await connectSlackChannel(db, impatient.org, "C0WINDOW003");
+      await connectSlackChannel(db, defaulted.org, "C0WINDOW007");
 
       await db.insert(schema.notificationSettings).values({
         organizationId: impatient.org.organizationId,
@@ -656,6 +744,8 @@ describe("the lapse pass closes what the founder never answered", () => {
       const later = await reportChange(db, defaulted);
 
       await runTick(db, READOUT_DUE_AT, recordingLogger());
+      expect(await postedFor(db)).toHaveLength(2);
+
       await runTick(db, new Date(READOUT_DUE_AT.getTime() + 4 * DAY_MS), recordingLogger());
 
       expect((await changeRowsFor(db, early.id))[0]?.state).toBe("closed");
@@ -663,6 +753,49 @@ describe("the lapse pass closes what the founder never answered", () => {
 
       expect((await changeRowsFor(db, later.id))[0]?.state).toBe("read_out");
       expect(await verdictRowsFor(db, later.id)).toHaveLength(0);
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
+
+  test(
+    "a readout that reached no channel closes as never asked, not as a verdict the founder withheld",
+    async () => {
+      const db = await openDb();
+
+      // No Slack connection at all, which is the common path on this outcome because it ships
+      // no UI: the readout's own receipt is quiet, so nobody was ever asked anything.
+      const unasked = await seedOrgAndProject(db, "never-asked");
+      const asked = await seedOrgAndProject(db, "was-asked");
+      await seedAtPageCohort(db, unasked, ELIGIBLE_SESSIONS);
+      await seedAtPageCohort(db, asked, ELIGIBLE_SESSIONS);
+      await connectSlackChannel(db, asked.org, "C0ASKED0001");
+
+      const silent = await reportChange(db, unasked);
+      const delivered = await reportChange(db, asked);
+
+      await runTick(db, READOUT_DUE_AT, recordingLogger());
+      expect(await postedFor(db)).toHaveLength(1);
+
+      const quiet = await sendRowsFor(db, (await readoutRowsFor(db, silent.id))[0]?.id ?? "");
+      expect(quiet.map((send) => [String(send.status), String(send.quietReason)])).toEqual([
+        ["quiet", "no_channel"],
+      ]);
+
+      await runTick(db, new Date(READOUT_DUE_AT.getTime() + 8 * DAY_MS), recordingLogger());
+
+      const unansweredRow = (await changeRowsFor(db, silent.id))[0];
+      expect(unansweredRow?.state).toBe("abandoned");
+      expect(unansweredRow?.abandonedReason).toBe("never_asked");
+      expect(unansweredRow?.closedAt).not.toBeNull();
+      expect(await verdictRowsFor(db, silent.id)).toHaveLength(0);
+
+      // The control beside it: the org that was actually asked still records the silence as the
+      // answer it is, so the split above is about delivery and not about a dead lapse pass.
+      const answeredRow = (await changeRowsFor(db, delivered.id))[0];
+      expect(answeredRow?.state).toBe("closed");
+      expect((await verdictRowsFor(db, delivered.id))[0]?.verdict).toBe("no_verdict_given");
+
+      expect(await changeRowsInState(db, "read_out")).toEqual([]);
     },
     COLD_BOOT_BUDGET_MS,
   );
@@ -753,6 +886,87 @@ describe("the readout reaches the org's channel through the real dispatch path (
       expect(body.includes(copy.spineCorpus)).toBe(true);
       expect(rendersTemplate(body, copy.verdictQuestion)).toBe(true);
       expect(body.includes(String(ELIGIBLE_SESSIONS))).toBe(true);
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
+
+  test(
+    "a project deleted between the readout and its delivery posts no question with no buttons",
+    async () => {
+      const db = await openDb();
+      const copy = await shippedCopy();
+      const fixture = await seedOrgAndProject(db, "project-gone-mid-flight");
+      await connectSlackChannel(db, fixture.org, CHANNEL);
+      await seedAtPageCohort(db, fixture, ELIGIBLE_SESSIONS);
+      const change = await reportChange(db, fixture);
+
+      await runTick(db, READOUT_DUE_AT, recordingLogger());
+      expect(await readoutRowsFor(db, change.id)).toHaveLength(1);
+
+      // The window between the emit and the dispatch job running.
+      await deleteProject(db, fixture.project.id);
+
+      const posted = await postedFor(db);
+      expect(posted).toHaveLength(1);
+      const body = bodyOf(posted[0] as PostRequest);
+
+      // With no project there is no corpus, so the message carries no buttons — and asking for
+      // a verdict the founder has no way to give is worse than saying nothing in particular.
+      expect(rendersTemplate(body, copy.verdictQuestion)).toBe(false);
+      expect(rendersTemplate(body, copy.readOut)).toBe(false);
+      expect(body).not.toContain('"type":"actions"');
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
+
+  test(
+    "the control: the same readout with its project intact does carry the buttons and the question",
+    async () => {
+      const db = await openDb();
+      const copy = await shippedCopy();
+      const fixture = await seedOrgAndProject(db, "project-intact-mid-flight");
+      await connectSlackChannel(db, fixture.org, CHANNEL);
+      await seedAtPageCohort(db, fixture, ELIGIBLE_SESSIONS);
+      await reportChange(db, fixture);
+
+      await runTick(db, READOUT_DUE_AT, recordingLogger());
+
+      const body = bodyOf((await postedFor(db))[0] as PostRequest);
+
+      expect(rendersTemplate(body, copy.verdictQuestion)).toBe(true);
+      expect(body).toContain('"type":"actions"');
+    },
+    COLD_BOOT_BUDGET_MS,
+  );
+
+  test(
+    "a change asked to lead with repeat puts the repeat sentence before the reach sentence",
+    async () => {
+      const db = await openDb();
+      const copy = await shippedCopy();
+      const fixture = await seedOrgAndProject(db, "lead-repeat");
+      await connectSlackChannel(db, fixture.org, CHANNEL);
+      await seedAtPageCohort(db, fixture, ELIGIBLE_SESSIONS);
+
+      const change = await reportChange(db, fixture);
+      await leadWithRepeat(db, fixture, change.id);
+
+      await runTick(db, READOUT_DUE_AT, recordingLogger());
+
+      const posted = await postedFor(db);
+      expect(posted).toHaveLength(1);
+      const body = bodyOf(posted[0] as PostRequest);
+
+      // Both sentences are still there; what the lead decides is which one the founder reads
+      // first, and only a rendered body can show the order.
+      expect(rendersTemplate(body, copy.repeat)).toBe(true);
+      expect(rendersTemplate(body, copy.pageReach)).toBe(true);
+
+      const repeatAt = body.indexOf(leadSegment(copy.repeat));
+      const reachAt = body.indexOf(leadSegment(copy.pageReach));
+      expect(repeatAt).toBeGreaterThan(-1);
+      expect(reachAt).toBeGreaterThan(-1);
+      expect(repeatAt).toBeLessThan(reachAt);
     },
     COLD_BOOT_BUDGET_MS,
   );

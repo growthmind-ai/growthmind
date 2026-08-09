@@ -227,7 +227,7 @@ async function reportOneChange({ db, org }: DriveBed, label: string) {
   });
   const service = createShippedChangesService(db, org.ctx);
 
-  const change = await service.reportShipped({
+  const { change } = await service.reportShipped({
     projectId: project.id,
     page: "/reports",
     control: "Export CSV",

@@ -6,8 +6,17 @@ export type ShippedVerdict = (typeof SHIPPED_VERDICTS)[number];
 
 export const SHIPPED_CHANGE_VERDICTS = SHIPPED_VERDICTS;
 
-export const SHIPPED_ABANDONED_REASONS = ["project_gone"] as const;
+// `never_asked` is what keeps `no_verdict_given` honest: a founder whose readout never reached
+// them declined nothing, so their silence is recorded as a change we abandoned rather than as
+// an answer they gave.
+export const SHIPPED_ABANDONED_REASONS = ["project_gone", "never_asked"] as const;
 export type ShippedAbandonedReason = (typeof SHIPPED_ABANDONED_REASONS)[number];
+
+// What a report did to the change key. `already_answered` is the arm HC-2 left open: the key is
+// fixed at (org, project, page, control), so a report landing after the readout can neither
+// fork a row nor be given a date that has already passed.
+export const SHIPPED_REPORT_CLAIMS = ["reported", "clock_unchanged", "already_answered"] as const;
+export type ShippedReportClaim = (typeof SHIPPED_REPORT_CLAIMS)[number];
 
 // Derived from the control label at report time and never taken from the caller: a whole
 // page is answered off the event spine, a control only off the sessions that were recorded.

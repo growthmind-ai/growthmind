@@ -13,8 +13,8 @@ export async function emitChangeReadout(
   db: ScopedExecutor,
   organizationId: string,
   input: EmitChangeReadoutInput,
-): Promise<void> {
-  await emitNotification(db, organizationId, {
+): Promise<{ readonly emitted: boolean }> {
+  return emitNotification(db, organizationId, {
     type: "change_readout",
     subjectKind: "shipped_change",
     subjectId: input.changeId,

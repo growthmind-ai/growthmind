@@ -218,6 +218,105 @@ describe("the change key holds one row and one clock per change", () => {
   });
 });
 
+// The state moves here rather than through the service, so what the re-report meets is the row
+// state alone and not a whole readout's worth of side effects.
+async function moveTo(
+  changeId: string,
+  state: "read_out" | "closed" | "abandoned",
+): Promise<void> {
+  await db
+    .update(schema.shippedChanges)
+    .set({ state, readOutAt: READOUT_DUE_AT })
+    .where(eq(schema.shippedChanges.id, changeId));
+}
+
+describe("a re-report says which of the three things it did", () => {
+  test("the first report claims reported and a second inside the window claims clock unchanged", async () => {
+    const { org, project } = await seedOrgAndProject("claim-open");
+    const repo = createShippedChangesRepo(db, org.ctx);
+
+    const first = await repo.reportShipped(reportInput(project.id));
+    expect(first.claim).toBe("reported");
+
+    const again = await repo.reportShipped(
+      reportInput(project.id, {
+        description: "CSV export, now with column headings",
+        reportedAt: REPORTED_AGAIN_AT,
+        readoutDueAt: SECOND_READOUT_DUE_AT,
+      }),
+    );
+
+    expect(again.claim).toBe("clock_unchanged");
+    expect(again.change.id).toBe(first.change.id);
+    expect(again.change.description).toBe("CSV export, now with column headings");
+    expect(again.change.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
+  });
+
+  for (const state of ["read_out", "closed", "abandoned"] as const) {
+    test(`a report against a ${state} row claims already answered and rewrites nothing`, async () => {
+      const { org, project } = await seedOrgAndProject(`claim-${state}`);
+      const repo = createShippedChangesRepo(db, org.ctx);
+
+      const first = await repo.reportShipped(reportInput(project.id));
+      await moveTo(first.change.id, state);
+
+      const again = await repo.reportShipped(
+        reportInput(project.id, {
+          description: "a different change on the same page",
+          reportedAt: REPORTED_AGAIN_AT,
+          readoutDueAt: SECOND_READOUT_DUE_AT,
+        }),
+      );
+
+      expect(again.claim).toBe("already_answered");
+      expect(again.change.id).toBe(first.change.id);
+
+      // The verdict hangs off the description the founder was shown, so a report landing after
+      // the answer may not edit it, and it starts no second clock either.
+      const rows = await changeRowsFor({
+        organizationId: org.organizationId,
+        projectId: project.id,
+        page: "/reports",
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.description).toBe("CSV export");
+      expect(rows[0]?.state).toBe(state);
+      expect(rows[0]?.readoutDueAt?.toISOString()).toBe(READOUT_DUE_AT.toISOString());
+    });
+  }
+});
+
+describe("the page must already be the normaliser's own output", () => {
+  for (const page of ["/Reports", "/reports/", "https://app.example.com/reports?t=1"]) {
+    test(`a report naming ${page} is refused before any SQL runs`, async () => {
+      const { org, project } = await seedOrgAndProject(`unnormalised-${page.length.toString()}`);
+      const repo = createShippedChangesRepo(db, org.ctx);
+
+      await expect(repo.reportShipped(reportInput(project.id, { page }))).rejects.toThrow();
+
+      // Stamping the normalisation version on a spelling the spine never wrote would leave a
+      // row that matches nothing and forks its own change key.
+      const rows = await db
+        .select()
+        .from(schema.shippedChanges)
+        .where(eq(schema.shippedChanges.organizationId, org.organizationId));
+
+      expect(rows).toHaveLength(0);
+    });
+  }
+
+  test("the control: the normalised spelling of the same page is accepted", async () => {
+    const { org, project } = await seedOrgAndProject("normalised-control");
+    const repo = createShippedChangesRepo(db, org.ctx);
+
+    const reported = await repo.reportShipped(reportInput(project.id, { page: "/reports" }));
+
+    expect(reported.claim).toBe("reported");
+    expect(reported.change.pageNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
+  });
+});
+
 describe("the readout date is the product's, and its absence is a refusal", () => {
   test("a report with no readout date is refused before any SQL runs", async () => {
     const { org, project } = await seedOrgAndProject("no-readout-date");
@@ -245,18 +344,18 @@ describe("the derived columns are the product's and not the caller's", () => {
     const { org, project } = await seedOrgAndProject("corpus-page");
     const repo = createShippedChangesRepo(db, org.ctx);
 
-    const row = await repo.reportShipped(reportInput(project.id));
+    const { change } = await repo.reportShipped(reportInput(project.id));
 
-    expect(row.corpusKind).toBe("page");
+    expect(change.corpusKind).toBe("page");
   });
 
   test("a report with a control label stores the recorded corpus kind", async () => {
     const { org, project } = await seedOrgAndProject("corpus-recorded");
     const repo = createShippedChangesRepo(db, org.ctx);
 
-    const row = await repo.reportShipped(reportInput(project.id, { control: "Export CSV" }));
+    const { change } = await repo.reportShipped(reportInput(project.id, { control: "Export CSV" }));
 
-    expect(row.corpusKind).toBe("recorded");
+    expect(change.corpusKind).toBe("recorded");
   });
 
   test("a caller-supplied corpus kind cannot override the one derived from the label", async () => {
@@ -268,18 +367,18 @@ describe("the derived columns are the product's and not the caller's", () => {
       corpusKind: "page",
     } as unknown as ReportShippedChangeInput;
 
-    const row = await repo.reportShipped(forged);
+    const { change } = await repo.reportShipped(forged);
 
-    expect(row.corpusKind).toBe("recorded");
+    expect(change.corpusKind).toBe("recorded");
   });
 
   test("the stored page normalisation version is the current constant", async () => {
     const { org, project } = await seedOrgAndProject("normalisation-version");
     const repo = createShippedChangesRepo(db, org.ctx);
 
-    const row = await repo.reportShipped(reportInput(project.id));
+    const { change } = await repo.reportShipped(reportInput(project.id));
 
-    expect(row.pageNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
+    expect(change.pageNormalisationVersion).toBe(URL_PATH_NORMALISATION_VERSION);
   });
 });
 
@@ -304,13 +403,13 @@ describe("a renamed control forks the change, and the fork is asserted rather th
     });
 
     expect(rows).toHaveLength(2);
-    expect(after.id).not.toBe(before.id);
+    expect(after.change.id).not.toBe(before.change.id);
 
-    const original = rows.find((row) => row.id === before.id);
+    const original = rows.find((row) => row.id === before.change.id);
     expect(original?.state).toBe("reported");
     expect(original?.readoutDueAt?.toISOString()).toBe(READOUT_DUE_AT.toISOString());
 
-    const renamed = rows.find((row) => row.id === after.id);
+    const renamed = rows.find((row) => row.id === after.change.id);
     expect(renamed?.readoutDueAt?.toISOString()).toBe(SECOND_READOUT_DUE_AT.toISOString());
   });
 });
