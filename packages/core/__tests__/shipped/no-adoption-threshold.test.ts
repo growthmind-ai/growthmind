@@ -4,7 +4,15 @@
 // .ai/decisions/0027-o-053-report-shipped-human-calls.md for the three magnitudes it permits.
 import { existsSync, readFileSync } from "node:fs";
 
+import type { ShippedLeadCount } from "@growthmind/shared";
+import { SHIPPED_LEAD_COUNTS } from "@growthmind/shared";
 import { describe, expect, test } from "bun:test";
+
+import type { AtPageCorpus } from "../../src/shipped/corpus";
+import { buildAtPageCorpus } from "../../src/shipped/corpus";
+import { shippedCounts } from "../../src/shipped/counts";
+import { renderShippedReadout } from "../../src/shipped/readout";
+import { atPageInput, mustBuild, shippedCorpus } from "./fixtures";
 
 const ROOT = new URL("../../../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
@@ -375,5 +383,129 @@ describe("AC-G13 — no fourth magnitude exists on the readout path", () => {
 
     expect(walkedFiles().length).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
+  });
+});
+
+// Everything above scans for a magnitude, and a grade spoken in adjectives leaves no magnitude to
+// find. What settles it is the rendered body: two corpora far apart on adoption may differ in their
+// numerals and in nothing else.
+const CHANGE = "CSV export";
+const PAGE = "/reports";
+const CHANGE_ID = "0f3a9c21-6b4d-4a17-9e52-1c8b7d4e6a90";
+
+function bodyOf(corpus: AtPageCorpus, lead: ShippedLeadCount): string {
+  return renderShippedReadout({
+    changeId: CHANGE_ID,
+    change: CHANGE,
+    page: PAGE,
+    leadCount: lead,
+    result: { kind: "claim", corpus, counts: shippedCounts(corpus) },
+  }).body;
+}
+
+function recordedCorpusOf(spec: {
+  readonly atPage: number;
+  readonly touched: number;
+}): AtPageCorpus {
+  return mustBuild(
+    buildAtPageCorpus(
+      atPageInput(
+        shippedCorpus({
+          totalSessions: spec.atPage * 2,
+          atPage: spec.atPage,
+          recordedAtPage: spec.atPage,
+          touchedAtPage: spec.touched,
+          identityGroups: [0, 1, 2],
+        }),
+        { kind: "recorded" },
+      ),
+    ),
+  );
+}
+
+function pageCorpusOf(spec: {
+  readonly atPage: number;
+  readonly identityGroups: readonly number[];
+}): AtPageCorpus {
+  return mustBuild(
+    buildAtPageCorpus(
+      atPageInput(
+        shippedCorpus({
+          totalSessions: spec.atPage * 2,
+          atPage: spec.atPage,
+          identityGroups: spec.identityGroups,
+        }),
+        { kind: "page" },
+      ),
+    ),
+  );
+}
+
+function withoutNumerals(body: string): string {
+  return body.replaceAll(/\d/g, "");
+}
+
+const HIGH_ADOPTION_RECORDED = recordedCorpusOf({ atPage: 12, touched: 9 });
+const LOW_ADOPTION_RECORDED = recordedCorpusOf({ atPage: 212, touched: 1 });
+
+// The page is the change, so adoption there is carried by repeat alone: everyone identified came
+// back, against nobody who did.
+const HIGH_ADOPTION_PAGE = pageCorpusOf({ atPage: 40, identityGroups: [0, 1] });
+const LOW_ADOPTION_PAGE = pageCorpusOf({
+  atPage: 40,
+  identityGroups: Array.from({ length: 40 }, (_, index) => index),
+});
+
+const ADOPTION_PAIRS = [
+  { high: HIGH_ADOPTION_RECORDED, low: LOW_ADOPTION_RECORDED },
+  { high: HIGH_ADOPTION_PAGE, low: LOW_ADOPTION_PAGE },
+] as const;
+
+describe("AC-G13 — a high-adoption readout and a low-adoption one differ only in their numerals", () => {
+  test("should build two pairs the readout would have to grade differently, if it graded", () => {
+    const high = shippedCounts(HIGH_ADOPTION_RECORDED);
+    const low = shippedCounts(LOW_ADOPTION_RECORDED);
+
+    expect(high.reach.numerator).toBe(9);
+    expect(high.reach.denominator).toBe(12);
+    expect(low.reach.numerator).toBe(1);
+    expect(low.reach.denominator).toBe(212);
+
+    const highRepeat = shippedCounts(HIGH_ADOPTION_PAGE).repeat;
+    const lowRepeat = shippedCounts(LOW_ADOPTION_PAGE).repeat;
+    if (highRepeat === null || lowRepeat === null) {
+      throw new Error("both page corpora identify people, so both must yield a repeat count");
+    }
+
+    expect(highRepeat.numerator).toBe(highRepeat.denominator);
+    expect(lowRepeat.numerator).toBe(0);
+  });
+
+  test("should say the same words about a change nine in twelve used and one two hundred and twelve barely did", () => {
+    expect(ADOPTION_PAIRS.length).toBe(2);
+    expect(SHIPPED_LEAD_COUNTS.length).toBe(2);
+
+    for (const pair of ADOPTION_PAIRS) {
+      for (const lead of SHIPPED_LEAD_COUNTS) {
+        const high = bodyOf(pair.high, lead);
+        const low = bodyOf(pair.low, lead);
+
+        // Without these two arms a renderer that returned the empty string for both would pass.
+        expect(high.length).toBeGreaterThan(0);
+        expect(low.length).toBeGreaterThan(0);
+        expect(high).not.toBe(low);
+
+        expect(withoutNumerals(high)).toBe(withoutNumerals(low));
+      }
+    }
+  });
+
+  test("CONTROL — should catch a grade planted into one body and absent from the other", () => {
+    const high = bodyOf(HIGH_ADOPTION_RECORDED, "reach");
+    const low = bodyOf(LOW_ADOPTION_RECORDED, "reach");
+    const graded = high.replace("used it", "used it, which is strong take-up");
+
+    expect(graded).not.toBe(high);
+    expect(withoutNumerals(graded)).not.toBe(withoutNumerals(low));
   });
 });
