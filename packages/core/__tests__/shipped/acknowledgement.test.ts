@@ -6,6 +6,7 @@ import {
   SHIPPED_LEAD_REPEAT_ACTION_ID,
   SHIPPED_LEAD_TOO_LATE_REFUSAL,
   SHIPPED_PROMISE_TEMPLATE,
+  SHIPPED_STOPPED_WATCHING_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
 } from "@growthmind/shared";
 
@@ -15,6 +16,7 @@ import {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedStoppedWatchingBody,
   shippedWatchingAgainBody,
 } from "../../src/shipped/acknowledgement";
 
@@ -94,6 +96,29 @@ describe("a change we could not measure is put back on the clock, and the date i
     expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedAlreadyAnsweredBody(PROMISE));
     expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedClockUnchangedBody(PROMISE));
     expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
+  });
+});
+
+describe("a change we stopped watching is told the truth about what it never got", () => {
+  test("should say no answer was ever given, and name no date at all", () => {
+    const body = shippedStoppedWatchingBody(PROMISE);
+
+    expect(body).toBe(
+      fill(SHIPPED_STOPPED_WATCHING_TEMPLATE, { change: PROMISE.change, page: PROMISE.page }),
+    );
+    expect(body).toContain("CSV export");
+    expect(body).toContain("/reports");
+    expect(body).not.toMatch(/\{\w+\}/);
+
+    // Both abandoned reasons reach this sentence and neither leaves a date the founder could
+    // check: one row was never read out, the other was read out into a channel it never reached.
+    expect(body).not.toContain("23 August");
+  });
+
+  test("should not claim an answer the way the already-answered refusal does", () => {
+    expect(shippedStoppedWatchingBody(PROMISE)).not.toBe(shippedAlreadyAnsweredBody(PROMISE));
+    expect(shippedStoppedWatchingBody(PROMISE)).not.toBe(shippedWatchingAgainBody(PROMISE));
+    expect(shippedStoppedWatchingBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
   });
 });
 

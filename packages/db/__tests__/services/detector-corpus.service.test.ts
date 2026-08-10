@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { inArray } from "drizzle-orm";
 
-import type { AnalysisWindow } from "@growthmind/core";
+import { DETECTOR_CORPUS_MAX_SESSIONS, type AnalysisWindow } from "@growthmind/core";
 import type {
   AudienceRule,
   BusinessContext,
@@ -33,6 +33,10 @@ const WINDOW: AnalysisWindow = {
 };
 
 const SESSION_STARTED_AT = new Date("2026-08-01T10:00:00.000Z");
+
+// A cohort at the cap is two orders of magnitude larger than the fixtures above, and bun's 5s
+// default is not enough to seed one and read it back.
+const CAP_COHORT_BUDGET_MS = 60_000;
 
 const CHROME_ON_WINDOWS =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
@@ -350,4 +354,69 @@ describe("detector corpus — the per-session facts the at-page rebuild needs (O
     expect(serialised).not.toContain(ALPHA_KEY);
     expect(serialised).not.toContain(BETA_KEY);
   });
+});
+
+// The flag is only ever true because the select asks for one row more than it will keep. Reading
+// that as a stray `+ 1` and tidying it away leaves `truncated` permanently false, and every
+// readout downstream then states a capped slice as if it were the total.
+async function seedSessionCohort(db: TestDb, scope: SeededScope, count: number): Promise<void> {
+  const rows = Array.from({ length: count }, (_unused, index) => ({
+    id: randomUUID(),
+    organizationId: scope.organizationId,
+    projectId: scope.projectId,
+    connectionId: scope.connectionId,
+    sessionKey: `ph:corpus-cap-${String(index)}`,
+    identityResolution: "unresolved" as const,
+    entryUrlPath: "/reports",
+    startedAt: SESSION_STARTED_AT,
+    lastEventAt: SESSION_STARTED_AT,
+    origin: "real" as const,
+    exclusionReason: "none" as const,
+    exclusionRuleSetVersion: 1,
+    groupingVersion: 1,
+  }));
+
+  await db.insert(sessions).values(rows);
+}
+
+describe("detector corpus — a capped read says it was capped", () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it(
+    "flags a window holding one session more than the cap as truncated",
+    async () => {
+      const scope = await seedScope(db, "over-cap");
+      await seedSessionCohort(db, scope, DETECTOR_CORPUS_MAX_SESSIONS + 1);
+
+      const corpus = await createDetectorCorpusService(db, scope.ctx).read(scope.projectId, WINDOW);
+
+      expect(corpus.coverage.truncated).toBe(true);
+      expect(corpus.sessions).toHaveLength(DETECTOR_CORPUS_MAX_SESSIONS);
+      expect(corpus.basis.totalInWindow).toBe(DETECTOR_CORPUS_MAX_SESSIONS);
+    },
+    CAP_COHORT_BUDGET_MS,
+  );
+
+  it(
+    "leaves a window holding exactly the cap unflagged, so the total really is the total",
+    async () => {
+      const scope = await seedScope(db, "at-cap");
+      await seedSessionCohort(db, scope, DETECTOR_CORPUS_MAX_SESSIONS);
+
+      const corpus = await createDetectorCorpusService(db, scope.ctx).read(scope.projectId, WINDOW);
+
+      expect(corpus.coverage.truncated).toBe(false);
+      expect(corpus.sessions).toHaveLength(DETECTOR_CORPUS_MAX_SESSIONS);
+    },
+    CAP_COHORT_BUDGET_MS,
+  );
 });

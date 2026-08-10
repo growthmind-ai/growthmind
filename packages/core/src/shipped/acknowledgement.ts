@@ -8,6 +8,7 @@ import {
   SHIPPED_LEAD_REPEAT_LABEL,
   SHIPPED_NOTED_TEMPLATE,
   SHIPPED_PROMISE_TEMPLATE,
+  SHIPPED_STOPPED_WATCHING_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
   SHIPPED_WATCHING_AGAIN_TEMPLATE,
 } from "@growthmind/shared";
@@ -20,9 +21,12 @@ export type ShippedAcknowledgement = {
   readonly actions: readonly ShippedReadoutAction[];
 };
 
-export type ShippedPromise = {
+export type ShippedChangeNaming = {
   readonly change: string;
   readonly page: string;
+};
+
+export type ShippedPromise = ShippedChangeNaming & {
   readonly readoutDueAt: Date;
 };
 
@@ -88,6 +92,14 @@ export function shippedAlreadyAnsweredBody(input: ShippedPromise): string {
     change: input.change,
     page: input.page,
     date: dueDateLabel(input.readoutDueAt),
+  });
+}
+
+// Neither reason we stop watching for leaves a date the founder could check, so this names none.
+export function shippedStoppedWatchingBody(input: ShippedChangeNaming): string {
+  return fill(SHIPPED_STOPPED_WATCHING_TEMPLATE, {
+    change: input.change,
+    page: input.page,
   });
 }
 

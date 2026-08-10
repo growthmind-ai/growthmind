@@ -23,12 +23,14 @@ export type ShippedReadoutOutcome = (typeof SHIPPED_READOUT_OUTCOMES)[number];
 
 // What a report did to the change key, which is fixed at (org, project, page, control) and is
 // never forked here. `watching_again` is the one arm that moves the clock: a readout that
-// measured nothing answered nothing, so the same row takes a fresh date.
+// measured nothing answered nothing, so the same row takes a fresh date. `stopped_watching` is
+// the arm that answered nothing and cannot be put back on a clock either.
 export const SHIPPED_REPORT_CLAIMS = [
   "reported",
   "clock_unchanged",
   "watching_again",
   "already_answered",
+  "stopped_watching",
 ] as const;
 export type ShippedReportClaim = (typeof SHIPPED_REPORT_CLAIMS)[number];
 

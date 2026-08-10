@@ -619,8 +619,10 @@ export {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedStoppedWatchingBody,
   shippedWatchingAgainBody,
   type ShippedAcknowledgement,
   type ShippedAcknowledgementInput,
+  type ShippedChangeNaming,
   type ShippedPromise,
 } from "./shipped/acknowledgement";

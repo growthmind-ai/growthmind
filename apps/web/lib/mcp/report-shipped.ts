@@ -3,6 +3,7 @@ import {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedStoppedWatchingBody,
   shippedWatchingAgainBody,
   type ShippedPromise,
 } from "@growthmind/core";
@@ -55,6 +56,16 @@ function alreadyAnswered(change: ReportedChange): McpRefusal {
       page: change.page,
       readoutDueAt: change.readoutDueAt,
     }),
+    status: 400,
+  };
+}
+
+// The row is terminal and no clock can be started on it, so this refuses like the one above —
+// but it may not borrow that sentence, which claims an answer this founder never got.
+function stoppedWatching(change: ReportedChange): McpRefusal {
+  return {
+    code: "malformed_request",
+    message: shippedStoppedWatchingBody({ change: change.description, page: change.page }),
     status: 400,
   };
 }
@@ -117,6 +128,10 @@ export async function reportShipped(
 
   if (answer.outcome === "already_answered") {
     return { ok: false, refusal: alreadyAnswered(change) };
+  }
+
+  if (answer.outcome === "stopped_watching") {
+    return { ok: false, refusal: stoppedWatching(change) };
   }
 
   const promise = {

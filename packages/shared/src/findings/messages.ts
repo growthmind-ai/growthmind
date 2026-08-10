@@ -105,6 +105,11 @@ export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
 export const SHIPPED_ALREADY_ANSWERED_TEMPLATE =
   "{change} on {page} again — I already answered on that one on {date}, so I am not starting a second clock on it.";
 
+// A change we stopped watching was never answered, whichever reason we stopped for, so this
+// carries no date: there is neither an answer to point back at nor a clock to promise.
+export const SHIPPED_STOPPED_WATCHING_TEMPLATE =
+  "{change} on {page} again — I stopped watching that one and never got you an answer, so there is nothing on the clock for it.";
+
 // A readout that could not measure anything answered nothing, so the clock restarts rather than
 // the report being turned away.
 export const SHIPPED_WATCHING_AGAIN_TEMPLATE =
@@ -241,6 +246,7 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_UNVERIFIED_LINE,
   SHIPPED_LEAD_OFFER_LINE,
   SHIPPED_ALREADY_ANSWERED_TEMPLATE,
+  SHIPPED_STOPPED_WATCHING_TEMPLATE,
   SHIPPED_WATCHING_AGAIN_TEMPLATE,
   SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_REACH_TEMPLATE,

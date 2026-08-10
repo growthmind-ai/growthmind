@@ -5,6 +5,7 @@ import {
   shippedClaimGate,
   shippedCounts,
   shippedReadoutOutcome,
+  type BuildAtPageCorpusResult,
   type ShippedAcknowledgement,
   type ShippedReadout,
   type ShippedReadoutResult,
@@ -45,30 +46,62 @@ export async function renderChangeAcknowledgement(
 
 // The window is the change's own clock, so the denominator is the people who could have used it
 // between the day it shipped and the day we said we would answer.
-async function readoutResultFor(
+async function atPageCorpusFor(
   db: ScopedDb,
   ctx: TenantContext,
   change: ShippedChangeRow,
   projectId: string,
-): Promise<ShippedReadoutResult> {
+): Promise<BuildAtPageCorpusResult> {
   const corpus = await createDetectorCorpusService(db, ctx).read(projectId, {
     start: change.reportedAt,
     end: change.readoutDueAt,
   });
 
-  const atPage = buildAtPageCorpus({
+  return buildAtPageCorpus({
     corpus,
     kind: change.corpusKind,
     page: change.page,
     controlLabel: change.controlLabel,
     pageNormalisationVersion: change.pageNormalisationVersion,
   });
+}
+
+async function readoutResultFor(
+  db: ScopedDb,
+  ctx: TenantContext,
+  change: ShippedChangeRow,
+  projectId: string,
+): Promise<ShippedReadoutResult> {
+  const atPage = await atPageCorpusFor(db, ctx, change, projectId);
 
   if (!atPage.ok) return { kind: atPage.reason };
 
   const gate = shippedClaimGate(atPage.corpus);
 
   if (gate.kind === "too_few") return { kind: "too_few", corpus: atPage.corpus };
+
+  return { kind: "claim", corpus: atPage.corpus, counts: shippedCounts(atPage.corpus) };
+}
+
+// The branch is read off the row and never decided again here. Classifying a second corpus at
+// dispatch let a late-arriving session move the founder's message off the branch the row stores,
+// and that column is what the verdict is recorded against and what a re-report reads.
+async function shownResultFor(
+  db: ScopedDb,
+  ctx: TenantContext,
+  change: ShippedChangeRow,
+  projectId: string,
+  outcome: ShippedReadoutOutcome,
+): Promise<ShippedReadoutResult | null> {
+  if (outcome === "stale_page_spelling" || outcome === "corpus_predates_who_counts") {
+    return { kind: outcome };
+  }
+
+  const atPage = await atPageCorpusFor(db, ctx, change, projectId);
+
+  if (!atPage.ok) return null;
+
+  if (outcome === "too_few") return { kind: "too_few", corpus: atPage.corpus };
 
   return { kind: "claim", corpus: atPage.corpus, counts: shippedCounts(atPage.corpus) };
 }
@@ -101,11 +134,18 @@ export async function renderChangeReadout(
   const projectId = change.projectId;
   if (projectId === null) return null;
 
+  // A row with no branch stored was never claimed as read out, so there is no answer to speak.
+  const outcome = change.readoutOutcome;
+  if (outcome === null) return null;
+
+  const result = await shownResultFor(db, ctx, change, projectId, outcome);
+  if (result === null) return null;
+
   return renderShippedReadout({
     changeId: change.id,
     change: change.description,
     page: change.page,
     leadCount: change.leadCount,
-    result: await readoutResultFor(db, ctx, change, projectId),
+    result,
   });
 }

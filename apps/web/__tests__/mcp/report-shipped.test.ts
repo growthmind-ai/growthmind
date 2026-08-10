@@ -21,6 +21,7 @@ import {
   SHIPPED_ALREADY_ANSWERED_TEMPLATE,
   SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_PROMISE_TEMPLATE,
+  SHIPPED_STOPPED_WATCHING_TEMPLATE,
   SHIPPED_WATCHING_AGAIN_TEMPLATE,
   type TenantContext,
 } from "@growthmind/shared";
@@ -279,6 +280,12 @@ async function moveToClosed(changeId: string): Promise<void> {
   await handle.db.execute(`update shipped_changes set state = 'closed' where id = '${changeId}'`);
 }
 
+async function moveToAbandoned(changeId: string, reason: string): Promise<void> {
+  await handle.db.execute(
+    `update shipped_changes set state = 'abandoned', abandoned_reason = '${reason}' where id = '${changeId}'`,
+  );
+}
+
 async function moveToReadOutMeasuringNothing(changeId: string): Promise<void> {
   await handle.db.execute(
     `update shipped_changes set state = 'read_out', readout_outcome = 'too_few' where id = '${changeId}'`,
@@ -364,6 +371,33 @@ describe("a re-report is answered, and never with a second promise", () => {
     // The new date is announced in the channel too, not only to the assistant that asked.
     expect(await changeNotificationsFor(org.organizationId)).toHaveLength(2);
   });
+
+  for (const reason of ["never_asked", "project_gone"] as const) {
+    test(`a report landing on a change abandoned as ${reason} is not told we answered it`, async () => {
+      const org = await freshOrg(`re-report-${reason.replace("_", "-")}`);
+      const input = { description: CHANGE, page: PAGE, projectId: org.projectId };
+
+      const first = await report(org.key, input);
+      expect(first.isError).toBe(false);
+
+      const changeId = (await changeRowsFor(org.organizationId))[0]?.id ?? "";
+      expect(changeId).not.toBe("");
+      await moveToAbandoned(changeId, reason);
+
+      const again = await report(org.key, { ...input, description: "CSV export, second pass" });
+
+      // Refused, because the row is terminal and no clock can be started on it — but never with
+      // the sentence that names a day we answered on, which neither reason leaves behind.
+      expect(again.isError).toBe(true);
+      expect(rendersTemplate(again.text, SHIPPED_STOPPED_WATCHING_TEMPLATE)).toBe(true);
+      expect(rendersTemplate(again.text, SHIPPED_ALREADY_ANSWERED_TEMPLATE)).toBe(false);
+
+      const rows = await changeRowsFor(org.organizationId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.state).toBe("abandoned");
+      expect(rows[0]?.description).toBe(CHANGE);
+    });
+  }
 });
 
 describe("the page is written down the way the spine writes it", () => {

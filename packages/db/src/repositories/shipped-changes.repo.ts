@@ -179,6 +179,12 @@ export function createShippedChangesRepo(
         );
       }
 
+      // One reason we abandon for never reached a reader and the other was never read out at
+      // all, so "I already answered" is false on both.
+      if (settled.state === "abandoned") {
+        return { claim: "stopped_watching", change: settled };
+      }
+
       return { claim: "already_answered", change: settled };
     },
 

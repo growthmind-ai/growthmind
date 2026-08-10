@@ -9,6 +9,7 @@ import {
   NO_CONTROL_LABEL,
   SHIPPED_UNMEASURED_OUTCOMES,
   URL_PATH_NORMALISATION_VERSION,
+  type ShippedAbandonedReason,
   type ShippedReadoutOutcome,
 } from "@growthmind/shared";
 
@@ -254,7 +255,7 @@ describe("a re-report says which of the three things it did", () => {
     expect(again.change.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
   });
 
-  for (const state of ["read_out", "closed", "abandoned"] as const) {
+  for (const state of ["read_out", "closed"] as const) {
     test(`a report against a ${state} row claims already answered and rewrites nothing`, async () => {
       const { org, project } = await seedOrgAndProject(`claim-${state}`);
       const repo = createShippedChangesRepo(db, org.ctx);
@@ -287,6 +288,90 @@ describe("a re-report says which of the three things it did", () => {
       expect(rows[0]?.readoutDueAt?.toISOString()).toBe(READOUT_DUE_AT.toISOString());
     });
   }
+});
+
+async function abandonWith(changeId: string, reason: ShippedAbandonedReason): Promise<void> {
+  await db
+    .update(schema.shippedChanges)
+    .set({ state: "abandoned", abandonedReason: reason, closedAt: READOUT_DUE_AT })
+    .where(eq(schema.shippedChanges.id, changeId));
+}
+
+describe("a change we stopped watching was never answered, and is not told otherwise", () => {
+  test("a re-report after we gave up asking says so, and claims no answer we never gave", async () => {
+    const { org, project } = await seedOrgAndProject("abandoned-never-asked");
+    const repo = createShippedChangesRepo(db, org.ctx);
+
+    const first = await repo.reportShipped(reportInput(project.id));
+    await moveToReadOutWith(first.change.id, "measured");
+    await abandonWith(first.change.id, "never_asked");
+
+    const again = await repo.reportShipped(
+      reportInput(project.id, {
+        description: "CSV export, second pass",
+        reportedAt: REPORTED_AGAIN_AT,
+        readoutDueAt: SECOND_READOUT_DUE_AT,
+      }),
+    );
+
+    // The readout was worked out and reached nobody, so "I already answered on that one" was a
+    // sentence about a message the founder never received.
+    expect(again.claim).toBe("stopped_watching");
+    expect(again.change.id).toBe(first.change.id);
+
+    const rows = await changeRowsFor({
+      organizationId: org.organizationId,
+      projectId: project.id,
+      page: "/reports",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe("abandoned");
+    expect(rows[0]?.abandonedReason).toBe("never_asked");
+    expect(rows[0]?.description).toBe("CSV export");
+    expect(rows[0]?.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
+  });
+
+  test("a change whose project went away is reported afresh rather than turned away", async () => {
+    const { org, project } = await seedOrgAndProject("abandoned-project-gone");
+    const repo = createShippedChangesRepo(db, org.ctx);
+
+    const first = await repo.reportShipped(reportInput(project.id));
+    await abandonWith(first.change.id, "project_gone");
+
+    // R8: the row outlives its project, so the change key it holds no longer names a project any
+    // report can supply. The founder rebuilding the same page under a new project is starting
+    // over, and a refusal there would be about our bookkeeping rather than about their change.
+    await db.delete(schema.projects).where(eq(schema.projects.id, project.id));
+
+    const rebuilt = await seedProject(db, {
+      organizationId: org.organizationId,
+      name: NAMES.projectName("abandoned-project-gone-rebuilt"),
+    });
+
+    const again = await repo.reportShipped(
+      reportInput(rebuilt.id, {
+        description: "CSV export, rebuilt",
+        reportedAt: REPORTED_AGAIN_AT,
+        readoutDueAt: SECOND_READOUT_DUE_AT,
+      }),
+    );
+
+    expect(again.claim).toBe("reported");
+    expect(again.change.id).not.toBe(first.change.id);
+    expect(again.change.readoutDueAt.toISOString()).toBe(SECOND_READOUT_DUE_AT.toISOString());
+
+    // The abandoned row stays exactly where it is: it is the record that the project went away,
+    // and the new report neither edits it nor reads a verdict out of it.
+    const orphan = await db
+      .select()
+      .from(schema.shippedChanges)
+      .where(eq(schema.shippedChanges.id, first.change.id));
+
+    expect(orphan[0]?.state).toBe("abandoned");
+    expect(orphan[0]?.projectId).toBeNull();
+    expect(orphan[0]?.description).toBe("CSV export");
+  });
 });
 
 // The outcome is what the readout was able to say, and it is the whole difference between a
@@ -364,10 +449,17 @@ describe("a readout that measured nothing does not close the change", () => {
     expect(rows[0]?.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
   });
 
+  // The claim differs because the two states are different facts — one carries an answer, the
+  // other carries the reason we gave up — and neither is reopened.
+  const SETTLED_CLAIMS = {
+    closed: "already_answered",
+    abandoned: "stopped_watching",
+  } as const;
+
   for (const state of ["closed", "abandoned"] as const) {
-    test(`a ${state} row that measured nothing keeps the founder's answer and is not reopened`, async () => {
+    test(`a ${state} row that measured nothing keeps its terminal state and is not reopened`, async () => {
       // The reopen is a predicate of its own and never a relaxation of the ones beside it: a row
-      // that already carries an answer is out of its reach whatever its readout managed to say.
+      // that has already settled is out of its reach whatever its readout managed to say.
       const { org, project } = await seedOrgAndProject(`no-reopen-${state}`);
       const repo = createShippedChangesRepo(db, org.ctx);
 
@@ -386,7 +478,7 @@ describe("a readout that measured nothing does not close the change", () => {
         }),
       );
 
-      expect(again.claim).toBe("already_answered");
+      expect(again.claim).toBe(SETTLED_CLAIMS[state]);
 
       const rows = await changeRowsFor({
         organizationId: org.organizationId,

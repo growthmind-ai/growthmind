@@ -37,6 +37,7 @@ export type ReportShippedAnswer =
   // Told again after it was answered. The change key is fixed at page and control, so there is
   // no second row to open and no date left to promise.
   | { readonly outcome: "already_answered"; readonly change: ReportedChange }
+  | { readonly outcome: "stopped_watching"; readonly change: ReportedChange }
   | { readonly outcome: "no_project" }
   | { readonly outcome: "not_our_project" }
   | { readonly outcome: "ambiguous_project"; readonly projectIds: readonly string[] };
