@@ -24,10 +24,15 @@ export type CountBasis = {
   readonly keptUnchecked: number;
 };
 
+// Repeat counts people rather than sessions, so this is one widened field on the same type
+// rather than a second count type beside it.
+export const COUNT_UNITS = ["sessions", "people"] as const;
+export type CountUnit = (typeof COUNT_UNITS)[number];
+
 export type MeasuredCount = {
   readonly numerator: number;
   readonly denominator: number;
-  readonly unit: "sessions";
+  readonly unit: CountUnit;
   readonly timeframe: { readonly start: Date; readonly end: Date };
   readonly basis: CountBasis;
   readonly [MEASURED]: true;
@@ -36,7 +41,7 @@ export type MeasuredCount = {
 export type MeasuredCountInput = {
   readonly numerator: number;
   readonly denominator: number;
-  readonly unit: "sessions";
+  readonly unit: CountUnit;
   readonly timeframe: { readonly start: Date; readonly end: Date };
   readonly basis: CountBasis;
 };
@@ -59,7 +64,7 @@ export const countBasisSchema = z.object({
 export const measuredCountInputSchema = z.object({
   numerator: z.number().int().nonnegative(),
   denominator: z.number().int().nonnegative(),
-  unit: z.literal("sessions"),
+  unit: z.enum(COUNT_UNITS),
   timeframe: z.object({ start: z.date(), end: z.date() }),
   basis: countBasisSchema,
 });
@@ -139,11 +144,20 @@ export function measuredCount(input: MeasuredCountInput): MeasuredCount {
   };
 }
 
+export type NoRateReason = "zero_denominator" | "no_identity_coverage";
+
 export type Rate =
   | { readonly kind: "rate"; readonly value: number }
+  | { readonly kind: "no_rate"; readonly reason: NoRateReason };
+
+// The narrowed codomain is what lets every existing `no_rate` reader stay as written under the
+// widened reason: `no_identity_coverage` has its own constructor in shipped/counts.ts and cannot
+// come back from here.
+export type MeasuredRate =
+  | Extract<Rate, { readonly kind: "rate" }>
   | { readonly kind: "no_rate"; readonly reason: "zero_denominator" };
 
-export function rateOf(count: MeasuredCount): Rate {
+export function rateOf(count: MeasuredCount): MeasuredRate {
   if (count.denominator === 0) {
     return { kind: "no_rate", reason: "zero_denominator" };
   }

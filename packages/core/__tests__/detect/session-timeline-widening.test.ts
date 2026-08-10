@@ -75,6 +75,25 @@ function corpusOf(carryCuts: boolean): DetectorCorpus {
   };
 }
 
+// Every third session could not be checked against a confirmed audience, and every fifth carried
+// no identity at all — enough of each that neither arm of the comparison is empty.
+const UNCHECKED_STRIDE = 3;
+const UNIDENTIFIED_STRIDE = 5;
+
+function corpusCarryingShippedFields(): DetectorCorpus {
+  const base = corpusOf(false);
+
+  const carrying: readonly SessionTimeline[] = base.sessions.map((session, index) => ({
+    ...session,
+    whoCountsUnchecked: index % UNCHECKED_STRIDE === 0,
+    identityGroup: index % UNIDENTIFIED_STRIDE === 0 ? null : index,
+  }));
+
+  // The basis is left byte-identical on purpose: the only difference between the two corpora is
+  // the two new per-session fields, so a detector output that moves can only have read them.
+  return { ...base, sessions: carrying };
+}
+
 describe("SessionTimeline gains cohortCuts and no detector output moves (Decision 3)", () => {
   test("should produce identical detector candidates whether or not sessions carry cohort cuts", () => {
     const rules = ruleSetV1();
@@ -98,5 +117,44 @@ describe("SessionTimeline gains cohortCuts and no detector output moves (Decisio
     expect(withCuts.candidates.map((candidate) => candidate.surface)).toEqual(
       withoutCuts.candidates.map((candidate) => candidate.surface),
     );
+  });
+});
+
+describe("SessionTimeline gains whoCountsUnchecked and identityGroup and no detector output moves (Decision 2b)", () => {
+  test("should produce identical detector candidates whether or not sessions carry whoCountsUnchecked and identityGroup", () => {
+    const rules = ruleSetV1();
+
+    const withFields = detectFunnelDropoff(corpusCarryingShippedFields(), rules);
+    const withoutFields = detectFunnelDropoff(corpusOf(false), rules);
+
+    // A vacuous pass would be two empty arrays agreeing with each other.
+    expect(withoutFields.candidates.length).toBeGreaterThan(0);
+    expect(withFields.candidates).toEqual(withoutFields.candidates);
+    expect(withFields.coverage).toEqual(withoutFields.coverage);
+  });
+
+  test("should leave both fields optional, so a corpus written before either is still a corpus", () => {
+    const before = corpusOf(false);
+
+    expect(before.sessions.length).toBeGreaterThan(0);
+    expect(before.sessions.every((session) => session.whoCountsUnchecked === undefined)).toBe(true);
+    expect(before.sessions.every((session) => session.identityGroup === undefined)).toBe(true);
+  });
+
+  test("should carry an identity as an equality class and never as a key", () => {
+    const carried = corpusCarryingShippedFields();
+    const groups = carried.sessions.map((session) => session.identityGroup);
+
+    expect(groups.length).toBeGreaterThan(0);
+    expect(groups.some((group) => group === null)).toBe(true);
+    expect(groups.filter((group) => group !== null && !Number.isInteger(group))).toEqual([]);
+  });
+
+  test("should carry a who_counts verdict per session that the detector still never reads", () => {
+    const carried = corpusCarryingShippedFields();
+    const unchecked = carried.sessions.filter((session) => session.whoCountsUnchecked === true);
+
+    expect(unchecked.length).toBeGreaterThan(0);
+    expect(carried.basis.keptUnchecked).toBe(corpusOf(false).basis.keptUnchecked);
   });
 });

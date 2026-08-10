@@ -4,6 +4,7 @@ import { DELIVERY_VOCABULARY, parseRenderedMessage } from "@growthmind/shared";
 
 import { measuredCount } from "../../src/counts/measured-count";
 import { toBlockKit } from "../../src/delivery/block-kit";
+import { escapeMrkdwn } from "../../src/delivery/mrkdwn";
 import { renderSlackMessage, renderedMessageOf } from "../../src/delivery/slack-message";
 import type { SlackMessageInput } from "../../src/delivery/slack-message";
 
@@ -12,10 +13,10 @@ const WINDOW = {
   end: new Date("2026-07-27T00:00:00.000Z"),
 };
 
-function input(overrides: { cause?: boolean } = {}): SlackMessageInput {
+function input(overrides: { cause?: boolean; surfacePath?: string } = {}): SlackMessageInput {
   return {
     decision: "deliver",
-    surfacePath: "/checkout/payment",
+    surfacePath: overrides.surfacePath ?? "/checkout/payment",
     observations: [
       {
         label: "left before finishing",
@@ -62,6 +63,27 @@ describe("the record keeps what was sent, not what would be rendered now", () =>
     expect(stored.text).toBe(message.text);
     expect(stored.blocks).toHaveLength(wire.length);
     expect(stored.legibility).toEqual(message.legibility);
+  });
+
+  test("the record holds the sentence a person read, and the wire holds that sentence escaped", () => {
+    // The two differ by Slack's transport encoding and by nothing else. Storing the escaped form
+    // would put `&amp;` in front of a reader of the transcript, so the record keeps the sentence
+    // and this asserts the escape is the only distance between them.
+    const message = renderSlackMessage(
+      input({ surfacePath: "/reports?plan=pro&ref=slack" }),
+      DELIVERY_VOCABULARY,
+    );
+
+    const stored = renderedMessageOf(message);
+    const wire = toBlockKit(message.blocks);
+
+    const heading = stored.blocks[0];
+    const posted = (wire[0] as { text: { text: string } }).text.text;
+
+    expect(heading?.kind).toBe("section");
+    expect(heading?.kind === "section" && heading.text).toContain("&ref=slack");
+    expect(posted).toContain("&amp;ref=slack");
+    expect(posted).toBe(escapeMrkdwn(heading?.kind === "section" ? heading.text : ""));
   });
 
   test("a stored render survives a round trip through the column's own reader", () => {

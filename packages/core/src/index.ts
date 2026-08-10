@@ -1,4 +1,5 @@
 export {
+  COUNT_UNITS,
   measuredCount,
   rateOf,
   isMeasuredCount,
@@ -6,12 +7,20 @@ export {
   measuredCountInputSchema,
   countBasisSchema,
   setAsideBasisSchema,
+  type CountUnit,
   type MeasuredCount,
   type MeasuredCountInput,
   type CountBasis,
   type SetAsideBasis,
+  type NoRateReason,
   type Rate,
+  type MeasuredRate,
 } from "./counts/measured-count";
+export {
+  buildSetAsideBreakdown,
+  type SetAsideTally,
+  type SetAsideUnit,
+} from "./counts/set-aside-breakdown";
 
 export {
   canonicalJson,
@@ -251,7 +260,8 @@ export {
   type SlackMessage,
   renderedMessageOf,
 } from "./delivery/slack-message";
-export { toBlockKit } from "./delivery/block-kit";
+export { toBlockKit, toPostRequest, type PostRequestInput } from "./delivery/block-kit";
+export { escapeMrkdwn } from "./delivery/mrkdwn";
 
 export {
   renderFixSpec,
@@ -539,6 +549,10 @@ export {
   backfillCompleteSentence,
   slackDisconnectedSentence,
   analysisFailingSentence,
+  changeReportedSentence,
+  changeReadOutSentence,
+  type ChangeReportedSentenceInput,
+  type ChangeReadOutSentenceInput,
   type KeysRevokedSentenceInput,
   type KeyCreatedSentenceInput,
   type BackfillCompleteSentenceInput,
@@ -569,3 +583,46 @@ export {
   type DigestMessageInput,
   type DigestMessage,
 } from "./notifications/digest-message";
+
+export {
+  normalisedPageAddress,
+  pageMatches,
+  matchReplayPages,
+  matchesSpineWalk,
+  type ReplayPageMatch,
+} from "./shipped/page-match";
+export {
+  buildAtPageCorpus,
+  type AtPageCorpus,
+  type AtPageRefusal,
+  type BuildAtPageCorpusInput,
+  type BuildAtPageCorpusResult,
+} from "./shipped/corpus";
+export { shippedCounts, noRateForIdentity, type ShippedCounts } from "./shipped/counts";
+export {
+  SHIPPED_SPINE_ELIGIBILITY_FLOOR,
+  SHIPPED_RECORDED_ELIGIBILITY_FLOOR,
+  eligibilityFloorFor,
+  shippedClaimGate,
+  type ShippedClaimGate,
+} from "./shipped/floors";
+export {
+  renderShippedReadout,
+  shippedReadoutOutcome,
+  type ShippedReadout,
+  type ShippedReadoutAction,
+  type ShippedReadoutInput,
+  type ShippedReadoutResult,
+} from "./shipped/readout";
+export {
+  renderShippedAcknowledgement,
+  shippedAlreadyAnsweredBody,
+  shippedClockUnchangedBody,
+  shippedPromiseBody,
+  shippedStoppedWatchingBody,
+  shippedWatchingAgainBody,
+  type ShippedAcknowledgement,
+  type ShippedAcknowledgementInput,
+  type ShippedChangeNaming,
+  type ShippedPromise,
+} from "./shipped/acknowledgement";

@@ -426,13 +426,20 @@ describe("this surface reads and does nothing else", () => {
     }
   });
 
-  test("WIRE-R19 — every tool this surface exposes is a read, and the write tool is absent", () => {
-    expect(MCP_TOOLS).toHaveLength(4);
-    expect(MCP_TOOLS.every((tool) => tool.readOnlyHint)).toBe(true);
-    expect(MCP_TOOLS.map((tool) => tool.name)).not.toContain("report_shipped");
+  // O-053 replaced the three assertions this test used to carry — every tool read-only, four
+  // tools, no `report_shipped` — with the same three facts stated over the split registry. A
+  // deleted assertion fails that outcome's own gate, so each is named here rather than dropped.
+  test("WIRE-R19 — every tool this surface exposes is a read except the one that names itself a write", () => {
+    const reads = MCP_TOOLS.filter((tool) => tool.readOnlyHint);
+    const writes = MCP_TOOLS.filter((tool) => !tool.readOnlyHint);
+
+    expect(reads).toHaveLength(4);
+    expect(writes).toHaveLength(1);
+    expect(MCP_TOOLS).toHaveLength(5);
+    expect(writes.map((tool) => tool.name)).toEqual(["report_shipped"]);
   });
 
-  test("WIRE-R20 — tools/list answers with the four tools and requires a credential like everything else", async () => {
+  test("WIRE-R20 — tools/list answers with every tool, each carrying its own hint, and requires a credential like everything else", async () => {
     const anonymous = await fingerprint(
       await handleMcpRequest(rpcRequest({ method: "tools/list" }), absentDeps()),
     );
@@ -450,7 +457,7 @@ describe("this surface reads and does nothing else", () => {
     if (!Array.isArray(tools)) {
       throw new Error(`mcproute: tools/list carried no tools array. Body: ${print.body}`);
     }
-    expect(tools).toHaveLength(4);
+    expect(tools).toHaveLength(5);
 
     const advertised = new Map<string, Record<string, unknown>>();
     for (const entry of tools) {
@@ -473,8 +480,18 @@ describe("this surface reads and does nothing else", () => {
       if (!isRecord(annotations)) {
         throw new Error(`mcproute: ${descriptor.name} advertised no annotations`);
       }
-      expect(annotations.readOnlyHint).toBe(true);
+      expect(annotations.readOnlyHint).toBe(descriptor.readOnlyHint);
     }
+
+    // The hint on the wire is the descriptor's, and exactly one descriptor is a write — so a
+    // second write tool, or a read tool that lost its hint, fails here rather than passing on
+    // a per-tool equality that both sides could be wrong about together.
+    const advertisedHints = [...advertised.values()].map((entry) => {
+      const annotations = entry.annotations;
+      return isRecord(annotations) ? annotations.readOnlyHint : undefined;
+    });
+    expect(advertisedHints.filter((hint) => hint === true)).toHaveLength(4);
+    expect(advertisedHints.filter((hint) => hint === false)).toHaveLength(1);
   });
 
   test("WIRE-R21 — each tool's arguments are parsed by the very schema its descriptor advertises", () => {

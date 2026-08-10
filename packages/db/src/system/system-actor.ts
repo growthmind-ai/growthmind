@@ -11,6 +11,7 @@ export const SYSTEM_ACTOR = {
   NOTIFICATION_DISPATCH: "system:notification-dispatch",
   NOTIFICATION_RESCUE: "system:notification-rescue",
   NOTIFICATION_DIGEST: "system:notification-digest",
+  SHIPPED_READOUT: "system:shipped-readout",
 } as const;
 
 export type SystemActor = (typeof SYSTEM_ACTOR)[keyof typeof SYSTEM_ACTOR];

@@ -43,6 +43,19 @@ export function buildAnalysisFailingDedupKey(projectId: string, runId: string): 
   return `analysis_failing:${projectId}:${runId}`;
 }
 
+// The change id and the clock the message is about. The id is held fixed across a re-report, so
+// a second report inside the window cannot mint a second acknowledgement; the date only moves
+// when a readout that measured nothing puts the row back on the clock, and that promise is new.
+export function buildChangeReportedDedupKey(changeId: string, readoutDueAt: Date): string {
+  return `change_reported:${changeId}:${readoutDueAt.toISOString()}`;
+}
+
+// One readout per clock: a re-run of the tick over a row already read out hits this key and
+// writes nothing, while a reopened row answers a date it has never answered before.
+export function buildChangeReadoutDedupKey(changeId: string, readoutDueAt: Date): string {
+  return `change_readout:${changeId}:${readoutDueAt.toISOString()}`;
+}
+
 // The window's own end — the due day's UTC boundary, identical across every hourly run of
 // that day, which is why a later run of the same day cannot mint a second summary.
 export function buildDigestDedupKey(organizationId: string, windowEndIso: string): string {

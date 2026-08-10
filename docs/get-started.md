@@ -251,8 +251,9 @@ the key read from the environment rather than committed:
 
 ### The tools, in plain English
 
-Every one of them reads. Nothing here changes anything, in your product or in
-ours.
+Four of them read. Nothing they touch changes anything, in your product or in
+ours. The fifth, `report_shipped`, is the one place your assistant tells us
+something — and even that only writes to our side. We never write to your repo.
 
 | Tool                 | What it is for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -260,6 +261,7 @@ ours.
 | `get_fix`            | The full instructions for one fix, by id: what is wrong and where, why it matters, the checks it will be judged on, when to stop early. It names files and states what should be true when you are done — it contains no code, and how to get there is yours.                                                                                                                                                                                                                                                             |
 | `get_finding`        | The evidence behind one problem, by id: what happened, how many sessions hit it out of how many were measured, over what dates, and links to the replays and requests that show it. Everything in it was observed, never inferred.                                                                                                                                                                                                                                                                                        |
 | `get_growth_context` | What a page is for in this business, and whether the people who own it have ruled it out of bounds for a coding agent. This is the one to call when nobody has handed you a fix and you are still deciding what to build. Name a page address for one page, or leave it out for the pages that matter here. You get back what the page is for, whether work on it is allowed and why not when it is not, the problems already known on it, and the ideas a person has already turned down so you do not raise them again. |
+| `report_shipped`     | Say what you have just built and put live, so it comes back to you later with how it went. Name what you changed and the page address it lives on — plus the label on the button or link, if you added one of those rather than a whole page. This is the only tool that writes anything, and what it writes is on our side.                                                                                                                                                                                              |
 
 Both id lookups take an id you were handed rather than one you guess, and there
 are two places to be handed one. Every entry `list_open_fixes` returns carries
@@ -271,6 +273,78 @@ nobody has specced a fix for yet is not in that queue at all — it is in
 Ask for an id that does not exist and you get the same sentence as an id
 belonging to someone else. That is deliberate, and there is no way to tell the
 two apart.
+
+### Telling us what you shipped
+
+Most of what you build, nobody asked us about. `report_shipped` is how your
+assistant mentions it, so that change gets measured like any other.
+
+It sends three things, and the third is optional:
+
+- **what you changed**, in a sentence — "CSV export"
+- **the page address it lives on** — `/reports`
+- **the label on the button or link**, if what you shipped is a control on a
+  page that already existed rather than a whole new page
+
+**It cannot send a date, and that is the point.** We choose the day we answer
+on, from the moment you tell us, and the tool refuses any attempt to set it. A
+date you pick after the fact is a report; a date we fix before the fact is a
+forecast, and only one of those can be wrong in a way you can hold us to.
+
+What comes straight back, in the same Slack channel your findings already use:
+
+> Noted — CSV export on /reports.
+>
+> On 23 August I'll tell you how many of the visits to that page used it, and
+> how many people came back to it.
+>
+> I have not read your code, so I am taking your word that it is live.
+
+Mention the same change again and nothing restarts. The wording updates, the
+date does not move, and we say so rather than promising a second one.
+
+The one exception is a change we could not measure. If the day came and there
+was not enough traffic to tell you anything, mentioning it again puts the same
+change back on the clock with a new date, because nothing was answered the first
+time:
+
+> CSV export on /reports again — last time there was not enough for me to
+> measure, so I am watching that page again and I'll tell you how it went on 6
+> September.
+
+That is the same change on a new clock, not a second one: there is still one
+row, and a change we _did_ answer is still turned down rather than restarted.
+
+On the day, one message arrives with the answer:
+
+> CSV export — I could watch 212 visits to /reports, and 9 of them used it. 1 of
+> the 45 people I could tell apart came back to it. Both counts come off the
+> same visits: one counts the visits themselves, the other groups them into the
+> people who made them. I counted that off the visits that were recorded, not
+> off everyone who was there.
+>
+> Keep it, kill it, or leave it?
+
+Four things about that message are deliberate. **Every number says out of how
+many**, and each says out of how many _of what_: the first counts visits, the
+second counts people, and the two totals are different sizes, so neither
+sentence points back at the other's. **It names which visits it counted** —
+every visit to the page, or only the ones that were recorded — and never mixes
+the two inside one claim, because a count taken from the smaller group over a
+total taken from the larger one reads as cautious and is simply wrong. **When
+there is not enough to tell, it says so** rather than dressing a small number
+up: _"there were only 4 visits to /reports in that time. Not enough to tell you
+anything, so I'm not going to pretend otherwise."_ And **it never grades the
+number**. Whether 9 of 212 is good is your judgement about your own product, not
+ours to invent a pass mark for.
+
+So it ends by asking, on every one of those messages — including the one that
+had nothing to tell you, because "only 4 visits, is this worth keeping?" is
+still your call and not ours. Press one of the three buttons and that is
+recorded against the change, along with which of those messages you were
+answering, and it is what the next brief reads. Answer nothing for a week and
+that is recorded too — _no verdict given_ is itself an answer about how much
+this one mattered to you.
 
 ### You do not configure the protocol
 
@@ -332,9 +406,11 @@ things this build must keep true:
    the founder is still on the screen.
 2. **"Open source and built in the open, so you can hold us to it."** The page
    invites scrutiny of exactly the commitments in [`AGENTS.md`](../AGENTS.md).
-3. **Read-only, stated everywhere.** The repo connection says it, the console
-   banner says it, the MCP subset enforces it. The read-only commitment is
-   visible copy, not a footnote.
+3. **Read-only where your product is concerned, stated everywhere.** The repo
+   connection says it, the console banner says it, and every tool that touches
+   anything of yours reads. `report_shipped` writes one row on our side and
+   still reads nothing of yours — we never write to your repo. The commitment
+   is visible copy, not a footnote.
 
 ## 8. Done when, experientially
 

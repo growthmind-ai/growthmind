@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 
+import { fill } from "@growthmind/core";
 import {
   createDismissalsRepo,
   createFixesService,
+  createShippedChangeVerdictsRepo,
+  createShippedChangesRepo,
   createSignatureLedgerService,
   resolveDeliveryForInteraction,
+  resolveNotificationForInteraction,
+  type ChooseLeadCountResult,
   type OpenFixResult,
   type ScopedDb,
 } from "@growthmind/db";
@@ -17,17 +22,27 @@ import {
   FIX_QUEUED_ACKNOWLEDGEMENT,
   logger,
   parseWebEnv,
+  SHIPPED_LEAD_CHANGED_TEMPLATE,
+  SHIPPED_LEAD_NAMES,
+  SHIPPED_LEAD_TOO_LATE_REFUSAL,
+  SHIPPED_VERDICT_ALREADY_RECORDED,
+  SHIPPED_VERDICT_RECORDED,
+  SHIPPED_VERDICT_TOO_EARLY_REFUSAL,
+  SHIPPED_VERDICT_TOO_LATE_REFUSAL,
   SLACK_INTERACTION_UNCONFIGURED_REFUSAL,
   SLACK_TIMESTAMP_TOLERANCE_MS,
   slackInteractionPayloadSchema,
+  type ShippedLeadCount,
+  type ShippedVerdict,
   type SlackInteractionPayload,
+  type TenantContext,
 } from "@growthmind/shared";
 import { after } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { readBoundedBody } from "@/lib/http/bounded-body";
 import { postSlackAcknowledgement } from "@/lib/slack/acknowledge";
-import { resolveSlackAction } from "@/lib/slack/interaction-router";
+import { resolveSlackAction, type SlackActionResolution } from "@/lib/slack/interaction-router";
 import { verifySlackSignature } from "@/lib/slack/signature";
 
 export const dynamic = "force-dynamic";
@@ -114,11 +129,18 @@ async function acknowledge(interaction: SlackInteractionPayload, text: string): 
   }
 }
 
-async function mintFor(db: ScopedDb, interaction: SlackInteractionPayload): Promise<string | null> {
-  const principal = await resolveDeliveryForInteraction(db, {
+function postedAt(interaction: SlackInteractionPayload): {
+  readonly channelId: string;
+  readonly messageRef: string;
+} {
+  return {
     channelId: interaction.container.channel_id ?? interaction.channel.id,
     messageRef: interaction.container.message_ts,
-  });
+  };
+}
+
+async function mintFor(db: ScopedDb, interaction: SlackInteractionPayload): Promise<string | null> {
+  const principal = await resolveDeliveryForInteraction(db, postedAt(interaction));
 
   if (principal === null) {
     logger.warn("slack interactivity: a press arrived on a message this deployment never posted");
@@ -144,10 +166,7 @@ async function dismissFor(
   db: ScopedDb,
   interaction: SlackInteractionPayload,
 ): Promise<string | null> {
-  const principal = await resolveDeliveryForInteraction(db, {
-    channelId: interaction.container.channel_id ?? interaction.channel.id,
-    messageRef: interaction.container.message_ts,
-  });
+  const principal = await resolveDeliveryForInteraction(db, postedAt(interaction));
 
   if (principal === null) {
     logger.warn("slack interactivity: a press arrived on a message this deployment never posted");
@@ -177,25 +196,142 @@ async function dismissFor(
   return existing !== null ? DISMISSAL_ALREADY_RECORDED_ACKNOWLEDGEMENT : DISMISSAL_ACKNOWLEDGEMENT;
 }
 
+interface ShippedSubject {
+  readonly context: TenantContext;
+  readonly changeId: string;
+}
+
+// The organization comes from the (channel, message) pair and from nowhere else, so nothing the
+// payload says about a workspace or a person reaches the context. The button's value is then
+// checked against what that pair resolved to, which turns a crafted press into a refusal.
+async function shippedSubjectOf(
+  db: ScopedDb,
+  interaction: SlackInteractionPayload,
+): Promise<ShippedSubject | null> {
+  const principal = await resolveNotificationForInteraction(db, postedAt(interaction));
+
+  if (principal === null) {
+    logger.warn("slack interactivity: a press arrived on a message this deployment never posted");
+    return null;
+  }
+
+  if (principal.subjectKind !== "shipped_change") {
+    logger.warn("slack interactivity: a shipped-change press landed on some other kind of post", {
+      subjectKind: principal.subjectKind,
+    });
+    return null;
+  }
+
+  if (interaction.actions[0]?.value !== principal.subjectId) {
+    logger.warn("slack interactivity: a press named something the message it sits on does not");
+    return null;
+  }
+
+  return { context: principal.context, changeId: principal.subjectId };
+}
+
+// A press that changed nothing has two causes the founder tells apart from the outside: they
+// answered already, or the window lapsed and the absence was recorded for them. The stored
+// verdict is what separates them, so the repository's one `already_recorded` reaches two
+// sentences rather than the wrong one twice.
+function alreadyRecordedSentence(standing: ShippedVerdict | null): string {
+  return standing === "no_verdict_given"
+    ? SHIPPED_VERDICT_TOO_LATE_REFUSAL
+    : SHIPPED_VERDICT_ALREADY_RECORDED;
+}
+
+async function recordVerdictFor(
+  db: ScopedDb,
+  interaction: SlackInteractionPayload,
+  verdict: ShippedVerdict,
+): Promise<string | null> {
+  const subject = await shippedSubjectOf(db, interaction);
+  if (subject === null) {
+    return null;
+  }
+
+  const verdicts = createShippedChangeVerdictsRepo(db, subject.context);
+
+  const result = await verdicts.recordVerdict({
+    changeId: subject.changeId,
+    verdict,
+    recordedAt: new Date(),
+    recordedBySlackUserId: interaction.user?.id ?? null,
+  });
+
+  logger.info("slack interactivity: a verdict press was served", { outcome: result.kind });
+
+  if (result.kind === "recorded") return SHIPPED_VERDICT_RECORDED;
+  if (result.kind === "not_read_out") return SHIPPED_VERDICT_TOO_EARLY_REFUSAL;
+
+  // An abandoned row was closed with a reason, and may well have been read out first, so the
+  // too-early sentence would be false. Closed is the one thing true of every way it gets here.
+  if (result.kind === "abandoned") return SHIPPED_VERDICT_TOO_LATE_REFUSAL;
+
+  const standing = await verdicts.findForChange(subject.changeId);
+
+  return alreadyRecordedSentence(standing?.verdict ?? null);
+}
+
+function leadSentenceFor(kind: ChooseLeadCountResult["kind"], leadCount: ShippedLeadCount): string {
+  return kind === "chosen"
+    ? fill(SHIPPED_LEAD_CHANGED_TEMPLATE, { lead: SHIPPED_LEAD_NAMES[leadCount] })
+    : SHIPPED_LEAD_TOO_LATE_REFUSAL;
+}
+
+async function chooseLeadFor(
+  db: ScopedDb,
+  interaction: SlackInteractionPayload,
+  leadCount: ShippedLeadCount,
+): Promise<string | null> {
+  const subject = await shippedSubjectOf(db, interaction);
+  if (subject === null) {
+    return null;
+  }
+
+  const result = await createShippedChangesRepo(db, subject.context).chooseLeadCount({
+    changeId: subject.changeId,
+    leadCount,
+  });
+
+  logger.info("slack interactivity: a lead-count press was served", { outcome: result.kind });
+
+  return leadSentenceFor(result.kind, leadCount);
+}
+
+type ServedAction = Exclude<SlackActionResolution, { readonly action: "ignore" }>;
+
 interface PressWork {
   readonly interaction: SlackInteractionPayload;
   readonly identity: string;
   readonly redelivered: boolean;
-  readonly action: "open_fix" | "dismiss";
+  readonly action: ServedAction;
+}
+
+function answerTo(work: PressWork): Promise<string | null> {
+  const db = getDb();
+
+  switch (work.action.action) {
+    case "open_fix":
+      return mintFor(db, work.interaction);
+    case "dismiss":
+      return dismissFor(db, work.interaction);
+    case "verdict":
+      return recordVerdictFor(db, work.interaction, work.action.verdict);
+    case "lead_count":
+      return chooseLeadFor(db, work.interaction, work.action.leadCount);
+  }
 }
 
 async function servePress(work: PressWork): Promise<void> {
   let sentence: string | null;
 
   try {
-    sentence =
-      work.action === "dismiss"
-        ? await dismissFor(getDb(), work.interaction)
-        : await mintFor(getDb(), work.interaction);
+    sentence = await answerTo(work);
   } catch (error) {
     // Releasing the claim leaves Slack's redelivery of the same payload free to try again.
     forgetHandled(work.identity);
-    logger.error("slack interactivity: a press reached nothing, so no fix was opened", {
+    logger.error("slack interactivity: a press reached nothing, so nothing was recorded", {
       reason: error instanceof Error ? error.message : String(error),
     });
     return;
@@ -274,9 +410,7 @@ export async function POST(request: Request): Promise<Response> {
   // duplicate-in-a-shared-channel failure wearing a delivery hat.
   const redelivered = request.headers.get("x-slack-retry-num") !== null;
 
-  await afterResponse(() =>
-    servePress({ interaction, identity, redelivered, action: resolution.action }),
-  );
+  await afterResponse(() => servePress({ interaction, identity, redelivered, action: resolution }));
 
   return ok();
 }

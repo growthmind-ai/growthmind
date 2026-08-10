@@ -79,6 +79,7 @@ import { runNotificationRescue } from "./tasks/notification-rescue";
 import { runNotificationRescueTick } from "./tasks/notification-rescue-tick";
 import { runProviderInterestTick } from "./tasks/provider-interest-tick";
 import { runSessionSourcePoll } from "./tasks/session-source-poll";
+import { runShippedReadoutTick } from "./tasks/shipped-readout-tick";
 
 let resources: { db: ScopedDb; env: WorkerEnv } | null = null;
 
@@ -523,6 +524,17 @@ export const taskList: TaskList = {
     });
     helpers.logger.info("notification digest: every organization due today was summarised");
   },
+
+  [TASK.SHIPPED_READOUT]: async (_payload, helpers) => {
+    const { db } = resolveResources();
+
+    await runShippedReadoutTick({
+      db,
+      now: () => new Date(),
+      logger: taskLoggerFor(logger),
+    });
+    helpers.logger.info("shipped readout: every due change was answered and every lapse closed");
+  },
 };
 
 export const crontab = [
@@ -542,4 +554,8 @@ export const crontab = [
   // them. The once-a-week guarantee is the dedup conflict plus the since-the-last-summary
   // window, so the other twenty-three runs of a due day write nothing.
   `0 * * * * ${TASK.NOTIFICATION_DIGEST}`,
+
+  // The digest's cadence, reused: a readout is due on a date rather than at an hour, so the
+  // tick has to wake often enough to answer on the promised day and no oftener.
+  `0 * * * * ${TASK.SHIPPED_READOUT}`,
 ].join("\n");

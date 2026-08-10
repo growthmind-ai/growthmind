@@ -218,6 +218,20 @@
       "when": 1786205704877,
       "tag": "0030_rainy_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786293834888,
+      "tag": "0031_spicy_epoch",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786357945753,
+      "tag": "0032_glorious_white_tiger",
+      "breakpoints": true
     }
   ]
 }

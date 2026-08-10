@@ -13,6 +13,8 @@ export const NOTIFICATION_TYPES = [
   "slack_disconnected",
   "analysis_failing",
   "digest",
+  "change_reported",
+  "change_readout",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
@@ -33,6 +35,11 @@ export const NOTIFICATION_CLASS_BY_TYPE: Record<NotificationType, NotificationCl
   slack_disconnected: "act_now",
   analysis_failing: "act_now",
   digest: "record",
+
+  // Both halves of a reported change are work: the promise and the answer each ask the
+  // founder for something, so neither may be held back for the weekly summary.
+  change_reported: "work",
+  change_readout: "work",
 };
 
 // Every actionable notification carries a Slack send row — sent, failed, or quiet with a
@@ -53,6 +60,7 @@ export const NOTIFICATION_SUBJECT_KINDS = [
   "source_connection",
   "project",
   "organization",
+  "shipped_change",
 ] as const;
 export type NotificationSubjectKind = (typeof NOTIFICATION_SUBJECT_KINDS)[number];
 

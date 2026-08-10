@@ -1,4 +1,5 @@
 import { renderFixSpec } from "@growthmind/core";
+import { describeDriverError } from "@growthmind/db";
 import {
   FIX_ATTEMPT_CEILING,
   MCP_TOOL,
@@ -20,6 +21,7 @@ import {
 
 import type { McpCredential } from "./credentials";
 import type { McpReadPort, OpenFixRow } from "./read-port";
+import { reportShipped } from "./report-shipped";
 import {
   NOT_FOUND,
   NO_PROJECT,
@@ -29,6 +31,18 @@ import {
   unknownTool,
   type McpRefusal,
 } from "./refusals";
+import { createAbsentWritePort, type McpWritePort } from "./write-port";
+
+// One object rather than a growing tail of positional arguments, because the write tool this
+// surface just gained will not be the last one.
+export interface McpPorts {
+  readonly reads: McpReadPort;
+  readonly writes?: McpWritePort;
+}
+
+const ABSENT_WRITES = createAbsentWritePort((message) => {
+  logger.warn(message);
+});
 
 export type McpToolOutcome =
   | { readonly ok: true; readonly tool: McpToolName; readonly result: unknown }
@@ -47,7 +61,7 @@ const GET_FINDING_OUTPUT_SCHEMA = requireTool(MCP_TOOL.GET_FINDING).outputSchema
 export async function callTool(
   name: string,
   input: unknown,
-  reads: McpReadPort,
+  ports: McpPorts,
   credential: McpCredential,
 ): Promise<McpToolOutcome> {
   const resolution = resolveMcpTool(name);
@@ -56,11 +70,14 @@ export async function callTool(
   }
 
   try {
-    return await runTool(resolution.tool.name, input, reads, credential);
+    return await runTool(resolution.tool.name, input, ports, credential);
   } catch (error) {
     logger.error("mcp: a tool call could not be completed", {
       tool: resolution.tool.name,
-      error,
+
+      // This wraps a database write now, and the driver puts every bound parameter in the
+      // message — the caller's own description and page among them.
+      reason: describeDriverError(error),
     });
     return { ok: false, refusal: UNAVAILABLE };
   }
@@ -69,9 +86,11 @@ export async function callTool(
 async function runTool(
   name: McpToolName,
   input: unknown,
-  reads: McpReadPort,
+  ports: McpPorts,
   credential: McpCredential,
 ): Promise<McpToolOutcome> {
+  const reads = ports.reads;
+
   switch (name) {
     case MCP_TOOL.LIST_OPEN_FIXES: {
       const parsed = listOpenFixesInputSchema.safeParse(input);
@@ -103,6 +122,17 @@ async function runTool(
         return { ok: false, refusal: malformedInput(name, parsed.error.issues) };
       }
       return getGrowthContext(parsed.data, reads, credential);
+    }
+
+    case MCP_TOOL.REPORT_SHIPPED: {
+      const outcome = await reportShipped(
+        input,
+        ports.writes ?? ABSENT_WRITES,
+        credential,
+        new Date(),
+      );
+
+      return outcome.ok ? answered(MCP_TOOL.REPORT_SHIPPED, outcome.result) : outcome;
     }
   }
 }

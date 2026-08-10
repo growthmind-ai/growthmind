@@ -6,6 +6,8 @@ import {
   agentFirstContactSentence,
   analysisFailingSentence,
   backfillCompleteSentence,
+  changeReadOutSentence,
+  changeReportedSentence,
   findingDeliveredSentence,
   genericNotificationSentence,
   keyCreatedSentence,
@@ -182,6 +184,29 @@ describe("the analysis_failing sentence carries its denominator", () => {
 
     expect(sentence).toContain("3 of the last 3");
     expect(sentence).toContain("Checkout");
+    expectPlainEnglish(sentence);
+  });
+});
+
+describe("a reported change speaks the same sentence in the bell as in the channel", () => {
+  test("the promise names the date the answer lands", () => {
+    const sentence = changeReportedSentence({
+      change: "CSV export",
+      page: "/reports",
+      readoutDueAt: new Date("2026-08-23T09:00:00.000Z"),
+    });
+
+    expect(sentence).toContain("23 August");
+    expect(sentence).toContain("/reports");
+    expectPlainEnglish(sentence);
+  });
+
+  test("a read-out change names what is waiting on the founder", () => {
+    const sentence = changeReadOutSentence({ change: "CSV export", page: "/reports" });
+
+    expect(sentence).toContain("CSV export");
+    expect(sentence).toContain("/reports");
+    expect(sentence).not.toMatch(/\{\w+\}/);
     expectPlainEnglish(sentence);
   });
 });

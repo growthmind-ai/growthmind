@@ -1,4 +1,4 @@
-import type { FixSpecInput } from "@growthmind/core";
+import type { CountUnit, FixSpecInput } from "@growthmind/core";
 import {
   BUSINESS_FACT_HEADINGS,
   BUSINESS_FACT_NOTES,
@@ -23,7 +23,7 @@ import type { FindingRecord, FixRecord, GrowthContextRecord, OpenFixRow } from "
 export interface PersistedCount {
   readonly numerator: number;
   readonly denominator: number;
-  readonly unit: "sessions";
+  readonly unit: CountUnit;
   readonly timeframe: { readonly start: unknown; readonly end: unknown };
   readonly basis: {
     readonly totalInWindow: number;
@@ -91,11 +91,23 @@ function toStrings(value: unknown): readonly string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+// The count unit widened to carry people; everything this wire publishes is counted over
+// sessions, so the narrowing happens here rather than the published shape widening under it.
+function sessionsUnitOf(count: PersistedCount): "sessions" {
+  if (count.unit !== "sessions") {
+    throw new Error(
+      `mcp: a count on this wire is over sessions, and this one is over ${count.unit}`,
+    );
+  }
+
+  return count.unit;
+}
+
 export function toMcpMeasuredCount(count: PersistedCount): McpMeasuredCount {
   return mcpMeasuredCountSchema.parse({
     numerator: count.numerator,
     denominator: count.denominator,
-    unit: count.unit,
+    unit: sessionsUnitOf(count),
     timeframe: { start: toIso(count.timeframe.start), end: toIso(count.timeframe.end) },
     basis: {
       totalInWindow: count.basis.totalInWindow,

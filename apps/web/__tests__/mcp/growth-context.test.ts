@@ -101,7 +101,7 @@ function answerFor(overrides: {
 async function ask(answer: GrowthContextAnswer, input: Record<string, unknown> = {}) {
   const port = fakeReadPort({ growthContexts: [{ organizationId: ORG, answer }] }).port;
 
-  return callTool(MCP_TOOL.GET_GROWTH_CONTEXT, input, port, credentialFor(ORG));
+  return callTool(MCP_TOOL.GET_GROWTH_CONTEXT, input, { reads: port }, credentialFor(ORG));
 }
 
 describe("get_growth_context", () => {
@@ -344,7 +344,12 @@ describe("list_open_fixes keeps the order it was given", () => {
       getGrowthContext: () => Promise.resolve({ outcome: "no_project" as const }),
     };
 
-    const outcome = await callTool(MCP_TOOL.LIST_OPEN_FIXES, {}, port, credentialFor(ORG));
+    const outcome = await callTool(
+      MCP_TOOL.LIST_OPEN_FIXES,
+      {},
+      { reads: port },
+      credentialFor(ORG),
+    );
 
     if (!outcome.ok) throw new Error("expected an answer");
     const result = outcome.result as { fixes: readonly { fixId: string }[] };

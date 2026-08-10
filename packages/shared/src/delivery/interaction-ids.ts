@@ -9,7 +9,38 @@ export const NOT_USEFUL_ACTION_ID = "growthmind.not_useful.v1";
 
 export const NOT_USEFUL_LABEL = "Not useful";
 
+// One action id per verdict, so the router stays an exact match with no value to parse.
+export const SHIPPED_VERDICT_KEEP_ACTION_ID = "growthmind.shipped_verdict.keep.v1";
+
+export const SHIPPED_VERDICT_KEEP_LABEL = "Keep it";
+
+export const SHIPPED_VERDICT_KILL_ACTION_ID = "growthmind.shipped_verdict.kill.v1";
+
+export const SHIPPED_VERDICT_KILL_LABEL = "Kill it";
+
+export const SHIPPED_VERDICT_LEAVE_ACTION_ID = "growthmind.shipped_verdict.leave.v1";
+
+export const SHIPPED_VERDICT_LEAVE_LABEL = "Leave it";
+
+export const SHIPPED_LEAD_REACH_ACTION_ID = "growthmind.shipped_lead.reach.v1";
+
+export const SHIPPED_LEAD_REACH_LABEL = "Lead with how many used it";
+
+export const SHIPPED_LEAD_REPEAT_ACTION_ID = "growthmind.shipped_lead.repeat.v1";
+
+export const SHIPPED_LEAD_REPEAT_LABEL = "Lead with how many came back";
+
+// Fragments rather than sentences, so they live beside the labels instead of in `messages.ts`.
+export const SHIPPED_LEAD_NAMES = {
+  reach: "how many used it",
+  repeat: "how many came back",
+} as const;
+
 export const FINDING_BLOCK_ID_PREFIX = "growthmind.finding.v1:";
+
+// Slack never renders a block id, so the change travels here as well as in each button's value.
+// Nothing routes on it: the press resolves its org from the (channel, message) pair.
+export const SHIPPED_BLOCK_ID_PREFIX = "growthmind.shipped_change.v1:";
 
 export const SLACK_INTERACTION_ACTOR = "slack:interaction";
 

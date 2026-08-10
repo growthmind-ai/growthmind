@@ -97,24 +97,29 @@ describe("WIRE-S2 — callTool takes the credential separately and reads the org
     const spy = fakeReadPort();
     const credential: McpCredential = credentialFor(CREDENTIAL_ORG);
 
-    await callTool(MCP_TOOL.LIST_OPEN_FIXES, { organizationId: FOREIGN_ORG }, spy.port, credential);
+    await callTool(
+      MCP_TOOL.LIST_OPEN_FIXES,
+      { organizationId: FOREIGN_ORG },
+      { reads: spy.port },
+      credential,
+    );
     await callTool(
       MCP_TOOL.GET_FIX,
       { organizationId: FOREIGN_ORG, fixId: "fix-anything" },
-      spy.port,
+      { reads: spy.port },
       credential,
     );
     await callTool(
       MCP_TOOL.GET_FINDING,
       { organizationId: FOREIGN_ORG, findingId: "finding-anything" },
-      spy.port,
+      { reads: spy.port },
       credential,
     );
 
     await callTool(
       MCP_TOOL.GET_GROWTH_CONTEXT,
       { organizationId: FOREIGN_ORG, surface: "/checkout" },
-      spy.port,
+      { reads: spy.port },
       credential,
     );
 
@@ -168,20 +173,26 @@ describe("WIRE-S5 — callTool returns a refusal union and never a Response, and
   const cases: readonly { readonly name: string; readonly run: () => Promise<unknown> }[] = [
     {
       name: "an unknown tool name",
-      run: () => callTool("not_a_tool", {}, fakeReadPort().port, credential),
+      run: () => callTool("not_a_tool", {}, { reads: fakeReadPort().port }, credential),
     },
     {
       name: "arguments that do not fit the tool's schema",
-      run: () => callTool(MCP_TOOL.GET_FIX, { fixId: 42 }, fakeReadPort().port, credential),
+      run: () =>
+        callTool(MCP_TOOL.GET_FIX, { fixId: 42 }, { reads: fakeReadPort().port }, credential),
     },
     {
       name: "a port that answers with nothing",
       run: () =>
-        callTool(MCP_TOOL.GET_FIX, { fixId: "no-such-fix" }, fakeReadPort().port, credential),
+        callTool(
+          MCP_TOOL.GET_FIX,
+          { fixId: "no-such-fix" },
+          { reads: fakeReadPort().port },
+          credential,
+        ),
     },
     {
       name: "a port that throws",
-      run: () => callTool(MCP_TOOL.LIST_OPEN_FIXES, {}, throwingReadPort(), credential),
+      run: () => callTool(MCP_TOOL.LIST_OPEN_FIXES, {}, { reads: throwingReadPort() }, credential),
     },
   ];
 

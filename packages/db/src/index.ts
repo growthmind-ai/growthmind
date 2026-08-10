@@ -364,6 +364,8 @@ export {
 } from "./notifications/backfill-complete";
 export {
   createNotificationsRepo,
+  resolveNotificationForInteraction,
+  type NotificationInteractionPrincipal,
   type NotificationsRepo,
   type NotificationWithReadState,
   type NotificationSendFacts,
@@ -415,3 +417,38 @@ export {
   createNotificationMutesRepo,
   type NotificationMutesRepo,
 } from "./repositories/notification-mutes.repo";
+export {
+  createShippedChangesRepo,
+  type ChooseLeadCountInput,
+  type ChooseLeadCountResult,
+  type ReportShippedChangeInput,
+  type ShippedChangeRow,
+  type ShippedChangesRepo,
+} from "./repositories/shipped-changes.repo";
+export {
+  createShippedChangeVerdictsRepo,
+  type RecordVerdictInput,
+  type RecordVerdictResult,
+  type ShippedChangeVerdictRow,
+  type ShippedChangeVerdictsRepo,
+} from "./repositories/shipped-change-verdicts.repo";
+
+// The same narrow exception `emitBackfillComplete` takes: the acknowledgement's fact is written
+// by the machine surface and its clock is read out by the worker, so both emitters cross while
+// the general emit seam stays behind the wall.
+export { emitChangeReported, type EmitChangeReportedInput } from "./notifications/change-reported";
+export { emitChangeReadout, type EmitChangeReadoutInput } from "./notifications/change-readout";
+export {
+  createShippedChangesService,
+  type AbandonChangeInput,
+  type AbandonChangeResult,
+  type RecordReadoutInput,
+  type RecordReadoutResult,
+  type ReportShippedInput,
+  type ShippedChangesService,
+} from "./services/shipped-changes.service";
+export {
+  readShippedChangeForRender,
+  renderChangeAcknowledgement,
+  renderChangeReadout,
+} from "./services/shipped-readout.service";

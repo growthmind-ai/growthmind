@@ -18,6 +18,8 @@ import { describe, expect, test } from "bun:test";
 
 import { measuredCount } from "../../src/counts/measured-count";
 import type { CountBasis, MeasuredCount, SetAsideBasis } from "../../src/counts/measured-count";
+import { toBlockKit } from "../../src/delivery/block-kit";
+import { escapeMrkdwn } from "../../src/delivery/mrkdwn";
 import {
   COHORT_NOUNS,
   MAX_OBSERVATIONS,
@@ -48,6 +50,12 @@ function isTextBlock(block: SlackBlock | undefined): block is SlackTextBlock {
 function textAt(blocks: readonly SlackBlock[], index: number): string {
   const block = blocks[index];
   return isTextBlock(block) ? block.text : "";
+}
+
+// Asserted at the converted payload and not at `blocks`: toBlockKit escapes every mrkdwn body,
+// so a claim about what Slack receives cannot be made one step before the escape.
+function wireTextOf(message: { readonly blocks: readonly SlackBlock[] }): string {
+  return JSON.stringify(toBlockKit(message.blocks));
 }
 
 const FIXTURE_WINDOW = {
@@ -319,6 +327,30 @@ describe("renderSlackMessage — the deliver arm", () => {
     expect(message.legibility.characters).toBeLessThanOrEqual(SLACK_MESSAGE_CHARACTER_BUDGET);
   });
 
+  test("should not hand Slack a string over the budget once the escape has grown it", () => {
+    // An ampersand costs five characters on the wire. A budget settled before escaping passes
+    // here and posts four times what it measured, which Slack rejects rather than truncates.
+    const input: SlackMessageInput = {
+      decision: "deliver",
+      surfacePath: `/reports?${"a&b&".repeat(200)}`,
+      observations: [observation(3, `${LABEL} ${"& more & more ".repeat(60)}`)],
+      explanation: {
+        source: "model_rendered",
+        headline: `Sessions stop at the payment step ${"& again ".repeat(40)}`,
+        context: `Most of what reaches this step does not continue ${"& on & on ".repeat(90)}`,
+      },
+    };
+
+    const message = renderSlackMessage(input, VOCABULARY);
+
+    expect(message.text).toContain("&");
+    expect(escapeMrkdwn(message.text).length).toBeLessThanOrEqual(SLACK_MESSAGE_CHARACTER_BUDGET);
+    for (const block of message.blocks) {
+      if (block.kind === "actions") continue;
+      expect(escapeMrkdwn(block.text).length).toBeLessThanOrEqual(SLACK_MESSAGE_CHARACTER_BUDGET);
+    }
+  });
+
   test("no rendered string contains product jargon", () => {
     const message = renderSlackMessage(deliver({}), VOCABULARY);
     const lower = message.text.toLowerCase();
@@ -556,7 +588,7 @@ describe("renderSlackMessage — the causal clause (O-044)", () => {
     };
   }
 
-  test("(a) renders the causal clause and a real mrkdwn citation link for a claim that survived the citation gate", () => {
+  test("(a) renders the causal clause, and the citation reaches the wire as text rather than as a link", () => {
     const message = renderSlackMessage(
       deliverWithCause({ grade: "explained", claims: [SURVIVING_CLAIM], droppedClaims: 0 }),
       VOCABULARY,
@@ -567,10 +599,17 @@ describe("renderSlackMessage — the causal clause (O-044)", () => {
         isTextBlock(block) && block.text.includes(SURVIVING_STATEMENT),
     );
     expect(causeBlock).toBeDefined();
-    // The real Slack mrkdwn link syntax lives in the block, so Slack renders it clickable.
-    expect(causeBlock?.text).toContain(
-      `<${SURVIVING_CLAIM.citesHref}|${SURVIVING_CLAIM.citesLabel}>`,
+
+    const wire = wireTextOf(message);
+    expect(wire).toContain(SURVIVING_STATEMENT);
+    expect(wire).toContain(SURVIVING_CLAIM.citesLabel);
+
+    // The angle brackets are escaped on the way out, so no caller-supplied href is a live link in
+    // Growthmind's voice — the property escapeMrkdwn exists for, stated where the payload is.
+    expect(wire).toContain(
+      escapeMrkdwn(`<${SURVIVING_CLAIM.citesHref}|${SURVIVING_CLAIM.citesLabel}>`),
     );
+    expect(wire).not.toContain(`<${SURVIVING_CLAIM.citesHref}`);
 
     // The plaintext fallback is human-readable — no raw mrkdwn brackets or bare URLs.
     expect(message.text).toContain(SURVIVING_STATEMENT);
@@ -579,6 +618,25 @@ describe("renderSlackMessage — the causal clause (O-044)", () => {
     expect(message.text).not.toContain(">");
     expect(message.text).not.toContain(SURVIVING_CLAIM.citesHref);
     expect(message.text).not.toContain(EVIDENCE_CLAIM_DROPPED);
+  });
+
+  test("(a) an absolute citation href is escaped too, so a scheme cannot quietly buy a live link", () => {
+    // The href is relative today. If one ever carries a scheme, the mrkdwn form would be the one
+    // shape Slack does linkify, and this is where that changes rather than shipping unnoticed.
+    const absolute: DeliveredCauseClaim = {
+      ...SURVIVING_CLAIM,
+      citesHref: "https://app.example.test/replays/o44-slack-recording?t=64000",
+    };
+
+    const wire = wireTextOf(
+      renderSlackMessage(
+        deliverWithCause({ grade: "explained", claims: [absolute], droppedClaims: 0 }),
+        VOCABULARY,
+      ),
+    );
+
+    expect(wire).toContain(escapeMrkdwn(`<${absolute.citesHref}|${absolute.citesLabel}>`));
+    expect(wire).not.toContain(`<${absolute.citesHref}`);
   });
 
   test("(a) falls back to the bare citation label, never a dead link, when the citation itself never resolved", () => {

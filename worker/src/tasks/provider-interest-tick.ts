@@ -1,4 +1,5 @@
 import type { FetchLike } from "@growthmind/adapters";
+import { escapeMrkdwn } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import type { ClaimedProviderInterest } from "@growthmind/db/system";
 import { claimUnnotifiedProviderInterest, countProviderInterest } from "@growthmind/db/system";
@@ -27,20 +28,14 @@ export interface InterestPostTextInput {
   readonly count: number;
 }
 
-// Slack reads &, < and > as control sequences, so an org named <!channel>
-// must arrive as text rather than ping the channel.
-function escapeSlackText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
 export function interestPostText(input: InterestPostTextInput): string {
-  const displayName = escapeSlackText(input.displayName);
+  const displayName = escapeMrkdwn(input.displayName);
   const running =
     input.count === 1
       ? `1 workspace has asked for ${displayName}.`
       : `${input.count} workspaces have asked for ${displayName}.`;
 
-  return `${escapeSlackText(input.orgName)} asked for ${displayName}. ${running}`;
+  return `${escapeMrkdwn(input.orgName)} asked for ${displayName}. ${running}`;
 }
 
 export async function runProviderInterestTick(

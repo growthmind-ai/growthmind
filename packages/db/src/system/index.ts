@@ -19,6 +19,12 @@ export {
   countProviderInterest,
   type ClaimedProviderInterest,
 } from "./provider-interest";
+export {
+  listDueShippedReadouts,
+  listLapsedShippedChanges,
+  type LapsedShippedChange,
+  type ScheduledShippedChange,
+} from "./shipped-changes";
 export { systemTenantContextFor } from "./system-context";
 export {
   SYSTEM_ACTOR,

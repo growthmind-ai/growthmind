@@ -1,0 +1,125 @@
+import type { ScopedDb } from "@growthmind/db";
+import { createShippedChangesService, createShippedChangeVerdictsRepo } from "@growthmind/db";
+import {
+  SYSTEM_ACTOR,
+  listDueShippedReadouts,
+  listLapsedShippedChanges,
+  systemContextFor,
+  type LapsedShippedChange,
+  type ScheduledShippedChange,
+} from "@growthmind/db/system";
+
+import { isolated, type TaskLogger } from "../task-logger";
+
+export interface ShippedReadoutTickDeps {
+  readonly db: ScopedDb;
+  readonly now: () => Date;
+  readonly logger: TaskLogger;
+}
+
+function contextFor(change: ScheduledShippedChange) {
+  return systemContextFor(SYSTEM_ACTOR.SHIPPED_READOUT, change);
+}
+
+// The transition and the emit commit together inside the service, so a crash before commit
+// leaves nothing and the next hourly run retries. It posts nothing itself: the answer rides
+// the notification spine, which is why this file holds no Slack seam (ADD Decision 1).
+async function readOut(deps: ShippedReadoutTickDeps, change: ScheduledShippedChange, at: Date) {
+  const changes = createShippedChangesService(deps.db, contextFor(change));
+
+  // A change whose project is gone has no corpus to answer from, and going silent would leave
+  // the row reported forever — the one terminal state that records exactly this (D8).
+  if (change.projectId === null) {
+    await changes.abandon({ changeId: change.changeId, reason: "project_gone", at });
+    return;
+  }
+
+  const result = await changes.recordReadout({ changeId: change.changeId, readOutAt: at });
+
+  if (result.kind !== "read_out") {
+    deps.logger.warn(
+      `shipped readout: change ${change.changeId} was due and was not read out this run (${result.kind})`,
+    );
+  }
+}
+
+// A founder who never answers has told us something too, and this is where that is recorded.
+// No notification: the lapse is not news, and they already have the readout.
+async function lapse(deps: ShippedReadoutTickDeps, change: LapsedShippedChange, at: Date) {
+  // A readout that never reached a channel asked nobody anything, so recording "no verdict
+  // given" would put a decision in the founder's mouth. The change is abandoned with the reason
+  // instead — still terminal, still no orphan, and honest about which of the two happened.
+  if (!change.readoutDelivered) {
+    const abandoned = await createShippedChangesService(deps.db, contextFor(change)).abandon({
+      changeId: change.changeId,
+      reason: "never_asked",
+      at,
+    });
+
+    if (abandoned.kind !== "abandoned") {
+      deps.logger.warn(
+        `shipped readout: change ${change.changeId} was never asked and could not be closed this run`,
+      );
+    }
+
+    return;
+  }
+
+  // A readout rendered without its project carries no counts and no buttons — it reached the
+  // channel and asked nothing, which `notification_sends` cannot tell apart from a real question.
+  // `renderChangeReadout` refuses on exactly this condition and a deleted project never returns,
+  // so a null here cannot prove the founder was asked. The row closes on what is true of it
+  // rather than on a verdict it would be inventing.
+  if (change.projectId === null) {
+    const abandoned = await createShippedChangesService(deps.db, contextFor(change)).abandon({
+      changeId: change.changeId,
+      reason: "project_gone",
+      at,
+    });
+
+    if (abandoned.kind !== "abandoned") {
+      deps.logger.warn(
+        `shipped readout: change ${change.changeId} lost its project and could not be closed this run`,
+      );
+    }
+
+    return;
+  }
+
+  await createShippedChangeVerdictsRepo(deps.db, contextFor(change)).recordVerdict({
+    changeId: change.changeId,
+    verdict: "no_verdict_given",
+    recordedAt: at,
+  });
+}
+
+export async function runShippedReadoutTick(deps: ShippedReadoutTickDeps): Promise<void> {
+  const at = deps.now();
+
+  const due = await listDueShippedReadouts(deps.db, at);
+
+  for (const change of due) {
+    // Per row, so one organization's fault cannot starve the rest of the tick (D8).
+    await isolated(
+      deps.logger,
+      `shipped readout: change ${change.changeId} could not be read out this run`,
+      () => readOut(deps, change, at),
+    );
+  }
+
+  // After the readout pass, so a row read out this run is measured from the instant it was
+  // actually read out rather than from a window that had not started when the scan ran.
+  const lapsed = await listLapsedShippedChanges(deps.db, at);
+
+  for (const change of lapsed) {
+    await isolated(
+      deps.logger,
+      `shipped readout: change ${change.changeId} could not be closed as unanswered this run`,
+      () => lapse(deps, change, at),
+    );
+  }
+
+  deps.logger.info(
+    `shipped readout: ${String(due.length)} changes were due and ${String(lapsed.length)} verdict windows had lapsed`,
+  );
+}

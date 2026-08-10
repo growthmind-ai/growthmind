@@ -111,6 +111,7 @@ export function createDetectorCorpusService(
           entryUrlPath: sessions.entryUrlPath,
           identityEmailDomain: sessions.identityEmailDomain,
           identityResolution: sessions.identityResolution,
+          identityKey: sessions.identityKey,
           userAgent: sessions.userAgent,
         })
         .from(sessions)
@@ -169,7 +170,20 @@ export function createDetectorCorpusService(
         }
       }
 
-      let unchecked = 0;
+      const internedGroups = new Map<string, number>();
+
+      // An equality class rather than the key itself: two sessions sharing an identity share a
+      // group, a session with none gets null, and no derived per-person value leaves this read.
+      const identityGroupOf = (identityKey: string | null): number | null => {
+        if (identityKey === null) return null;
+
+        const seen = internedGroups.get(identityKey);
+        if (seen !== undefined) return seen;
+
+        const minted = internedGroups.size;
+        internedGroups.set(identityKey, minted);
+        return minted;
+      };
 
       const timelines: SessionTimeline[] = selected.map((row) => {
         const stamped = row.exclusionReason satisfies ExclusionReason;
@@ -185,23 +199,29 @@ export function createDetectorCorpusService(
               })
             : "counts";
 
-        if (verdict === "unknown") unchecked += 1;
-
         return {
           sessionId: row.id,
           startedAt: row.startedAt,
           exclusionReason: verdict === "outside" ? "outside_who_counts" : stamped,
           entryUrlPath: row.entryUrlPath,
           cohortCuts: cohortCutsOfUserAgent(row.userAgent),
+          whoCountsUnchecked: verdict === "unknown",
+          identityGroup: identityGroupOf(row.identityKey),
           events: eventsBySession.get(row.id) ?? [],
         };
       });
 
       const keptSessionIds: string[] = [];
       const sessionsByReason = new Map<ExclusionReason, number>();
+
+      // Counted off the per-session flags rather than a running total, so the window figure and
+      // the flags a subcorpus rebuild reads can never disagree.
+      let unchecked = 0;
+
       for (const timeline of timelines) {
         if (timeline.exclusionReason === "none") {
           keptSessionIds.push(timeline.sessionId);
+          if (timeline.whoCountsUnchecked === true) unchecked += 1;
           continue;
         }
         sessionsByReason.set(

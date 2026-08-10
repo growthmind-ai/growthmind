@@ -4,13 +4,17 @@ import {
   ANALYSIS_FAILING_RUN_COUNT,
   backfillCompleteSentence,
   buildDigestMessage,
+  changeReadOutSentence,
+  changeReportedSentence,
   dispatchClaimsExpireBefore,
   genericNotificationSentence,
   keyCreatedSentence,
   keysRevokedSentence,
   NOTIFICATION_DISPATCH_MAX_ATTEMPTS,
   slackDisconnectedSentence,
-  toBlockKit,
+  toPostRequest,
+  type ShippedReadoutAction,
+  type SlackBlock,
 } from "@growthmind/core";
 import type { ScopedDb } from "@growthmind/db";
 import {
@@ -20,7 +24,10 @@ import {
   findUserNameById,
   listNotificationsByIds,
   readNotificationForDispatch,
+  readShippedChangeForRender,
   recordDispatchOutcome,
+  renderChangeAcknowledgement,
+  renderChangeReadout,
   type DigestMemberNotification,
   type NotificationForDispatch,
 } from "@growthmind/db";
@@ -31,6 +38,7 @@ import {
   isRetryableSendFailure,
   notificationDispatchPayloadSchema,
   parseNotificationPayload,
+  SHIPPED_BLOCK_ID_PREFIX,
   type DeliveryPoster,
   type NotificationSendFailureReason,
   type PostFailureCode,
@@ -120,22 +128,88 @@ async function sentenceFor(
       // The digest's multi-section shape lives in messageFor; a digest that somehow
       // reaches this one-section path still says something rather than throwing.
       return genericNotificationSentence();
+    case "change_reported": {
+      const change = await readShippedChangeForRender(db, ctx, notification.subjectId);
+
+      return change === null
+        ? genericNotificationSentence()
+        : changeReportedSentence({
+            change: change.description,
+            page: change.page,
+            readoutDueAt: change.readoutDueAt,
+          });
+    }
+    case "change_readout": {
+      // The counted answer and its buttons live in messageFor; this path is the summary
+      // shape, and it names what is waiting rather than restating a number without them.
+      // A change whose project is gone renders no buttons there, and this sentence asks for a
+      // verdict — so it degrades with the render rather than asking a question nobody can
+      // answer.
+      const change = await readShippedChangeForRender(db, ctx, notification.subjectId);
+
+      return change === null || change.projectId === null
+        ? genericNotificationSentence()
+        : changeReadOutSentence({ change: change.description, page: change.page });
+    }
   }
 }
 
+// Growthmind's intermediate model, not Slack's wire format: the escape belongs to the one
+// builder that constructs the request, so no arm of this file can add a raw field.
 interface RenderedPost {
-  readonly blocks: unknown[];
+  readonly blocks: readonly SlackBlock[];
   readonly fallbackText: string;
 }
 
-// One rename inside the render (ADD §4.4): the six one-section types keep their shape
-// byte for byte, and `digest` composes the existing per-type builders into a
-// multi-section message — a render detail, never a second delivery path (D-8).
+interface ShippedMessage {
+  readonly body: string;
+  readonly actions: readonly ShippedReadoutAction[];
+}
+
+function shippedPost(rendered: ShippedMessage, changeId: string): RenderedPost {
+  const blocks: SlackBlock[] = [
+    { kind: "section", text: rendered.body },
+    {
+      kind: "actions",
+      blockId: `${SHIPPED_BLOCK_ID_PREFIX}${changeId}`,
+      actions: rendered.actions.map((action) => ({ ...action, style: null })),
+    },
+  ];
+
+  return { blocks, fallbackText: rendered.body };
+}
+
+// The two shipped-change arms and `digest` are the multi-block shapes; every other type keeps
+// its one-section form byte for byte. A render detail, never a second delivery path (D-8), and
+// a change that cannot be read degrades to the one-section sentence below rather than throwing.
+async function shippedMessageFor(
+  db: ScopedDb,
+  ctx: TenantContext,
+  notification: NotificationForDispatch,
+): Promise<RenderedPost | null> {
+  if (notification.type === "change_reported") {
+    const rendered = await renderChangeAcknowledgement(db, ctx, notification.subjectId);
+
+    return rendered === null ? null : shippedPost(rendered, notification.subjectId);
+  }
+
+  if (notification.type === "change_readout") {
+    const rendered = await renderChangeReadout(db, ctx, notification.subjectId);
+
+    return rendered === null ? null : shippedPost(rendered, notification.subjectId);
+  }
+
+  return null;
+}
+
 async function messageFor(
   db: ScopedDb,
   ctx: TenantContext,
   notification: NotificationForDispatch,
 ): Promise<RenderedPost> {
+  const shipped = await shippedMessageFor(db, ctx, notification);
+  if (shipped !== null) return shipped;
+
   if (notification.type === "digest") {
     const parsed = parseNotificationPayload(notification.payload);
 
@@ -157,13 +231,13 @@ async function messageFor(
 
       const message = buildDigestMessage({ sentences, totalCount: parsed.payload.totalCount });
 
-      return { blocks: toBlockKit(message.blocks), fallbackText: message.fallbackText };
+      return { blocks: message.blocks, fallbackText: message.fallbackText };
     }
   }
 
   const sentence = await sentenceFor(db, ctx, notification, notification.healthReasonCode);
 
-  return { blocks: toBlockKit([{ kind: "section", text: sentence }]), fallbackText: sentence };
+  return { blocks: [{ kind: "section", text: sentence }], fallbackText: sentence };
 }
 
 // The customer-facing reason is composed from the closed union the poster returns, never
@@ -293,11 +367,13 @@ export async function runNotificationDispatch(
   let failure: NotificationSendFailureReason | null = null;
   let result: PostResult | null = null;
   try {
-    result = await poster.post({
-      channelId: notification.channelId,
-      blocks: message.blocks,
-      fallbackText: message.fallbackText,
-    });
+    result = await poster.post(
+      toPostRequest({
+        channelId: notification.channelId,
+        blocks: message.blocks,
+        fallbackText: message.fallbackText,
+      }),
+    );
   } catch (error) {
     // The Slack HTTP port, never the database — the driver-safe describer is for the writes
     // around it (worker/__tests__/driver-error-discipline.test.ts).

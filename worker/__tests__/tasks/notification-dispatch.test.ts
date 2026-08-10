@@ -54,16 +54,24 @@ const COLD_BOOT_BUDGET_MS = 60_000;
 
 interface LoudPoster extends DeliveryPoster {
   readonly posted: PostRequest[];
+
+  readonly refs: string[];
 }
+
+// Per process, not per poster: notification_sends holds (channel, message reference) unique,
+// as Slack itself does, so a counter that restarts each test collides with the receipt the
+// previous test left in the same database.
+let mintedRefs = 0;
 
 // Loud on purpose (writing-a-unit-test): a poster that must not be reached throws rather
 // than returning undefined, so a wrong path fails visibly.
 function loudPoster(options: { readonly fails?: PostFailureCode; readonly refuse?: boolean } = {}): LoudPoster {
   const posted: PostRequest[] = [];
-  let nextRef = 1;
+  const refs: string[] = [];
 
   return {
     posted,
+    refs,
     post(request: PostRequest): Promise<PostResult> {
       if (options.refuse === true) {
         throw new Error("o051-dispatch: this path must never reach the poster");
@@ -72,8 +80,9 @@ function loudPoster(options: { readonly fails?: PostFailureCode; readonly refuse
       if (options.fails !== undefined) {
         return Promise.resolve({ ok: false, code: options.fails, message: VENDOR_TEXT });
       }
-      const messageRef = `o051-ref-${String(nextRef)}`;
-      nextRef += 1;
+      mintedRefs += 1;
+      const messageRef = `o051-ref-${String(mintedRefs)}`;
+      refs.push(messageRef);
       return Promise.resolve({ ok: true, messageRef });
     },
   };
@@ -201,7 +210,7 @@ describe("notification:dispatch posts the shared sentence once and records the h
     expect(send.channel).toBe("slack");
     expect(send.status).toBe("sent");
     expect(send.target).toBe(CHANNEL);
-    expect(send.messageRef).toBe("o051-ref-1");
+    expect(send.messageRef).toBe(poster.refs[0]);
     expect(send.sentAt).toBeInstanceOf(Date);
   });
 
