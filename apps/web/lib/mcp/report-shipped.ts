@@ -3,6 +3,8 @@ import {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedWatchingAgainBody,
+  type ShippedPromise,
 } from "@growthmind/core";
 import { MCP_TOOL, reportShippedInputSchema, reportShippedOutputSchema } from "@growthmind/shared";
 
@@ -130,14 +132,21 @@ export async function reportShipped(
       page: change.page,
       control: change.control,
       readoutDueAt: change.readoutDueAt.toISOString(),
-
-      // The first report says the same sentence the acknowledgement says in Slack: it names the
-      // date, and that nothing here checked the change is really live. A re-report says the date
-      // has not moved, because a second promise would read as a second clock (FR-5.5).
-      acknowledgement:
-        answer.outcome === "clock_unchanged"
-          ? shippedClockUnchangedBody(promise)
-          : shippedPromiseBody(promise),
+      acknowledgement: acknowledgementFor(answer.outcome, promise),
     }),
   };
+}
+
+// The first report says the same sentence the acknowledgement says in Slack: it names the date,
+// and that nothing here checked the change is really live. A re-report inside the window says the
+// date has not moved, because a second promise would read as a second clock (FR-5.5); a re-report
+// after a readout that measured nothing says which date it is now watching to.
+function acknowledgementFor(
+  outcome: "reported" | "clock_unchanged" | "watching_again",
+  promise: ShippedPromise,
+): string {
+  if (outcome === "clock_unchanged") return shippedClockUnchangedBody(promise);
+  if (outcome === "watching_again") return shippedWatchingAgainBody(promise);
+
+  return shippedPromiseBody(promise);
 }

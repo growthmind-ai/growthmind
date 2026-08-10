@@ -120,7 +120,7 @@ describe("an accepted report tells the whole organization, through the spine", (
     expect(row.subjectKind).toBe("shipped_change");
     expect(row.subjectId).toBe(change.id);
     expect(row.actorUserId).toBeNull();
-    expect(row.dedupKey).toBe(buildChangeReportedDedupKey(change.id));
+    expect(row.dedupKey).toBe(buildChangeReportedDedupKey(change.id, change.readoutDueAt));
 
     // The owed arm resolves the org's channel inside the caller's transaction and queues the
     // one registered dispatch seam — this sprint adds no Slack call site of its own.
@@ -155,11 +155,13 @@ describe("an accepted report tells the whole organization, through the spine", (
     expect(again.change.id).toBe(first.change.id);
     expect(await changeRowsFor(db, project.id)).toHaveLength(1);
 
-    // FR-5.5: the dedup key is the change id, so the second report cannot mint an
-    // acknowledgement carrying a second readout date.
+    // FR-5.5: the dedup key is the change id and the clock it promised, neither of which a
+    // re-report inside the window moves, so the second report mints no second acknowledgement.
     const rows = await reportedRowsFor(db, org.organizationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.dedupKey).toBe(buildChangeReportedDedupKey(first.change.id));
+    expect(rows[0]?.dedupKey).toBe(
+      buildChangeReportedDedupKey(first.change.id, first.change.readoutDueAt),
+    );
   });
 
   test("an identical report redelivered leaves one notification and one receipt", async () => {
@@ -176,6 +178,37 @@ describe("an accepted report tells the whole organization, through the spine", (
     const row = rows[0];
     if (!row) throw new Error("the redelivered report emitted no change_reported notification");
     expect(await sendRowsFor(db, row.id)).toHaveLength(1);
+  });
+});
+
+describe("a change put back on the clock promises the new date out loud", () => {
+  test("a re-report after a readout that measured nothing mints a second acknowledgement", async () => {
+    const db = await openDb();
+    const { org, project } = await seedTenant(db, "reopened");
+    await connectSlackChannel(db, org, "C0SHIPPED03");
+    const service = createShippedChangesService(db, org.ctx);
+
+    const first = await service.reportShipped(reportInput(project.id));
+    await service.recordReadout({ changeId: first.change.id, readOutAt: REPORTED_AGAIN_AT });
+    expect(await reportedRowsFor(db, org.organizationId)).toHaveLength(1);
+
+    const again = await service.reportShipped(
+      reportInput(project.id, {
+        description: "CSV export, second pass",
+        reportedAt: REPORTED_AGAIN_AT,
+      }),
+    );
+
+    expect(again.claim).toBe("watching_again");
+
+    // Silence here would be the dead end R12 names: the founder is told nothing about a page we
+    // are now watching for a second time, on a date only the coding agent ever saw.
+    const rows = await reportedRowsFor(db, org.organizationId);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.dedupKey)).toContain(
+      buildChangeReportedDedupKey(first.change.id, again.change.readoutDueAt),
+    );
+    expect(await changeRowsFor(db, project.id)).toHaveLength(1);
   });
 });
 

@@ -2,9 +2,12 @@ import type { ShippedLeadCount } from "@growthmind/shared";
 import {
   SHIPPED_LEAD_COUNTS,
   SHIPPED_NO_IDENTITY_LINE,
+  SHIPPED_READOUT_OUTCOMES,
   SHIPPED_RECORDED_CORPUS_LINE,
+  SHIPPED_SAME_VISITS_LINE,
   SHIPPED_SPINE_CORPUS_LINE,
   SHIPPED_TRUNCATED_LINE,
+  SHIPPED_UNMEASURED_OUTCOMES,
   SHIPPED_VERDICT_KEEP_ACTION_ID,
   SHIPPED_VERDICT_KILL_ACTION_ID,
   SHIPPED_VERDICT_LEAVE_ACTION_ID,
@@ -16,7 +19,7 @@ import type { AtPageCorpus } from "../../src/shipped/corpus";
 import { buildAtPageCorpus } from "../../src/shipped/corpus";
 import { shippedCounts } from "../../src/shipped/counts";
 import type { ShippedReadout, ShippedReadoutResult } from "../../src/shipped/readout";
-import { renderShippedReadout } from "../../src/shipped/readout";
+import { renderShippedReadout, shippedReadoutOutcome } from "../../src/shipped/readout";
 import { atPageInput, mustBuild, shippedCorpus } from "./fixtures";
 
 // The renderer is handed the page it must speak, so these carry no digits: a page string with a
@@ -198,6 +201,67 @@ describe("AC-G12 — every branch ends in the question and never in a grade", ()
         expect(readout.actions.filter((action) => action.label.trim().length > 0)).toHaveLength(3);
       }
     }
+  });
+});
+
+describe("R12 — the branch a verdict answered is recoverable from the branch itself", () => {
+  test("should call exactly the four claim branches measured and the other three not", () => {
+    expect(EVERY_BRANCH.length).toBe(BRANCH_COUNT);
+
+    const measured = EVERY_BRANCH.filter(
+      (result) => shippedReadoutOutcome(result) === "measured",
+    ).length;
+
+    expect(measured).toBe(EVERY_BRANCH.filter((result) => result.kind === "claim").length);
+    expect(measured).toBeGreaterThan(0);
+
+    for (const result of EVERY_BRANCH) {
+      const outcome = shippedReadoutOutcome(result);
+
+      // A branch the union grows and this mapping does not is the case the whole ruling turns
+      // on: a keep pressed on nothing we measured would be stored as a keep on a count.
+      expect(SHIPPED_READOUT_OUTCOMES).toContain(outcome);
+      expect(outcome === "measured").toBe(result.kind === "claim");
+      expect(SHIPPED_UNMEASURED_OUTCOMES.includes(outcome as never)).toBe(result.kind !== "claim");
+    }
+  });
+
+  test("should name every unmeasured branch, so none of the three is silently measured", () => {
+    expect([...SHIPPED_UNMEASURED_OUTCOMES].toSorted()).toEqual([
+      "corpus_predates_who_counts",
+      "stale_page_spelling",
+      "too_few",
+    ]);
+
+    expect(shippedReadoutOutcome({ kind: "stale_page_spelling" })).toBe("stale_page_spelling");
+    expect(shippedReadoutOutcome({ kind: "corpus_predates_who_counts" })).toBe(
+      "corpus_predates_who_counts",
+    );
+    expect(shippedReadoutOutcome({ kind: "too_few", corpus: BELOW_FLOOR_CORPUS })).toBe("too_few");
+  });
+});
+
+describe("the two denominators are the same visits grouped two ways, and say so", () => {
+  test("should bridge the visit count and the people count wherever both are stated", () => {
+    for (const lead of SHIPPED_LEAD_COUNTS) {
+      const body = readoutLeadingOn(claimOf(RECORDED_CLAIM_CORPUS), lead).body;
+
+      expect(body).toContain(SHIPPED_SAME_VISITS_LINE);
+
+      // The bridge carries no number of its own, so it cannot be read as a third count.
+      expect(numbersIn(SHIPPED_SAME_VISITS_LINE)).toEqual([]);
+    }
+  });
+
+  test("should leave the bridge out where there is only one count to read", () => {
+    // Nobody touched the change, so no people count renders and there is nothing to bridge to.
+    expect(readoutOf(claimOf(NOBODY_CORPUS)).body).not.toContain(SHIPPED_SAME_VISITS_LINE);
+    expect(readoutOf({ kind: "too_few", corpus: BELOW_FLOOR_CORPUS }).body).not.toContain(
+      SHIPPED_SAME_VISITS_LINE,
+    );
+
+    const unidentified = pageCorpus({ atPage: 32, identityGroups: [null] });
+    expect(readoutOf(claimOf(unidentified)).body).not.toContain(SHIPPED_SAME_VISITS_LINE);
   });
 });
 

@@ -5,7 +5,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { and, eq } from "drizzle-orm";
 
-import { NO_CONTROL_LABEL, URL_PATH_NORMALISATION_VERSION } from "@growthmind/shared";
+import {
+  NO_CONTROL_LABEL,
+  SHIPPED_UNMEASURED_OUTCOMES,
+  URL_PATH_NORMALISATION_VERSION,
+  type ShippedReadoutOutcome,
+} from "@growthmind/shared";
 
 import {
   createShippedChangesRepo,
@@ -220,10 +225,7 @@ describe("the change key holds one row and one clock per change", () => {
 
 // The state moves here rather than through the service, so what the re-report meets is the row
 // state alone and not a whole readout's worth of side effects.
-async function moveTo(
-  changeId: string,
-  state: "read_out" | "closed" | "abandoned",
-): Promise<void> {
+async function moveTo(changeId: string, state: "read_out" | "closed" | "abandoned"): Promise<void> {
   await db
     .update(schema.shippedChanges)
     .set({ state, readOutAt: READOUT_DUE_AT })
@@ -283,6 +285,119 @@ describe("a re-report says which of the three things it did", () => {
       expect(rows[0]?.description).toBe("CSV export");
       expect(rows[0]?.state).toBe(state);
       expect(rows[0]?.readoutDueAt?.toISOString()).toBe(READOUT_DUE_AT.toISOString());
+    });
+  }
+});
+
+// The outcome is what the readout was able to say, and it is the whole difference between a
+// change we answered and one we only spoke about.
+async function moveToReadOutWith(changeId: string, readoutOutcome: ShippedReadoutOutcome) {
+  await db
+    .update(schema.shippedChanges)
+    .set({ state: "read_out", readOutAt: READOUT_DUE_AT, readoutOutcome })
+    .where(eq(schema.shippedChanges.id, changeId));
+}
+
+describe("a readout that measured nothing does not close the change", () => {
+  for (const outcome of SHIPPED_UNMEASURED_OUTCOMES) {
+    test(`a re-report after a ${outcome} readout puts the same row back on a fresh clock`, async () => {
+      const { org, project } = await seedOrgAndProject(`reopen-${outcome}`);
+      const repo = createShippedChangesRepo(db, org.ctx);
+
+      const first = await repo.reportShipped(reportInput(project.id));
+      await moveToReadOutWith(first.change.id, outcome);
+
+      const again = await repo.reportShipped(
+        reportInput(project.id, {
+          description: "CSV export, now with column headings",
+          reportedAt: REPORTED_AGAIN_AT,
+          readoutDueAt: SECOND_READOUT_DUE_AT,
+        }),
+      );
+
+      expect(again.claim).toBe("watching_again");
+
+      // Not a fork: HC-2's change key is untouched, so this is the same row on a new clock.
+      expect(again.change.id).toBe(first.change.id);
+
+      const rows = await changeRowsFor({
+        organizationId: org.organizationId,
+        projectId: project.id,
+        page: "/reports",
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.state).toBe("reported");
+      expect(rows[0]?.description).toBe("CSV export, now with column headings");
+      expect(rows[0]?.readoutDueAt.toISOString()).toBe(SECOND_READOUT_DUE_AT.toISOString());
+      expect(rows[0]?.readOutAt).toBeNull();
+      expect(rows[0]?.readoutOutcome).toBeNull();
+    });
+  }
+
+  test("a re-report after a readout that measured something is still turned away", async () => {
+    const { org, project } = await seedOrgAndProject("reopen-measured");
+    const repo = createShippedChangesRepo(db, org.ctx);
+
+    const first = await repo.reportShipped(reportInput(project.id));
+    await moveToReadOutWith(first.change.id, "measured");
+
+    const again = await repo.reportShipped(
+      reportInput(project.id, {
+        description: "a different change on the same page",
+        reportedAt: REPORTED_AGAIN_AT,
+        readoutDueAt: SECOND_READOUT_DUE_AT,
+      }),
+    );
+
+    expect(again.claim).toBe("already_answered");
+
+    const rows = await changeRowsFor({
+      organizationId: org.organizationId,
+      projectId: project.id,
+      page: "/reports",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe("read_out");
+    expect(rows[0]?.description).toBe("CSV export");
+    expect(rows[0]?.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
+  });
+
+  for (const state of ["closed", "abandoned"] as const) {
+    test(`a ${state} row that measured nothing keeps the founder's answer and is not reopened`, async () => {
+      // The reopen is a predicate of its own and never a relaxation of the ones beside it: a row
+      // that already carries an answer is out of its reach whatever its readout managed to say.
+      const { org, project } = await seedOrgAndProject(`no-reopen-${state}`);
+      const repo = createShippedChangesRepo(db, org.ctx);
+
+      const first = await repo.reportShipped(reportInput(project.id));
+      await moveToReadOutWith(first.change.id, "too_few");
+      await db
+        .update(schema.shippedChanges)
+        .set({ state })
+        .where(eq(schema.shippedChanges.id, first.change.id));
+
+      const again = await repo.reportShipped(
+        reportInput(project.id, {
+          description: "a different change on the same page",
+          reportedAt: REPORTED_AGAIN_AT,
+          readoutDueAt: SECOND_READOUT_DUE_AT,
+        }),
+      );
+
+      expect(again.claim).toBe("already_answered");
+
+      const rows = await changeRowsFor({
+        organizationId: org.organizationId,
+        projectId: project.id,
+        page: "/reports",
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.state).toBe(state);
+      expect(rows[0]?.description).toBe("CSV export");
+      expect(rows[0]?.readoutDueAt.toISOString()).toBe(READOUT_DUE_AT.toISOString());
     });
   }
 });

@@ -8,7 +8,9 @@ import {
   NO_CONTROL_LABEL,
   SHIPPED_CHANGE_CONFLICT_TARGET,
   SHIPPED_CHANGE_STATES,
+  SHIPPED_READOUT_OUTCOMES,
   SHIPPED_READOUT_TASK,
+  SHIPPED_UNMEASURED_OUTCOMES,
   SHIPPED_VERDICTS,
 } from "../../src/shipped/types";
 
@@ -36,6 +38,33 @@ describe("the founder's answer is one of four, and silence is one of them", () =
   test("a window that lapses records an answer rather than nothing", () => {
     const verdicts: readonly string[] = SHIPPED_VERDICTS;
     expect(verdicts).toContain("no_verdict_given");
+    expect(SHIPPED_VERDICTS.length).toBe(4);
+  });
+});
+
+describe("what the readout managed to say is recorded beside the answer, not as an answer", () => {
+  test("the unmeasured branches are the three the renderer cannot put a number on", () => {
+    expect([...SHIPPED_UNMEASURED_OUTCOMES].toSorted()).toEqual([
+      "corpus_predates_who_counts",
+      "stale_page_spelling",
+      "too_few",
+    ]);
+  });
+
+  test("measured is the only outcome outside them, and none of them is a verdict", () => {
+    expect([...SHIPPED_READOUT_OUTCOMES].toSorted()).toEqual([
+      "corpus_predates_who_counts",
+      "measured",
+      "stale_page_spelling",
+      "too_few",
+    ]);
+
+    // A fifth verdict would put our own measurement failure in the founder's mouth, which is
+    // the whole reason this is a second column rather than another answer.
+    const verdicts: readonly string[] = SHIPPED_VERDICTS;
+    for (const outcome of SHIPPED_READOUT_OUTCOMES) {
+      expect(verdicts).not.toContain(outcome);
+    }
     expect(SHIPPED_VERDICTS.length).toBe(4);
   });
 });

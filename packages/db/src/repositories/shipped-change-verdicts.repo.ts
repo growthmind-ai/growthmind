@@ -84,6 +84,10 @@ export function createShippedChangeVerdictsRepo(
           {
             changeId: input.changeId,
             verdict: input.verdict,
+
+            // Read off the row the close just claimed, so the branch stored is the one the
+            // founder was actually shown rather than one recomputed later.
+            readoutOutcome: closed.readoutOutcome,
             recordedAt: input.recordedAt,
             recordedBySlackUserId: input.recordedBySlackUserId ?? null,
           },

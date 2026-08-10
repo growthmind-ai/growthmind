@@ -4,11 +4,12 @@ import {
   renderShippedReadout,
   shippedClaimGate,
   shippedCounts,
+  shippedReadoutOutcome,
   type ShippedAcknowledgement,
   type ShippedReadout,
   type ShippedReadoutResult,
 } from "@growthmind/core";
-import type { TenantContext } from "@growthmind/shared";
+import type { ShippedReadoutOutcome, TenantContext } from "@growthmind/shared";
 import { eq } from "drizzle-orm";
 
 import { orgCrud } from "../repositories/crud";
@@ -70,6 +71,20 @@ async function readoutResultFor(
   if (gate.kind === "too_few") return { kind: "too_few", corpus: atPage.corpus };
 
   return { kind: "claim", corpus: atPage.corpus, counts: shippedCounts(atPage.corpus) };
+}
+
+// What the readout will be able to say, decided at the moment the row is claimed as read out.
+// A change with no project has no corpus to answer from and never reaches a reader, so it is
+// left unrecorded rather than described as a branch nobody was shown.
+export async function shippedReadoutOutcomeFor(
+  db: ScopedDb,
+  ctx: TenantContext,
+  change: ShippedChangeRow,
+): Promise<ShippedReadoutOutcome | null> {
+  const projectId = change.projectId;
+  if (projectId === null) return null;
+
+  return shippedReadoutOutcome(await readoutResultFor(db, ctx, change, projectId));
 }
 
 export async function renderChangeReadout(

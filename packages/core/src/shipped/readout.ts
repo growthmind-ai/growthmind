@@ -1,4 +1,4 @@
-import type { ShippedLeadCount } from "@growthmind/shared";
+import type { ShippedLeadCount, ShippedReadoutOutcome } from "@growthmind/shared";
 import {
   SHIPPED_NOBODY_TEMPLATE,
   SHIPPED_NO_IDENTITY_LINE,
@@ -9,6 +9,7 @@ import {
   SHIPPED_RECORDED_CORPUS_LINE,
   SHIPPED_REPEAT_LEAD_TEMPLATE,
   SHIPPED_REPEAT_TEMPLATE,
+  SHIPPED_SAME_VISITS_LINE,
   SHIPPED_SPELLING_CHANGED_TEMPLATE,
   SHIPPED_SPINE_CORPUS_LINE,
   SHIPPED_TOO_FEW_TEMPLATE,
@@ -33,6 +34,12 @@ export type ShippedReadoutResult =
   | { readonly kind: "too_few"; readonly corpus: AtPageCorpus }
   | { readonly kind: "stale_page_spelling" }
   | { readonly kind: "corpus_predates_who_counts" };
+
+// Total by construction rather than by lookup table: a new branch is a new outcome the moment
+// the union grows, so the record of what the founder was answering cannot fall behind it.
+export function shippedReadoutOutcome(result: ShippedReadoutResult): ShippedReadoutOutcome {
+  return result.kind === "claim" ? "measured" : result.kind;
+}
 
 export type ShippedReadoutAction = {
   readonly actionId: string;
@@ -111,6 +118,15 @@ function repeatSentence(
     : fill(SHIPPED_REPEAT_TEMPLATE, values);
 }
 
+// The reach denominator counts visits and the repeat one counts people, so without this the
+// smaller number reads as a subset of the larger rather than as the same visits grouped.
+function sameVisitsSentence(corpus: AtPageCorpus, counts: ShippedCounts): string | null {
+  if (counts.repeat === null) return null;
+  if (corpus.touchedSessions === 0) return null;
+
+  return SHIPPED_SAME_VISITS_LINE;
+}
+
 function unidentifiedSentence(corpus: AtPageCorpus, counts: ShippedCounts): string | null {
   if (counts.repeat === null) return null;
   if (corpus.touchedSessions === 0) return null;
@@ -143,7 +159,8 @@ function claimSentences(
   return [
     ...(leads ? counted.toReversed() : counted),
 
-    // A caveat on the denominator both counts stand on, so it trails whichever of them leads.
+    // Caveats on the denominator both counts stand on, so they trail whichever of them leads.
+    sameVisitsSentence(corpus, counts),
     unidentifiedSentence(corpus, counts),
     ...corpusLines(corpus),
   ];

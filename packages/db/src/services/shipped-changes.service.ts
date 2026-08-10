@@ -14,8 +14,9 @@ import {
   createShippedChangesRepo,
   type ReportShippedChangeResult,
 } from "../repositories/shipped-changes.repo";
-import type { ScopedExecutor } from "../repositories/types";
+import type { ScopedDb } from "../repositories/types";
 import { shippedChanges } from "../schema/shipped-changes";
+import { shippedReadoutOutcomeFor } from "./shipped-readout.service";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -63,7 +64,7 @@ function notOurProject(): Error {
 }
 
 export function createShippedChangesService(
-  db: ScopedExecutor,
+  db: ScopedDb,
   ctx: TenantContext,
 ): ShippedChangesService {
   return {
@@ -78,10 +79,10 @@ export function createShippedChangesService(
           ...(input.control === undefined ? {} : { control: input.control }),
         });
 
-        // Only the report that created the row promises a date. A re-report keys into the
-        // acknowledgement that already exists, and a report landing after the readout has no
-        // date left to promise.
-        if (result.claim !== "reported") {
+        // A date is promised where a clock started: on the report that created the row, and on
+        // the one that put a change we could not measure back on the clock. A re-report inside
+        // the window keys into the acknowledgement that already exists.
+        if (result.claim !== "reported" && result.claim !== "watching_again") {
           return result;
         }
 
@@ -103,25 +104,32 @@ export function createShippedChangesService(
     },
 
     async recordReadout(input: RecordReadoutInput): Promise<RecordReadoutResult> {
+      const change = await orgCrud(db, ctx, shippedChanges).maybe(
+        eq(shippedChanges.id, input.changeId),
+      );
+
+      if (change === null) {
+        return { kind: "not_reportable" };
+      }
+
+      // The row outlives its project, so the guard resolves the project the row still names.
+      if (change.projectId !== null) {
+        await scoped(db, ctx).assertProjectOwned(change.projectId, notOurProject);
+      }
+
+      // Read before the claim, because a re-report may only reopen a change we could not
+      // measure, and nothing downstream can recover which branch the founder was shown. A row
+      // the claim below cannot take is not worth reading a corpus for.
+      const readoutOutcome =
+        change.state === "reported" ? await shippedReadoutOutcomeFor(db, ctx, change) : null;
+
       return inTransaction(db, async (tx): Promise<RecordReadoutResult> => {
-        const s = scoped(tx, ctx);
         const changes = orgCrud(tx, ctx, shippedChanges);
-
-        const change = await changes.maybe(eq(shippedChanges.id, input.changeId));
-
-        if (change === null) {
-          return { kind: "not_reportable" };
-        }
-
-        // The row outlives its project, so the guard resolves the project the row still names.
-        if (change.projectId !== null) {
-          await s.assertProjectOwned(change.projectId, notOurProject);
-        }
 
         // The transition is the claim: a second readout of the same change finds no row in the
         // reported state and writes neither a readout nor a verdict question.
         const claimed = await changes.update(
-          { state: "read_out", readOutAt: input.readOutAt },
+          { state: "read_out", readOutAt: input.readOutAt, readoutOutcome },
           eq(shippedChanges.id, input.changeId),
           eq(shippedChanges.state, "reported"),
         );

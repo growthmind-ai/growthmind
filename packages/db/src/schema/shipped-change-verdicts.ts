@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { SHIPPED_VERDICTS } from "@growthmind/shared";
+import { SHIPPED_READOUT_OUTCOMES, SHIPPED_VERDICTS } from "@growthmind/shared";
 import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
@@ -22,6 +22,11 @@ export const shippedChangeVerdicts = pgTable(
       .references(() => shippedChanges.id, { onDelete: "cascade" }),
 
     verdict: text("verdict", { enum: SHIPPED_VERDICTS }).notNull(),
+
+    // Which readout the founder was answering. A keep pressed on "I could not read enough of
+    // what happened" is not the same fact as a keep pressed on a count, and the next brief
+    // reads this row.
+    readoutOutcome: text("readout_outcome", { enum: SHIPPED_READOUT_OUTCOMES }),
 
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
 

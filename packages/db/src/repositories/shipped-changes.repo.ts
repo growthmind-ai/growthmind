@@ -1,5 +1,6 @@
 import {
   NO_CONTROL_LABEL,
+  SHIPPED_UNMEASURED_OUTCOMES,
   URL_PATH_NORMALISATION_VERSION,
   isNormalisedUrlPath,
   type ShippedCorpusKind,
@@ -7,7 +8,7 @@ import {
   type ShippedReportClaim,
   type TenantContext,
 } from "@growthmind/shared";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { orgCrud } from "./crud";
@@ -147,6 +148,27 @@ export function createShippedChangesRepo(
 
       if (reworded !== null) {
         return { claim: "clock_unchanged", change: reworded };
+      }
+
+      // A separate predicate rather than a relaxation of the one above: only a row still waiting
+      // on a verdict, whose readout could not measure anything, comes back to reported. A row
+      // that was measured, or that already carries an answer, is never touched here.
+      const reopened = await c.update(
+        {
+          description: parsed.description,
+          reportedAt: parsed.reportedAt,
+          readoutDueAt: parsed.readoutDueAt,
+          state: "reported",
+          readOutAt: null,
+          readoutOutcome: null,
+        },
+        ...changeKey,
+        eq(shippedChanges.state, "read_out"),
+        inArray(shippedChanges.readoutOutcome, [...SHIPPED_UNMEASURED_OUTCOMES]),
+      );
+
+      if (reopened !== null) {
+        return { claim: "watching_again", change: reopened };
       }
 
       const settled = await c.maybe(...changeKey);

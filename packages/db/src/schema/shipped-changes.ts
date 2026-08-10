@@ -6,6 +6,7 @@ import {
   SHIPPED_CHANGE_STATES,
   SHIPPED_CORPUS_KINDS,
   SHIPPED_LEAD_COUNTS,
+  SHIPPED_READOUT_OUTCOMES,
 } from "@growthmind/shared";
 import { index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
@@ -46,6 +47,10 @@ export const shippedChanges = pgTable(
     leadCount: text("lead_count", { enum: SHIPPED_LEAD_COUNTS }).notNull().default("reach"),
 
     state: text("state", { enum: SHIPPED_CHANGE_STATES }).notNull().default("reported"),
+
+    // Null until the row is read out, and null again when a re-report reopens it. What the
+    // readout was able to say decides whether a later report reopens the row or is turned away.
+    readoutOutcome: text("readout_outcome", { enum: SHIPPED_READOUT_OUTCOMES }),
 
     // A closed union of codes, never prose, after notification_sends.failure_reason.
     abandonedReason: text("abandoned_reason", { enum: SHIPPED_ABANDONED_REASONS }),

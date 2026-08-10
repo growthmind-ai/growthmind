@@ -303,16 +303,30 @@ What comes straight back, in the same Slack channel your findings already use:
 Mention the same change again and nothing restarts. The wording updates, the
 date does not move, and we say so rather than promising a second one.
 
+The one exception is a change we could not measure. If the day came and there
+was not enough traffic to tell you anything, mentioning it again puts the same
+change back on the clock with a new date, because nothing was answered the first
+time:
+
+> CSV export on /reports again — last time there was not enough for me to
+> measure, so I am watching that page again and I'll tell you how it went on 6
+> September.
+
+That is the same change on a new clock, not a second one: there is still one
+row, and a change we _did_ answer is still turned down rather than restarted.
+
 On the day, one message arrives with the answer:
 
 > CSV export — I could watch 212 visits to /reports, and 9 of them used it. 1 of
-> the 45 people I could tell apart came back to it. I counted that off the
-> visits that were recorded, not off everyone who was there.
+> the 45 people I could tell apart came back to it. Both counts come off the
+> same visits: one counts the visits themselves, the other groups them into the
+> people who made them. I counted that off the visits that were recorded, not
+> off everyone who was there.
 >
 > Keep it, kill it, or leave it?
 
 Four things about that message are deliberate. **Every number says out of how
-many**, and each says out of how many *of what*: the first counts visits, the
+many**, and each says out of how many _of what_: the first counts visits, the
 second counts people, and the two totals are different sizes, so neither
 sentence points back at the other's. **It names which visits it counted** —
 every visit to the page, or only the ones that were recorded — and never mixes
@@ -324,10 +338,13 @@ anything, so I'm not going to pretend otherwise."_ And **it never grades the
 number**. Whether 9 of 212 is good is your judgement about your own product, not
 ours to invent a pass mark for.
 
-So it ends by asking. Press one of the three buttons and that is recorded
-against the change, and it is what the next brief reads. Answer nothing for a
-week and that is recorded too — _no verdict given_ is itself an answer about
-how much this one mattered to you.
+So it ends by asking, on every one of those messages — including the one that
+had nothing to tell you, because "only 4 visits, is this worth keeping?" is
+still your call and not ours. Press one of the three buttons and that is
+recorded against the change, along with which of those messages you were
+answering, and it is what the next brief reads. Answer nothing for a week and
+that is recorded too — _no verdict given_ is itself an answer about how much
+this one mattered to you.
 
 ### You do not configure the protocol
 

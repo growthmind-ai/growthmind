@@ -4,9 +4,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 
-import { buildChangeReadoutDedupKey } from "@growthmind/shared";
+import { SHIPPED_UNMEASURED_OUTCOMES, buildChangeReadoutDedupKey } from "@growthmind/shared";
 
 import { notifications, notificationSends } from "../../src/schema/notifications";
+import { shippedChanges } from "../../src/schema/shipped-changes";
 import { gatherDigestNotifications } from "../../src/services/notification-digest.service";
 import { createShippedChangesService } from "../../src/services/shipped-changes.service";
 import {
@@ -30,6 +31,7 @@ const NAMES = laneNames("wire-change-readout");
 const REPORTED_AT = new Date("2026-08-09T09:00:00.000Z");
 const READ_OUT_AT = new Date("2026-08-23T09:00:00.000Z");
 const READ_OUT_AGAIN_AT = new Date("2026-08-23T10:00:00.000Z");
+const REPORTED_AGAIN_AT = new Date("2026-08-23T09:30:00.000Z");
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -64,13 +66,21 @@ async function seedTenant(
 }
 
 async function reportChange(db: TestDb, org: SeededOrgWithOwner, project: SeededProject) {
-  return (await createShippedChangesService(db, org.ctx).reportShipped({
-    projectId: project.id,
-    page: "/reports",
-    control: "Export CSV",
-    description: "CSV export",
-    reportedAt: REPORTED_AT,
-  })).change;
+  return (
+    await createShippedChangesService(db, org.ctx).reportShipped({
+      projectId: project.id,
+      page: "/reports",
+      control: "Export CSV",
+      description: "CSV export",
+      reportedAt: REPORTED_AT,
+    })
+  ).change;
+}
+
+async function changeRow(db: TestDb, changeId: string) {
+  const rows = await db.select().from(shippedChanges).where(eq(shippedChanges.id, changeId));
+
+  return rows[0];
 }
 
 async function readoutRowsFor(db: TestDb, organizationId: string) {
@@ -113,7 +123,7 @@ describe("a readout is told to the whole organization, once", () => {
     expect(row.audience).toBe("org");
     expect(row.subjectKind).toBe("shipped_change");
     expect(row.subjectId).toBe(change.id);
-    expect(row.dedupKey).toBe(buildChangeReadoutDedupKey(change.id));
+    expect(row.dedupKey).toBe(buildChangeReadoutDedupKey(change.id, change.readoutDueAt));
 
     // Owed, not deferred: the one registered dispatch seam carries it, this hour.
     const forThisRow = dispatchJobsOf(await capturedJobs(db)).filter(
@@ -139,7 +149,48 @@ describe("a readout is told to the whole organization, once", () => {
 
     const rows = await readoutRowsFor(db, org.organizationId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.dedupKey).toBe(buildChangeReadoutDedupKey(change.id));
+    expect(rows[0]?.dedupKey).toBe(buildChangeReadoutDedupKey(change.id, change.readoutDueAt));
+  });
+});
+
+describe("a change we could not measure is answered again once it is re-reported", () => {
+  test("the reopened row is read out a second time, and the second answer reaches the channel", async () => {
+    const db = await openDb();
+    const { org, project } = await seedTenant(db, "reopened");
+    await connectSlackChannel(db, org, "C0READOUT03");
+    const service = createShippedChangesService(db, org.ctx);
+
+    const change = await reportChange(db, org, project);
+    await service.recordReadout({ changeId: change.id, readOutAt: READ_OUT_AT });
+
+    // Nothing was ever recorded against this page, so the readout could not measure anything —
+    // which is the branch R12 refuses to let close the change.
+    const readOut = await changeRow(db, change.id);
+    const outcomes: readonly string[] = SHIPPED_UNMEASURED_OUTCOMES;
+    expect(outcomes).toContain(readOut?.readoutOutcome ?? "measured");
+    expect(await readoutRowsFor(db, org.organizationId)).toHaveLength(1);
+
+    const again = await service.reportShipped({
+      projectId: project.id,
+      page: "/reports",
+      control: "Export CSV",
+      description: "CSV export, second pass",
+      reportedAt: REPORTED_AGAIN_AT,
+    });
+
+    expect(again.claim).toBe("watching_again");
+    expect(again.change.id).toBe(change.id);
+
+    await service.recordReadout({ changeId: change.id, readOutAt: READ_OUT_AGAIN_AT });
+
+    // Two answers, because the row answered two different clocks. A dedup key that knew only
+    // the change id would have swallowed the second one and left the reopen unanswerable.
+    const rows = await readoutRowsFor(db, org.organizationId);
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.dedupKey)).size).toBe(2);
+    expect(rows.map((row) => row.dedupKey)).toContain(
+      buildChangeReadoutDedupKey(change.id, again.change.readoutDueAt),
+    );
   });
 });
 

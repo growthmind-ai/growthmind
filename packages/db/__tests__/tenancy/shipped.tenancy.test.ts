@@ -106,9 +106,7 @@ describe("a report never crosses the tenant boundary", () => {
     });
 
     expect(await createShippedChangesRepo(db, a.org.ctx).findById(theirs.change.id)).toBeNull();
-    expect(
-      await createShippedChangesRepo(db, b.org.ctx).findById(theirs.change.id),
-    ).not.toBeNull();
+    expect(await createShippedChangesRepo(db, b.org.ctx).findById(theirs.change.id)).not.toBeNull();
   });
 
   test("org A cannot read the verdict recorded against org B's change", async () => {

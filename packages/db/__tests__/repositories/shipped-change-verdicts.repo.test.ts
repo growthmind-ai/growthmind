@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { and, eq } from "drizzle-orm";
 
+import { SHIPPED_UNMEASURED_OUTCOMES, type ShippedReadoutOutcome } from "@growthmind/shared";
+
 import {
   createShippedChangeVerdictsRepo,
   type ShippedChangeVerdictsRepo,
@@ -175,6 +177,63 @@ describe("a verdict is recorded once per change", () => {
     expect(await verdictRowsFor(org.organizationId, changeId)).toHaveLength(0);
     expect((await changeRow(changeId))?.state).toBe("abandoned");
   });
+});
+
+async function markReadOutWith(changeId: string, readoutOutcome: ShippedReadoutOutcome) {
+  await db
+    .update(schema.shippedChanges)
+    .set({ state: "read_out", readOutAt: READ_OUT_AT, readoutOutcome })
+    .where(eq(schema.shippedChanges.id, changeId));
+}
+
+describe("a verdict says which readout it answered", () => {
+  test("a keep on a change we measured and a keep on one we could not are different rows", async () => {
+    const measured = await seedReadOutChange("branch-measured");
+    await markReadOutWith(measured.changeId, "measured");
+    await measured.verdicts.recordVerdict({
+      changeId: measured.changeId,
+      verdict: "keep",
+      recordedAt: PRESSED_AT,
+    });
+
+    const unmeasured = await seedReadOutChange("branch-too-few");
+    await markReadOutWith(unmeasured.changeId, "too_few");
+    await unmeasured.verdicts.recordVerdict({
+      changeId: unmeasured.changeId,
+      verdict: "keep",
+      recordedAt: PRESSED_AT,
+    });
+
+    const onCounts = await verdictRowsFor(measured.org.organizationId, measured.changeId);
+    const onNothing = await verdictRowsFor(unmeasured.org.organizationId, unmeasured.changeId);
+
+    expect(onCounts).toHaveLength(1);
+    expect(onNothing).toHaveLength(1);
+
+    // Same word, different fact — and DoD item 7 makes these rows what the next brief reads.
+    expect(onCounts[0]?.verdict).toBe("keep");
+    expect(onNothing[0]?.verdict).toBe("keep");
+    expect(onCounts[0]?.readoutOutcome).toBe("measured");
+    expect(onNothing[0]?.readoutOutcome).toBe("too_few");
+  });
+
+  for (const outcome of SHIPPED_UNMEASURED_OUTCOMES) {
+    test(`a lapse on a ${outcome} readout records the branch beside the silence`, async () => {
+      const { org, changeId, verdicts } = await seedReadOutChange(`lapse-branch-${outcome}`);
+      await markReadOutWith(changeId, outcome);
+
+      await verdicts.recordVerdict({
+        changeId,
+        verdict: "no_verdict_given",
+        recordedAt: LAPSED_AT,
+      });
+
+      const rows = await verdictRowsFor(org.organizationId, changeId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.verdict).toBe("no_verdict_given");
+      expect(rows[0]?.readoutOutcome).toBe(outcome);
+    });
+  }
 });
 
 describe("a lapsed window is itself an answer", () => {

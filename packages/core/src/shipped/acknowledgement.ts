@@ -9,6 +9,7 @@ import {
   SHIPPED_NOTED_TEMPLATE,
   SHIPPED_PROMISE_TEMPLATE,
   SHIPPED_UNVERIFIED_LINE,
+  SHIPPED_WATCHING_AGAIN_TEMPLATE,
 } from "@growthmind/shared";
 
 import { fill } from "../replay-filters/template";
@@ -84,6 +85,16 @@ export function shippedClockUnchangedBody(input: ShippedPromise): string {
 // that has gone.
 export function shippedAlreadyAnsweredBody(input: ShippedPromise): string {
   return fill(SHIPPED_ALREADY_ANSWERED_TEMPLATE, {
+    change: input.change,
+    page: input.page,
+    date: dueDateLabel(input.readoutDueAt),
+  });
+}
+
+// A report landing on a change whose readout measured nothing. The change key is untouched and
+// the row is the same one, so this states the new date rather than reading as a second change.
+export function shippedWatchingAgainBody(input: ShippedPromise): string {
+  return fill(SHIPPED_WATCHING_AGAIN_TEMPLATE, {
     change: input.change,
     page: input.page,
     date: dueDateLabel(input.readoutDueAt),

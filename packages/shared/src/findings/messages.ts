@@ -92,8 +92,10 @@ export const SHIPPED_PROMISE_TEMPLATE =
 export const SHIPPED_UNVERIFIED_LINE =
   "I have not read your code, so I am taking your word that it is live.";
 
+// The two buttons underneath are the whole mechanism: nothing reads a typed reply, so an offer
+// to "say so" was an invitation into silence.
 export const SHIPPED_LEAD_OFFER_LINE =
-  "If you would rather I led with how many came back than with how many used it, say so before that date.";
+  "If you would rather I led with how many came back than with how many used it, press the button on this message that says so — a typed reply will not reach me.";
 
 export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
   "{change} on {page} again — the date I answer on has not moved: {date}.";
@@ -102,6 +104,11 @@ export const SHIPPED_CLOCK_UNCHANGED_TEMPLATE =
 // first promises a date that, on an answered change, is already in the past.
 export const SHIPPED_ALREADY_ANSWERED_TEMPLATE =
   "{change} on {page} again — I already answered on that one on {date}, so I am not starting a second clock on it.";
+
+// A readout that could not measure anything answered nothing, so the clock restarts rather than
+// the report being turned away.
+export const SHIPPED_WATCHING_AGAIN_TEMPLATE =
+  "{change} on {page} again — last time there was not enough for me to measure, so I am watching that page again and I'll tell you how it went on {date}.";
 
 // Reach counts visits and not people, and it names its own denominator rather than leaving the
 // repeat sentence to point back at it: the two denominators are different sizes and different
@@ -130,6 +137,11 @@ export const SHIPPED_REACH_AFTER_LEAD_TEMPLATE =
 
 export const SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE =
   "There were {denominator} visits to that page while I was watching.";
+
+// Without it the two denominators read as one set and its subset — "3 of the 12 could be told
+// apart" — when they are the same visits grouped two ways.
+export const SHIPPED_SAME_VISITS_LINE =
+  "Both counts come off the same visits: one counts the visits themselves, the other groups them into the people who made them.";
 
 export const SHIPPED_NO_IDENTITY_LINE =
   "Nobody could be told apart between visits, so I cannot say who came back.";
@@ -229,6 +241,7 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_UNVERIFIED_LINE,
   SHIPPED_LEAD_OFFER_LINE,
   SHIPPED_ALREADY_ANSWERED_TEMPLATE,
+  SHIPPED_WATCHING_AGAIN_TEMPLATE,
   SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_REACH_TEMPLATE,
   SHIPPED_NOBODY_TEMPLATE,
@@ -237,6 +250,7 @@ export const ALL_FINDINGS_MESSAGES: readonly string[] = [
   SHIPPED_REPEAT_LEAD_TEMPLATE,
   SHIPPED_REACH_AFTER_LEAD_TEMPLATE,
   SHIPPED_PAGE_REACH_AFTER_LEAD_TEMPLATE,
+  SHIPPED_SAME_VISITS_LINE,
   SHIPPED_NO_IDENTITY_LINE,
   SHIPPED_UNIDENTIFIED_TEMPLATE,
   SHIPPED_RECORDED_CORPUS_LINE,

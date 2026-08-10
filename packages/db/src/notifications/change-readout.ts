@@ -2,6 +2,7 @@ import { buildChangeReadoutDedupKey } from "@growthmind/shared";
 
 import type { ScopedExecutor } from "../repositories/types";
 import { emitNotification } from "./emit";
+import { readShippedChangeClock } from "./shipped-clock";
 
 export interface EmitChangeReadoutInput {
   readonly changeId: string;
@@ -14,13 +15,17 @@ export async function emitChangeReadout(
   organizationId: string,
   input: EmitChangeReadoutInput,
 ): Promise<{ readonly emitted: boolean }> {
+  const readoutDueAt = await readShippedChangeClock(db, organizationId, input.changeId);
+
+  if (readoutDueAt === null) return { emitted: false };
+
   return emitNotification(db, organizationId, {
     type: "change_readout",
     subjectKind: "shipped_change",
     subjectId: input.changeId,
     actorUserId: null,
     payload: { type: "change_readout", v: 1 },
-    dedupKey: buildChangeReadoutDedupKey(input.changeId),
+    dedupKey: buildChangeReadoutDedupKey(input.changeId, readoutDueAt),
     slack: { kind: "owed" },
   });
 }

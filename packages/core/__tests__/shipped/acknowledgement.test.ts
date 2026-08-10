@@ -15,6 +15,7 @@ import {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedWatchingAgainBody,
 } from "../../src/shipped/acknowledgement";
 
 const CHANGE_ID = "3f2b7c18-9a44-4d21-8f60-1c0de9b7a512";
@@ -74,6 +75,25 @@ describe("a change told again after it was answered is turned down, not acknowle
   test("should not read like the acknowledgement a first report gets", () => {
     expect(shippedAlreadyAnsweredBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
     expect(shippedAlreadyAnsweredBody(PROMISE)).not.toBe(shippedClockUnchangedBody(PROMISE));
+  });
+});
+
+describe("a change we could not measure is put back on the clock, and the date is new", () => {
+  test("should name the new date and say why it is watching again", () => {
+    const body = shippedWatchingAgainBody(PROMISE);
+
+    expect(body).toContain("23 August");
+    expect(body).toContain("CSV export");
+    expect(body).toContain("/reports");
+    expect(body).not.toMatch(/\{\w+\}/);
+  });
+
+  test("should not read as the refusal a change that was answered gets", () => {
+    // The whole point of the reopen: saying "I already answered" about a readout that measured
+    // nothing was false, and it was the only thing the founder could be told.
+    expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedAlreadyAnsweredBody(PROMISE));
+    expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedClockUnchangedBody(PROMISE));
+    expect(shippedWatchingAgainBody(PROMISE)).not.toBe(shippedPromiseBody(PROMISE));
   });
 });
 

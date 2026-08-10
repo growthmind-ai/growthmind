@@ -18,8 +18,10 @@ import {
   FIX_RESULTS_WINDOW_DAYS,
   FORBIDDEN_PRODUCT_JARGON,
   MCP_TOOL,
+  SHIPPED_ALREADY_ANSWERED_TEMPLATE,
   SHIPPED_CLOCK_UNCHANGED_TEMPLATE,
   SHIPPED_PROMISE_TEMPLATE,
+  SHIPPED_WATCHING_AGAIN_TEMPLATE,
   type TenantContext,
 } from "@growthmind/shared";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -277,6 +279,12 @@ async function moveToClosed(changeId: string): Promise<void> {
   await handle.db.execute(`update shipped_changes set state = 'closed' where id = '${changeId}'`);
 }
 
+async function moveToReadOutMeasuringNothing(changeId: string): Promise<void> {
+  await handle.db.execute(
+    `update shipped_changes set state = 'read_out', readout_outcome = 'too_few' where id = '${changeId}'`,
+  );
+}
+
 describe("a re-report is answered, and never with a second promise", () => {
   test("the same change reported twice says the date has not moved, and starts no second clock", async () => {
     const org = await freshOrg("re-report");
@@ -325,6 +333,36 @@ describe("a re-report is answered, and never with a second promise", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.description).toBe(CHANGE);
     expect(rows[0]?.state).toBe("closed");
+  });
+
+  test("a report landing after a readout that measured nothing is watched again, not turned away", async () => {
+    const org = await freshOrg("re-report-unmeasured");
+    const input = { description: CHANGE, page: PAGE, projectId: org.projectId };
+
+    const first = await report(org.key, input);
+    expect(first.isError).toBe(false);
+
+    const before = (await changeRowsFor(org.organizationId))[0];
+    expect(before?.id).toBeDefined();
+    await moveToReadOutMeasuringNothing(before?.id ?? "");
+
+    const again = await report(org.key, { ...input, description: "CSV export, second pass" });
+
+    // "I already answered on that one" was false here — we told the founder we had nothing.
+    expect(again.isError).toBe(false);
+    expect(rendersTemplate(again.text, SHIPPED_WATCHING_AGAIN_TEMPLATE)).toBe(true);
+    expect(rendersTemplate(again.text, SHIPPED_ALREADY_ANSWERED_TEMPLATE)).toBe(false);
+
+    const rows = await changeRowsFor(org.organizationId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe("reported");
+    expect(rows[0]?.description).toBe("CSV export, second pass");
+    expect(rows[0]?.readoutDueAt.getTime()).toBeGreaterThan(
+      before?.readoutDueAt.getTime() ?? Number.MAX_SAFE_INTEGER,
+    );
+
+    // The new date is announced in the channel too, not only to the assistant that asked.
+    expect(await changeNotificationsFor(org.organizationId)).toHaveLength(2);
   });
 });
 

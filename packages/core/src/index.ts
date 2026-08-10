@@ -608,6 +608,7 @@ export {
 } from "./shipped/floors";
 export {
   renderShippedReadout,
+  shippedReadoutOutcome,
   type ShippedReadout,
   type ShippedReadoutAction,
   type ShippedReadoutInput,
@@ -618,6 +619,7 @@ export {
   shippedAlreadyAnsweredBody,
   shippedClockUnchangedBody,
   shippedPromiseBody,
+  shippedWatchingAgainBody,
   type ShippedAcknowledgement,
   type ShippedAcknowledgementInput,
   type ShippedPromise,
