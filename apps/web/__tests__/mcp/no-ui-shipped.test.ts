@@ -31,11 +31,27 @@ interface DiffEntry {
   readonly path: string;
 }
 
+function refExists(ref: string): boolean {
+  return (
+    Bun.spawnSync(["git", "rev-parse", "--verify", "--quiet", ref], { cwd: REPO_ROOT }).exitCode ===
+    0
+  );
+}
+
+// actions/checkout's default pull_request checkout configures the origin remote's fetch refspec
+// for the PR's own ref only, so a plain `git fetch origin main` lands in FETCH_HEAD without ever
+// creating a resolvable origin/main — the destination has to be named explicitly.
+function ensureMainFetched(): void {
+  if (refExists("origin/main")) return;
+  git(["fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"]);
+}
+
 // On a PR, origin/main sits behind HEAD and this comparison is the sprint's actual diff. CI also
 // runs this same suite on push to main, where the PR has already been squash-merged and HEAD *is*
 // origin/main — that comparison is empty by construction, not because the sprint shipped nothing.
 // Fall back to the commit that just landed there, which (being a squash merge) is the whole PR.
 function diffBase(): string {
+  ensureMainFetched();
   const head = git(["rev-parse", "HEAD"]).trim();
   const mainTip = git(["rev-parse", "origin/main"]).trim();
   return head === mainTip ? "HEAD~1" : "origin/main";
