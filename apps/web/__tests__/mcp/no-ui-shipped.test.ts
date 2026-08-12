@@ -38,12 +38,21 @@ function refExists(ref: string): boolean {
   );
 }
 
+function isShallow(): boolean {
+  return git(["rev-parse", "--is-shallow-repository"]).trim() === "true";
+}
+
 // actions/checkout's default pull_request checkout configures the origin remote's fetch refspec
 // for the PR's own ref only, so a plain `git fetch origin main` lands in FETCH_HEAD without ever
-// creating a resolvable origin/main — the destination has to be named explicitly.
+// creating a resolvable origin/main — the destination has to be named explicitly. It also checks
+// out at depth 1: HEAD has no local parent history, so even once origin/main is fetched, a
+// depth-limited fetch of it shares no commit with HEAD's single-commit history and the three-dot
+// diff below fails with "no merge base." Unshallowing first gives HEAD's own history somewhere to
+// meet main's.
 function ensureMainFetched(): void {
+  if (isShallow()) git(["fetch", "--unshallow", "origin"]);
   if (refExists("origin/main")) return;
-  git(["fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"]);
+  git(["fetch", "origin", "main:refs/remotes/origin/main"]);
 }
 
 // On a PR, origin/main sits behind HEAD and this comparison is the sprint's actual diff. CI also
