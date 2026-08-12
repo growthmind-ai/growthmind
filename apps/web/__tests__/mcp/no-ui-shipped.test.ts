@@ -8,8 +8,6 @@
 // exists to prevent.
 import { describe, expect, test } from "bun:test";
 
-const BASE = "origin/main";
-
 const REPO_ROOT = new URL("../../../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
 const APP_ROUTES_PREFIX = "apps/web/app/(app)/";
@@ -33,12 +31,23 @@ interface DiffEntry {
   readonly path: string;
 }
 
+// On a PR, origin/main sits behind HEAD and this comparison is the sprint's actual diff. CI also
+// runs this same suite on push to main, where the PR has already been squash-merged and HEAD *is*
+// origin/main — that comparison is empty by construction, not because the sprint shipped nothing.
+// Fall back to the commit that just landed there, which (being a squash merge) is the whole PR.
+function diffBase(): string {
+  const head = git(["rev-parse", "HEAD"]).trim();
+  const mainTip = git(["rev-parse", "origin/main"]).trim();
+  return head === mainTip ? "HEAD~1" : "origin/main";
+}
+
 // Committed against the merge base, plus whatever is still in the working tree, so a wave that
 // has not committed yet cannot pass this by being invisible to it.
 function sprintDiff(): readonly DiffEntry[] {
   const entries = new Map<string, string>();
+  const base = diffBase();
 
-  for (const line of git(["diff", "--name-status", `${BASE}...HEAD`]).split("\n")) {
+  for (const line of git(["diff", "--name-status", `${base}...HEAD`]).split("\n")) {
     const parts = line.trim().split(/\s+/);
     const status = parts[0];
     const path = parts[parts.length - 1];
