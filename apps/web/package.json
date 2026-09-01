@@ -17,7 +17,7 @@
     "@growthmind/db": "workspace:*",
     "@growthmind/shared": "workspace:*",
     "@mantine/core": "^9.5.0",
-    "@mantine/hooks": "^9.5.0",
+    "@mantine/hooks": "^9.5.2",
     "@modelcontextprotocol/server": "2.0.0",
     "@next/env": "^16.2.12",
     "@rrweb/browser-client": "^2.1.1",
