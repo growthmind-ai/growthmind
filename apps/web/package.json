@@ -21,7 +21,7 @@
     "@modelcontextprotocol/server": "2.0.0",
     "@next/env": "^16.2.12",
     "@rrweb/browser-client": "^2.1.1",
-    "better-auth": "^1.6.25",
+    "better-auth": "^1.7.2",
     "next": "16.2.12",
     "posthog-js": "^1.257.2",
     "posthog-node": "^5.46.1",
